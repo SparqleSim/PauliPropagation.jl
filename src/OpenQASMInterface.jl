@@ -6,6 +6,40 @@ using ..PauliPropagation: CliffordGate, PauliRotation
 
 export readqasm
 
+# --- Helper functions for Value-Based Dispatch ---
+
+# Fallback for any gate not explicitly defined
+function _translate_gate(gate_name_val::Val, qubits, cargs)
+    gate_name = Symbol(gate_name_val) # Extract symbol from Val type
+    error("Unsupported QASM gate: '$(gate_name)'. This operation is not implemented.")
+end
+
+# -- Clifford Gates (return gate, nothing for theta) --
+_translate_gate(::Val{:h}, qubits, cargs) = (CliffordGate(:H, qubits[1]), nothing)
+_translate_gate(::Val{:x}, qubits, cargs) = (CliffordGate(:X, qubits[1]), nothing)
+_translate_gate(::Val{:cx}, qubits, cargs) = (CliffordGate(:CNOT, qubits), nothing)
+# Add other supported Cliffords like :y, :z, :cz here if needed.
+
+# -- Pauli Rotations (return gate, and the parsed theta value) --
+function _translate_gate(::Val{:rx}, qubits, cargs)
+    param_token = cargs[1]
+    theta = parse(Float64, param_token.str)
+    return (PauliRotation(:X, qubits[1]), theta)
+end
+
+function _translate_gate(::Val{:ry}, qubits, cargs)
+    param_token = cargs[1]
+    theta = parse(Float64, param_token.str)
+    return (PauliRotation(:Y, qubits[1]), theta)
+end
+
+function _translate_gate(::Val{:rz}, qubits, cargs)
+    param_token = cargs[1]
+    theta = parse(Float64, param_token.str)
+    return (PauliRotation(:Z, qubits[1]), theta)
+end
+
+
 """
     readqasm(filepath::String) -> (Int, Vector, Vector)
 
@@ -37,36 +71,19 @@ function readqasm(filepath::String)
             continue
         end
         
-        gate_name = instruction.name # This is a String
-        
+        gate_name_str = instruction.name
         qubits = [parse(Int, q.address.str) + 1 for q in instruction.qargs]
+        cargs = instruction.cargs
 
-        # --- Gate Translation Logic ---
+        # Convert the gate name string to a Val{Symbol} to enable multiple dispatch
+        gate_name_val = Val(Symbol(gate_name_str))
         
-        # Compare gate_name to Strings, not Symbols.
-        if gate_name == "h"
-            push!(circuit, CliffordGate(:H, qubits[1]))
-        elseif gate_name == "x"
-            push!(circuit, CliffordGate(:X, qubits[1]))
-        elseif gate_name == "cx"
-            push!(circuit, CliffordGate(:CNOT, qubits))
-        
-        # Handle Pauli Rotations (with parameters)
-        elseif gate_name == "rx"
-            param_token = instruction.cargs[1]
-            push!(circuit, PauliRotation(:X, qubits[1]))
-            push!(thetas, parse(Float64, param_token.str)) # FINAL FIX
-        elseif gate_name == "ry"
-            param_token = instruction.cargs[1]
-            push!(circuit, PauliRotation(:Y, qubits[1]))
-            push!(thetas, parse(Float64, param_token.str)) # FINAL FIX
-        elseif gate_name == "rz"
-            param_token = instruction.cargs[1]
-            push!(circuit, PauliRotation(:Z, qubits[1]))
-            push!(thetas, parse(Float64, param_token.str)) # FINAL FIX
-        
-        else
-            error("Unsupported QASM gate: '$(gate_name)'. This operation is not implemented.")
+        # Dispatch to the correct helper method based on the gate name
+        gate_obj, theta = _translate_gate(gate_name_val, qubits, cargs)
+
+        push!(circuit, gate_obj)
+        if !isnothing(theta)
+            push!(thetas, theta)
         end
     end
 
