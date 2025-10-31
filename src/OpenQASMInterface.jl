@@ -9,9 +9,9 @@ export readqasm
 # --- Helper functions for Value-Based Dispatch ---
 
 # Fallback for any gate not explicitly defined
-function _translate_gate(gate_name_val::Val, qubits, cargs)
+function _translate_gate(gate_name_val::Val{G}, qubits, cargs) where {G}
     gate_name = Symbol(gate_name_val) # Extract symbol from Val type
-    error("Unsupported QASM gate: '$(gate_name)'. This operation is not implemented.")
+    error("Unsupported translation for QASM gate: '$(G)'. This operation is not implemented.")
 end
 
 # -- Clifford Gates (return gate, nothing for theta) --
@@ -70,14 +70,14 @@ function readqasm(filepath::String)
         if !(instruction isa OpenQASM.Types.Instruction)
             continue
         end
-        
+
         gate_name_str = instruction.name
         qubits = [parse(Int, q.address.str) + 1 for q in instruction.qargs]
         cargs = instruction.cargs
 
         # Convert the gate name string to a Val{Symbol} to enable multiple dispatch
         gate_name_val = Val(Symbol(gate_name_str))
-        
+
         # Dispatch to the correct helper method based on the gate name
         gate_obj, theta = _translate_gate(gate_name_val, qubits, cargs)
 
