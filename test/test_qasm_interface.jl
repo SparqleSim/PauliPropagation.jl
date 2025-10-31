@@ -1,4 +1,5 @@
 using Test
+using PauliPropagation.OpenQASMInterface
 
 @testset "OpenQASM Interface" begin
     # Define the content for a temporary QASM file
@@ -46,7 +47,7 @@ using Test
     unsupported_filepath = "unsupported.qasm"
     write(unsupported_filepath, unsupported_content)
 
-    @test_throws ErrorException PauliPropagation.readqasm(unsupported_filepath)
+    @test_throws ErrorException readqasm(unsupported_filepath)
 
     rm(unsupported_filepath)
 end

@@ -48,4 +48,6 @@ using Random
 
     include("test_yao_extension.jl")
 
+    include("test_qasm_interface.jl")
+
 end
