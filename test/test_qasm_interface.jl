@@ -1,6 +1,4 @@
 using Test
-using PauliPropagation
-using Revise
 
 @testset "OpenQASM Interface" begin
     # Define the content for a temporary QASM file
@@ -11,7 +9,7 @@ using Revise
     rx(1.23) q[0];
     cx q[0], q[1];
     """
-    
+
     # Write the content to a file in the current directory
     test_filepath = "test_circ.qasm"
     write(test_filepath, qasm_content)
@@ -23,7 +21,7 @@ using Revise
     @test nq == 2
     @test length(circuit) == 2
     @test length(thetas) == 1
-    
+
     # Check the first gate (rx)
     @test circuit[1] isa PauliRotation
     @test circuit[1].symbols[1] == :X    # CORRECT FIELD: .symbols, not .gate_type
@@ -49,6 +47,6 @@ using Revise
     write(unsupported_filepath, unsupported_content)
 
     @test_throws ErrorException PauliPropagation.readqasm(unsupported_filepath)
-    
+
     rm(unsupported_filepath)
 end
