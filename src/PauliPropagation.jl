@@ -230,6 +230,8 @@ end
 
 export paulipropagation2yao
 
+include("OpenQASMInterface.jl")
+
 # # experimental vector propagation 
 # include("Propagation/VectorPropagate/VectorPropagate.jl")
 
