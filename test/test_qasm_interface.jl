@@ -377,7 +377,7 @@ using PauliPropagation.OpenQASMInterface
 
     rm(rc3x_filepath)
 
-    # c3x is not supported (requires non-relative-phase decomposition)
+    # c3x is not supported 
     c3x_content = """
     OPENQASM 2.0;
     include "qelib1.inc";
