@@ -50,4 +50,6 @@ using Random
 
     include("test_qasm_interface.jl")
 
+    include("test_qasm_gate_matrices.jl")
+
 end

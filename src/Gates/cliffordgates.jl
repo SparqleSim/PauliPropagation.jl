@@ -43,6 +43,92 @@ struct CliffordGate <: StaticGate
     end
 end
 
+"""
+    tomatrix(gate::CliffordGate)
+Compute the unitary matrix for a `CliffordGate` in the computational basis.
+"""
+function tomatrix(gate::CliffordGate)
+    nq = length(gate.qinds)
+    sym = gate.symbol
+
+    # Single-qubit Cliffords
+    if sym in (:H, :X, :Y, :Z, :S, :SX, :SY)
+        if nq != 1
+            throw(ArgumentError("CliffordGate($sym, ...) must act on exactly one qubit, got $nq."))
+        end
+
+        if sym == :H
+            invsqrt2 = 1 / sqrt(2)
+            return invsqrt2 * [1 1; 1 -1]
+        elseif sym == :X
+            return [0 1; 1 0]
+        elseif sym == :Y
+            return [0 -1.0im; 1.0im 0]
+        elseif sym == :Z
+            return [1 0; 0 -1]
+        elseif sym == :S
+            return [1 0; 0 1.0im]
+        elseif sym == :SX
+            half = 1 / 2
+            return half * [1 + 1.0im   1 - 1.0im;
+                           1 - 1.0im   1 + 1.0im]
+        elseif sym == :SY
+            half = 1 / 2
+            return half * [1 + 1.0im   -1 - 1.0im;
+                           1 + 1.0im    1 + 1.0im]
+        end
+    end
+
+    # Two-qubit Clifford gates
+    if sym in (:CNOT, :CZ, :ZZpihalf, :SWAP)
+        if nq != 2
+            throw(ArgumentError("CliffordGate($sym, ...) must act on exactly two qubits, got $nq."))
+        end
+
+        if sym == :CNOT
+            a, b = gate.qinds
+            if a < b
+                return [
+                    1 0 0 0;
+                    0 1 0 0;
+                    0 0 0 1;
+                    0 0 1 0
+                ]
+            else
+                return [
+                    1 0 0 0;
+                    0 0 0 1;
+                    0 0 1 0;
+                    0 1 0 0
+                ]
+            end
+        elseif sym == :CZ
+            return [
+                1 0 0 0;
+                0 1 0 0;
+                0 0 1 0;
+                0 0 0 -1
+            ]
+        elseif sym == :ZZpihalf
+            invsqrt2 = 1 / sqrt(2)
+            return invsqrt2 * [
+                1 - 1.0im   0           0           0;
+                0           1 + 1.0im   0           0;
+                0           0           1 + 1.0im   0;
+                0           0           0           1 - 1.0im
+            ]
+        elseif sym == :SWAP
+            return [
+                1 0 0 0;
+                0 0 1 0;
+                0 1 0 0;
+                0 0 0 1
+            ]
+        end
+    end
+    throw(ArgumentError("tomatrix not implemented for CliffordGate with symbol $sym."))
+end
+
 
 const _default_clifford_map = Dict{Symbol,Vector{Tuple{UInt8,Int64}}}(
     :H => [(0x00, 1), (0x03, 1), (0x02, -1), (0x01, 1)],
