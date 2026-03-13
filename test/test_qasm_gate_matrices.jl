@@ -62,7 +62,6 @@ end
     I2 = Matrix{Float64}(I, 2, 2)
 
     # X acting on qubit 1 vs qubit 2, matching NumPy's kron(X, I) / kron(I, X) convention:
-    # qubit 1 = left factor → X ⊗ I, qubit 2 = right factor → I ⊗ X.
     U_X_on_1 = _embed_gate_matrix(2, [1], X)  # X on first (left) qubit
     U_X_on_2 = _embed_gate_matrix(2, [2], X)  # X on second (right) qubit
 
@@ -123,7 +122,6 @@ _reference_x_2x2() = [0.0 1.0; 1.0 0.0]
 _reference_y_2x2() = [0.0 -1.0im; 1.0im 0.0]
 _reference_z_2x2() = [1.0 0.0; 0.0 -1.0]
 
-# Reference 2×2: Hadamard H, phase S (√Z), S† (sdg), sqrt(X) SX, and its adjoint SXdG.
 function _reference_h_2x2()
     invsqrt2 = 1 / sqrt(2)
     return invsqrt2 * [1.0 1.0; 1.0 -1.0]
@@ -137,7 +135,6 @@ function _reference_sx_2x2()
 end
 _reference_sxdg_2x2() = _reference_sx_2x2()'
 
-# Reference 2×2: T (√S), T† (tdg), and rotations rx(theta), ry(theta), rz(theta). U = cos(theta/2)I - i sin(theta/2)P.
 _reference_t_2x2() = [1.0 0.0; 0.0 exp(1.0im * pi / 4)]
 _reference_tdg_2x2() = [1.0 0.0; 0.0 exp(-1.0im * pi / 4)]
 function _reference_rx_2x2(theta::Real)
@@ -167,7 +164,6 @@ end
 _reference_u2_2x2(phi::Real, lambda::Real) = _reference_u3_2x2(pi/2, phi, lambda)
 _reference_u1_2x2(lambda::Real) = _reference_p_2x2(lambda)
 
-# Reference 2×2 matrix for P(lambda) (phase gate): diag(1, exp(i lambda)), same as u1(lambda).
 function _reference_p_2x2(lambda::Real)
     return [
         1.0               0.0;
@@ -175,8 +171,6 @@ function _reference_p_2x2(lambda::Real)
     ]
 end
 
-# Reference 4×4 matrices for two-qubit controlled gates with control = qubit 1 (LSB), target = qubit 2.
-# Basis |00>,|01>,|10>,|11> = |q1 q2>.
 function _reference_cx()
     return [
         1.0  0.0  0.0  0.0;
@@ -187,7 +181,6 @@ function _reference_cx()
 end
 
 function _reference_cx_swapped()
-    # CNOT with control = qubit 2, target = qubit 1 in basis |q1 q2>
     return [
         1.0  0.0  0.0  0.0;
         0.0  0.0  0.0  1.0;
@@ -243,9 +236,6 @@ function _reference_ccx()
 end
 
 function _reference_ccx_target2()
-    # Toffoli with controls on qubits 1 and 3, target on qubit 2
-    # in the basis |q1 q2 q3⟩ with q1 as LSB.
-    # This flips |101⟩ ↔ |111⟩ (indices 6 and 8) and leaves others unchanged.
     return [
         1.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0;
         0.0  1.0  0.0  0.0  0.0  0.0  0.0  0.0;
@@ -320,9 +310,6 @@ function _reference_cswap()
 end
 
 function _reference_cswap_control2()
-    # Controlled-SWAP with control on qubit 2, swapping qubits 1 and 3,
-    # in the basis |q1 q2 q3⟩ with q1 as LSB.
-    # This swaps |110⟩ ↔ |011⟩ (indices 4 and 7) and leaves others unchanged.
     return [
         1.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0;
         0.0  1.0  0.0  0.0  0.0  0.0  0.0  0.0;
