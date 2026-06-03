@@ -10,12 +10,12 @@
 # This need only be done once per-machine. Then,
 # generating/updating the doc is triggered via
 #     julia --project make.jl
-# 
+#
 # If triggered within a Github Action, the generated
 # HTML files will then be committed to the 'gh-pages'
 # branch, which Github Pages can be configured to
 # display at SparqleSim.github.io/PauliPropagation.jl/
-# 
+#
 # Note documentation generated from non-main branches
 # will be uploaded to subdomain /dev/, even when not
 # from the 'dev' branch, and doc generated from pull
@@ -23,7 +23,24 @@
 #
 # If this breaks, break Tyson's legs
 
+import Pkg
 
+docs_dir = @__DIR__
+package_dir = normpath(joinpath(docs_dir, ".."))
+examples_dir = joinpath(docs_dir, "examples")
+
+function build_examples()
+    Pkg.activate(examples_dir)
+    Pkg.develop(Pkg.PackageSpec(path = package_dir))
+    Pkg.instantiate()
+
+    include(joinpath(examples_dir, "make.jl"))
+end
+
+# build_examples()
+
+
+Pkg.activate(docs_dir)
 using Documenter, PauliPropagation
 
 
@@ -34,6 +51,8 @@ makedocs(
         assets=[
             "assets/favicon.ico",
         ],
+        size_threshold=nothing,
+        size_threshold_warn=200 * 1024,
     ), sitename="PauliPropagation.jl",
 
     # determines site layout
@@ -42,7 +61,7 @@ makedocs(
         # index.md does not exist; it is a symlink
         # to the repo's README.md file, created as
         # per the comments above, to avoid duplicating
-        # the README.md contents into Documenter.jl 
+        # the README.md contents into Documenter.jl
         # pages. We manually override its name in the
         # left navbar to be "Introduction"
         "Home" => "index.md",
@@ -50,8 +69,28 @@ makedocs(
         # these other 'top-level' files DO exist, and
         # have names inferred from their section names
 
-        # TODO: add this back once we know how to embed the Jupyter notebooks
-        # "tutorials.md",
+        # these files are automatically created by
+        # `build_examples` function using `nbconvert`.
+        # the filenames are same as the corresponding
+        # .ipynb files.
+        "Examples" => [
+            "Basic Example" => "examples/1-basic-example.md",
+            "Data Types" => "examples/2-datatypes.md",
+            "Utility" => "examples/3-utility-example.md",
+            "Pauli Transfer Matrix" => "examples/4-pauli-transfer-matrix.md",
+            "Custom Gates" => "examples/5-custom-gates.md",
+            "Numerical Certificates" => "examples/6-numerical-certificate.md",
+            "Record custom path properties" => "examples/7-custom-pathproperties.md",
+            "Automatic Differentiation" => "examples/8-automatic-differentiation.md",
+            "Custom Gates" => "examples/9-advanced-custom-gates.md",
+            "Tilted Field Ising Model" => "examples/ex_ttfi_op_evolution.md",
+            "Imaginary Time Evolution" => "examples/imaginary-time-evolution.md",
+            "Error Mitigation" => "examples/introduction-example-error-mitigation.md",
+            "PauliPropagation.jl from Python" => "examples/PP-from-Python.md",
+            "Pauli Propagation Surrogate" => "examples/PP-Surrogate.md",
+            "Symmetry" => "examples/Symmetry-PP.md",
+            "Pauli Evolution Visualization" => "examples/visualization_example.md"
+        ],
 
         # these 'lower-level' files also exist, and will
         # be grouped under an 'API' section in the navbar
