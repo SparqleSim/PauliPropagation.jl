@@ -34,6 +34,8 @@ makedocs(
         assets=[
             "assets/favicon.ico",
         ],
+        size_threshold=nothing,
+        size_threshold_warn=200 * 1024,
     ), sitename="PauliPropagation.jl",
 
     # determines site layout
