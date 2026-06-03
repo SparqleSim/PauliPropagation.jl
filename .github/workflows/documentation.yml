@@ -99,6 +99,9 @@ jobs:
           done
 
       - name: Build and deploy
+        run: julia --color=yes --project=docs docs/make.jl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # delete superfluous files remaining on the 
   # gh-pages branch to speed up user cloning
