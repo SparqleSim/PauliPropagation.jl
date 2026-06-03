@@ -85,10 +85,20 @@ jobs:
         run: ln -s ../../README.md index.md
         working-directory: docs/src
 
+      - name: Set up Python for nbconvert
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Convert example notebooks to markdown
+        run: |
+          pip install nbconvert
+          mkdir -p docs/src/examples
+          for nb in examples/*.ipynb; do
+            jupyter nbconvert --to markdown "$nb" --output-dir docs/src/examples/
+          done
+
       - name: Build and deploy
-        run: julia --color=yes --project=docs docs/make.jl
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # delete superfluous files remaining on the 
   # gh-pages branch to speed up user cloning

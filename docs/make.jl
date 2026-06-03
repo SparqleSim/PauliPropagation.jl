@@ -50,8 +50,24 @@ makedocs(
         # these other 'top-level' files DO exist, and
         # have names inferred from their section names
 
-        # TODO: add this back once we know how to embed the Jupyter notebooks
-        # "tutorials.md",
+        "Examples" => [
+            "examples/1-basic-example.md",
+            "examples/2-datatypes.md",
+            "examples/3-utility-example.md",
+            "examples/4-pauli-transfer-matrix.md",
+            "examples/5-custom-gates.md",
+            "examples/6-numerical-certificate.md",
+            "examples/7-custom-pathproperties.md",
+            "examples/8-automatic-differentiation.md",
+            "examples/9-advanced-custom-gates.md",
+            "examples/ex_ttfi_op_evolution.md",
+            "examples/imaginary-time-evolution.md",
+            "examples/introduction-example-error-mitigation.md",
+            "examples/PP-from-Python.md",
+            "examples/PP-Surrogate.md",
+            "examples/Symmetry-PP.md",
+            "examples/visualization_example.md",
+        ],
 
         # these 'lower-level' files also exist, and will
         # be grouped under an 'API' section in the navbar
@@ -76,7 +92,7 @@ makedocs(
 # When run from a Github Action, commit those files to the 'gh-pages' branch,
 # depending upon the triggering branch or whether it is a release/pull-request.
 deploydocs(
-    repo="github.com/SparqleSim/PauliPropagation.jl.git",
+    repo="github.com/satkarjuneja/PauliPropagation.jl.git",
 
     # Enable generation of doc from PRs, under a /previews/PR## sub-domain.
     # Beware that this requires the Github Action was explicitly triggered by
