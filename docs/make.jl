@@ -74,22 +74,22 @@ makedocs(
         # the filenames are same as the corresponding
         # .ipynb files.
         "Examples" => [
-            "Basic Example" => "examples/1-basic-example.md",
-            "Data Types" => "examples/2-datatypes.md",
-            "Utility" => "examples/3-utility-example.md",
-            "Pauli Transfer Matrix" => "examples/4-pauli-transfer-matrix.md",
-            "Custom Gates" => "examples/5-custom-gates.md",
-            "Numerical Certificates" => "examples/6-numerical-certificate.md",
-            "Record custom path properties" => "examples/7-custom-pathproperties.md",
-            "Automatic Differentiation" => "examples/8-automatic-differentiation.md",
-            "Custom Gates" => "examples/9-advanced-custom-gates.md",
-            "Tilted Field Ising Model" => "examples/ex_ttfi_op_evolution.md",
-            "Imaginary Time Evolution" => "examples/imaginary-time-evolution.md",
-            "Error Mitigation" => "examples/introduction-example-error-mitigation.md",
-            "PauliPropagation.jl from Python" => "examples/PP-from-Python.md",
-            "Pauli Propagation Surrogate" => "examples/PP-Surrogate.md",
-            "Symmetry" => "examples/Symmetry-PP.md",
-            "Pauli Evolution Visualization" => "examples/visualization_example.md"
+            "examples/1-basic-example.md",
+            "examples/2-datatypes.md",
+            "examples/3-utility-example.md",
+            "examples/4-pauli-transfer-matrix.md",
+            "examples/5-custom-gates.md",
+            "examples/6-numerical-certificate.md",
+            "examples/7-custom-pathproperties.md",
+            "examples/8-automatic-differentiation.md",
+            "examples/9-advanced-custom-gates.md",
+            "examples/ex_ttfi_op_evolution.md",
+            "examples/imaginary-time-evolution.md",
+            "examples/introduction-example-error-mitigation.md",
+            "examples/PP-from-Python.md",
+            "examples/PP-Surrogate.md",
+            "examples/Symmetry-PP.md",
+            "examples/visualization_example.md"
         ],
 
         # these 'lower-level' files also exist, and will
