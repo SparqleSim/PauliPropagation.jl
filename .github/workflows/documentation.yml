@@ -95,9 +95,11 @@ jobs:
           pip install nbconvert
           mkdir -p docs/src/examples
           for nb in examples/*.ipynb; do
-            jupyter nbconvert --to markdown "$nb" --output-dir docs/src/examples/ --embed-images
+            jupyter nbconvert --to markdown "$nb" \
+              --output-dir docs/src/examples/ \
+              --ExtractOutputPreprocessor.extract_output_types="{'image/png','image/jpeg','application/pdf'}"
           done
-
+      
       - name: Build and deploy
         run: julia --color=yes --project=docs docs/make.jl
         env:
