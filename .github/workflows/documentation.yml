@@ -68,6 +68,14 @@ jobs:
         with:
           version: '1'
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install notebook converter
+        run: python -m pip install nbconvert
+
       # using cache speeds up workflow
       - name: Setup Julia cache
         uses: julia-actions/cache@v2

@@ -27,6 +27,64 @@
 using Documenter, PauliPropagation
 
 
+const DOCS_DIR = @__DIR__
+const REPO_ROOT = dirname(DOCS_DIR)
+const EXAMPLES_DIR = joinpath(REPO_ROOT, "examples")
+const GENERATED_EXAMPLES_DIR = joinpath(DOCS_DIR, "src", "examples")
+
+const EXAMPLE_NOTEBOOKS = [
+    "1-basic-example.ipynb" => "Basic Example",
+    "2-datatypes.ipynb" => "Data Types",
+    "3-utility-example.ipynb" => "Utility Functions",
+    "4-pauli-transfer-matrix.ipynb" => "Pauli Transfer Matrix",
+    "5-custom-gates.ipynb" => "Custom Gates",
+    "6-numerical-certificate.ipynb" => "Numerical Certificates",
+    "7-custom-pathproperties.ipynb" => "Custom Path Properties",
+    "8-automatic-differentiation.ipynb" => "Automatic Differentiation",
+    "9-advanced-custom-gates.ipynb" => "Advanced Custom Gates",
+    "introduction-example-error-mitigation.ipynb" => "Error Mitigation",
+    "imaginary-time-evolution.ipynb" => "Imaginary Time Evolution",
+    "PP-Surrogate.ipynb" => "Pauli Propagation Surrogate",
+    "PP-from-Python.ipynb" => "Using PauliPropagation.jl from Python",
+    "Symmetry-PP.ipynb" => "Symmetry",
+    "visualization_example.ipynb" => "Visualization",
+    "ex_ttfi_op_evolution.ipynb" => "TTFI Operator Evolution",
+]
+
+const EXAMPLE_PAGES = [
+    title => joinpath("examples", replace(notebook, r"\.ipynb$" => ".md"))
+    for (notebook, title) in EXAMPLE_NOTEBOOKS
+]
+
+function convert_example_notebooks()
+    if !isdir(EXAMPLES_DIR)
+        error("Could not find examples directory at $(EXAMPLES_DIR)")
+    end
+
+    rm(GENERATED_EXAMPLES_DIR; recursive=true, force=true)
+    mkpath(GENERATED_EXAMPLES_DIR)
+
+    jupyter = get(ENV, "JUPYTER", "jupyter")
+    for (notebook, _) in EXAMPLE_NOTEBOOKS
+        notebook_path = joinpath(EXAMPLES_DIR, notebook)
+        if !isfile(notebook_path)
+            error("Could not find example notebook at $(notebook_path)")
+        end
+
+        run(Cmd([
+            jupyter,
+            "nbconvert",
+            "--to", "markdown",
+            "--output-dir", GENERATED_EXAMPLES_DIR,
+            notebook_path,
+        ]))
+    end
+end
+
+
+convert_example_notebooks()
+
+
 # Generate doc HTML files, saved to build/
 makedocs(
     # Add favicon.ico
@@ -50,8 +108,10 @@ makedocs(
         # these other 'top-level' files DO exist, and
         # have names inferred from their section names
 
-        # TODO: add this back once we know how to embed the Jupyter notebooks
-        # "tutorials.md",
+        "Tutorials" => "tutorials.md",
+
+        # generated from examples/*.ipynb by convert_example_notebooks()
+        "Examples" => EXAMPLE_PAGES,
 
         # these 'lower-level' files also exist, and will
         # be grouped under an 'API' section in the navbar
