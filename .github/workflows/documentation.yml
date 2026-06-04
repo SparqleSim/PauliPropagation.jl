@@ -98,7 +98,7 @@ jobs:
             jupyter nbconvert --to markdown "$nb" \
               --output-dir docs/src/examples/ \
               --ExtractOutputPreprocessor.extract_output_types="{'image/png','image/jpeg','application/pdf'}" \
-              --NbConvertBase.display_data_priority="['image/png','image/jpeg','application/pdf','text/plain']"
+              --NbConvertBase.display_data_priority="['image/png','image/jpeg','application/pdf','text/plain']" 
           done
       
       - name: Build and deploy
