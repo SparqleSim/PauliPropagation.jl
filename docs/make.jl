@@ -56,6 +56,47 @@ const EXAMPLE_PAGES = [
     for (notebook, title) in EXAMPLE_NOTEBOOKS
 ]
 
+# Documenter parses unescaped dollar signs in Markdown as Julia interpolation.
+function escape_documenter_dollars(line)
+    io = IOBuffer()
+    escaped = false
+
+    for char in line
+        if char == '$' && !escaped
+            print(io, "\\\$")
+        else
+            print(io, char)
+        end
+
+        escaped = char == '\\' && !escaped
+        if char != '\\'
+            escaped = false
+        end
+    end
+
+    return String(take!(io))
+end
+
+function escape_documenter_dollars!(markdown_path)
+    lines = readlines(markdown_path; keep=true)
+    converted = String[]
+    in_code_fence = false
+
+    for line in lines
+        stripped = lstrip(line)
+        if startswith(stripped, "```") || startswith(stripped, "~~~")
+            in_code_fence = !in_code_fence
+            push!(converted, line)
+        elseif in_code_fence || startswith(line, "    ")
+            push!(converted, line)
+        else
+            push!(converted, escape_documenter_dollars(line))
+        end
+    end
+
+    write(markdown_path, join(converted))
+end
+
 function convert_example_notebooks()
     if !isdir(EXAMPLES_DIR)
         error("Could not find examples directory at $(EXAMPLES_DIR)")
@@ -78,6 +119,9 @@ function convert_example_notebooks()
             "--output-dir", GENERATED_EXAMPLES_DIR,
             notebook_path,
         ]))
+
+        markdown_path = joinpath(GENERATED_EXAMPLES_DIR, replace(notebook, r"\.ipynb$" => ".md"))
+        escape_documenter_dollars!(markdown_path)
     end
 end
 
@@ -92,6 +136,8 @@ makedocs(
         assets=[
             "assets/favicon.ico",
         ],
+        size_threshold=2 * 2^20,
+        size_threshold_warn=512 * 2^10,
     ), sitename="PauliPropagation.jl",
 
     # determines site layout
