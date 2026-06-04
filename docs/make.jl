@@ -94,7 +94,7 @@ makedocs(
 # When run from a Github Action, commit those files to the 'gh-pages' branch,
 # depending upon the triggering branch or whether it is a release/pull-request.
 deploydocs(
-    repo="github.com/satkarjuneja/PauliPropagation.jl.git",
+    repo="github.com/SparqleSim/PauliPropagation.jl.git",
 
     # Enable generation of doc from PRs, under a /previews/PR## sub-domain.
     # Beware that this requires the Github Action was explicitly triggered by
