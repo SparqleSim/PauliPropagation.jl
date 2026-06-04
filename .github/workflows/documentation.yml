@@ -95,7 +95,7 @@ jobs:
           pip install nbconvert
           mkdir -p docs/src/examples
           for nb in examples/*.ipynb; do
-            jupyter nbconvert --to markdown "$nb" --output-dir docs/src/examples/
+            jupyter nbconvert --to markdown "$nb" --output-dir docs/src/examples/ --embed-images
           done
 
       - name: Build and deploy
