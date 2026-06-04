@@ -1,7 +1,7 @@
 using Test
 using LinearAlgebra
 using Random
-using Yao: X, Y, Z, H, Rx, Rz, Ry, I2, chain, put, control, zero_state, expect, apply, rot, mat, matblock, swap, SWAP, time_evolve, kron
+using Yao: X, Y, Z, H, Rx, Rz, Ry, chain, put, control, zero_state, expect, apply, rot, mat, matblock, swap, SWAP, time_evolve, kron
 using PauliPropagation
 
 # Gate Translation Functions
@@ -28,24 +28,6 @@ function _clifford_to_yao(g::CliffordGate)
     get(gate_dict, g.symbol) do
         error("Unsupported CliffordGate symbol: $(g.symbol)")
     end
-end
-
-function _build_yao_observable(symbols::Vector{Symbol}, qubits::Vector{Int}, nqubits::Int)
-    length(symbols) == length(qubits) || throw(ArgumentError("Symbols and qubits must have same length"))
-    all(1 ≤ q ≤ nqubits for q in qubits) || throw(ArgumentError("Qubit indices out of range"))
-    pauli_map = Dict(
-        :X => X,
-        :Y => Y,
-        :Z => Z,
-        :I => I2
-    )
-    blocks = map(zip(symbols, qubits)) do (sym, q)
-        op = get(pauli_map, sym) do
-            throw(ArgumentError("Unsupported Pauli symbol: $sym. Use :X, :Y, :Z, or :I"))
-        end
-        put(nqubits, q => op)
-    end
-    return length(blocks) == 1 ? only(blocks) : chain(blocks...)
 end
 
 function _register_inverse!(symbol::Symbol)
@@ -202,8 +184,7 @@ const two_obs = [Tuple(inttosymbol(p, 2)) for p in 0:15]
 
                 state = zero_state(n)
                 evolved = apply(state, yao_gate)
-                yao_obs = _build_yao_observable([obs], [1], n)
-                ref_val = real(expect(yao_obs, evolved))
+                ref_val = real(expect(paulipropagation2yao(pauli_obs), evolved))
 
                 @test isapprox(test_val, ref_val, atol=1e-10)
             end
@@ -223,8 +204,7 @@ const two_obs = [Tuple(inttosymbol(p, 2)) for p in 0:15]
 
                 state = zero_state(2)
                 evolved = apply(state, yao_gate)
-                yao_obs = _build_yao_observable([obs1, obs2], [1, 2], 2)
-                ref_val = real(expect(yao_obs, evolved))
+                ref_val = real(expect(paulipropagation2yao(pauli_obs), evolved))
                 @test isapprox(test_val, ref_val, atol=1e-10)
             end
         end
@@ -288,8 +268,7 @@ end
 
             zero_st = zero_state(nqubits)
             evolved_state = apply(zero_st, chain(yao_ops...))
-            yao_obs = _build_yao_observable(obs_symbols, obs_qubits, nqubits)
-            yao_val = real(expect(yao_obs, evolved_state))
+            yao_val = real(expect(paulipropagation2yao(obs), evolved_state))
             @test isapprox(custom_val, yao_val; atol=1e-10)
 
             rev_gates, rev_θs = _invert_gates(custom_gates, θs)
@@ -322,8 +301,7 @@ end
                 obs = PauliSum(nqubits)
                 add!(obs, [p], [q], 1.0)
                 our_val = overlapwithzero(propagate(circ, obs, θs))
-                yao_obs = _build_yao_observable([p], [q], nqubits)
-                yao_val = real(expect(yao_obs, state))
+                yao_val = real(expect(paulipropagation2yao(obs), state))
                 @test isapprox(our_val, yao_val; atol=1e-10)
             end
             if nqubits ≥ 2
@@ -333,8 +311,7 @@ end
                     our_val = overlapwithzero(propagate(circ, obs, θs))
                     vector_propagated = propagate(circ, VectorPauliSum(obs), θs)
                     vector_test_val = overlapwithzero(vector_propagated)
-                    yao_obs = _build_yao_observable([:Z, :Z], [q1, q1 + 1], nqubits)
-                    yao_val = real(expect(yao_obs, state))
+                    yao_val = real(expect(paulipropagation2yao(obs), state))
                     @test isapprox(our_val, yao_val; atol=1e-10)
                     @test isapprox(our_val, vector_test_val, atol=1e-10)
                 end
@@ -364,8 +341,7 @@ end
                 our_val = overlapwithzero(propagate(circ, obs, θs))
                 vec_val = overlapwithzero(propagate(circ, VectorPauliSum(obs), θs))
                 @test isapprox(our_val, vec_val; atol=1e-10)
-                yao_obs = _build_yao_observable([p], [q], nqubits)
-                yao_val = real(expect(yao_obs, state))
+                yao_val = real(expect(paulipropagation2yao(obs), state))
 
                 @test isapprox(our_val, yao_val; atol=1e-2)
             end
@@ -377,8 +353,7 @@ end
                     our_val = overlapwithzero(propagate(circ, obs, θs))
                     vec_val = overlapwithzero(propagate(circ, VectorPauliSum(obs), θs))
                     @test isapprox(our_val, vec_val; atol=1e-10)
-                    yao_obs = _build_yao_observable([p1, p2], [1, 2], nqubits)
-                    yao_val = real(expect(yao_obs, state))
+                    yao_val = real(expect(paulipropagation2yao(obs), state))
                     @test isapprox(our_val, yao_val; atol=1e-2)
                 end
             end
@@ -451,8 +426,7 @@ end
 
             zero_st = zero_state(circ.nqubits)
             evolved_state = apply(zero_st, circ.yao_circ)
-            yao_obs = _build_yao_observable(obs_symbols, obs_qubits, circ.nqubits)
-            yao_val = real(expect(yao_obs, evolved_state))
+            yao_val = real(expect(paulipropagation2yao(obs), evolved_state))
             @test isapprox(custom_val, yao_val; atol=1e-10)
 
             rev_gates, rev_θs = _invert_gates(circ.custom_gates, θs)

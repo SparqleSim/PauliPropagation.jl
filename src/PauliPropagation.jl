@@ -206,6 +206,22 @@ export
     visualize_tree,
     propagate_with_tree_tracking
 
+"""
+    paulipropagation2yao(x)
+
+Convert PauliPropagation observables or circuits to Yao blocks.
+
+Supported forms (after `using Yao` or `using YaoBlocks`):
+
+- `paulipropagation2yao(::PauliString)`
+- `paulipropagation2yao(::AbstractPauliSum)`
+- `paulipropagation2yao(n, circuit, thetas)`
+"""
+function paulipropagation2yao(args...)
+    error("Load Yao or YaoBlocks (`using Yao`) to use `paulipropagation2yao`.")
+end
+export paulipropagation2yao
+
 # # experimental vector propagation 
 # include("Propagation/VectorPropagate/VectorPropagate.jl")
 
