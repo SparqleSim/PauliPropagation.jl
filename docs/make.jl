@@ -50,6 +50,7 @@ makedocs(
     format=Documenter.HTML(
         assets=[
             "assets/favicon.ico",
+            "assets/custom.css",
         ],
         size_threshold=nothing,
         size_threshold_warn=200 * 1024,
