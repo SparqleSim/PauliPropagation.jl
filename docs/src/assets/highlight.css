@@ -1,0 +1,6 @@
+/* This css style is to make the output be highlighted */
+pre:has(code.nohighlight) {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    padding-left: 10px !important;
+}

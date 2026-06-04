@@ -33,6 +33,7 @@ makedocs(
     format=Documenter.HTML(
         assets=[
             "assets/favicon.ico",
+            "assets/highlight.css"
         ],
         size_threshold=nothing,
         size_threshold_warn=200 * 1024,
@@ -94,7 +95,7 @@ makedocs(
 # When run from a Github Action, commit those files to the 'gh-pages' branch,
 # depending upon the triggering branch or whether it is a release/pull-request.
 deploydocs(
-    repo="github.com/SparqleSim/PauliPropagation.jl.git",
+    repo="github.com/satkarjuneja/PauliPropagation.jl.git",
 
     # Enable generation of doc from PRs, under a /previews/PR## sub-domain.
     # Beware that this requires the Github Action was explicitly triggered by
