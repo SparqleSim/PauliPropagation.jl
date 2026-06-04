@@ -206,6 +206,8 @@ export
     visualize_tree,
     propagate_with_tree_tracking
 
+function paulipropagation2yao end
+export paulipropagation2yao
 # # experimental vector propagation 
 # include("Propagation/VectorPropagate/VectorPropagate.jl")
 
