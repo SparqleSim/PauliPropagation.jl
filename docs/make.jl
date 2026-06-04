@@ -1,14 +1,5 @@
 # Generates HTML documentation from the contents of
-# the docs folder. To generate, we must first setup
-# a symlink from the repo README.md to src/index.md,
-# in order re-use the README in Documenter.jl
-# From the docs/ directory (containing this file):
-#     cd src
-#     ln -s ../../README.md index.md
-#     cd ../
-#
-# This need only be done once per-machine. Then,
-# generating/updating the doc is triggered via
+# the docs folder. To generate/update the docs, run:
 #     julia --project make.jl
 # 
 # If triggered within a Github Action, the generated
@@ -29,8 +20,10 @@ using Documenter, PauliPropagation
 
 const DOCS_DIR = @__DIR__
 const REPO_ROOT = dirname(DOCS_DIR)
+const DOCS_SRC_DIR = joinpath(DOCS_DIR, "src")
+const INDEX_PAGE = joinpath(DOCS_SRC_DIR, "index.md")
 const EXAMPLES_DIR = joinpath(REPO_ROOT, "examples")
-const GENERATED_EXAMPLES_DIR = joinpath(DOCS_DIR, "src", "examples")
+const GENERATED_EXAMPLES_DIR = joinpath(DOCS_SRC_DIR, "examples")
 
 const EXAMPLE_NOTEBOOKS = [
     "1-basic-example.ipynb" => "Basic Example",
@@ -125,7 +118,25 @@ function convert_example_notebooks()
     end
 end
 
+function ensure_index_page()
+    if ispath(INDEX_PAGE)
+        return
+    end
 
+    readme_path = joinpath(REPO_ROOT, "README.md")
+    if !isfile(readme_path)
+        error("Could not find README.md at $(readme_path)")
+    end
+
+    try
+        symlink(relpath(readme_path, DOCS_SRC_DIR), INDEX_PAGE)
+    catch
+        cp(readme_path, INDEX_PAGE)
+    end
+end
+
+
+ensure_index_page()
 convert_example_notebooks()
 
 
@@ -143,10 +154,9 @@ makedocs(
     # determines site layout
     pages=[
 
-        # index.md does not exist; it is a symlink
-        # to the repo's README.md file, created as
-        # per the comments above, to avoid duplicating
-        # the README.md contents into Documenter.jl 
+        # index.md is linked or copied from the repo's
+        # README.md by ensure_index_page(), avoiding
+        # README duplication in Documenter.jl
         # pages. We manually override its name in the
         # left navbar to be "Introduction"
         "Home" => "index.md",
