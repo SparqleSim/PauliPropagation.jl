@@ -137,10 +137,11 @@ end
 Maps an integer Pauli to its corresponding symbol.
 """
 function inttosymbol(pauli::PauliType)
-    if !(0 <= pauli <= 3)
+    p = Int(pauli)
+    if !(0 <= p <= 3)
         throw(ArgumentError("Pauli $pauli is not a valid Pauli integer."))
     end
-    return pauli_symbols[pauli+1]
+    return pauli_symbols[p+1]
 end
 
 # trivial functions that return the if it is already in the correct type
