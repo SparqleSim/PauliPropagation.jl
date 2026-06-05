@@ -172,7 +172,9 @@ end
 
         pXZ = ntuple_encode(NTuplePauliString{1,UInt32}, [:X, :Z])
         pZX = ntuple_encode(NTuplePauliString{1,UInt32}, [:Z, :X])
-        @test !_bitcommutes(pXZ, pZX)
+        # XZ and ZX: qubit 1 (X,Z) anti-commutes, qubit 2 (Z,X) anti-commutes.
+        # Two anti-commuting sites → even parity → the strings commute.
+        @test _bitcommutes(pXZ, pZX)
     end
 
     @testset "Pauli product" begin
