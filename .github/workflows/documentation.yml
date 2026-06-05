@@ -90,6 +90,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install other notebook deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
       - name: Build and deploy
         run: |
           pip install nbconvert
