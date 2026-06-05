@@ -89,6 +89,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+        run: |
+          pip install nbconvert ipykernel
+          python -m ipykernel install --user --name python3 --display-name "Python 3"
 
       - name: Install other notebook deps
         run: |
@@ -97,7 +100,6 @@ jobs:
 
       - name: Build and deploy
         run: |
-          pip install nbconvert
           mkdir -p docs/src/examples
           julia --color=yes docs/make.jl
         env:
