@@ -37,8 +37,8 @@ end
 
     T32  = NTuplePauliString{2,  UInt32}
     T64  = NTuplePauliString{2,  UInt64}
-    T256 = NTuplePauliString{8,  UInt32}
-    T512 = NTuplePauliString{16, UInt32}
+    T128 = NTuplePauliString{8,  UInt32}
+    T256 = NTuplePauliString{16, UInt32}
 
     @testset "Construction and basics" begin
         z = zero(T64)
@@ -51,8 +51,8 @@ end
 
         @test max_qubits(T32)  == 32
         @test max_qubits(T64)  == 64
-        @test max_qubits(T256) == 128
-        @test max_qubits(T512) == 256
+        @test max_qubits(T128) == 128
+        @test max_qubits(T256) == 256
 
         x = NTuplePauliString{2,UInt32}(0xDEADBEEF)
         @test x.data[1] == 0xDEADBEEF
