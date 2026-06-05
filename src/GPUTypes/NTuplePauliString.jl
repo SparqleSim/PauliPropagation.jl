@@ -21,20 +21,16 @@ Use `UInt32` words when targeting GPUs that run 32-bit register operations nativ
 """
 struct NTuplePauliString{N,W<:Union{UInt32,UInt64}}
     data::NTuple{N,W}
-end
 
+    NTuplePauliString{N,W}(data::NTuple{N,W}) where {N, W<:Union{UInt32,UInt64}} = new{N,W}(data)
 
-"""
-    NTuplePauliString{N,W}(x::Integer)
-
-Construct from a (small) integer, zero-extending into the higher words.
-"""
-function NTuplePauliString{N,W}(x::Integer) where {N, W<:Union{UInt32,UInt64}}
-    words = ntuple(Val(N)) do i
-        shift = (i - 1) * (8 * sizeof(W))
-        W((BigInt(x) >> shift) & BigInt(typemax(W)))
+    function NTuplePauliString{N,W}(x::Integer) where {N, W<:Union{UInt32,UInt64}}
+        bx   = BigInt(x)
+        bmask = BigInt(typemax(W))
+        wb   = 8 * sizeof(W)
+        words = ntuple(i -> W((bx >> ((i - 1) * wb)) & bmask), Val(N))
+        return new{N,W}(words)
     end
-    return NTuplePauliString{N,W}(words)
 end
 
 """
@@ -64,6 +60,9 @@ _wordbits(x::NTuplePauliString) = _wordbits(typeof(x))
 
 bitsize(::Type{NTuplePauliString{N,W}}) where {N,W} = N * 8 * sizeof(W)
 bitsize(x::NTuplePauliString) = bitsize(typeof(x))
+
+bitsize(::Type{T}) where {T<:Integer} = 8 * sizeof(T)
+bitsize(x::Integer) = bitsize(typeof(x))
 
 """
     max_qubits(::Type{NTuplePauliString{N,W}})

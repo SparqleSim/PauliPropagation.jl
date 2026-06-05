@@ -3,15 +3,8 @@
 
 Function to return the smallest integer type that can hold `nqubits`.
 This is the type that will be used internally for representing Pauli strings.
-
-When `gpu_compatible=true`, or when `nqubits > 32` (i.e. above the reliable GPU threshold),
-an `NTuplePauliString` is returned instead of a `BitIntegers` type, ensuring GPU compatibility.
-
-Set `gpu_word=UInt32` (default) for maximum GPU register compatibility, or `UInt64` for
-fewer words on CPU/advanced GPU hardware.
 """
 function getinttype(nqubits::Integer; gpu_compatible::Bool=false, gpu_word::Type=UInt32)
-    # For GPU-compatible mode or large qubit counts, use NTuplePauliString
     if gpu_compatible
         return getntupleinttype(nqubits; word=gpu_word)
     end
@@ -203,6 +196,29 @@ _paulimask(::Type{T}, n_sites) where T = mask(T, 2 * n_sites)
 
 _pauliwindowmask(::Type{T}, index1::Integer, index2::Integer) where T = _paulimask(T, index2 - index1 + 1) << _bitshiftfromsiteindex(index1)
 
+function _paulimask(::Type{T}, n_sites) where {N, W, T <: NTuplePauliString{N, W}}
+    wb = 8 * sizeof(W)
+    nbits = 2 * n_sites
+    full_words = nbits ÷ wb
+    rem_bits   = nbits % wb
+    data = ntuple(Val(N)) do i
+        if i <= full_words
+            typemax(W)
+        elseif i == full_words + 1 && rem_bits > 0
+            (one(W) << rem_bits) - one(W)
+        else
+            zero(W)
+        end
+    end
+    return T(data)
+end
+
+function _pauliwindowmask(::Type{T}, index1::Integer, index2::Integer) where {T <: NTuplePauliString}
+    base_mask = _paulimask(T, index2 - index1 + 1)
+    shift = 2 * (index1 - 1)
+    return base_mask << shift
+end
+
 # This function extracts the Pauli at position `index` from the integer Pauli string.
 function _getpaulibits(pstr::PauliStringType, index::Integer)
     return _getpaulibits(pstr, index, index)
@@ -247,7 +263,7 @@ end
     # define our super bit mask looking like ....1010101.
 
     # length is the number of bits in the integer
-    n_bits = min(bitsize(pstr), 2_048)  # for max 1024 qubits.
+    n_bits = min(GPUTypes.bitsize(T), 2_048)  # for max 1024 qubits.
     mask = zero(T)
     for ii in 0:(n_bits-1)
         if ii % 2 == 0
