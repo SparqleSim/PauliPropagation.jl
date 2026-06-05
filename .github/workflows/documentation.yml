@@ -89,6 +89,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Install python deps
         run: |
           pip install nbconvert ipykernel
           python -m ipykernel install --user --name python3 --display-name "Python 3"
