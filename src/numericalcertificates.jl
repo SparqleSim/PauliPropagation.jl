@@ -146,7 +146,7 @@ end
 ## Monte Carlo apply functions
 
 # `mcapply()` function for a `CliffordGate` is just the `apply()` function because it does not split.
-mcapply(gate::CliffordGate, pstr::PauliString, theta, split_probability) = PauliString(pstr.nqubits, apply(gate, pstr.term, pstr.coeff)...)
+mcapply(gate::CliffordGate, pstr::PauliString, theta, split_probability) = PauliString(pstr.nqubits, only(apply(gate, pstr.term, pstr.coeff, clifford_map[gate.symbol]))...)
 
 
 # MC apply function for a `MaskedPauliRotation`.
@@ -163,7 +163,7 @@ function mcapply(gate::MaskedPauliRotation, pstr::PauliString, theta, split_prob
     # if the gate does not commute with the pauli string, remain with probability `split_prob` and split off with probability 1 - `split_prob`.
     if rand() < split_prob
         # branch into the new Pauli string, ifnore ignore the sign
-        new_term, sign = getnewpaulistring(gate, pstr.term)
+        new_term, sign = paulirotationproduct(gate, pstr.term)
         # for PathProperties: increment sin and frequency count
         coeff = _incrementsinandfreq(coeff)
     else

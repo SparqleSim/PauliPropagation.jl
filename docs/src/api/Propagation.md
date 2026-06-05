@@ -13,3 +13,10 @@ Pages = ["src/Propagation/generics.jl"]
 Modules = [PauliPropagation]
 Pages = ["src/Propagation/specializations.jl"]
 ```
+
+## Vector Specializations
+
+```@autodocs
+Modules = [PauliPropagation]
+Pages = ["src/Propagation/vectorspecializations.jl"]
+```

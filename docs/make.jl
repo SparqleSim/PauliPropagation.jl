@@ -14,7 +14,7 @@
 # If triggered within a Github Action, the generated
 # HTML files will then be committed to the 'gh-pages'
 # branch, which Github Pages can be configured to
-# display at msrudolph.github.io/PauliPropagation.jl/
+# display at SparqleSim.github.io/PauliPropagation.jl/
 # 
 # Note documentation generated from non-main branches
 # will be uploaded to subdomain /dev/, even when not
@@ -56,6 +56,7 @@ makedocs(
         # these 'lower-level' files also exist, and will
         # be grouped under an 'API' section in the navbar
         "API" => [
+            "api/PauliDataTypes.md",
             "api/PauliAlgebra.md",
             "api/Gates.md",
             "api/Circuits.md",
@@ -64,6 +65,7 @@ makedocs(
             "api/PathProperties.md",
             "api/PauliTransferMatrix.md",
             "api/Surrogate.md",
+            "api/Symmetry.md",
             "api/NumericalCertificates.md",
             "api/Truncations.md"
         ]
@@ -74,7 +76,7 @@ makedocs(
 # When run from a Github Action, commit those files to the 'gh-pages' branch,
 # depending upon the triggering branch or whether it is a release/pull-request.
 deploydocs(
-    repo="github.com/MSRudolph/PauliPropagation.jl.git",
+    repo="github.com/SparqleSim/PauliPropagation.jl.git",
 
     # Enable generation of doc from PRs, under a /previews/PR## sub-domain.
     # Beware that this requires the Github Action was explicitly triggered by
@@ -95,15 +97,15 @@ deploydocs(
     # - changes to the dev branch should update the /dev/ sub-domain; this seems
     #   gratuitous since specified above and since irrelevant to Github releases,
     #   but it is present in the deploydocs() doc without elaboration. Grr!
-    versions = ["stable" => "v^", "v#.#.#", "dev" => "dev"]
+    versions=["stable" => "v^", "v#.#.#", "dev" => "dev"]
 )
 
 
 # Once 'gh-pages' branch is updated, and Github Pages has been configured to
 # publish files from that branch, the documentation is visible at either:
-# - msrudolph.github.io/PauliPropagation.jl/
-# - msrudolph.github.io/PauliPropagation.jl/dev/
-# - msrudolph.github.io/PauliPropagation.jl/previews/PR#
+# - SparqleSim.github.io/PauliPropagation.jl/
+# - SparqleSim.github.io/PauliPropagation.jl/dev/
+# - SparqleSim.github.io/PauliPropagation.jl/previews/PR#
 # where # above is replaced with the pull request number.
 #
 # These "doc clones" are deleted whenever a commit is pushed to the main

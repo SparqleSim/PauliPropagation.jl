@@ -1,12 +1,5 @@
 # Pauli Algebra
 
-## Data types
-
-```@autodocs
-Modules = [PauliPropagation]
-Pages = ["src/PauliAlgebra/datatypes.jl"]
-```
-
 ## Pauli operations
 
 ```@autodocs

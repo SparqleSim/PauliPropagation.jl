@@ -9,7 +9,7 @@ abstract type CircuitNode end
 
 
 # Node type for the Pauli strings in the observable to be backpropagated.
-@kwdef mutable struct EvalEndNode <: CircuitNode
+Base.@kwdef mutable struct EvalEndNode <: CircuitNode
     pstr::Int
     coefficient::Float64
     cummulative_value::Float64 = 0.0
@@ -22,7 +22,7 @@ EvalEndNode(pstr::Integer) = EvalEndNode(pstr, 1.0)
 
 
 # Surrogate graph node for a Pauli rotation gate.
-@kwdef mutable struct PauliRotationNode <: CircuitNode
+Base.@kwdef mutable struct PauliRotationNode <: CircuitNode
     parents::Vector{Union{EvalEndNode,PauliRotationNode}}
     trig_inds::Vector{Int}
     signs::Vector{Int}
@@ -53,6 +53,8 @@ struct NodePathProperties <: PathProperties
     freq::Int
 end
 
+PropagationBase.numcoefftype(::Type{NodePathProperties}) = Float64
+
 
 # Pretty print for PauliFreqTracker
 Base.show(io::IO, pth::NodePathProperties) = print(io, "NodePathProperties($(typeof(pth.node)), nsins=$(pth.nsins), ncos=$(pth.ncos), freq=$(pth.freq))")
@@ -69,7 +71,7 @@ NodePathProperties(node::CircuitNode) = NodePathProperties(node, 0, 0, 0)
 Get the cummulative coefficient of a `NodePathProperties` node.
 This assumes that the surrogate has already been evaluated.
 """
-tonumber(path::NodePathProperties) = path.node.cummulative_value
+PropagationBase.tonumber(path::NodePathProperties) = path.node.cummulative_value
 
 
 """
@@ -107,7 +109,7 @@ function setcummulativevalue(node::CircuitNode, val)
     return
 end
 
-function set!(psum::Dict{TT,NodePathProperties}, pstr::TT, path::NodePathProperties) where {TT}
+function PropagationBase.set!(psum::Dict{TT,NodePathProperties}, pstr::TT, path::NodePathProperties) where {TT}
     psum[pstr] = path
     return psum
 end

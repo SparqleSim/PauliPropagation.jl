@@ -12,7 +12,7 @@ using Random
     min_abs_coeff = 0.0
     max_freq = Inf
 
-    # Numerical propagation
+    # Dict-based PauliSum propagation
     pstr = PauliString(nq, :Z, round(Int, nq / 2))
 
     topo = bricklayertopology(nq; periodic=false)
@@ -26,6 +26,12 @@ using Random
     dnum = propagate(circ, pstr, thetas; max_weight=W, min_abs_coeff=min_abs_coeff)
 
     @test overlapwithzero(dnum) ≈ expected_value
+
+    # Vector-based VectorPauliSum propagation
+
+    dvec = propagate(circ, VectorPauliSum(pstr), thetas; max_weight=W, min_abs_coeff=min_abs_coeff)
+
+    @test overlapwithzero(dvec) ≈ expected_value
 
 
 
@@ -84,6 +90,8 @@ end
         pstr = PauliString(nq, rand([:I, :X, :Y, :Z]), rand(1:nq))
         dnum = propagate(circ, pstr, thetas; min_abs_coeff=0, max_weight=max_weight)
 
+        dvec = propagate(circ, VectorPauliSum(pstr), thetas; min_abs_coeff=0, max_weight=max_weight)
+
         wrapped_pstr = wrapcoefficients(pstr, PauliFreqTracker)
         dhyb = propagate(circ, wrapped_pstr, thetas; min_abs_coeff=0, max_weight=max_weight)
 
@@ -91,8 +99,8 @@ end
         dsym = propagate(circ, surrogate_pstr; max_weight=max_weight)
         evaluate!(dsym, thetas)
 
-        @test overlapwithzero(dnum) ≈ overlapwithzero(dhyb) ≈ overlapwithzero(dsym)
-        @test overlapwithplus(dnum) ≈ overlapwithplus(dhyb) ≈ overlapwithplus(dsym)
+        @test overlapwithzero(dnum) ≈ overlapwithzero(dvec) ≈ overlapwithzero(dhyb) ≈ overlapwithzero(dsym)
+        @test overlapwithplus(dnum) ≈ overlapwithplus(dvec) ≈ overlapwithplus(dhyb) ≈ overlapwithplus(dsym)
     end
 
     # Test frequency truncation
@@ -141,11 +149,13 @@ end
         pstr = PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq))
         dnum = propagate(circ, pstr, thetas; min_abs_coeff=min_abs_coeff)
 
+        dvec = propagate(circ, VectorPauliSum(pstr), thetas; min_abs_coeff=min_abs_coeff)
+
         wrapped_pstr = wrapcoefficients(pstr, PauliFreqTracker)
         dhyb = propagate(circ, wrapped_pstr, thetas; min_abs_coeff=min_abs_coeff)
 
-        @test overlapwithzero(dnum) ≈ overlapwithzero(dhyb)
-        @test overlapwithplus(dnum) ≈ overlapwithplus(dhyb)
+        @test overlapwithzero(dnum) ≈ overlapwithzero(dvec) ≈ overlapwithzero(dhyb)
+        @test overlapwithplus(dnum) ≈ overlapwithplus(dvec) ≈ overlapwithplus(dhyb)
     end
 
 end

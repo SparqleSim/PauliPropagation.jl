@@ -16,6 +16,14 @@ Pages = ["src/Gates/paulirotations.jl"]
 Order = [:type, :function, :constant]
 ```
 
+## Imaginary Pauli Rotations
+
+```@autodocs
+Modules = [PauliPropagation]
+Pages = ["src/Gates/imaginarytime.jl"]
+Order = [:type, :function, :constant]
+```
+
 ## Noise Channels
 
 ```@autodocs

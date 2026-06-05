@@ -28,25 +28,32 @@ Constructor for `PauliFreqTracker` from only a coefficient.
 Initializes `nsins`, `ncos`, and `freq` to zero.
 """
 PauliFreqTracker(coeff::Number) = PauliFreqTracker(float(coeff), 0, 0, 0)
+PauliFreqTracker{T}(coeff::Number) where {T<:Number} = PauliFreqTracker{T}(convert(T, coeff), 0, 0, 0)
+
+PropagationBase.numcoefftype(::Type{PauliFreqTracker{T}}) where {T<:Number} = T
 
 ### Specializations for PauliRotations that incremet the nsins, ncos, and freq
 
 # Overload of `applytoall!` for `PauliRotation` gates acting onto Pauli sums with `PathProperties` coefficients. 
-function applytoall!(gate::PauliRotation, theta, psum::PauliSum{TT,PProp}, aux_psum; kwargs...) where {TT<:PauliStringType,PProp<:PathProperties}
+function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropagationCache{PauliSum{TT,PProp}}, theta; kwargs...) where {TT,PProp<:PathProperties}
+
+    psum = mainsum(prop_cache)
+    aux_psum = auxsum(prop_cache)
+
     # turn the (potentially) PauliRotation gate into a MaskedPauliRotation gate
     # this allows for faster operations
-    gate = _tomaskedpaulirotation(gate, paulitype(psum))
+    gate_mask = symboltoint(nqubits(psum), gate.symbols, gate.qinds)
 
     # loop over all Pauli strings and their coefficients in the Pauli sum
     for (pstr, coeff) in psum
 
-        if commutes(gate, pstr)
+        if commutes(gate_mask, pstr)
             # if the gate commutes with the pauli string, do nothing
             continue
         end
 
         # else we know the gate will split th Pauli string into two
-        pstr, coeff1, new_pstr, coeff2 = splitapply(gate, pstr, coeff, theta; kwargs...)
+        pstr, coeff1, new_pstr, coeff2 = splitapply(gate_mask, pstr, coeff, theta; kwargs...)
 
         # set the coefficient of the original Pauli string
         set!(psum, pstr, coeff1)
@@ -56,15 +63,15 @@ function applytoall!(gate::PauliRotation, theta, psum::PauliSum{TT,PProp}, aux_p
         set!(aux_psum, new_pstr, coeff2)
     end
 
-    return
+    return prop_cache
 end
 
 ## Specializations for PauliRotations that increment the nsins, ncos, and freq
 # can be used by all PathProperties types that have the necessary fields `ncos`, `nsins`, and `freq`
-function splitapply(gate::MaskedPauliRotation, pstr::PauliStringType, coeff::PProp, theta; kwargs...) where {PProp<:PathProperties}
+function splitapply(gate_mask::Integer, pstr::PauliStringType, coeff::PProp, theta; kwargs...) where {PProp<:PathProperties}
     # increments ncos and freq field if applicable
     coeff1 = _applycos(coeff, theta; kwargs...)
-    new_pstr, sign = getnewpaulistring(gate, pstr)
+    new_pstr, sign = paulirotationproduct(gate_mask, pstr)
     # increments nsins and freq field if applicable
     coeff2 = _applysin(coeff, theta, sign; kwargs...)
 

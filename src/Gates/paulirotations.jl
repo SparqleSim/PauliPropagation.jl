@@ -5,7 +5,6 @@
 ##
 ###
 
-# TODO: We should make these type-stable by using tuples and not vectors
 """
 A type for a Pauli rotation gate carrying the gate generator and the qubit indices on which it acts.
 """
@@ -35,9 +34,7 @@ struct PauliRotation <: ParametrizedGate
         end
 
         # check that the symbols are valid Pauli symbols
-        if any(s -> s ∉ (:I, :X, :Y, :Z), symbols)
-            throw(ArgumentError("Symbols must be `:I`, `:X`, `:Y`, or `:Z`. Got $symbols."))
-        end
+        _paulisymbolcheck(symbols)
 
         # turn qinds into vectors
         qinds = vec(collect(qinds))
@@ -45,17 +42,26 @@ struct PauliRotation <: ParametrizedGate
         _qinds_check(qinds)
 
         # check that the number of symbols matches the number of qubits
-        if length(symbols) != length(qinds)
-            throw(ArgumentError(
-                "The number of symbols must match the number of qubits. " *
-                "Got $(length(symbols)) symbols and $(length(qinds)) qubits."
-            ))
-        end
+        _qindslengthcheck(symbols, qinds)
 
         return new(symbols, qinds)
     end
 end
 
+function _paulisymbolcheck(symbols)
+    if any(s -> s ∉ (:I, :X, :Y, :Z), symbols)
+        throw(ArgumentError("Symbols must be `:I`, `:X`, `:Y`, or `:Z`. Got $symbols."))
+    end
+end
+
+function _qindslengthcheck(symbols, qinds)
+    if length(symbols) != length(qinds)
+        throw(ArgumentError(
+            "The number of symbols must match the number of qubits. " *
+            "Got $(length(symbols)) symbols and $(length(qinds)) qubits."
+        ))
+    end
+end
 
 """
     PauliRotation(symbols, qinds, theta)
@@ -73,7 +79,7 @@ end
 
 Compute the unitary matrix for the `PauliRotation` gate with parameter `theta` in the computational 0/1 basis.
 This is done by computing the matrix `U = cos(θ/2) I - i sin(θ/2) P` where `P` is the Pauli matrix corresponding to the `symbols`.
-The returned unitary is returned in Schrödinger picture form. 
+The returned unitary is returned in Schrödinger picture form.
 """
 function tomatrix(gate::PauliRotation, theta)
 

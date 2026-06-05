@@ -156,6 +156,7 @@ function composecliffordmaps(circuit)
     max_integer = 4^max_nq - 1
 
     psums = [propagate(circuit, PauliString(max_nq, ii, 1.0)) for ii in 0:max_integer]
+
     if any(length(psum) > 1 for psum in psums)
         throw(ArgumentError("The circuit does not implement a 1 to 1 map of Pauli strings."))
     end

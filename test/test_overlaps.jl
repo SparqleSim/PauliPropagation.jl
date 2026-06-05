@@ -58,15 +58,19 @@ end
     @test scalarproduct(pstr2, pstr3) == 0.0
 
     orig_psum = PauliSum([pstr1, pstr2])
+    vector_psum = VectorPauliSum(orig_psum)
     wrapped_psum = wrapcoefficients(orig_psum, PauliFreqTracker)
-    for psum in [orig_psum, wrapped_psum]
+    for psum in [orig_psum, wrapped_psum, vector_psum]
         @test scalarproduct(psum, pstr3) == scalarproduct(pstr3, psum) == 0.0
         @test scalarproduct(psum, pstr1) == scalarproduct(pstr1, psum) == 1.0
         @test scalarproduct(psum, pstr2) == scalarproduct(pstr2, psum) == 4.0
     end
 
-    @test scalarproduct(orig_psum, wrapped_psum) == scalarproduct(wrapped_psum, orig_psum) == 5.0
-    @test scalarproduct(orig_psum, orig_psum) == scalarproduct(wrapped_psum, wrapped_psum) == 5.0
+    for psum1 in [orig_psum, wrapped_psum, vector_psum]
+        for psum2 in [orig_psum, wrapped_psum, vector_psum]
+            @test scalarproduct(psum1, psum2) == 5.0
+        end
+    end
 end
 
 
@@ -80,10 +84,17 @@ end
     add!(psum, :Z, 3, 0.4)
     add!(psum, [:Z, :Z], [1, 2], 0.5)
 
+    vecpsum = VectorPauliSum(psum)
+
     rho = PauliSum(PauliString(3, :I, 1, 1 / 2^nq))
+    vecrho = VectorPauliSum(rho)
     @test overlapwithpaulisum(rho, psum) == overlapwithmaxmixed(psum) == 0.2
+    @test overlapwithpaulisum(rho, vecpsum) == overlapwithmaxmixed(vecpsum) == 0.2
+    @test overlapwithpaulisum(vecrho, psum) == overlapwithpaulisum(vecrho, vecpsum) == 0.2
+
 
     @test overlapwithplus(rho) == 1 / 2^nq
+    @test overlapwithplus(vecrho) == 1 / 2^nq
 
     which = rand(0:1, nq)
     rho = prod(PauliSum([PauliString(nq, :I, qind, 1 / 2), PauliString(nq, :Z, qind, which[qind] == 0 ? 1 / 2 : -1 / 2)]) for qind in 1:nq)

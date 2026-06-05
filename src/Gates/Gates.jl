@@ -6,28 +6,14 @@
 ##
 ###
 
-"""
-Abstract type for gates. 
-"""
-abstract type Gate end
-
-"""
-Abstract type for parametrized gates.
-"""
-abstract type ParametrizedGate <: Gate end
-
-"""
-Abstract type for static gates that are not parametrized.
-"""
-abstract type StaticGate <: Gate end
-
-
 
 include("frozengates.jl")
 include("paulirotations.jl")
+include("imaginarytime.jl")
 include("cliffordgates.jl")
 include("noisechannels.jl")
 include("miscgates.jl")
+include("heisenbergschrodinger.jl")
 
 
 ## Helper functions

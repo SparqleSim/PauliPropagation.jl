@@ -178,15 +178,31 @@ end
 Gets the Paulis on indices `qinds` of a `pstr` in the integer representation.
 """
 function getpauli(pstr::PauliStringType, qinds)
-    new_pstr = identitylike(pstr)
-    # Get the Paulis on the indices `qinds`
-    for (ii, qind) in enumerate(qinds)
-        pauli = getpauli(pstr, qind)
-        new_pstr = setpauli(new_pstr, pauli, ii)
+    pstr_new = zero(pstr)
+    for (i, qind) in enumerate(qinds)
+        pair = _getpaulibits(pstr, qind) # get two bits for pauli at qind
+        pstr_new |= (pair << (2 * (i - 1))) # append pair using bitwise OR at 2i
     end
-    return new_pstr
+    return pstr_new
+end
+
+
+"""
+    getpauli(pstr::PauliStringType, qind1::Int, qind2::Int)
+
+Gets the Paulis from `qind1` to `qind2` of a `pstr` in the integer representation.
+This function is useful for extracting a continuous sub-PauliString.
+"""
+function getpauli(pstr::PauliStringType, qind1::Int, qind2::Int)
+    # Get the Paulis on the indices from `qind1` to `qind2`
+    if qind1 > qind2
+        throw(ArgumentError("`qind1` should be less than or equal to `qind2`. Got `qind1=$qind1` and `qind2=$qind2`."))
+    end
+
+    return _getpaulibits(pstr, qind1, qind2)
 
 end
+
 
 """
     setpauli(pstr::PauliStringType, target_pauli::PauliType, index::Integer)
@@ -197,6 +213,24 @@ That Pauli should be provided as integer (0, 1, 2, 3).
 function setpauli(pstr::PauliStringType, target_pauli::PauliType, index::Integer)
     return _setpaulibits(pstr, target_pauli, index)
 end
+
+
+"""
+    setpauli(pstr::PauliStringType, target_paulis::PauliStringType, index1::Integer, index2::Integer)
+
+Sets the Paulis from `index1` to `index2` of an integer Pauli string to `target_paulis`.
+"""
+function setpauli(pstr::PauliStringType, target_paulis::PauliStringType, index1::Integer, index2::Integer)
+
+    if index1 > index2
+        throw(ArgumentError("`index1` should be less than or equal to `index2`. Got `index1=$index1` and `index2=$index2`."))
+    end
+
+    # TODO: check that `target_paulis` is of the correct length
+
+    return _setpaulibits(pstr, target_paulis, index1, index2)
+end
+
 
 """
     setpauli(pstr::PauliStringType, target_pauli::Symbol, index::Integer)
@@ -253,6 +287,21 @@ Returns a string representation of an integer Pauli string `pstr` on `nqubits` q
 The characters of the string from left to right are the Paulis on the qubits from 1 to `nqubits`.
 """
 inttostring(pstr::PauliType, nqubits::Integer) = prod("$(inttosymbol(getpauli(pstr, ii)))" for ii in 1:nqubits)
+
+
+## visualization tool for 2D
+function inttostring(pstr::PauliType, nx::Integer, ny::Integer)
+    str = ""
+
+    for ii in 1:ny
+        row_paulis = getpauli(pstr, (ii-1)*nx+1:ii*nx)
+        for pauli in row_paulis
+            str *= inttostring(pauli, nx)
+        end
+        str *= "\n"
+    end
+    return str
+end
 
 
 # Pretty string function.

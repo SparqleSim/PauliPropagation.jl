@@ -1,14 +1,25 @@
 module PauliPropagation
 
-using Base.Threads
 using LinearAlgebra
 
-include("./PauliAlgebra/PauliAlgebra.jl")
+# for the VectorPauliSum operations
+using AcceleratedKernels
+const AK = AcceleratedKernels
+using Base.Threads
+
+include("./Base/Base.jl")
+using .PropagationBase
+
+
+include("./PauliDataTypes/PauliDataTypes.jl")
 export
     PauliStringType,
     PauliType,
     PauliSum,
     PauliString,
+    VectorPauliSum,
+    VectorPauliPropagationCache,
+    nqubits,
     paulis,
     coefficients,
     norm,
@@ -23,6 +34,10 @@ export
     mult!,
     empty!,
     similar,
+    convertcoefftype
+
+include("./PauliAlgebra/PauliAlgebra.jl")
+export
     identitypauli,
     identitylike,
     inttosymbol,
@@ -31,15 +46,18 @@ export
     ispauli,
     getpauli,
     setpauli,
-    show,
     countweight,
     countxy,
     countyz,
+    countx,
+    county,
+    countz,
     containsXorY,
     containsYorZ,
     pauliprod,
     commutes,
     commutator,
+    trace,
     getinttype
 
 include("PauliTransferMatrix/PauliTransferMatrix.jl")
@@ -54,6 +72,7 @@ export
     StaticGate,
     PauliRotation,
     MaskedPauliRotation,
+    ImaginaryPauliRotation,
     CliffordGate,
     clifford_map,
     transposecliffordmap,
@@ -72,7 +91,9 @@ export
     freeze,
     TGate,
     TransferMapGate,
-    tomatrix
+    tomatrix,
+    toschrodinger,
+    toheisenberg
 
 include("Circuits/Circuits.jl")
 export
@@ -98,6 +119,28 @@ export
     ryylayer!,
     rzzlayer!
 
+
+include("Propagation/Propagation.jl")
+export
+    AbstractPauliPropagationCache,
+    PauliPropagationCache,
+    VectorPauliPropagationCache,
+    PropagationCache,
+    mainsum,
+    auxsum,
+    capacity,
+    propagate,
+    propagate!,
+    applymergetruncate!,
+    applytoall!,
+    apply,
+    truncate,
+    truncate!,
+    merge,
+    merge!,
+    mergefunc
+
+
 include("PathProperties/PathProperties.jl")
 export
     PathProperties,
@@ -109,16 +152,6 @@ include("truncations.jl")
 export
     truncatedampingcoeff
 
-include("Propagation/Propagation.jl")
-export
-    propagate,
-    propagate!,
-    applymergetruncate!,
-    applytoall!,
-    apply,
-    applyandadd!,
-    mergeandempty!,
-    merge
 
 include("stateoverlap.jl")
 export
@@ -144,10 +177,36 @@ export
     estimatemse,
     estimatemse!
 
+include("Symmetry/Symmetry.jl")
+export
+    symmetrymerge,
+    translationmerge
+
 include("Surrogate/Surrogate.jl")
 export
     NodePathProperties,
     evaluate!,
     reset!
+
+include("Visualization/Visualization.jl")
+export
+    PauliTreeTracker,
+    TreeNode,
+    TreeEdge,
+    EVOLUTION_TREE,
+    EVOLUTION_EDGES,
+    reset_tree!,
+    add_node!,
+    add_edge!,
+    create_child_tracker,
+    format_pauli_string,
+    export_to_graphviz,
+    export_to_json,
+    print_tree_summary,
+    visualize_tree,
+    propagate_with_tree_tracking
+
+# # experimental vector propagation 
+# include("Propagation/VectorPropagate/VectorPropagate.jl")
 
 end

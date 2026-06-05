@@ -22,12 +22,12 @@
 
     # Frequency Truncation
     wrapped_pstr = wrapcoefficients(PauliString(nq, :Z, nq), PauliFreqTracker)
-    @test estimatemse(circ, wrapped_pstr, 100, π; max_freq=0) >= estimatemse(circ, pstr, 100, π; max_freq=nq) == 0.0
+    @test estimatemse(circ, wrapped_pstr, 100, π; max_freq=0) >= estimatemse(circ, pstr, 100, π; max_freq=nparams) == 0.0
     @test estimatemse(circ, wrapped_pstr, 100, ones(nparams) * 1.23; max_freq=0) >= estimatemse(circ, pstr, 100, ones(nparams) * 1.23; max_freq=nparams) == 0.0
 
     # Small-angle Truncation
     wrapped_pstr = wrapcoefficients(PauliString(nq, :Z, nq), PauliFreqTracker)
-    @test estimatemse(circ, wrapped_pstr, 100, π; max_sins=0) >= estimatemse(circ, pstr, 100, π; max_sins=nq) == 0.0
+    @test estimatemse(circ, wrapped_pstr, 100, π; max_sins=0) >= estimatemse(circ, pstr, 100, π; max_sins=nparams) == 0.0
     @test estimatemse(circ, wrapped_pstr, 100, ones(nparams) * 1.23; max_sins=0) >= estimatemse(circ, pstr, 100, ones(nparams) * 1.23; max_sins=nparams) == 0.0
 
 end

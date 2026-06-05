@@ -21,9 +21,11 @@ end
 @testset "Test Topologies" begin
     nq = rand(1:100)
 
-    @test length(bricklayertopology(nq)) == (nq - 1)
-    @test length(bricklayertopology(nq; periodic=true)) == nq
-    @test length(staircasetopology(nq)) == length(bricklayertopology(nq))
+    open_brick_topo = bricklayertopology(nq)
+    periodic_brick_topo = bricklayertopology(nq; periodic=true)
+    @test length(open_brick_topo) == (nq - 1)
+    @test nq <= 2 ? length(periodic_brick_topo) == (nq - 1) : length(periodic_brick_topo) == nq
+    @test length(staircasetopology(nq)) == length(open_brick_topo)
 
     topo = staircasetopology2d(rand(1:10), rand(1:10))
     @test topo == unique(topo)
