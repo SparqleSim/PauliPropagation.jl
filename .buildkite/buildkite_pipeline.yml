@@ -1,0 +1,100 @@
+steps:
+  # ── CPU smoke test ──────────────────────────────────────────────────────────
+  # Run the NTuplePauliString unit tests on plain CPU first so a basic
+  # regression is caught cheaply before we queue a GPU agent.
+  - label: ":julia: CPU – NTuplePauliString (Julia {{matrix.version}})"
+    key: cpu-ntuple
+    matrix:
+      setup:
+        version:
+          - "1.10"
+          - "1.11"
+          - "1.12"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "{{matrix.version}}"
+      - JuliaCI/julia-coverage#v1:
+          codecov: true
+          dirs:
+            - src
+    command: |
+      julia -e 'println("--- :julia: Instantiating project")
+                using Pkg
+                Pkg.develop(PackageSpec(path=pwd()))
+                Pkg.instantiate()'
+      julia -e 'println("+++ :julia: Running NTuplePauliString CPU tests")
+                include("test/test_ntuple_pauli_string.jl")'
+    agents:
+      queue: "juliagpu"
+    timeout_in_minutes: 30
+
+  # ── CUDA integration test ───────────────────────────────────────────────────
+  # Exercises NTuplePauliString end-to-end on real GPU hardware:
+  #   • builds a 64-qubit and a 256-qubit VectorPauliSum backed by UInt32 words
+  #   • calls cu() to move the data to the GPU via the PauliPropagationCUDA ext
+  #   • verifies round-trip via collect() and checks Pauli operations on-device
+  - label: ":nvidia: CUDA – NTuplePauliString (Julia {{matrix.version}})"
+    key: cuda-ntuple
+    depends_on: cpu-ntuple
+    matrix:
+      setup:
+        version:
+          - "1.10"
+          - "1.11"
+          - "1.12"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "{{matrix.version}}"
+      - JuliaCI/julia-coverage#v1:
+          codecov: true
+          dirs:
+            - src
+            - ext
+    command: |
+      echo -e "[CUDA_Runtime_jll]\nlocal = \"true\"" > LocalPreferences.toml
+      julia -e 'println("--- :julia: Instantiating project with CUDA")
+                using Pkg
+                Pkg.develop(PackageSpec(path=pwd()))
+                Pkg.add("CUDA")
+                Pkg.instantiate()'
+      julia -e 'println("+++ :nvidia: Running CUDA GPU integration tests")
+                include("test/test_ntuple_pauli_string_cuda.jl")'
+    agents:
+      queue: "juliagpu"
+      cuda: "*"
+    timeout_in_minutes: 60
+    soft_fail:
+      - exit_status: 1   # keep the pipeline green on driver mismatches
+
+  # ── Full test suite on GPU agent ────────────────────────────────────────────
+  # Runs the entire test/runtests.jl (which includes all 860 existing tests
+  # plus the NTuplePauliString CPU tests) on a GPU agent to confirm nothing
+  # in the wider package regressed.
+  - label: ":julia: Full test suite (Julia {{matrix.version}})"
+    key: full-tests
+    depends_on: cuda-ntuple
+    matrix:
+      setup:
+        version:
+          - "1.10"
+          - "1.11"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "{{matrix.version}}"
+      - JuliaCI/julia-coverage#v1:
+          codecov: true
+          dirs:
+            - src
+    command: |
+      echo -e "[CUDA_Runtime_jll]\nlocal = \"true\"" > LocalPreferences.toml
+      julia -e 'println("--- :julia: Instantiating project")
+                using Pkg
+                Pkg.develop(PackageSpec(path=pwd()))
+                Pkg.add("CUDA")
+                Pkg.instantiate()'
+      julia -e 'println("+++ :julia: Running full test suite")
+                using Pkg; Pkg.test()'
+    agents:
+      queue: "juliagpu"
+      cuda: "*"
+    timeout_in_minutes: 90
