@@ -239,3 +239,28 @@ function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::VectorPauliPr
 end
 
 requiresmerging(::PauliNoise) = false
+
+### TransferMapGate
+"""
+    applytoall!(gate::TransferMapGate, prop_cache::VectorPauliPropagationCache; kwargs...)
+
+Overload of `applytoall!` for `TransferMapGate`s and a propagating `VectorPauliSum`.
+"""
+function PropagationBase.applytoall!(gate::TransferMapGate, prop_cache::VectorPauliPropagationCache; kwargs...)
+    aux_psum = auxsum(prop_cache)
+    empty!(aux_psum)
+
+    for (pstr, coeff) in zip(activeterms(prop_cache), activecoeffs(prop_cache))
+        pauli_int = getpauli(pstr, gate.qinds)
+        for (new_pstr, factor) in gate.transfer_map[pauli_int]
+            add!(aux_psum, setpauli(pstr, new_pstr, gate.qinds), coeff * factor)
+        end
+    end
+
+    new_size = length(aux_psum)
+    resize!(prop_cache, new_size)
+    swapsums!(prop_cache)
+    setactivesize!(prop_cache, new_size)
+
+    return prop_cache
+end

@@ -63,6 +63,7 @@ export
 include("PauliTransferMatrix/PauliTransferMatrix.jl")
 export
     calculateptm,
+    TransferMap,
     totransfermap
 
 include("Gates/Gates.jl")

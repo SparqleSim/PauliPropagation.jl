@@ -301,9 +301,27 @@ The outcomes are determined by the `transfer_map` of the gate.
 function PropagationBase.apply(gate::TransferMapGate, pstr, coeff; kwargs...)
     # the Paulis packed into the integer are used to index into the transfer map
     pauli_int = getpauli(pstr, gate.qinds)
-    pstrs_and_factors = gate.transfer_map[pauli_int+1]
+    pstrs_and_factors = gate.transfer_map[pauli_int]
     # the new pstrs are the new Paulis that need to be set and the coefficients need to be multiplied with the factors
     return Tuple((setpauli(pstr, new_pstr, gate.qinds), coeff * factor) for (new_pstr, factor) in pstrs_and_factors)
+end
+
+function PropagationBase.applytoall!(gate::TransferMapGate, prop_cache::PauliPropagationCache; kwargs...)
+    psum = mainsum(prop_cache)
+    aux_psum = auxsum(prop_cache)
+    empty!(aux_psum)
+
+    for (pstr, coeff) in psum
+        pauli_int = getpauli(pstr, gate.qinds)
+        for (new_pstr, factor) in gate.transfer_map[pauli_int]
+            add!(aux_psum, setpauli(pstr, new_pstr, gate.qinds), coeff * factor)
+        end
+    end
+
+    empty!(psum)
+    swapsums!(prop_cache)
+
+    return prop_cache
 end
 
 ### Frozen Gates
