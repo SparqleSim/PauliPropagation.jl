@@ -1,10 +1,21 @@
 """
-    getinttype(nqubits::Integer)
+    getinttype(nqubits::Integer; gpu_compatible::Bool=false, gpu_word::Type=UInt32)
 
 Function to return the smallest integer type that can hold `nqubits`.
 This is the type that will be used internally for representing Pauli strings.
+
+When `gpu_compatible=true`, or when `nqubits > 32` (i.e. above the reliable GPU threshold),
+an `NTuplePauliString` is returned instead of a `BitIntegers` type, ensuring GPU compatibility.
+
+Set `gpu_word=UInt32` (default) for maximum GPU register compatibility, or `UInt64` for
+fewer words on CPU/advanced GPU hardware.
 """
-function getinttype(nqubits::Integer)
+function getinttype(nqubits::Integer; gpu_compatible::Bool=false, gpu_word::Type=UInt32)
+    # For GPU-compatible mode or large qubit counts, use NTuplePauliString
+    if gpu_compatible
+        return getntupleinttype(nqubits; word=gpu_word)
+    end
+
     # we need 2 bits per qubit
     nbits = 2 * nqubits
 

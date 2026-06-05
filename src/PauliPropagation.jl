@@ -11,6 +11,10 @@ include("./Base/Base.jl")
 using .PropagationBase
 
 
+include("./GPUTypes/GPUTypes.jl")
+using .GPUTypes
+export NTuplePauliString, getntupleinttype, max_qubits, bitsize
+
 include("./PauliDataTypes/PauliDataTypes.jl")
 export
     PauliStringType,

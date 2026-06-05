@@ -11,8 +11,12 @@ import Base: ==
 
 The integer types we use to represent Pauli strings. 
 Pauli strings are objects like X ⊗ Z ⊗ I ⊗ Y, where each term is a Pauli acting on a qubit.
+
+This is a Union that includes:
+- Standard Julia `Integer` subtypes (UInt8 … UInt64, BitIntegers types)
+- `NTuplePauliString{N,W}` for GPU-compatible wide Pauli strings
 """
-const PauliStringType = Integer
+const PauliStringType = Union{Integer, NTuplePauliString}
 
 """
     PauliType
