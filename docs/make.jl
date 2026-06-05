@@ -27,7 +27,7 @@ import Pkg
 
 docs_dir = @__DIR__
 package_dir = normpath(joinpath(docs_dir, ".."))
-examples_dir = joinpath(docs_dir, "examples")
+examples_dir = joinpath(docs_dir, "..", "examples")
 
 function build_examples()
     Pkg.activate(examples_dir)

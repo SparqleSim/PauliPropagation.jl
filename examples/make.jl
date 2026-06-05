@@ -1,8 +1,7 @@
 using IJulia
 
 examples_dir = @__DIR__
-notebooks_dir = joinpath(examples_dir, "notebooks")
-docs_examples_dir = normpath(joinpath(examples_dir, "..", "src", "examples"))
+docs_examples_dir = normpath(joinpath(examples_dir, "..", "docs", "src", "examples"))
 template_path = joinpath(examples_dir, "markdown_template.tpl")
 kernel_name = "paulipropagation-docs"
 timeout = 1000  # benchmarking in some files takes a long time
@@ -18,7 +17,7 @@ IJulia.installkernel(
 rm(docs_examples_dir; recursive = true, force = true)
 mkpath(docs_examples_dir)
 
-notebooks = sort(filter(endswith(".ipynb"), readdir(notebooks_dir; join = true)))
+notebooks = sort(filter(endswith(".ipynb"), readdir(examples_dir; join = true)))
 
 for notebook in notebooks
     run(`$python -m nbconvert --to markdown --execute
