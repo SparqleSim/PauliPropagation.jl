@@ -20,12 +20,16 @@ mkpath(docs_examples_dir)
 notebooks = sort(filter(endswith(".ipynb"), readdir(examples_dir; join = true)))
 
 for notebook in notebooks
-    run(`$python -m nbconvert --to markdown --execute
-        --ExecutePreprocessor.kernel_name=$kernel_name
-        --ExecutePreprocessor.timeout=$timeout
-        --output-dir $docs_examples_dir \
-        --template-file $examples_dir/markdown_template.tpl \
-        --NbConvertBase.display_data_priority "['image/svg+xml', 'image/png', \
-            'image/jpeg', 'text/markdown', 'text/plain']" \
-        $notebook`)
+    try
+        run(`$python -m nbconvert --to markdown --execute
+            --ExecutePreprocessor.kernel_name=$kernel_name
+            --ExecutePreprocessor.timeout=$timeout
+            --output-dir $docs_examples_dir \
+            --template-file $examples_dir/markdown_template.tpl \
+            --NbConvertBase.display_data_priority "['image/svg+xml', 'image/png', \
+                'image/jpeg', 'text/markdown', 'text/plain']" \
+            $notebook`)
+    catch e
+        @error "$notebook failed to run with the error: \n $e"
+    end
 end

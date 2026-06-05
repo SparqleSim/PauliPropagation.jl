@@ -37,7 +37,7 @@ function build_examples()
     include(joinpath(examples_dir, "make.jl"))
 end
 
-# build_examples()
+build_examples()
 
 
 Pkg.activate(docs_dir)

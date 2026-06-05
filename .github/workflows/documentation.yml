@@ -89,22 +89,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-    
-      - name: Convert example notebooks to markdown
+
+      - name: Build and deploy
         run: |
           pip install nbconvert
           mkdir -p docs/src/examples
-          for nb in docs/examples/notebooks/*.ipynb; do
-            python -m nbconvert --to markdown \
-                --output-dir docs/src/examples/ \
-                --template-file docs/examples/markdown_template.tpl \
-                --NbConvertBase.display_data_priority "['image/svg+xml', 'image/png', \
-                    'image/jpeg', 'text/markdown', 'text/plain']" \
-                "$nb"
-          done
-
-      - name: Build and deploy
-        run: julia --color=yes --project=docs docs/make.jl
+          julia --color=yes docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
