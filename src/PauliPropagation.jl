@@ -215,7 +215,7 @@ Supported forms (after `using Yao` or `using YaoBlocks`):
 
 - `paulipropagation2yao(::PauliString)`
 - `paulipropagation2yao(::AbstractPauliSum)`
-- `paulipropagation2yao(n, circuit, thetas)`
+- `paulipropagation2yao(n::Integer, circ, thetas)`
 """
 function paulipropagation2yao(args...)
     error("Load Yao or YaoBlocks (`using Yao`) to use `paulipropagation2yao`.")

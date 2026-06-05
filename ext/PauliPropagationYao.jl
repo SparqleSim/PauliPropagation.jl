@@ -23,42 +23,69 @@ function _symbol_to_yao(sym::Symbol)
     return _symbol_yao_map[sym]
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.Gate, parameter)
-    if g isa PP.CliffordGate
-        if g.symbol ∈ (:CNOT, :CZ)
-            length(g.qinds) == 2 ||
-                throw(ArgumentError("Controlled gates should have exactly 2 qubits"))
-            ctrl_loc, target_loc = g.qinds
-            if g.symbol == :CNOT
-                push!(c, control(c.n, ctrl_loc, target_loc => X))
-            else
-                push!(c, control(c.n, ctrl_loc, target_loc => Z))
-            end
-        elseif g.symbol == :ZZpihalf
-            length(g.qinds) == 2 ||
-                throw(ArgumentError("ZZpihalf gate should have exactly 2 qubits"))
-            push!(c, put(c.n, (g.qinds...,) => rot(kron(Z, Z), π / 2)))
-        else
-            push!(c, put(c.n, (g.qinds...,) => _symbol_to_yao(g.symbol)))
-        end
-    elseif g isa PP.PauliRotation
-        ops = [_symbol_to_yao(s) for s in g.symbols]
-        push!(c, put(c.n, (g.qinds...,) => rot(kron(ops...), parameter)))
-    elseif g isa PP.DepolarizingNoise
-        length(g.qind) == 1 ||
-            throw(ArgumentError("Depolarizing noise should be applied to a single qubit"))
-        push!(c, put(c.n, (g.qind...,) => quantum_channel(DepolarizingError(1, parameter))))
-    elseif g isa PP.PauliXNoise
-        push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(parameter / 2, 0.0, 0.0))))
-    elseif g isa PP.PauliYNoise
-        push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(0.0, parameter / 2, 0.0))))
-    elseif g isa PP.PauliZNoise
-        push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(0.0, 0.0, parameter / 2))))
-    elseif g isa PP.AmplitudeDampingNoise
-        push!(c, quantum_channel(AmplitudeDampingError(parameter)))
-    else
-        error("Unsupported gate type for Yao conversion: $(typeof(g))")
-    end
+function _clifford_to_yao!(c::ChainBlock, ::Val{:CNOT}, qinds)
+    length(qinds) == 2 ||
+        throw(ArgumentError("Controlled gates should have exactly 2 qubits"))
+    ctrl_loc, target_loc = qinds
+    push!(c, control(c.n, ctrl_loc, target_loc => X))
+    return c
+end
+
+function _clifford_to_yao!(c::ChainBlock, ::Val{:CZ}, qinds)
+    length(qinds) == 2 ||
+        throw(ArgumentError("Controlled gates should have exactly 2 qubits"))
+    ctrl_loc, target_loc = qinds
+    push!(c, control(c.n, ctrl_loc, target_loc => Z))
+    return c
+end
+
+function _clifford_to_yao!(c::ChainBlock, ::Val{:ZZpihalf}, qinds)
+    length(qinds) == 2 ||
+        throw(ArgumentError("ZZpihalf gate should have exactly 2 qubits"))
+    push!(c, put(c.n, (qinds...,) => rot(kron(Z, Z), π / 2)))
+    return c
+end
+
+function _clifford_to_yao!(c::ChainBlock, sym::Val{S}, qinds) where {S}
+    push!(c, put(c.n, (qinds...,) => _symbol_to_yao(S)))
+    return c
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.CliffordGate, ::Nothing)
+    _clifford_to_yao!(c, Val(g.symbol), g.qinds)
+    return c
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliRotation, parameter)
+    ops = [_symbol_to_yao(s) for s in g.symbols]
+    push!(c, put(c.n, (g.qinds...,) => rot(kron(ops...), parameter)))
+    return c
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.DepolarizingNoise, parameter)
+    length(g.qind) == 1 ||
+        throw(ArgumentError("Depolarizing noise should be applied to a single qubit"))
+    push!(c, put(c.n, (g.qind...,) => quantum_channel(DepolarizingError(1, parameter))))
+    return c
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliXNoise, parameter)
+    push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(parameter / 2, 0.0, 0.0))))
+    return c
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliYNoise, parameter)
+    push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(0.0, parameter / 2, 0.0))))
+    return c
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliZNoise, parameter)
+    push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(0.0, 0.0, parameter / 2))))
+    return c
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.AmplitudeDampingNoise, parameter)
+    push!(c, quantum_channel(AmplitudeDampingError(parameter)))
     return c
 end
 
@@ -96,33 +123,31 @@ end
 Convert an `AbstractPauliSum` to a Yao observable (`Add` of Pauli terms, possibly scaled).
 """
 function PauliPropagation.paulipropagation2yao(psum::PP.AbstractPauliSum)
-    pstrs = PP.topaulistrings(psum)
-    isempty(pstrs) && throw(ArgumentError("Cannot convert empty Pauli sum to Yao observable."))
-    if length(pstrs) == 1
-        return paulipropagation2yao(only(pstrs))
+    length(psum) == 0 && throw(ArgumentError("Cannot convert empty Pauli sum to Yao observable."))
+    n = PP.nqubits(psum)
+    terms = zip(PP.paulis(psum), PP.coefficients(psum))
+    if length(psum) == 1
+        pauli, coeff = only(terms)
+        return pauli_term_to_yao(n, pauli, coeff)
     end
-    return sum(paulipropagation2yao(pstr) for pstr in pstrs)
+    return sum(pauli_term_to_yao(n, pauli, coeff) for (pauli, coeff) in terms)
 end
 
 """
-    paulipropagation2yao(n::Int, circ::AbstractVector{<:Gate}, thetas::AbstractVector)
+    paulipropagation2yao(n::Integer, circ, thetas)
 
 Convert a PauliPropagation circuit to a Yao `ChainBlock`.
 
 `thetas` must have one entry per `ParametrizedGate` in `circ` (see `countparameters`).
 `FrozenGate` entries carry their parameter and do not consume `thetas`.
 """
-function PauliPropagation.paulipropagation2yao(
-    n::Int,
-    circ::AbstractVector{<:PP.Gate},
-    thetas::AbstractVector,
-)
+function PauliPropagation.paulipropagation2yao(n::Integer, circ, thetas)
     PP.countparameters(circ) == length(thetas) ||
         throw(ArgumentError(
             "Expected $(PP.countparameters(circ)) parameters, got $(length(thetas))."
         ))
     thetas = collect(thetas)
-    c = chain(n)
+    c = chain(Int(n))
     for g in circ
         if g isa PP.FrozenGate
             _pauli_to_yao_gate!(c, g.gate, g.parameter)
