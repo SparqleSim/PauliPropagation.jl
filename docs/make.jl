@@ -116,7 +116,7 @@ makedocs(
 # When run from a Github Action, commit those files to the 'gh-pages' branch,
 # depending upon the triggering branch or whether it is a release/pull-request.
 deploydocs(
-    repo="github.com/Vortriz/PauliPropagation.jl.git",
+    repo="github.com/SparqleSim/PauliPropagation.jl.git",
 
     # Enable generation of doc from PRs, under a /previews/PR## sub-domain.
     # Beware that this requires the Github Action was explicitly triggered by
@@ -127,7 +127,7 @@ deploydocs(
     # should update the doc visible at the /dev/ sub-domain. Note this means
     # pushes to the main branch never generate doc; only new releases will
     # (see below)
-    devbranch="notebooks-in-docs",
+    devbranch="dev",
     devurl="dev",
 
     # Control which Github releases (here, all) trigger re-generation of the
