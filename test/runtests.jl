@@ -46,4 +46,18 @@ using Random
 
     include("test_gates_against_yao.jl")
 
+    include("multiuint_smoke.jl")
+
+    include("test_multiuint_integration.jl")
+
+    # GPU test — only runs if CUDA.jl is loadable (it's a weakdep, so a
+    # contributor without a GPU never sees this). Skipped at runtime if
+    # CUDA isn't functional on the host.
+    try
+        @eval using CUDA
+        include("test_multiuint_cuda.jl")
+    catch
+        @info "CUDA.jl not available — skipping MultiUInt GPU test."
+    end
+
 end

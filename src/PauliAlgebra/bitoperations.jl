@@ -1,54 +1,82 @@
 """
-    getinttype(nqubits::Integer)
+    getinttype(nqubits::Integer; use_multiuint::Bool=true)
 
 Function to return the smallest integer type that can hold `nqubits`.
 This is the type that will be used internally for representing Pauli strings.
+
+For `nqubits` requiring more than 64 bits (i.e. `nqubits > 32`), this
+returns a `MultiUInt{N, UInt64}` packed in `N = cld(2*nqubits, 64)` 64-bit
+words. `MultiUInt` is `isbits`, lives happily in GPU registers, and
+implements the exact bitwise contract this codebase uses — fixing the
+known limitation of the CUDA extension at >32 qubits (issue #145).
+
+Set `use_multiuint=false` to fall back to the dynamically-defined
+BitIntegers.jl types (the pre-issue-#145 behaviour). This is mainly useful
+for benchmarking and reproducing legacy results; the BitIntegers path does
+not work on GPU.
 """
-function getinttype(nqubits::Integer)
+function getinttype(nqubits::Integer; use_multiuint::Bool=true)
     # we need 2 bits per qubit
     nbits = 2 * nqubits
 
+    # ≤ 64 bits: keep historic behaviour (smallest BitIntegers width >= nbits,
+    # rounded up to a multiple of 8). Preserves the exact return type for
+    # callers that depend on it (e.g. `getinttype(17) === UInt40`).
+    if nbits <= 64
+        for trial_bits in nbits:2:64
+            if trial_bits % 8 != 0
+                continue
+            end
+            if trial_bits == 8
+                return UInt8
+            elseif trial_bits == 16
+                return UInt16
+            elseif trial_bits == 32
+                return UInt32
+            elseif trial_bits == 64
+                return UInt64
+            end
+            trial_inttype_expr = Symbol("UInt", trial_bits)
+            if isdefined(PauliPropagation, trial_inttype_expr)
+                return eval(trial_inttype_expr)
+            end
+            try
+                @eval @define_integers $trial_bits
+                return eval(trial_inttype_expr)
+            catch ErrorException
+                continue
+            end
+        end
+        return UInt64                       # unreachable but defensive
+    end
 
-    # just over 8.3 Million is the largest integer type we can generate
+    # > 64 bits: default to MultiUInt so that GPU kernels can carry the
+    # Pauli string in registers (issue #145). N is the smallest number of
+    # 64-bit words that holds `nbits` bits.
+    if use_multiuint
+        nwords = cld(nbits, 64)
+        return MultiUInt{nwords, UInt64}
+    end
+
+    # Legacy path: dynamically define a BitIntegers.jl wide unsigned.
+    # Kept for benchmarking / reproducing pre-#145 results. This path does
+    # not work on GPU.
     for trial_bits in nbits:2:8_300_000
-
-        # we can check if the number of bits is divisible by 8
-        # othervise we know it cannot be defined
-        if !(trial_bits % 8 == 0)
+        if trial_bits % 8 != 0
             continue
         end
-
-        # special clauses for inbuilt integer types
-        if trial_bits == 8
-            return UInt8
-        elseif trial_bits == 16
-            return UInt16
-        elseif trial_bits == 32
-            return UInt32
-        elseif trial_bits == 64
-            return UInt64
-        end
-        # stop at 64 bits because I am suspicious of UInt128
-
         trial_inttype_expr = Symbol("UInt", trial_bits)
-        # check if the integer type is defined to avoid overrides
         if isdefined(PauliPropagation, trial_inttype_expr)
             return eval(trial_inttype_expr)
         end
-
-        # defining the integer type can fail for bit numbers that are odd not not natively supported
-        # just try the next number if that happens
         try
             @eval @define_integers $trial_bits
-            # return the newly defined unsigned integer type
             return eval(trial_inttype_expr)
         catch ErrorException
             continue
         end
     end
 
-    # if we reach here, we have failed to define the integer type
-    # Falling back to BigInt
     @warn "Failed to define integer types for $nqubits qubits. Falling back to BigInt."
     return BigInt
 end
