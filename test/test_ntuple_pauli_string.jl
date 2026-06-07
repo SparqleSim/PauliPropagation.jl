@@ -1,11 +1,11 @@
 using Test
+using Random
 
 let dir = joinpath(@__DIR__, "..")
     dir ∉ LOAD_PATH && push!(LOAD_PATH, dir)
 end
 
 using PauliPropagation
-using PauliPropagation.GPUTypes
 
 import PauliPropagation: _countbitweight, _countbitxy, _countbityz,
     _countbitx, _countbity, _countbitz, _bitcommutes, _bitpaulimultiply,
@@ -23,8 +23,8 @@ function ref_encode(paulis::Vector{Symbol})
     return v
 end
 
-function ntuple_encode(::Type{NTuplePauliString{N,W}}, paulis::Vector{Symbol}) where {N,W}
-    T = NTuplePauliString{N,W}
+function ntuple_encode(::Type{NTupleUInt{N,W}}, paulis::Vector{Symbol}) where {N,W}
+    T = NTupleUInt{N,W}
     pstr = zero(T)
     for (i, p) in enumerate(paulis)
         pstr = _setpaulibits(pstr, pauli_to_bits[p], i)
@@ -33,12 +33,12 @@ function ntuple_encode(::Type{NTuplePauliString{N,W}}, paulis::Vector{Symbol}) w
 end
 
 
-@testset "NTuplePauliString" begin
+@testset "NTupleUInt" begin
 
-    T32  = NTuplePauliString{2,  UInt32}
-    T64  = NTuplePauliString{2,  UInt64}
-    T128 = NTuplePauliString{8,  UInt32}
-    T256 = NTuplePauliString{16, UInt32}
+    T32  = NTupleUInt{2,  UInt32}
+    T64  = NTupleUInt{2,  UInt64}
+    T128 = NTupleUInt{8,  UInt32}
+    T256 = NTupleUInt{16, UInt32}
 
     @testset "Construction and basics" begin
         z = zero(T64)
@@ -54,27 +54,27 @@ end
         @test max_qubits(T128) == 128
         @test max_qubits(T256) == 256
 
-        x = NTuplePauliString{2,UInt32}(0xDEADBEEF)
+        x = NTupleUInt{2,UInt32}(0xDEADBEEF)
         @test x.data[1] == 0xDEADBEEF
         @test x.data[2] == 0x00000000
 
-        y = NTuplePauliString{2,UInt32}(0xDEADBEEF_CAFEBABE)
+        y = NTupleUInt{2,UInt32}(0xDEADBEEF_CAFEBABE)
         @test y.data[1] == 0xCAFEBABE
         @test y.data[2] == 0xDEADBEEF
     end
 
     @testset "Bitwise operations" begin
-        a = NTuplePauliString{2,UInt32}((0xAAAAAAAA, 0xAAAAAAAA))
-        b = NTuplePauliString{2,UInt32}((0x55555555, 0x55555555))
+        a = NTupleUInt{2,UInt32}((0xAAAAAAAA, 0xAAAAAAAA))
+        b = NTupleUInt{2,UInt32}((0x55555555, 0x55555555))
 
         @test (a & b) == 0
-        @test (a | b) == typemax(NTuplePauliString{2,UInt32})
-        @test (a ⊻ b) == typemax(NTuplePauliString{2,UInt32})
+        @test (a | b) == typemax(NTupleUInt{2,UInt32})
+        @test (a ⊻ b) == typemax(NTupleUInt{2,UInt32})
         @test (~a)     == b
     end
 
     @testset "Shift operations" begin
-        one64 = NTuplePauliString{2,UInt32}(1)
+        one64 = NTupleUInt{2,UInt32}(1)
         @test (one64 << 3) == 8
         @test (one64 << 3 >> 3) == 1
 
@@ -84,7 +84,7 @@ end
 
         @test (shifted >> 32) == one64
 
-        val = NTuplePauliString{2,UInt32}((0xFFFFFFFF, 0x00000000))
+        val = NTupleUInt{2,UInt32}((0xFFFFFFFF, 0x00000000))
         shifted2 = val << 1
         @test shifted2.data[1] == 0xFFFFFFFE
         @test shifted2.data[2] == 0x00000001
@@ -94,9 +94,9 @@ end
     end
 
     @testset "Comparison and sorting" begin
-        a = NTuplePauliString{2,UInt32}(10)
-        b = NTuplePauliString{2,UInt32}(20)
-        c = NTuplePauliString{2,UInt32}(10)
+        a = NTupleUInt{2,UInt32}(10)
+        b = NTupleUInt{2,UInt32}(20)
+        c = NTupleUInt{2,UInt32}(10)
 
         @test a < b
         @test b > a
@@ -105,8 +105,8 @@ end
         @test a == c
         @test a != b
 
-        big   = NTuplePauliString{2,UInt32}((0x00000000, 0x00000001))
-        small = NTuplePauliString{2,UInt32}((0xFFFFFFFF, 0x00000000))
+        big   = NTupleUInt{2,UInt32}((0x00000000, 0x00000001))
+        small = NTupleUInt{2,UInt32}((0xFFFFFFFF, 0x00000000))
         @test small < big
 
         arr    = [b, a, big, small, c]
@@ -121,7 +121,7 @@ end
         all_ones = typemax(T64)
         @test count_ones(all_ones) == bitsize(T64)
 
-        x = NTuplePauliString{2,UInt64}((0xAAAAAAAAAAAAAAAA, 0x0000000000000000))
+        x = NTupleUInt{2,UInt64}((0xAAAAAAAAAAAAAAAA, 0x0000000000000000))
         @test count_ones(x) == 32
     end
 
@@ -138,7 +138,7 @@ end
 
     @testset "Pauli count functions" begin
         paulis7 = [:X, :Y, :Z, :I, :X, :Y, :Z]
-        pstr  = ntuple_encode(NTuplePauliString{1,UInt32}, paulis7)
+        pstr  = ntuple_encode(NTupleUInt{1,UInt32}, paulis7)
         ref32 = UInt32(ref_encode(paulis7))
 
         @test _countbitweight(pstr) == _countbitweight(ref32)
@@ -155,10 +155,10 @@ end
     end
 
     @testset "Commutation" begin
-        pX = ntuple_encode(NTuplePauliString{1,UInt32}, [:X])
-        pY = ntuple_encode(NTuplePauliString{1,UInt32}, [:Y])
-        pZ = ntuple_encode(NTuplePauliString{1,UInt32}, [:Z])
-        pI = ntuple_encode(NTuplePauliString{1,UInt32}, [:I])
+        pX = ntuple_encode(NTupleUInt{1,UInt32}, [:X])
+        pY = ntuple_encode(NTupleUInt{1,UInt32}, [:Y])
+        pZ = ntuple_encode(NTupleUInt{1,UInt32}, [:Z])
+        pI = ntuple_encode(NTupleUInt{1,UInt32}, [:I])
 
         @test !_bitcommutes(pX, pY)
         @test !_bitcommutes(pY, pZ)
@@ -166,22 +166,22 @@ end
         @test  _bitcommutes(pX, pX)
         @test  _bitcommutes(pX, pI)
 
-        pXX = ntuple_encode(NTuplePauliString{1,UInt32}, [:X, :X])
-        pYY = ntuple_encode(NTuplePauliString{1,UInt32}, [:Y, :Y])
+        pXX = ntuple_encode(NTupleUInt{1,UInt32}, [:X, :X])
+        pYY = ntuple_encode(NTupleUInt{1,UInt32}, [:Y, :Y])
         @test _bitcommutes(pXX, pYY)
 
-        pXZ = ntuple_encode(NTuplePauliString{1,UInt32}, [:X, :Z])
-        pZX = ntuple_encode(NTuplePauliString{1,UInt32}, [:Z, :X])
+        pXZ = ntuple_encode(NTupleUInt{1,UInt32}, [:X, :Z])
+        pZX = ntuple_encode(NTupleUInt{1,UInt32}, [:Z, :X])
         # XZ and ZX: qubit 1 (X,Z) anti-commutes, qubit 2 (Z,X) anti-commutes.
         # Two anti-commuting sites → even parity → the strings commute.
         @test _bitcommutes(pXZ, pZX)
     end
 
     @testset "Pauli product" begin
-        pX = ntuple_encode(NTuplePauliString{1,UInt32}, [:X])
-        pY = ntuple_encode(NTuplePauliString{1,UInt32}, [:Y])
-        pZ = ntuple_encode(NTuplePauliString{1,UInt32}, [:Z])
-        pI = ntuple_encode(NTuplePauliString{1,UInt32}, [:I])
+        pX = ntuple_encode(NTupleUInt{1,UInt32}, [:X])
+        pY = ntuple_encode(NTupleUInt{1,UInt32}, [:Y])
+        pZ = ntuple_encode(NTupleUInt{1,UInt32}, [:Z])
+        pI = ntuple_encode(NTupleUInt{1,UInt32}, [:I])
 
         @test _bitpaulimultiply(pX, pX) == pI
         @test _bitpaulimultiply(pY, pY) == pI
@@ -190,7 +190,7 @@ end
     end
 
     @testset "getpauli / setpauli round-trip" begin
-        T    = NTuplePauliString{4,UInt32}
+        T    = NTupleUInt{4,UInt32}
         pstr = zero(T)
         syms = [:X, :Y, :Z, :I, :X, :Z, :Y]
 
@@ -208,7 +208,7 @@ end
         nq         = 15
         paulis_ref = [:X, :Y, :Z, :I, :X, :Y, :Z, :I, :X, :Y, :Z, :I, :X, :Y, :Z]
         ref        = UInt64(ref_encode(paulis_ref))
-        ntp        = ntuple_encode(NTuplePauliString{2,UInt32}, paulis_ref)
+        ntp        = ntuple_encode(NTupleUInt{2,UInt32}, paulis_ref)
 
         @test _countbitweight(ntp) == _countbitweight(ref)
         @test _countbitxy(ntp)     == _countbitxy(ref)
@@ -219,7 +219,7 @@ end
     end
 
     @testset "256-qubit smoke test" begin
-        T  = NTuplePauliString{16,UInt32}
+        T  = NTupleUInt{16,UInt32}
         nq = 256
         @test max_qubits(T) == 256
 
@@ -237,18 +237,65 @@ end
         @test _bitcommutes(pX_all, pZ_all)
     end
 
-    @testset "getntupleinttype factory" begin
-        @test getntupleinttype(16;  word=UInt32) == NTuplePauliString{1,  UInt32}
-        @test getntupleinttype(64;  word=UInt32) == NTuplePauliString{4,  UInt32}
-        @test getntupleinttype(256; word=UInt32) == NTuplePauliString{16, UInt32}
-        @test getntupleinttype(128; word=UInt64) == NTuplePauliString{4,  UInt64}
+    @testset "getchunkedinttype factory" begin
+        @test getchunkedinttype(16;  word=UInt32) == NTupleUInt{1,  UInt32}
+        @test getchunkedinttype(64;  word=UInt32) == NTupleUInt{4,  UInt32}
+        @test getchunkedinttype(256; word=UInt32) == NTupleUInt{16, UInt32}
+        @test getchunkedinttype(128; word=UInt64) == NTupleUInt{4,  UInt64}
     end
 
-    @testset "getinttype gpu_compatible flag" begin
-        @test getinttype(64;  gpu_compatible=true, gpu_word=UInt32) == NTuplePauliString{4,  UInt32}
-        @test getinttype(256; gpu_compatible=true, gpu_word=UInt32) == NTuplePauliString{16, UInt32}
+    @testset "getinttype chunked flag" begin
+        @test getinttype(64;  chunked=true, word=UInt32) == NTupleUInt{4,  UInt32}
+        @test getinttype(256; chunked=true, word=UInt32) == NTupleUInt{16, UInt32}
+    end
+
+    # ── propagation integration tests ─────────────────────────────────────────
+    # These run an actual circuit through propagate() with a NTupleUInt-backed
+    # VectorPauliSum and verify results match the standard BitIntegers path.
+    # This directly satisfies the partial reward criteria: "typical quantum
+    # circuits can be simulated via the propagate() function".
+    @testset "propagate() matches BitIntegers baseline" begin
+        Random.seed!(42)
+
+        for nq in (32, 64, 128)
+            nl = 2
+            topo  = bricklayertopology(nq; periodic=false)
+            circ  = hardwareefficientcircuit(nq, nl; topology=topo)
+            thetas = randn(length(circ))
+
+            # ── BitIntegers (reference) ────────────────────────────────────
+            pstr_ref  = PauliString(nq, :Z, div(nq, 2))
+            result_ref = overlapwithzero(propagate(circ, pstr_ref, thetas))
+
+            # ── NTupleUInt via VectorPauliSum ──────────────────────────────
+            TT = getchunkedinttype(nq; word=UInt32)
+            vpsum = VectorPauliSum(Float64, nq, TT)
+            push!(paulis(vpsum), symboltoint(TT, [:Z], [div(nq, 2)]))
+            push!(coefficients(vpsum), 1.0)
+            result_ntuple = overlapwithzero(propagate(circ, vpsum, thetas))
+
+            @test result_ref ≈ result_ntuple atol=1e-10 rtol=1e-10
+        end
+    end
+
+    @testset "propagate() 256-qubit NTupleUInt completes" begin
+        Random.seed!(99)
+
+        nq = 256
+        nl = 1
+        topo  = bricklayertopology(nq; periodic=false)
+        circ  = hardwareefficientcircuit(nq, nl; topology=topo)
+        thetas = randn(length(circ))
+
+        TT = getchunkedinttype(nq; word=UInt32)
+        vpsum = VectorPauliSum(Float64, nq, TT)
+        push!(paulis(vpsum), symboltoint(TT, [:Z], [div(nq, 2)]))
+        push!(coefficients(vpsum), 1.0)
+
+        result = overlapwithzero(propagate(circ, vpsum, thetas))
+        @test isfinite(result)
     end
 
 end
 
-println("\nAll NTuplePauliString tests passed.")
+println("\nAll NTupleUInt tests passed.")

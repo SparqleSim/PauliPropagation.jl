@@ -1,12 +1,15 @@
 """
-    getinttype(nqubits::Integer; gpu_compatible::Bool=false, gpu_word::Type=UInt32)
+    getinttype(nqubits::Integer; chunked::Bool=false, word::Type=UInt32)
 
 Function to return the smallest integer type that can hold `nqubits`.
 This is the type that will be used internally for representing Pauli strings.
+Pass `chunked=true` to get an `NTupleUInt` type instead of a `BitIntegers` type.
 """
-function getinttype(nqubits::Integer; gpu_compatible::Bool=false, gpu_word::Type=UInt32)
-    if gpu_compatible
-        return getntupleinttype(nqubits; word=gpu_word)
+function getinttype(nqubits::Integer; chunked::Bool=false, word::Type=UInt32,
+                    gpu_compatible::Bool=false, gpu_word::Type=UInt32)  # legacy kwargs
+    if chunked || gpu_compatible
+        w = chunked ? word : gpu_word
+        return getchunkedinttype(nqubits; word=w)
     end
 
     # we need 2 bits per qubit
@@ -196,7 +199,7 @@ _paulimask(::Type{T}, n_sites) where T = mask(T, 2 * n_sites)
 
 _pauliwindowmask(::Type{T}, index1::Integer, index2::Integer) where T = _paulimask(T, index2 - index1 + 1) << _bitshiftfromsiteindex(index1)
 
-function _paulimask(::Type{T}, n_sites) where {N, W, T <: NTuplePauliString{N, W}}
+function _paulimask(::Type{T}, n_sites) where {N, W, T <: NTupleUInt{N, W}}
     wb = 8 * sizeof(W)
     nbits = 2 * n_sites
     full_words = nbits ÷ wb
@@ -213,7 +216,7 @@ function _paulimask(::Type{T}, n_sites) where {N, W, T <: NTuplePauliString{N, W
     return T(data)
 end
 
-function _pauliwindowmask(::Type{T}, index1::Integer, index2::Integer) where {T <: NTuplePauliString}
+function _pauliwindowmask(::Type{T}, index1::Integer, index2::Integer) where {T <: NTupleUInt}
     base_mask = _paulimask(T, index2 - index1 + 1)
     shift = 2 * (index1 - 1)
     return base_mask << shift
@@ -263,7 +266,7 @@ end
     # define our super bit mask looking like ....1010101.
 
     # length is the number of bits in the integer
-    n_bits = min(GPUTypes.bitsize(T), 2_048)  # for max 1024 qubits.
+    n_bits = min(bitsize(T), 2_048)  # for max 1024 qubits.
     mask = zero(T)
     for ii in 0:(n_bits-1)
         if ii % 2 == 0

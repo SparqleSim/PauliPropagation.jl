@@ -10,9 +10,7 @@ using Base.Threads
 include("./Base/Base.jl")
 using .PropagationBase
 
-include("./PauliAlgebra/GPUTypes.jl")
-using .GPUTypes
-export GPUTypes
+include("./PauliAlgebra/NTuplePauliString.jl")
 
 include("./PauliDataTypes/PauliDataTypes.jl")
 export
@@ -62,9 +60,11 @@ export
     commutator,
     trace,
     getinttype,
-    NTuplePauliString,
-    getntupleinttype,
-    max_qubits
+    NTupleUInt,
+    getchunkedinttype,
+    max_qubits,
+    bitsize,
+    alternatingmask
 
 include("PauliTransferMatrix/PauliTransferMatrix.jl")
 export

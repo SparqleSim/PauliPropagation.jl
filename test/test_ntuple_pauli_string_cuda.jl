@@ -1,15 +1,23 @@
 # test/test_ntuple_pauli_string_cuda.jl
 #
-# End-to-end GPU integration tests for NTuplePauliString.
+# End-to-end GPU integration tests for NTupleUInt.
 #
 # Run on a CUDA-capable machine with:
 #
-#   julia -e 'include("test/test_ntuple_pauli_string_cuda.jl")'
+#   julia --project=benchmarks test/test_ntuple_pauli_string_cuda.jl
+#
+# First-time setup (once):
+#
+#   julia --project=benchmarks -e '
+#       using Pkg
+#       Pkg.develop(PackageSpec(path="."))
+#       Pkg.instantiate()
+#   '
 #
 # Or via the JuliaGPU Buildkite pipeline (.buildkite/pipeline.yml).
 #
 # These tests verify that:
-#   1. NTuplePauliString arrays are correctly moved to the GPU via cu()
+#   1. NTupleUInt arrays are correctly moved to the GPU via cu()
 #   2. Round-trip collect() reproduces the original CPU data exactly
 #   3. Pauli accessor functions (getpauli, countweight, commutes) give
 #      identical results whether evaluated on CPU or after a GPU round-trip
@@ -18,10 +26,9 @@
 # The tests deliberately avoid calling CUDA kernels directly: correctness of
 # the on-device compute paths will be validated separately once GPU propagation
 # benchmarks are added.  What we confirm here is that the data transport layer
-# (CuArray + NTuplePauliString bits-are-plain-bits property) is sound.
+# (CuArray + NTupleUInt bits-are-plain-bits property) is sound.
 
 using Test
-using CUDA
 
 # Make sure the local checkout takes priority over any installed version.
 let dir = joinpath(@__DIR__, "..")
@@ -29,7 +36,7 @@ let dir = joinpath(@__DIR__, "..")
 end
 
 using PauliPropagation
-using PauliPropagation.GPUTypes
+using CUDA
 
 import PauliPropagation: _setpaulibits, _getpaulibits, _bitcommutes, _countbitweight
 
@@ -37,7 +44,7 @@ import PauliPropagation: _setpaulibits, _getpaulibits, _bitcommutes, _countbitwe
 
 pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
 
-function cpu_encode(::Type{T}, paulis::Vector{Symbol}) where {T<:NTuplePauliString}
+function cpu_encode(::Type{T}, paulis::Vector{Symbol}) where {T<:NTupleUInt}
     pstr = zero(T)
     for (i, p) in enumerate(paulis)
         pstr = _setpaulibits(pstr, pauli_to_bits[p], i)
@@ -57,12 +64,12 @@ println("CUDA runtime version: ", CUDA.runtime_version())
 
 # ── tests ─────────────────────────────────────────────────────────────────────
 
-@testset "NTuplePauliString CUDA integration" begin
+@testset "NTupleUInt CUDA integration" begin
 
     # ── 64-qubit VectorPauliSum round-trip ───────────────────────────────────
     @testset "64-qubit VectorPauliSum GPU round-trip (UInt32 words)" begin
         nq = 64
-        TT = getntupleinttype(nq; word=UInt32)   # NTuplePauliString{4, UInt32}
+        TT = getchunkedinttype(nq; word=UInt32)   # NTupleUInt{4, UInt32}
         vpsum = VectorPauliSum(Float64, nq, TT)
 
         # Build a handful of terms on CPU.
@@ -92,7 +99,7 @@ println("CUDA runtime version: ", CUDA.runtime_version())
     # ── 256-qubit smoke test (the primary motivating use case) ───────────────
     @testset "256-qubit VectorPauliSum GPU round-trip (UInt32 words)" begin
         nq = 256
-        TT = getntupleinttype(nq; word=UInt32)   # NTuplePauliString{16, UInt32}
+        TT = getchunkedinttype(nq; word=UInt32)   # NTupleUInt{16, UInt32}
         vpsum = VectorPauliSum(Float64, nq, TT)
 
         # Identity string and a string with Paulis at the boundary qubits.
@@ -113,7 +120,7 @@ println("CUDA runtime version: ", CUDA.runtime_version())
     # ── getpauli / countweight consistency after GPU round-trip ──────────────
     @testset "Pauli accessor consistency after GPU round-trip" begin
         nq = 128
-        TT = getntupleinttype(nq; word=UInt32)   # NTuplePauliString{8, UInt32}
+        TT = getchunkedinttype(nq; word=UInt32)   # NTupleUInt{8, UInt32}
         vpsum = VectorPauliSum(Float64, nq, TT)
 
         pauli_seq = [:X, :Y, :Z, :X, :Z]
@@ -143,7 +150,7 @@ println("CUDA runtime version: ", CUDA.runtime_version())
     # ── commutation check survives GPU round-trip ────────────────────────────
     @testset "Commutation result unchanged after GPU round-trip" begin
         nq = 64
-        TT = getntupleinttype(nq; word=UInt32)
+        TT = getchunkedinttype(nq; word=UInt32)
 
         pX_all = symboltoint(TT, fill(:X, nq), collect(1:nq))
         pZ_all = symboltoint(TT, fill(:Z, nq), collect(1:nq))
@@ -163,7 +170,7 @@ println("CUDA runtime version: ", CUDA.runtime_version())
     # ── UInt64-word variant ──────────────────────────────────────────────────
     @testset "128-qubit VectorPauliSum GPU round-trip (UInt64 words)" begin
         nq = 128
-        TT = getntupleinttype(nq; word=UInt64)   # NTuplePauliString{4, UInt64}
+        TT = getchunkedinttype(nq; word=UInt64)   # NTupleUInt{4, UInt64}
         vpsum = VectorPauliSum(Float64, nq, TT)
 
         term = symboltoint(TT, [:X, :Y, :Z], [1, 64, 128])
@@ -177,4 +184,4 @@ println("CUDA runtime version: ", CUDA.runtime_version())
 
 end
 
-println("\nAll NTuplePauliString CUDA integration tests passed.")
+println("\nAll NTupleUInt CUDA integration tests passed.")
