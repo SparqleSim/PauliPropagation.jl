@@ -1,3 +1,5 @@
+using Bits
+
 """
     NTupleUInt{N,W<:Union{UInt32,UInt64}}
 
@@ -20,27 +22,34 @@ Typical configurations:
   - 256 qubits : NTupleUInt{8, UInt64}  or  NTupleUInt{16, UInt32}
 
 Use `UInt32` words when targeting GPUs that run 32-bit register operations natively.
-This type is intended to eventually become a standalone package.
 """
 struct NTupleUInt{N,W<:Union{UInt32,UInt64}} <: Unsigned
     data::NTuple{N,W}
 
+    # Exact-type NTuple: called by all internal paths that already have the right type.
     NTupleUInt{N,W}(data::NTuple{N,W}) where {N, W<:Union{UInt32,UInt64}} = new{N,W}(data)
 
+    # Mixed-element tuple (e.g. (UInt64, UInt64, 0x0, 0x0) where 0x0 is UInt8):
+    # accept any Tuple of length N and convert each element to W.
+    function NTupleUInt{N,W}(data::Tuple) where {N, W<:Union{UInt32,UInt64}}
+        length(data) == N || throw(ArgumentError("expected $N elements, got $(length(data))"))
+        new{N,W}(ntuple(i -> W(data[i]), Val(N)))
+    end
+
+    # Construct from any Integer, zero-extending into the higher words.
     function NTupleUInt{N,W}(x::Integer) where {N, W<:Union{UInt32,UInt64}}
-        bx   = BigInt(x)
+        bx    = BigInt(x)
         bmask = BigInt(typemax(W))
-        wb   = 8 * sizeof(W)
-        words = ntuple(i -> W((bx >> ((i - 1) * wb)) & bmask), Val(N))
-        return new{N,W}(words)
+        wb    = 8 * sizeof(W)
+        new{N,W}(ntuple(i -> W((bx >> ((i - 1) * wb)) & bmask), Val(N)))
     end
 end
 
-"""
-    NTupleUInt{N,W}()
+# .parts is an alias for .data, used by the tests.
+Base.getproperty(x::NTupleUInt, f::Symbol) =
+    f === :parts ? getfield(x, :data) : getfield(x, f)
 
-Construct the zero (identity) Pauli string.
-"""
+
 NTupleUInt{N,W}() where {N,W} =
     NTupleUInt{N,W}(ntuple(_ -> zero(W), Val(N)))
 
@@ -58,14 +67,20 @@ Base.one(x::NTupleUInt{N,W}) where {N,W} = one(typeof(x))
 Base.typemax(::Type{NTupleUInt{N,W}}) where {N,W} =
     NTupleUInt{N,W}(ntuple(_ -> typemax(W), Val(N)))
 
+Base.iszero(x::NTupleUInt) = x == zero(x)
+
 _wordbits(::Type{NTupleUInt{N,W}}) where {N,W} = 8 * sizeof(W)
 _wordbits(x::NTupleUInt) = _wordbits(typeof(x))
 
+# bitsize: our own definition plus an Integer fallback so the test's `bitsize(T64)` works
+# without importing from Bits explicitly.
 bitsize(::Type{NTupleUInt{N,W}}) where {N,W} = N * 8 * sizeof(W)
 bitsize(x::NTupleUInt) = bitsize(typeof(x))
-
 bitsize(::Type{T}) where {T<:Integer} = 8 * sizeof(T)
 bitsize(x::Integer) = bitsize(typeof(x))
+
+# Bits.jl interface: tell Bits how wide NTupleUInt is so Bits.bitsize and Bits.mask work.
+Bits.bitsize(::Type{NTupleUInt{N,W}}) where {N,W} = N * 8 * sizeof(W)
 
 """
     max_qubits(::Type{NTupleUInt{N,W}})
@@ -76,12 +91,12 @@ max_qubits(::Type{NTupleUInt{N,W}}) where {N,W} = N * 4 * sizeof(W)
 
 
 """
-    getchunkedinttype(nqubits; word=UInt32)
+    getchunkedinttype(nqubits; word=UInt64)
 
 Return the smallest `NTupleUInt{N,W}` type that can represent `nqubits` qubits.
-Defaults to `UInt32` words for maximum GPU register compatibility.
+Defaults to `UInt64` words.
 """
-function getchunkedinttype(nqubits::Integer; word::Type{W}=UInt32) where {W}
+function getchunkedinttype(nqubits::Integer; word::Type{W}=UInt64) where {W}
     bits_needed = 2 * nqubits
     bits_per_word = 8 * sizeof(W)
     N = cld(bits_needed, bits_per_word)
@@ -89,30 +104,27 @@ function getchunkedinttype(nqubits::Integer; word::Type{W}=UInt32) where {W}
 end
 
 
-@inline function Base.:~(a::NTupleUInt{N,W}) where {N,W}
+@inline function Base.:~(a::NTupleUInt{N,W}) where {N, W<:Union{UInt32,UInt64}}
     NTupleUInt{N,W}(map(~, a.data))
 end
 
-@inline function Base.:&(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+@inline function Base.:&(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N, W<:Union{UInt32,UInt64}}
     NTupleUInt{N,W}(ntuple(i -> a.data[i] & b.data[i], Val(N)))
 end
 
-@inline function Base.:|(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+@inline function Base.:|(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N, W<:Union{UInt32,UInt64}}
     NTupleUInt{N,W}(ntuple(i -> a.data[i] | b.data[i], Val(N)))
 end
 
-@inline function Base.:⊻(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+@inline function Base.:⊻(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N, W<:Union{UInt32,UInt64}}
     NTupleUInt{N,W}(ntuple(i -> a.data[i] ⊻ b.data[i], Val(N)))
 end
 
 
-"""
-    >>(a::NTupleUInt{N,W}, k::Integer)
-
-Right-shift by `k` bits, carrying bits across word boundaries.
-Words are in little-endian order (`data[1]` is the least-significant word).
-"""
-@inline function Base.:>>(a::NTupleUInt{N,W}, k::Integer) where {N,W}
+# Shift by Int (the concrete type Julia uses for integer literals).
+# Adding W<:Union{UInt32,UInt64} makes this strictly more specific than
+# Base.>>(::Integer, ::Int) so Julia can pick it unambiguously.
+@inline function Base.:>>(a::NTupleUInt{N,W}, k::Int) where {N, W<:Union{UInt32,UInt64}}
     k == 0 && return a
     wb = _wordbits(a)
     k >= N * wb && return zero(a)
@@ -135,12 +147,7 @@ Words are in little-endian order (`data[1]` is the least-significant word).
     NTupleUInt{N,W}(new_data)
 end
 
-"""
-    <<(a::NTupleUInt{N,W}, k::Integer)
-
-Left-shift by `k` bits, carrying bits across word boundaries.
-"""
-@inline function Base.:(<<)(a::NTupleUInt{N,W}, k::Integer) where {N,W}
+@inline function Base.:(<<)(a::NTupleUInt{N,W}, k::Int) where {N, W<:Union{UInt32,UInt64}}
     k == 0 && return a
     wb = _wordbits(a)
     k >= N * wb && return zero(a)
@@ -163,15 +170,19 @@ Left-shift by `k` bits, carrying bits across word boundaries.
     NTupleUInt{N,W}(new_data)
 end
 
+# Convert any other Integer shift amount to Int to hit the above methods.
+@inline Base.:>>(a::NTupleUInt, k::Integer) = a >> Int(k)
+@inline Base.:(<<)(a::NTupleUInt, k::Integer) = a << Int(k)
 
-@inline function Base.:(==)(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+
+@inline function Base.:(==)(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N, W<:Union{UInt32,UInt64}}
     for i in 1:N
         a.data[i] != b.data[i] && return false
     end
     return true
 end
 
-@inline function Base.:(==)(a::NTupleUInt{N,W}, b::Integer) where {N,W}
+@inline function Base.:(==)(a::NTupleUInt{N,W}, b::Integer) where {N, W<:Union{UInt32,UInt64}}
     a.data[1] == W(b & typemax(W)) || return false
     for i in 2:N
         a.data[i] != zero(W) && return false
@@ -181,13 +192,7 @@ end
 
 @inline Base.:(==)(b::Integer, a::NTupleUInt) = a == b
 
-"""
-    isless(a, b)
-
-Compares from the most-significant word downward, giving lexicographic integer ordering.
-This is what `sort!` on a `VectorPauliSum` term array relies on.
-"""
-@inline function Base.isless(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+@inline function Base.isless(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N, W<:Union{UInt32,UInt64}}
     for i in N:-1:1
         a.data[i] < b.data[i] && return true
         a.data[i] > b.data[i] && return false
@@ -200,48 +205,42 @@ Base.:>(a::NTupleUInt, b::NTupleUInt)  = isless(b, a)
 Base.:<=(a::NTupleUInt, b::NTupleUInt) = !isless(b, a)
 Base.:>=(a::NTupleUInt, b::NTupleUInt) = !isless(a, b)
 
-# Arithmetic: needed by Bits.mask (computes `(one(T) << i) - one(T)`)
-@inline function Base.:+(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
-    _ntupleuint_add(a, b)
-end
 
-@inline function _ntupleuint_add(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+# Ripple-carry addition and subtraction, needed by Bits.mask which computes
+# `(one(T) << i) - one(T)`.
+@inline function Base.:+(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N, W<:Union{UInt32,UInt64}}
     data = Vector{W}(undef, N)
     carry = zero(W)
     @inbounds for i in 1:N
-        s = a.data[i] + b.data[i]
+        s  = a.data[i] + b.data[i]
         c1 = s < a.data[i] ? one(W) : zero(W)
         s2 = s + carry
         c2 = s2 < s ? one(W) : zero(W)
-        carry = c1 | c2
+        carry   = c1 | c2
         data[i] = s2
     end
     NTupleUInt{N,W}(NTuple{N,W}(data))
 end
 
-@inline function Base.:-(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
-    _ntupleuint_sub(a, b)
-end
-
-@inline function _ntupleuint_sub(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+@inline function Base.:-(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N, W<:Union{UInt32,UInt64}}
     data = Vector{W}(undef, N)
     borrow = zero(W)
     @inbounds for i in 1:N
-        ai = a.data[i]
-        bi = b.data[i] + borrow
+        ai     = a.data[i]
+        bi     = b.data[i] + borrow
         borrow = (bi < b.data[i] || ai < bi) ? one(W) : zero(W)
         data[i] = ai - bi
     end
     NTupleUInt{N,W}(NTuple{N,W}(data))
 end
 
-# Mixed Integer arithmetic (e.g. `x - one(T)` where one(T)::W)
 @inline Base.:+(a::NTupleUInt{N,W}, b::Integer) where {N,W} = a + NTupleUInt{N,W}(b)
 @inline Base.:-(a::NTupleUInt{N,W}, b::Integer) where {N,W} = a - NTupleUInt{N,W}(b)
 @inline Base.:+(b::Integer, a::NTupleUInt{N,W}) where {N,W} = NTupleUInt{N,W}(b) + a
 
+
 @inline function Base.count_ones(a::NTupleUInt{N,W}) where {N,W}
-    local s = 0
+    s = 0
     for i in 1:N
         s += count_ones(a.data[i])
     end
@@ -252,9 +251,7 @@ end
 Base.UInt64(a::NTupleUInt{N,W}) where {N,W} = UInt64(a.data[1])
 Base.Int(a::NTupleUInt) = Int(UInt64(a))
 
-Base.convert(::Type{NTupleUInt{N,W}}, x::Integer) where {N,W} =
-    NTupleUInt{N,W}(x)
-
+Base.convert(::Type{NTupleUInt{N,W}}, x::Integer) where {N,W} = NTupleUInt{N,W}(x)
 Base.convert(::Type{NTupleUInt{N,W}}, x::NTupleUInt{N,W}) where {N,W} = x
 
 function Base.convert(::Type{NTupleUInt{N2,W2}}, x::NTupleUInt{N1,W1}) where {N1,W1,N2,W2}
@@ -267,16 +264,21 @@ function Base.convert(::Type{NTupleUInt{N2,W2}}, x::NTupleUInt{N1,W1}) where {N1
 end
 
 
+# hash must match Base integer hash so that hash(NTupleUInt(x)) == hash(x) for small x.
 function Base.hash(a::NTupleUInt{N,W}, h::UInt) where {N,W}
-    for i in 1:N
-        h = hash(a.data[i], h)
+    # Round-trip through BigInt and use Base.hash_integer, which is what all
+    # standard integer types use. This ensures hash(zero(T)) == hash(0) etc.
+    val = BigInt(0)
+    wb  = 8 * sizeof(W)
+    for i in N:-1:1
+        val = (val << wb) | BigInt(a.data[i])
     end
-    return h
+    return Base.hash_integer(val, h)
 end
 
 
 function Base.show(io::IO, a::NTupleUInt{N,W}) where {N,W}
-    wb = 8 * sizeof(W)
+    wb  = 8 * sizeof(W)
     hex = ""
     for i in N:-1:1
         hex *= string(a.data[i]; base=16, pad=wb÷4)
@@ -303,60 +305,59 @@ routines. Even-indexed bits are 1, odd-indexed bits are 0.
     return :(NTupleUInt{$N,$W}($words))
 end
 
-alternatingmask(x::NTupleUInt{N,W}) where {N,W} =
-    alternatingmask(NTupleUInt{N,W})
+alternatingmask(x::NTupleUInt{N,W}) where {N,W} = alternatingmask(NTupleUInt{N,W})
 
 
 function _countbitweight(pstr::NTupleUInt)
     mask = alternatingmask(pstr)
-    m1 = pstr & mask
-    m2 = pstr & (mask << 1)
-    res = m1 | (m2 >> 1)
+    m1   = pstr & mask
+    m2   = pstr & (mask << 1)
+    res  = m1 | (m2 >> 1)
     return count_ones(res)
 end
 
 function _countbitxy(pstr::NTupleUInt)
     mask = alternatingmask(pstr)
-    op = pstr ⊻ (pstr >> 1)
-    op = op & mask
+    op   = pstr ⊻ (pstr >> 1)
+    op   = op & mask
     return count_ones(op)
 end
 
 function _countbityz(pstr::NTupleUInt)
     mask = alternatingmask(pstr)
-    op = pstr & (mask << 1)
+    op   = pstr & (mask << 1)
     return count_ones(op)
 end
 
 function _countbitx(pstr::NTupleUInt)
     mask_x = alternatingmask(pstr)
     mask_y = mask_x << 1
-    xs = (pstr & mask_x) & ((~pstr & mask_y) >> 1)
+    xs     = (pstr & mask_x) & ((~pstr & mask_y) >> 1)
     return count_ones(xs)
 end
 
 function _countbity(pstr::NTupleUInt)
     mask_x = alternatingmask(pstr)
     mask_y = mask_x << 1
-    op = ((pstr & mask_y) >> 1) & (~pstr & mask_x)
+    op     = ((pstr & mask_y) >> 1) & (~pstr & mask_x)
     return count_ones(op)
 end
 
 function _countbitz(pstr::NTupleUInt)
     mask_x = alternatingmask(pstr)
     mask_y = mask_x << 1
-    op = ((pstr & mask_y) >> 1) & (pstr & mask_x)
+    op     = ((pstr & mask_y) >> 1) & (pstr & mask_x)
     return count_ones(op)
 end
 
 function _bitcommutes(pstr1::NTupleUInt, pstr2::NTupleUInt)
-    mask0 = alternatingmask(pstr1)
-    mask1 = mask0 << 1
+    mask0  = alternatingmask(pstr1)
+    mask1  = mask0 << 1
     aBits0 = mask0 & pstr1
     aBits1 = (mask1 & pstr1) >> 1
     bBits0 = mask0 & pstr2
     bBits1 = (mask1 & pstr2) >> 1
-    flags = (aBits0 & bBits1) ⊻ (aBits1 & bBits0)
+    flags  = (aBits0 & bBits1) ⊻ (aBits1 & bBits0)
     return (count_ones(flags) % 2) == 0
 end
 

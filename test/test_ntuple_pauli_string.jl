@@ -460,5 +460,3 @@ end
     end
 
 end
-
-println("\nAll NTupleUInt + NTupleUInt tests passed.")

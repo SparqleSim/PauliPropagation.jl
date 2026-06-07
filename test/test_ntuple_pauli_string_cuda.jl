@@ -263,6 +263,4 @@ end
 
 end
 
-println("\nAll NTupleUInt + NTupleUInt CUDA integration tests passed.")
-
 end

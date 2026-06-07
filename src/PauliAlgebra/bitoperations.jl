@@ -1,38 +1,41 @@
 """
-    getinttype(nqubits::Integer)
+    getinttype(nqubits::Integer; chunked=false, word=UInt64)
 
 Return the smallest integer type that can hold `nqubits` qubits.
 
-For `nqubits <= 32` (up to 64 bits), returns the same native type as before.
-For `nqubits > 32`, returns `NTupleUInt{N, UInt64}` — an `isbits` tuple-backed
-type that works on GPU where `BitIntegers.jl` types cannot.
+For `nqubits <= 32` (up to 64 bits), returns the same native type as before
+unless `chunked=true`, in which case `NTupleUInt` is returned regardless.
+For `nqubits > 32`, always returns `NTupleUInt{N, word}`.
+
+`word` controls the word type used by `NTupleUInt`. Use `UInt32` for consumer
+GPU targets where 32-bit registers are native; use `UInt64` (the default) for
+CPU and server GPU targets.
 """
-function getinttype(nqubits::Integer)
-    # we need 2 bits per qubit
+function getinttype(nqubits::Integer; chunked::Bool=false, word::Type=UInt64)
     nbits = 2 * nqubits
 
-    # up to 64 bits: use native or BitIntegers types as before
-    if nbits <= 64
-        for trial_bits in nbits:2:64
-            trial_bits % 8 != 0 && continue
-            trial_bits == 8  && return UInt8
-            trial_bits == 16 && return UInt16
-            trial_bits == 32 && return UInt32
-            trial_bits == 64 && return UInt64
-            trial_inttype_expr = Symbol("UInt", trial_bits)
-            isdefined(PauliPropagation, trial_inttype_expr) && return eval(trial_inttype_expr)
-            try
-                @eval @define_integers $trial_bits
-                return eval(trial_inttype_expr)
-            catch ErrorException
-                continue
-            end
-        end
-        return UInt64
+    # Explicit chunked opt-in or above the 64-bit threshold: use NTupleUInt.
+    if chunked || nbits > 64
+        return getchunkedinttype(nqubits; word=word)
     end
 
-    # above 64 bits: use NTupleUInt which is GPU-compatible
-    return getchunkedinttype(nqubits)
+    # Up to 64 bits: native or BitIntegers types as before.
+    for trial_bits in nbits:2:64
+        trial_bits % 8 != 0 && continue
+        trial_bits == 8  && return UInt8
+        trial_bits == 16 && return UInt16
+        trial_bits == 32 && return UInt32
+        trial_bits == 64 && return UInt64
+        trial_inttype_expr = Symbol("UInt", trial_bits)
+        isdefined(PauliPropagation, trial_inttype_expr) && return eval(trial_inttype_expr)
+        try
+            @eval @define_integers $trial_bits
+            return eval(trial_inttype_expr)
+        catch ErrorException
+            continue
+        end
+    end
+    return UInt64
 end
 
 
