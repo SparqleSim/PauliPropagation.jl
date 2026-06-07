@@ -22,7 +22,7 @@ Typical configurations:
 Use `UInt32` words when targeting GPUs that run 32-bit register operations natively.
 This type is intended to eventually become a standalone package.
 """
-struct NTupleUInt{N,W<:Union{UInt32,UInt64}}
+struct NTupleUInt{N,W<:Union{UInt32,UInt64}} <: Unsigned
     data::NTuple{N,W}
 
     NTupleUInt{N,W}(data::NTuple{N,W}) where {N, W<:Union{UInt32,UInt64}} = new{N,W}(data)

@@ -32,7 +32,7 @@ using Random
         @warn "Skipping Yao tests (not installed): $e"
     end
 
-    # NTupleUInt + MultiUInt CPU tests
+    # NTupleUInt CPU tests (always run, no GPU required)
     include("test_ntuple_pauli_string.jl")
 
     # GPU tests — only run when CUDA.jl is loadable and functional.

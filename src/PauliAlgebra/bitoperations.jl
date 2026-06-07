@@ -1,49 +1,17 @@
 """
-    getinttype(nqubits::Integer; use_multiuint::Bool=true, word::Type=UInt64)
+    getinttype(nqubits::Integer)
 
 Return the smallest integer type that can hold `nqubits` qubits.
 
-For `nqubits ≤ 32` (i.e. ≤ 64 bits), returns the same native type as
-before (e.g. `getinttype(17) === UInt40`): **bit-for-bit identical to
-prior behaviour**.
-
-For `nqubits > 32` (> 64 bits), returns `MultiUInt{N, word}` where `N`
-is the smallest number of `word`-sized words that holds `2*nqubits` bits.
-`MultiUInt` is `isbitstype`, lives in GPU registers, and supports the
-full bitwise contract this codebase relies on — fixing the CUDA extension's
->32-qubit limitation (issue #145).
-
-**Word width (`word` kwarg):**
-- `word=UInt64` (default): best throughput on CPU and server GPUs.
-- `word=UInt32`: native register width on consumer NVIDIA GPUs (RTX series).
-  Use when building `VectorPauliSum` arrays destined for `CuArray` on GPUs
-  that execute 32-bit operations natively.
-
-**Fallback (`use_multiuint=false`):** reverts to the BitIntegers.jl path
-(dynamic `@define_integers` above 64 bits). Useful for benchmarking and
-reproducing pre-issue-#145 results; does **not** work on GPU.
-
-```julia
-getinttype(32)                      # UInt64          (unchanged)
-getinttype(33)                      # MultiUInt{2, UInt64}   (was UInt66 — now GPU-safe)
-getinttype(256)                     # MultiUInt{8, UInt64}   (partial-reward target)
-getinttype(256; word=UInt32)        # MultiUInt{16, UInt32}  (32-bit GPU registers)
-getinttype(33; use_multiuint=false) # UInt66 (legacy BitIntegers path)
-```
+For `nqubits <= 32` (up to 64 bits), returns the same native type as before.
+For `nqubits > 32`, returns `NTupleUInt{N, UInt64}` — an `isbits` tuple-backed
+type that works on GPU where `BitIntegers.jl` types cannot.
 """
-function getinttype(nqubits::Integer; use_multiuint::Bool=true, chunked::Union{Bool,Nothing}=nothing, word::Type=UInt64)
-    # `chunked=true` is an alias for `use_multiuint=true` (NTupleUInt path).
-    if chunked !== nothing
-        use_multiuint = chunked
-        # When chunked=true, default to NTupleUInt not MultiUInt.
-        return getchunkedinttype(nqubits; word=word)
-    end
-    # We need 2 bits per qubit.
+function getinttype(nqubits::Integer)
+    # we need 2 bits per qubit
     nbits = 2 * nqubits
 
-    # ≤ 64 bits: preserve the exact historic return type — including non-power-of-two
-    # widths like UInt40 — because existing tests depend on the contract
-    # `getinttype(17) === UInt40`.
+    # up to 64 bits: use native or BitIntegers types as before
     if nbits <= 64
         for trial_bits in nbits:2:64
             trial_bits % 8 != 0 && continue
@@ -60,43 +28,16 @@ function getinttype(nqubits::Integer; use_multiuint::Bool=true, chunked::Union{B
                 continue
             end
         end
-        return UInt64  # defensive fallback; unreachable in practice
+        return UInt64
     end
 
-    # > 64 bits: MultiUInt by default (GPU-compatible, issue #145).
-    if use_multiuint
-        @assert word ∈ (UInt32, UInt64) "word must be UInt32 or UInt64, got $word"
-        nwords = cld(nbits, 8 * sizeof(word))
-        return MultiUInt{nwords, word}
-    end
-
-    # Legacy BitIntegers path — benchmarking / reproducing pre-#145 results only.
-    for trial_bits in nbits:2:8_300_000
-        trial_bits % 8 != 0 && continue
-        trial_inttype_expr = Symbol("UInt", trial_bits)
-        isdefined(PauliPropagation, trial_inttype_expr) && return eval(trial_inttype_expr)
-        try
-            @eval @define_integers $trial_bits
-            return eval(trial_inttype_expr)
-        catch ErrorException
-            continue
-        end
-    end
-
-    @warn "Failed to define integer types for $nqubits qubits. Falling back to BigInt."
-    return BigInt
+    # above 64 bits: use NTupleUInt which is GPU-compatible
+    return getchunkedinttype(nqubits)
 end
 
 
 # Fast hash for BitIntegers wide unsigned types — matches value semantics.
 Base.hash(v::BitIntegers.AbstractBitUnsigned, h::UInt) = Base.hash_integer(v, h)
-
-
-# ---------------------------------------------------------------------------
-# The functions below operate on PauliStringType (= Union{Integer, MultiUInt}).
-# Because MultiUInt <: Unsigned <: Integer, a single generic dispatch covers
-# both paths — no separate overloads needed.
-# ---------------------------------------------------------------------------
 
 # Count non-identity Paulis: a site is non-identity iff either of its 2 bits is 1.
 function _countbitweight(pstr::PauliStringType)
@@ -192,8 +133,8 @@ function _setpaulibits(pstr::PauliStringType, target_pstr::PauliStringType, inde
     return (pstr & ~window_mask) | (T(target_pstr) << bitindex)
 end
 
-# alternatingmask: compile-time constant for both native integers and MultiUInt.
-# The MultiUInt specialization is defined in multiuint.jl (via @generated).
+# alternatingmask: compile-time constant for both native integers and NTupleUInt.
+# The NTupleUInt specialization is defined in NTuplePauliString.jl (via @generated).
 # This @generated covers native integers (Integer / BitIntegers) and keeps
 # the existing behaviour for those types.
 @generated function alternatingmask(pstr::T) where {T<:PauliStringType}

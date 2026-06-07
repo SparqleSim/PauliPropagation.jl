@@ -1,6 +1,6 @@
 # test/test_ntuple_pauli_string_cuda.jl
 #
-# End-to-end GPU integration tests for NTupleUInt and MultiUInt.
+# End-to-end GPU integration tests for NTupleUInt and NTupleUInt.
 #
 # Run on a CUDA-capable machine with:
 #
@@ -10,7 +10,7 @@
 #
 # Tests verify:
 #   1. NTupleUInt arrays move to GPU via cu() and round-trip correctly.
-#   2. MultiUInt arrays move to GPU via cu() and round-trip correctly.
+#   2. NTupleUInt arrays move to GPU via cu() and round-trip correctly.
 #   3. Pauli accessors (getpauli, countweight, commutes) give identical
 #      results on CPU and after a GPU round-trip — for both types.
 #   4. The 256-qubit smoke test passes for both types on GPU.
@@ -158,22 +158,22 @@ println("CUDA runtime version: ", CUDA.runtime_version())
 end
 
 
-# ── MultiUInt GPU tests ───────────────────────────────────────────────────────
-# MultiUInt <: Unsigned so getinttype automatically returns it for >32 qubits.
+# ── NTupleUInt GPU tests ───────────────────────────────────────────────────────
+# NTupleUInt <: Unsigned so getinttype automatically returns it for >32 qubits.
 # No opt-in or separate API needed.
 
-@testset "MultiUInt CUDA integration" begin
+@testset "NTupleUInt CUDA integration" begin
 
     @testset "isbitstype on device" begin
-        @test isbitstype(MultiUInt{8, UInt64})
-        @test isbitstype(MultiUInt{16, UInt32})
-        @test getinttype(256)              === MultiUInt{8,  UInt64}
-        @test getinttype(256; word=UInt32) === MultiUInt{16, UInt32}
+        @test isbitstype(NTupleUInt{8, UInt64})
+        @test isbitstype(NTupleUInt{16, UInt32})
+        @test getinttype(256)              === NTupleUInt{8,  UInt64}
+        @test getinttype(256; word=UInt32) === NTupleUInt{16, UInt32}
     end
 
     @testset "256-qubit VectorPauliSum GPU round-trip (UInt64 words)" begin
         nq  = 256
-        TM  = getinttype(nq)   # MultiUInt{8, UInt64} — automatic, no opt-in
+        TM  = getinttype(nq)   # NTupleUInt{8, UInt64} — automatic, no opt-in
         vps = VectorPauliSum(Float64, nq, TM)
 
         id_term  = zero(TM)
@@ -193,7 +193,7 @@ end
 
     @testset "256-qubit VectorPauliSum GPU round-trip (UInt32 words)" begin
         nq  = 256
-        TM  = getinttype(nq; word=UInt32)   # MultiUInt{16, UInt32}
+        TM  = getinttype(nq; word=UInt32)   # NTupleUInt{16, UInt32}
         vps = VectorPauliSum(Float64, nq, TM)
 
         far_term = let p = zero(TM)
@@ -236,10 +236,10 @@ end
     end
 
     @testset "propagate() on GPU VectorPauliSum (64 qubits)" begin
-        # 64 qubits → MultiUInt{2, UInt64}: small enough for CI, exercises full GPU path.
+        # 64 qubits → NTupleUInt{2, UInt64}: small enough for CI, exercises full GPU path.
         nq = 64
         TM = getinttype(nq)
-        @test TM <: MultiUInt
+        @test TM <: NTupleUInt
         @test isbitstype(TM)
 
         Random.seed!(42)
@@ -263,6 +263,6 @@ end
 
 end
 
-println("\nAll NTupleUInt + MultiUInt CUDA integration tests passed.")
+println("\nAll NTupleUInt + NTupleUInt CUDA integration tests passed.")
 
 end

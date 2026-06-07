@@ -33,8 +33,8 @@ function ntuple_encode(::Type{NTupleUInt{N,W}}, paulis::Vector{Symbol}) where {N
     return pstr
 end
 
-function multiuint_encode(::Type{MultiUInt{N,W}}, paulis::Vector{Symbol}) where {N,W}
-    T = MultiUInt{N,W}
+function ntupleuint_encode(::Type{NTupleUInt{N,W}}, paulis::Vector{Symbol}) where {N,W}
+    T = NTupleUInt{N,W}
     pstr = zero(T)
     for (i, p) in enumerate(paulis)
         pstr = _setpaulibits(pstr, pauli_to_bits[p], i)
@@ -299,14 +299,14 @@ end
 end
 
 
-# ── MultiUInt tests ────────────────────────────────────────────────────────────
-# MultiUInt{N,T} <: Unsigned integrates into getinttype automatically (no opt-in)
+# ── NTupleUInt tests ────────────────────────────────────────────────────────────
+# NTupleUInt{N,T} <: Unsigned integrates into getinttype automatically (no opt-in)
 # and slots into the existing PauliStringType = Integer union without widening it.
 
-@testset "MultiUInt" begin
+@testset "NTupleUInt" begin
 
-    M64  = MultiUInt{4, UInt64}   # 256 bits via UInt64 words
-    M32  = MultiUInt{8, UInt32}   # 256 bits via UInt32 words (consumer GPU width)
+    M64  = NTupleUInt{4, UInt64}   # 256 bits via UInt64 words
+    M32  = NTupleUInt{8, UInt32}   # 256 bits via UInt32 words (consumer GPU width)
 
     @testset "Construction and isbitstype" begin
         @test isbitstype(M64)
@@ -375,29 +375,29 @@ end
 
     @testset "getinttype automatic routing (no opt-in needed)" begin
         @test getinttype(32)  === UInt64                   # unchanged
-        @test getinttype(33)  === MultiUInt{2, UInt64}     # was UInt66 (BitIntegers)
-        @test getinttype(128) === MultiUInt{4, UInt64}
-        @test getinttype(256) === MultiUInt{8, UInt64}     # partial-reward target
+        @test getinttype(33)  === NTupleUInt{2, UInt64}     # was UInt66 (BitIntegers)
+        @test getinttype(128) === NTupleUInt{4, UInt64}
+        @test getinttype(256) === NTupleUInt{8, UInt64}     # partial-reward target
         # UInt32-word variant for consumer GPU register width
-        @test getinttype(256; word=UInt32) === MultiUInt{16, UInt32}
+        @test getinttype(256; word=UInt32) === NTupleUInt{16, UInt32}
     end
 
     @testset "Pauli bit-ops match NTupleUInt at 256 qubits" begin
         nq = 256
-        TM = getinttype(nq)                            # MultiUInt{8, UInt64}
+        TM = getinttype(nq)                            # NTupleUInt{8, UInt64}
         TN = getchunkedinttype(nq; word=UInt64)        # NTupleUInt{4, UInt64}
 
         paulis_large = [isodd(i) ? :X : :Z for i in 1:nq]
 
-        pM = multiuint_encode(TM, paulis_large)
+        pM = ntupleuint_encode(TM, paulis_large)
         pN = ntuple_encode(TN, paulis_large)
 
         @test _countbitx(pM)      == _countbitx(pN)
         @test _countbitz(pM)      == _countbitz(pN)
         @test _countbitweight(pM) == _countbitweight(pN)
 
-        pM_X = multiuint_encode(TM, fill(:X, nq))
-        pM_Z = multiuint_encode(TM, fill(:Z, nq))
+        pM_X = ntupleuint_encode(TM, fill(:X, nq))
+        pM_Z = ntupleuint_encode(TM, fill(:Z, nq))
         pN_X = ntuple_encode(TN, fill(:X, nq))
         pN_Z = ntuple_encode(TN, fill(:Z, nq))
         @test _bitcommutes(pM_X, pM_Z) == _bitcommutes(pN_X, pN_Z)
@@ -405,7 +405,7 @@ end
 
     @testset "getpauli / setpauli round-trip at $(nq) qubits" for nq in (50, 128, 256)
         T = getinttype(nq)
-        @test T <: MultiUInt
+        @test T <: NTupleUInt
         pstr = zero(T)
         targets = [(1, 1), (17, 2), (33, 3), (nq, 2)]
         for (site, p) in targets
@@ -431,7 +431,7 @@ end
         push!(coefficients(vps_n), 1.0)
         ref = overlapwithzero(propagate(circ, vps_n, thetas))
 
-        # MultiUInt path (automatic via getinttype, no opt-in)
+        # NTupleUInt path (automatic via getinttype, no opt-in)
         TM = getinttype(nq)
         vps_m = VectorPauliSum(Float64, nq, TM)
         push!(paulis(vps_m), symboltoint(TM, [:Z], [div(nq, 2)]))
@@ -441,10 +441,10 @@ end
         @test ref ≈ got atol=1e-10 rtol=1e-10
     end
 
-    @testset "propagate() 256-qubit MultiUInt completes" begin
+    @testset "propagate() 256-qubit NTupleUInt completes" begin
         Random.seed!(31415)
         nq = 256
-        TM = getinttype(nq)   # MultiUInt{8, UInt64}
+        TM = getinttype(nq)   # NTupleUInt{8, UInt64}
         @test isbitstype(TM)
 
         topo   = bricklayertopology(nq; periodic=false)
@@ -461,4 +461,4 @@ end
 
 end
 
-println("\nAll NTupleUInt + MultiUInt tests passed.")
+println("\nAll NTupleUInt + NTupleUInt tests passed.")

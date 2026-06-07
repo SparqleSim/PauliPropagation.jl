@@ -11,7 +11,6 @@ include("./Base/Base.jl")
 using .PropagationBase
 
 include("./PauliAlgebra/NTuplePauliString.jl")
-include("./PauliAlgebra/multiuint.jl")
 
 include("./PauliDataTypes/PauliDataTypes.jl")
 export
@@ -62,7 +61,6 @@ export
     trace,
     getinttype,
     NTupleUInt,
-    MultiUInt,
     getchunkedinttype,
     max_qubits,
     bitsize,
