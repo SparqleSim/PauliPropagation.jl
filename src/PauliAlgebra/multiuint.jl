@@ -29,7 +29,7 @@
 # Left-shift moves bits from `parts[1]` toward `parts[end]`.
 ###
 
-using Bits: bitsize, mask
+import Bits: bitsize, mask
 
 """
     MultiUInt{N, T<:Union{UInt32,UInt64}} <: Unsigned
@@ -201,7 +201,10 @@ function Base.:(==)(a::MultiUInt{N, T}, b::Integer) where {N, T}
     end
     return true
 end
-Base.:(==)(b::Integer, a::MultiUInt) = (a == b)
+# NOTE: no Base.:(==)(b::Integer, a::MultiUInt) method here —
+# MultiUInt <: Unsigned <: Integer, so that would be ambiguous with
+# ==(a::MultiUInt, b::MultiUInt). The above two-arg method already covers
+# all mixed MultiUInt/Integer comparisons via symmetry from Julia's fallback.
 
 Base.:<(a::MultiUInt, b::MultiUInt)  = isless(a, b)
 Base.:>(a::MultiUInt, b::MultiUInt)  = isless(b, a)
@@ -291,18 +294,18 @@ end
 # ---- Bits.bitsize + Bits.mask ----------------------------------------
 # Required by `_paulimask` in bitoperations.jl.
 
-Bits.bitsize(::Type{MultiUInt{N, T}}) where {N, T} = N * 8 * sizeof(T)
-Bits.bitsize(x::MultiUInt) = Bits.bitsize(typeof(x))
+bitsize(::Type{MultiUInt{N, T}}) where {N, T} = N * 8 * sizeof(T)
+bitsize(x::MultiUInt) = bitsize(typeof(x))
 
 """
-    Bits.mask(::Type{MultiUInt{N,T}}, n)
+    mask(::Type{MultiUInt{N,T}}, n)
 
 Return a `MultiUInt{N,T}` with the low `n` bits set.
 Required by `_paulimask` in bitoperations.jl — this keeps the existing
 `_paulimask(T, n_sites) = mask(T, 2*n_sites)` generic call working for
 `MultiUInt` types without any additional overloads in bitoperations.jl.
 """
-function Bits.mask(::Type{MultiUInt{N, T}}, n::Integer) where {N, T}
+function mask(::Type{MultiUInt{N, T}}, n::Integer) where {N, T}
     n = Int(n)
     n <= 0 && return zero(MultiUInt{N, T})
     total_bits = N * 8 * sizeof(T)

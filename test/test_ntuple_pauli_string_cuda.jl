@@ -16,13 +16,23 @@
 #   4. The 256-qubit smoke test passes for both types on GPU.
 
 using Test
+using Random
 
 let dir = joinpath(@__DIR__, "..")
     dir ∉ LOAD_PATH && push!(LOAD_PATH, dir)
 end
 
 using PauliPropagation
-using CUDA
+
+# Load CUDA — skip gracefully if not installed.
+const _cuda_available = !isnothing(Base.find_package("CUDA"))
+if _cuda_available
+    import CUDA: CUDA, cu, CuArray
+end
+
+if !_cuda_available
+    @warn "CUDA.jl not installed — skipping GPU tests."
+else
 
 import PauliPropagation: _setpaulibits, _getpaulibits, _bitcommutes, _countbitweight
 
@@ -246,10 +256,13 @@ end
         # GPU path: same data moved to device, propagate, collect back
         gpu_result = overlapwithzero(collect(propagate(circ, cu(vps_cpu), thetas)))
 
-        @test cpu_result ≈ gpu_result rtol=1e-10
+        # GPU operates in Float32; allow Float32 precision tolerance (~1e-6)
+        @test cpu_result ≈ gpu_result rtol=1e-5
         @info "GPU propagate() 64q passed" device=string(CUDA.device())
     end
 
 end
 
 println("\nAll NTupleUInt + MultiUInt CUDA integration tests passed.")
+
+end

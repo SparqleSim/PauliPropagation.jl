@@ -1,5 +1,6 @@
 using Test
 using Random
+using Bits: bitsize, mask as bits_mask
 
 let dir = joinpath(@__DIR__, "..")
     dir ∉ LOAD_PATH && push!(LOAD_PATH, dir)
@@ -366,9 +367,9 @@ end
     end
 
     @testset "Bits.bitsize + Bits.mask" begin
-        @test Bits.bitsize(M64) == 256
-        @test Bits.bitsize(M32) == 256
-        m = Bits.mask(M64, 130)
+        @test bitsize(M64) == 256
+        @test bitsize(M32) == 256
+        m = bits_mask(M64, 130)
         @test count_ones(m) == 130
     end
 

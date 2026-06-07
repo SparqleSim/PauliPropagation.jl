@@ -200,9 +200,48 @@ Base.:>(a::NTupleUInt, b::NTupleUInt)  = isless(b, a)
 Base.:<=(a::NTupleUInt, b::NTupleUInt) = !isless(b, a)
 Base.:>=(a::NTupleUInt, b::NTupleUInt) = !isless(a, b)
 
+# Arithmetic: needed by Bits.mask (computes `(one(T) << i) - one(T)`)
+@inline function Base.:+(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+    _ntupleuint_add(a, b)
+end
+
+@inline function _ntupleuint_add(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+    data = Vector{W}(undef, N)
+    carry = zero(W)
+    @inbounds for i in 1:N
+        s = a.data[i] + b.data[i]
+        c1 = s < a.data[i] ? one(W) : zero(W)
+        s2 = s + carry
+        c2 = s2 < s ? one(W) : zero(W)
+        carry = c1 | c2
+        data[i] = s2
+    end
+    NTupleUInt{N,W}(NTuple{N,W}(data))
+end
+
+@inline function Base.:-(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+    _ntupleuint_sub(a, b)
+end
+
+@inline function _ntupleuint_sub(a::NTupleUInt{N,W}, b::NTupleUInt{N,W}) where {N,W}
+    data = Vector{W}(undef, N)
+    borrow = zero(W)
+    @inbounds for i in 1:N
+        ai = a.data[i]
+        bi = b.data[i] + borrow
+        borrow = (bi < b.data[i] || ai < bi) ? one(W) : zero(W)
+        data[i] = ai - bi
+    end
+    NTupleUInt{N,W}(NTuple{N,W}(data))
+end
+
+# Mixed Integer arithmetic (e.g. `x - one(T)` where one(T)::W)
+@inline Base.:+(a::NTupleUInt{N,W}, b::Integer) where {N,W} = a + NTupleUInt{N,W}(b)
+@inline Base.:-(a::NTupleUInt{N,W}, b::Integer) where {N,W} = a - NTupleUInt{N,W}(b)
+@inline Base.:+(b::Integer, a::NTupleUInt{N,W}) where {N,W} = NTupleUInt{N,W}(b) + a
 
 @inline function Base.count_ones(a::NTupleUInt{N,W}) where {N,W}
-    s = 0
+    local s = 0
     for i in 1:N
         s += count_ones(a.data[i])
     end

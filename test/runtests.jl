@@ -24,27 +24,27 @@ using Random
     include("test_inplace.jl")
     include("test_numericalcertificates.jl")
     include("test_visualization.jl")
-    include("test_gates_against_yao.jl")
 
-    # NTupleUInt + MultiUInt CPU tests (always run, no GPU required)
+    try
+        Base.require(Base.PkgId(Base.UUID("5872b779-8223-5990-8dd0-5abbb0748c8c"), "Yao"))
+        include("test_gates_against_yao.jl")
+    catch e
+        @warn "Skipping Yao tests (not installed): $e"
+    end
+
+    # NTupleUInt + MultiUInt CPU tests
     include("test_ntuple_pauli_string.jl")
 
     # GPU tests — only run when CUDA.jl is loadable and functional.
-    # Covers both NTupleUInt and MultiUInt GPU paths.
-    # Skipped gracefully in CPU-only CI environments (CUDA stays a weakdep).
-    if get(ENV, "JULIA_RUN_GPU_TESTS", "false") == "true"
-        include("test_ntuple_pauli_string_cuda.jl")
-    else
-        try
-            @eval using CUDA
-            if CUDA.functional()
-                include("test_ntuple_pauli_string_cuda.jl")
-            else
-                @info "CUDA not functional — skipping GPU tests."
-            end
-        catch
-            @info "CUDA.jl not available — skipping GPU tests."
+    try
+        cuda = Base.require(Base.PkgId(Base.UUID("052768ef-5323-5732-b1bb-66c8b64840ba"), "CUDA"))
+        if cuda.functional()
+            include("test_ntuple_pauli_string_cuda.jl")
+        else
+            @info "CUDA not functional — skipping GPU tests."
         end
+    catch
+        @info "CUDA.jl not available — skipping GPU tests."
     end
 
 end

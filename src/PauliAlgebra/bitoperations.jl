@@ -31,7 +31,13 @@ getinttype(256; word=UInt32)        # MultiUInt{16, UInt32}  (32-bit GPU registe
 getinttype(33; use_multiuint=false) # UInt66 (legacy BitIntegers path)
 ```
 """
-function getinttype(nqubits::Integer; use_multiuint::Bool=true, word::Type=UInt64)
+function getinttype(nqubits::Integer; use_multiuint::Bool=true, chunked::Union{Bool,Nothing}=nothing, word::Type=UInt64)
+    # `chunked=true` is an alias for `use_multiuint=true` (NTupleUInt path).
+    if chunked !== nothing
+        use_multiuint = chunked
+        # When chunked=true, default to NTupleUInt not MultiUInt.
+        return getchunkedinttype(nqubits; word=word)
+    end
     # We need 2 bits per qubit.
     nbits = 2 * nqubits
 
