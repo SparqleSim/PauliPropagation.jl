@@ -32,6 +32,15 @@ function ntuple_encode(::Type{NTupleUInt{N,W}}, paulis::Vector{Symbol}) where {N
     return pstr
 end
 
+function multiuint_encode(::Type{MultiUInt{N,W}}, paulis::Vector{Symbol}) where {N,W}
+    T = MultiUInt{N,W}
+    pstr = zero(T)
+    for (i, p) in enumerate(paulis)
+        pstr = _setpaulibits(pstr, pauli_to_bits[p], i)
+    end
+    return pstr
+end
+
 
 @testset "NTupleUInt" begin
 
@@ -172,8 +181,6 @@ end
 
         pXZ = ntuple_encode(NTupleUInt{1,UInt32}, [:X, :Z])
         pZX = ntuple_encode(NTupleUInt{1,UInt32}, [:Z, :X])
-        # XZ and ZX: qubit 1 (X,Z) anti-commutes, qubit 2 (Z,X) anti-commutes.
-        # Two anti-commuting sites → even parity → the strings commute.
         @test _bitcommutes(pXZ, pZX)
     end
 
@@ -231,7 +238,6 @@ end
         @test _countbity(pstr)      == 0
         @test _countbitweight(pstr) == 256
 
-        # 256 qubit pairs each anticommuting => even count => overall commutation
         pX_all = ntuple_encode(T, fill(:X, nq))
         pZ_all = ntuple_encode(T, fill(:Z, nq))
         @test _bitcommutes(pX_all, pZ_all)
@@ -249,11 +255,6 @@ end
         @test getinttype(256; chunked=true, word=UInt32) == NTupleUInt{16, UInt32}
     end
 
-    # ── propagation integration tests ─────────────────────────────────────────
-    # These run an actual circuit through propagate() with a NTupleUInt-backed
-    # VectorPauliSum and verify results match the standard BitIntegers path.
-    # This directly satisfies the partial reward criteria: "typical quantum
-    # circuits can be simulated via the propagate() function".
     @testset "propagate() matches BitIntegers baseline" begin
         Random.seed!(42)
 
@@ -263,11 +264,9 @@ end
             circ  = hardwareefficientcircuit(nq, nl; topology=topo)
             thetas = randn(length(circ))
 
-            # ── BitIntegers (reference) ────────────────────────────────────
-            pstr_ref  = PauliString(nq, :Z, div(nq, 2))
+            pstr_ref   = PauliString(nq, :Z, div(nq, 2))
             result_ref = overlapwithzero(propagate(circ, pstr_ref, thetas))
 
-            # ── NTupleUInt via VectorPauliSum ──────────────────────────────
             TT = getchunkedinttype(nq; word=UInt32)
             vpsum = VectorPauliSum(Float64, nq, TT)
             push!(paulis(vpsum), symboltoint(TT, [:Z], [div(nq, 2)]))
@@ -298,4 +297,167 @@ end
 
 end
 
-println("\nAll NTupleUInt tests passed.")
+
+# ── MultiUInt tests ────────────────────────────────────────────────────────────
+# MultiUInt{N,T} <: Unsigned integrates into getinttype automatically (no opt-in)
+# and slots into the existing PauliStringType = Integer union without widening it.
+
+@testset "MultiUInt" begin
+
+    M64  = MultiUInt{4, UInt64}   # 256 bits via UInt64 words
+    M32  = MultiUInt{8, UInt32}   # 256 bits via UInt32 words (consumer GPU width)
+
+    @testset "Construction and isbitstype" begin
+        @test isbitstype(M64)
+        @test isbitstype(M32)
+        @test zero(M64).parts == ntuple(_ -> UInt64(0), 4)
+        @test one(M64).parts[1] == UInt64(1)
+        @test iszero(zero(M64)) && !iszero(one(M64))
+        @test typemax(M64).parts == ntuple(_ -> typemax(UInt64), 4)
+    end
+
+    @testset "Bitwise operations" begin
+        a = M64((UInt64(0xAAAA_AAAA_AAAA_AAAA), UInt64(0xAAAA_AAAA_AAAA_AAAA), 0x0, 0x0))
+        b = M64((UInt64(0x5555_5555_5555_5555), UInt64(0x5555_5555_5555_5555), 0x0, 0x0))
+        @test (a & b) == zero(M64)
+        @test (~zero(M64)).parts == ntuple(_ -> typemax(UInt64), 4)
+        @test (a ⊻ b) == M64((typemax(UInt64), typemax(UInt64), 0x0, 0x0))
+    end
+
+    @testset "Shifts across word boundaries" begin
+        o = one(M64)
+        @test (o << 64).parts  == (0x0, 0x1, 0x0, 0x0)
+        @test (o << 255).parts == (0x0, 0x0, 0x0, UInt64(0x8000_0000_0000_0000))
+        @test (o << 256) == zero(M64)
+        b = M64((0x0, 0x0, 0x0, UInt64(1)))
+        @test (b >> 192) == one(M64)
+        @test (b >> 193) == zero(M64)
+    end
+
+    @testset "count_ones + ordering" begin
+        @test count_ones(zero(M64)) == 0
+        @test count_ones(~zero(M64)) == 256
+        @test isless(one(M64), one(M64) << 1)
+        @test !isless(M64((0x0, 0x1, 0x0, 0x0)), one(M64))
+    end
+
+    @testset "equality with integers" begin
+        @test M64(42) == 42
+        @test 42 == M64(42)
+        @test !(M64(42) == 43)
+        @test hash(zero(M64)) == hash(0)
+    end
+
+    @testset "alternatingmask (compile-time constant)" begin
+        am = alternatingmask(M64)
+        @test count_ones(am) == 128   # half of 256
+        o = one(M64)
+        @test (am & (o << 0)) != zero(M64)   # bit 0 (even) set
+        @test (am & (o << 1)) == zero(M64)   # bit 1 (odd) clear
+        @test (am & (o << 254)) != zero(M64) # bit 254 (even) set
+        @test (am & (o << 255)) == zero(M64) # bit 255 (odd) clear
+    end
+
+    @testset "arithmetic (ripple-carry)" begin
+        @test one(M64) + one(M64) == M64(2)
+        # Carry across word boundary: typemax(UInt64) + 1 should carry into word 2
+        @test M64(typemax(UInt64)) + one(M64) == M64((0x0, 0x1, 0x0, 0x0))
+        @test M64(5) - M64(3) == M64(2)
+    end
+
+    @testset "Bits.bitsize + Bits.mask" begin
+        @test Bits.bitsize(M64) == 256
+        @test Bits.bitsize(M32) == 256
+        m = Bits.mask(M64, 130)
+        @test count_ones(m) == 130
+    end
+
+    @testset "getinttype automatic routing (no opt-in needed)" begin
+        @test getinttype(32)  === UInt64                   # unchanged
+        @test getinttype(33)  === MultiUInt{2, UInt64}     # was UInt66 (BitIntegers)
+        @test getinttype(128) === MultiUInt{4, UInt64}
+        @test getinttype(256) === MultiUInt{8, UInt64}     # partial-reward target
+        # UInt32-word variant for consumer GPU register width
+        @test getinttype(256; word=UInt32) === MultiUInt{16, UInt32}
+    end
+
+    @testset "Pauli bit-ops match NTupleUInt at 256 qubits" begin
+        nq = 256
+        TM = getinttype(nq)                            # MultiUInt{8, UInt64}
+        TN = getchunkedinttype(nq; word=UInt64)        # NTupleUInt{4, UInt64}
+
+        paulis_large = [isodd(i) ? :X : :Z for i in 1:nq]
+
+        pM = multiuint_encode(TM, paulis_large)
+        pN = ntuple_encode(TN, paulis_large)
+
+        @test _countbitx(pM)      == _countbitx(pN)
+        @test _countbitz(pM)      == _countbitz(pN)
+        @test _countbitweight(pM) == _countbitweight(pN)
+
+        pM_X = multiuint_encode(TM, fill(:X, nq))
+        pM_Z = multiuint_encode(TM, fill(:Z, nq))
+        pN_X = ntuple_encode(TN, fill(:X, nq))
+        pN_Z = ntuple_encode(TN, fill(:Z, nq))
+        @test _bitcommutes(pM_X, pM_Z) == _bitcommutes(pN_X, pN_Z)
+    end
+
+    @testset "getpauli / setpauli round-trip at $(nq) qubits" for nq in (50, 128, 256)
+        T = getinttype(nq)
+        @test T <: MultiUInt
+        pstr = zero(T)
+        targets = [(1, 1), (17, 2), (33, 3), (nq, 2)]
+        for (site, p) in targets
+            pstr = setpauli(pstr, p, site)
+        end
+        for (site, p) in targets
+            @test getpauli(pstr, site) == p
+        end
+        @test getpauli(pstr, 7) == 0
+    end
+
+    @testset "propagate() matches NTupleUInt baseline (nq=$nq)" for nq in (40, 64, 128)
+        Random.seed!(2026 + nq)
+        nl = 2
+        topo   = bricklayertopology(nq; periodic=false)
+        circ   = hardwareefficientcircuit(nq, nl; topology=topo)
+        thetas = randn(length(circ))
+
+        # NTupleUInt reference (existing tested path)
+        TN = getchunkedinttype(nq; word=UInt32)
+        vps_n = VectorPauliSum(Float64, nq, TN)
+        push!(paulis(vps_n), symboltoint(TN, [:Z], [div(nq, 2)]))
+        push!(coefficients(vps_n), 1.0)
+        ref = overlapwithzero(propagate(circ, vps_n, thetas))
+
+        # MultiUInt path (automatic via getinttype, no opt-in)
+        TM = getinttype(nq)
+        vps_m = VectorPauliSum(Float64, nq, TM)
+        push!(paulis(vps_m), symboltoint(TM, [:Z], [div(nq, 2)]))
+        push!(coefficients(vps_m), 1.0)
+        got = overlapwithzero(propagate(circ, vps_m, thetas))
+
+        @test ref ≈ got atol=1e-10 rtol=1e-10
+    end
+
+    @testset "propagate() 256-qubit MultiUInt completes" begin
+        Random.seed!(31415)
+        nq = 256
+        TM = getinttype(nq)   # MultiUInt{8, UInt64}
+        @test isbitstype(TM)
+
+        topo   = bricklayertopology(nq; periodic=false)
+        circ   = hardwareefficientcircuit(nq, 1; topology=topo)
+        thetas = randn(length(circ))
+
+        vps = VectorPauliSum(Float64, nq, TM)
+        push!(paulis(vps), symboltoint(TM, [:Z], [div(nq, 2)]))
+        push!(coefficients(vps), 1.0)
+
+        result = overlapwithzero(propagate(circ, vps, thetas))
+        @test isfinite(result)
+    end
+
+end
+
+println("\nAll NTupleUInt + MultiUInt tests passed.")
