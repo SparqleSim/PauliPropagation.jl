@@ -46,48 +46,80 @@ function _clifford_to_yao!(c::ChainBlock, ::Val{:ZZpihalf}, qinds)
     return c
 end
 
+function _clifford_to_yao!(c::ChainBlock, ::Val{:SWAP}, qinds)
+    length(qinds) == 2 ||
+        throw(ArgumentError("SWAP gate should have exactly 2 qubits"))
+    push!(c, swap(c.n, qinds...))
+    return c
+end
+
 function _clifford_to_yao!(c::ChainBlock, sym::Val{S}, qinds) where {S}
     push!(c, put(c.n, (qinds...,) => _symbol_to_yao(S)))
     return c
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.CliffordGate, ::Nothing)
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.FrozenGate, thetas::AbstractVector)
+    _pauli_to_yao_gate!(c, g.gate, g.parameter)
+    return c
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.CliffordGate, ::AbstractVector)
     _clifford_to_yao!(c, Val(g.symbol), g.qinds)
     return c
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliRotation, parameter)
-    ops = [_symbol_to_yao(s) for s in g.symbols]
-    push!(c, put(c.n, (g.qinds...,) => rot(kron(ops...), parameter)))
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.CliffordGate, ::Number)
+    _clifford_to_yao!(c, Val(g.symbol), g.qinds)
     return c
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.DepolarizingNoise, parameter)
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.ParametrizedGate, thetas::AbstractVector)
+    _pauli_to_yao_gate!(c, g, popfirst!(thetas))
+    return c
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliRotation, θ::Number)
+    ops = [_symbol_to_yao(s) for s in g.symbols]
+    push!(c, put(c.n, (g.qinds...,) => rot(kron(ops...), θ)))
+    return c
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.DepolarizingNoise, p::Number)
     length(g.qind) == 1 ||
         throw(ArgumentError("Depolarizing noise should be applied to a single qubit"))
-    push!(c, put(c.n, (g.qind...,) => quantum_channel(DepolarizingError(1, parameter))))
+    push!(c, put(c.n, (g.qind...,) => quantum_channel(DepolarizingError(1, p))))
     return c
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliXNoise, parameter)
-    push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(parameter / 2, 0.0, 0.0))))
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliXNoise, p::Number)
+    push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(p / 2, 0.0, 0.0))))
     return c
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliYNoise, parameter)
-    push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(0.0, parameter / 2, 0.0))))
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliYNoise, p::Number)
+    push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(0.0, p / 2, 0.0))))
     return c
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliZNoise, parameter)
-    push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(0.0, 0.0, parameter / 2))))
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliZNoise, p::Number)
+    push!(c, put(c.n, (g.qind...,) => MixedUnitaryChannel(PauliError(0.0, 0.0, p / 2))))
     return c
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.AmplitudeDampingNoise, parameter)
-    push!(c, quantum_channel(AmplitudeDampingError(parameter)))
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.AmplitudeDampingNoise, γ::Number)
+    push!(c, quantum_channel(AmplitudeDampingError(γ)))
     return c
 end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.ParametrizedGate, ::Number)
+    error("Unsupported parametrized gate for Yao conversion: $(typeof(g))")
+end
+
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.Gate, ::AbstractVector)
+    error("Unsupported gate type for Yao conversion: $(typeof(g))")
+end
+
+const _PAULI_GATES = (I2, X, Y, Z)
 
 """
     pauli_term_to_yao(n::Int, term::Integer, coeff=1)
@@ -95,15 +127,30 @@ end
 Build a Yao observable block from an integer Pauli string on `n` qubits and scalar `coeff`.
 """
 function pauli_term_to_yao(n::Int, term::Integer, coeff=1)
-    syms = PP.inttosymbol(term, n)
-    active = [(q, _symbol_to_yao(s)) for (q, s) in enumerate(syms) if s != :I]
-    base = if isempty(active)
-        put(n, 1 => I2)
-    elseif length(active) == 1
-        q, op = only(active)
-        put(n, q => op)
+    w = PP.countweight(term)
+    if w == 0
+        base = put(n, 1 => I2)
+    elseif w == 1
+        base = put(n, 1 => I2)
+        @inbounds for i in 1:n
+            p = PP.getpauli(term, i)
+            if p != 0
+                base = put(n, i => _PAULI_GATES[p + 1])
+                break
+            end
+        end
     else
-        kron(n, [q => op for (q, op) in active]...)
+        locs = Vector{Int}(undef, w)
+        pinds = Vector{Int}(undef, w)
+        j = 0
+        @inbounds for i in 1:n
+            p = PP.getpauli(term, i)
+            p == 0 && continue
+            j += 1
+            locs[j] = i
+            pinds[j] = p
+        end
+        base = kron(n, (locs[k] => _PAULI_GATES[pinds[k] + 1] for k in 1:w)...)
     end
     return isone(coeff) ? base : Scale(coeff, base)
 end
@@ -123,14 +170,20 @@ end
 Convert an `AbstractPauliSum` to a Yao observable (`Add` of Pauli terms, possibly scaled).
 """
 function PauliPropagation.paulipropagation2yao(psum::PP.AbstractPauliSum)
-    length(psum) == 0 && throw(ArgumentError("Cannot convert empty Pauli sum to Yao observable."))
+    m = length(psum)
+    m == 0 && throw(ArgumentError("Cannot convert empty Pauli sum to Yao observable."))
     n = PP.nqubits(psum)
-    terms = zip(PP.paulis(psum), PP.coefficients(psum))
-    if length(psum) == 1
-        pauli, coeff = only(terms)
+    if m == 1
+        pauli, coeff = only(zip(PP.paulis(psum), PP.coefficients(psum)))
         return pauli_term_to_yao(n, pauli, coeff)
     end
-    return sum(pauli_term_to_yao(n, pauli, coeff) for (pauli, coeff) in terms)
+    blocks = Vector{AbstractBlock{2}}(undef, m)
+    i = 0
+    @inbounds for (pauli, coeff) in zip(PP.paulis(psum), PP.coefficients(psum))
+        i += 1
+        blocks[i] = pauli_term_to_yao(n, pauli, coeff)
+    end
+    return Add(n, blocks)
 end
 
 """
@@ -149,15 +202,7 @@ function PauliPropagation.paulipropagation2yao(n::Integer, circ, thetas)
     thetas = collect(thetas)
     c = chain(Int(n))
     for g in circ
-        if g isa PP.FrozenGate
-            _pauli_to_yao_gate!(c, g.gate, g.parameter)
-        elseif g isa PP.CliffordGate
-            _pauli_to_yao_gate!(c, g, nothing)
-        elseif g isa PP.ParametrizedGate
-            _pauli_to_yao_gate!(c, g, popfirst!(thetas))
-        else
-            error("Unsupported gate type for Yao conversion: $(typeof(g))")
-        end
+        _pauli_to_yao_gate!(c, g, thetas)
     end
     return c
 end
