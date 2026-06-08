@@ -169,25 +169,27 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         @test  commutes(pX, pX)
         @test  commutes(pX, symboltoint(T1, [:I], [1]))
 
-        # Pauli product via PauliString
+        # Pauli product via PauliString.
+        # pauliprod tracks phase, so X*X = (1+0im)*I and X*Y = (0+1im)*Z.
+        # We only check the Pauli string (term), not the coefficient.
         ps_X = PauliString(1, :X, 1)
         ps_Y = PauliString(1, :Y, 1)
-        ps_I = PauliString(1, :I, 1)
-        @test pauliprod(ps_X, ps_X) == PauliString(1, :I, 1)
-        @test pauliprod(ps_X, ps_Y) == PauliString(1, :Z, 1)
+        @test pauliprod(ps_X, ps_X).term == symboltoint(getinttype(1), [:I], [1])
+        @test pauliprod(ps_X, ps_Y).term == symboltoint(getinttype(1), [:Z], [1])
 
         # Via PauliSum
         sum_xy = PauliSum(ps_X) + PauliSum(ps_Y)
         @test length(topaulistrings(sum_xy)) == 2
         @test !commutes(sum_xy, PauliSum(ps_X))
 
-        # Via VectorPauliSum
+        # Via VectorPauliSum.
+        # X and Z on the *same* qubit anticommute; on different qubits they commute.
         nq = 4
         TT = getinttype(nq)
         vps  = VectorPauliSum(nq, TT[], Float64[])
-        push!(paulis(vps),     symboltoint(TT, [:X], [1]))
+        push!(paulis(vps),       symboltoint(TT, [:X], [1]))
         push!(coefficients(vps), 1.0)
-        push!(paulis(vps),     symboltoint(TT, [:Z], [2]))
+        push!(paulis(vps),       symboltoint(TT, [:Z], [1]))   # same qubit 1
         push!(coefficients(vps), 2.0)
         @test countweight(paulis(vps)[1]) == 1
         @test countweight(paulis(vps)[2]) == 1

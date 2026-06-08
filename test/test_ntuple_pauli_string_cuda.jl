@@ -78,32 +78,34 @@ println("CUDA runtime version: ", CUDA.runtime_version())
         nq = 64
         TM = getinttype(nq)
 
-        # Two terms that differ by a single X on qubit 5 — they should
-        # merge into a single term with the same Pauli string and the
-        # sum of coefficients, both on CPU and on GPU.
+        # Two copies of the same Pauli string with different coefficients.
+        # merge!() should combine them into a single term whose coefficient
+        # equals the sum of the two originals, on both CPU and GPU.
         base = zero(TM)
-        base = setpauli(base, 1, 1)
-        base = setpauli(base, 3, 2)
-        partner = setpauli(base, 1, 5)
+        base = setpauli(base, 1, 1)  # X on qubit 1
+        base = setpauli(base, 3, 2)  # Z on qubit 2
 
         vps_cpu = VectorPauliSum(nq, TM[], Float64[])
-        push!(paulis(vps_cpu),     base)
+        push!(paulis(vps_cpu),       base)
         push!(coefficients(vps_cpu), 0.4)
-        push!(paulis(vps_cpu),     partner)
+        push!(paulis(vps_cpu),       base)   # same string again
         push!(coefficients(vps_cpu), 0.6)
 
+        expected_coeff = 0.4 + 0.6
+
         merge!(vps_cpu)
-        cpu_n = length(paulis(vps_cpu))
+        cpu_n     = length(paulis(vps_cpu))
         cpu_coeff = sum(coefficients(vps_cpu))
 
-        vps_gpu = cu(deepcopy(vps_cpu))
+        vps_gpu   = cu(deepcopy(vps_cpu))
         merge!(vps_gpu)
-        gpu_n   = length(paulis(vps_gpu))
-        gpu_coeff = sum(coefficients(vps_gpu))
+        gpu_n     = length(paulis(vps_gpu))
+        gpu_coeff = sum(Array(coefficients(vps_gpu)))
 
-        @test cpu_n   == 1
-        @test gpu_n   == cpu_n
-        @test gpu_coeff ≈ cpu_coeff
+        @test cpu_n        == 1
+        @test cpu_coeff    ≈  expected_coeff
+        @test gpu_n        == cpu_n
+        @test gpu_coeff    ≈  cpu_coeff
     end
 
     @testset "truncate!() matches CPU (64 qubits)" begin
