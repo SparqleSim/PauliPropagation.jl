@@ -303,7 +303,7 @@ function PropagationBase.apply(gate::TransferMapGate, pstr, coeff; kwargs...)
     pauli_int = _transfermapindex(gate, pstr)
     pstrs_and_factors = gate.shifted_transfer_map[pauli_int]
     # the new pstrs are the new Paulis that need to be set and the coefficients need to be multiplied with the factors
-    return Tuple((_applytransfermap(pstr, shifted_pstr, gate.qind_mask), coeff * factor) for (shifted_pstr, factor) in pstrs_and_factors)
+    return ((_applytransfermap(pstr, shifted_pstr, gate.qind_mask), coeff * factor) for (shifted_pstr, factor) in pstrs_and_factors)
 end
 
 @inline _transfermapindex(gate::TransferMapGate{TM,STM,TMask,true}, pstr) where {TM,STM,TMask} = getpauli(pstr, gate.qind_start, gate.qind_stop)
@@ -312,25 +312,6 @@ end
 @inline function _applytransfermap(pstr::TT, shifted_pstr, qind_mask) where {TT<:PauliStringType}
     mask = TT(qind_mask)
     return (pstr & ~mask) | TT(shifted_pstr)
-end
-
-function PropagationBase.applytoall!(gate::TransferMapGate, prop_cache::PauliPropagationCache; kwargs...)
-    psum = mainsum(prop_cache)
-    aux_psum = auxsum(prop_cache)
-    empty!(aux_psum)
-    qind_mask = paulitype(prop_cache)(gate.qind_mask)
-
-    for (pstr, coeff) in psum
-        pauli_int = _transfermapindex(gate, pstr)
-        for (shifted_pstr, factor) in gate.shifted_transfer_map[pauli_int]
-            add!(aux_psum, _applytransfermap(pstr, shifted_pstr, qind_mask), coeff * factor)
-        end
-    end
-
-    empty!(psum)
-    swapsums!(prop_cache)
-
-    return prop_cache
 end
 
 ### Frozen Gates

@@ -55,8 +55,14 @@ end
     ptm = calculateptm(U)
     transfer_map = totransfermap(ptm)
     @test transfer_map isa TransferMap
+    @test length(transfer_map) == length(transfer_map.entries)
+    @test nqubits(transfer_map) == 1
+    @test occursin("4 columns", sprint(show, transfer_map))
+    @test occursin("max 2 mapped terms/column", sprint(show, transfer_map))
     @test transfer_map[0][1][1] == 0
     @test_throws BoundsError transfer_map[-1]
+    @test_throws BoundsError transfer_map[4]
+    @test length(collect(transfer_map)) == 4
     transfer_map_gate = TransferMapGate(transfer_map, 1)
     @test transfer_map_gate.transfer_map isa TransferMap
     @test_throws ArgumentError TransferMap([[(UInt8(0), 1.0)], [(UInt8(1), 1.0)]])

@@ -240,28 +240,3 @@ end
 
 requiresmerging(::PauliNoise) = false
 
-### TransferMapGate
-"""
-    applytoall!(gate::TransferMapGate, prop_cache::VectorPauliPropagationCache; kwargs...)
-
-Overload of `applytoall!` for `TransferMapGate`s and a propagating `VectorPauliSum`.
-"""
-function PropagationBase.applytoall!(gate::TransferMapGate, prop_cache::VectorPauliPropagationCache; kwargs...)
-    aux_psum = auxsum(prop_cache)
-    empty!(aux_psum)
-    qind_mask = paulitype(prop_cache)(gate.qind_mask)
-
-    for (pstr, coeff) in zip(activeterms(prop_cache), activecoeffs(prop_cache))
-        pauli_int = _transfermapindex(gate, pstr)
-        for (shifted_pstr, factor) in gate.shifted_transfer_map[pauli_int]
-            add!(aux_psum, _applytransfermap(pstr, shifted_pstr, qind_mask), coeff * factor)
-        end
-    end
-
-    new_size = length(aux_psum)
-    resize!(prop_cache, new_size)
-    swapsums!(prop_cache)
-    setactivesize!(prop_cache, new_size)
-
-    return prop_cache
-end

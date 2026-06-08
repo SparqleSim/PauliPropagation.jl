@@ -54,8 +54,8 @@ struct TransferMapGate{TM<:TransferMap,STM<:TransferMap,TMask<:PauliStringType,C
         nq = length(qinds)
         _qinds_check(qinds)
 
-        if length(transfer_map) != 4^nq
-            throw(ArgumentError("The length of `qinds` `n=$nq` does not match the length of the transfer map `$(length(transfer_map)) != 4^$nq`."))
+        if _ncolumns(transfer_map) != 4^nq
+            throw(ArgumentError("The length of `qinds` `n=$nq` does not match the transfer map column count `$(_ncolumns(transfer_map)) != 4^$nq`."))
         end
 
         mask_type = getinttype(maximum(qinds))

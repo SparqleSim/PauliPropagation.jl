@@ -60,7 +60,25 @@ function TransferMap(mat::AbstractMatrix; ptm::Bool=false)
     return totransfermap(ptm ? mat : calculateptm(mat))
 end
 
-Base.length(tmap::TransferMap) = length(tmap.offsets) - 1
+_ncolumns(tmap::TransferMap) = length(tmap.offsets) - 1
+_max_terms_per_column(tmap::TransferMap) = maximum(diff(tmap.offsets))
+
+Base.length(tmap::TransferMap) = length(tmap.entries)
+Base.IteratorSize(::Type{<:TransferMap}) = Base.SizeUnknown()
+nqubits(tmap::TransferMap) = _power_exponent(_ncolumns(tmap), 4, "TransferMap")
+
+function Base.show(io::IO, tmap::TransferMap)
+    print(
+        io,
+        "TransferMap(",
+        _ncolumns(tmap),
+        " columns, ",
+        length(tmap),
+        " entries, max ",
+        _max_terms_per_column(tmap),
+        " mapped terms/column)",
+    )
+end
 
 function Base.:(==)(left::TransferMap, right::TransferMap)
     return left.entries == right.entries && left.offsets == right.offsets
@@ -72,7 +90,7 @@ end
 
 function Base.getindex(tmap::TransferMap, pauli_int::Integer)
     index = Int(pauli_int)
-    if index < 0 || index >= length(tmap)
+    if index < 0 || index >= _ncolumns(tmap)
         throw(BoundsError(tmap, pauli_int))
     end
 
@@ -82,7 +100,7 @@ function Base.getindex(tmap::TransferMap, pauli_int::Integer)
 end
 
 function Base.iterate(tmap::TransferMap, state::Int=0)
-    state >= length(tmap) && return nothing
+    state >= _ncolumns(tmap) && return nothing
     return (tmap[state], state + 1)
 end
 
