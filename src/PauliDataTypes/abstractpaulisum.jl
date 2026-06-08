@@ -98,6 +98,7 @@ Provide the index or indices for those symbols as `qind` or `qinds`.
 The coefficient of the Pauli string in the Pauli sum defaults to 1.0.
 """
 function PropagationBase.add!(psum::AbstractPauliSum, paulis::Union{Symbol,Vector{Symbol}}, qinds, coeff=coefftype(psum)(1.0))
+    _check_qind_range(nqubits(psum), qinds)
     return add!(psum, PauliString(psum.nqubits, paulis, qinds, coeff))
 end
 

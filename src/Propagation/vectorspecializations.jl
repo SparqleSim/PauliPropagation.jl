@@ -4,6 +4,7 @@
 Overload of `applytoall!` for `PauliRotation` gates and a propagating `VectorPauliSum`.
 """
 function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::VectorPauliPropagationCache, theta; kwargs...)
+    _check_qind_range(nqubits(prop_cache), gate.qinds)
 
     # TODO: design this function in a way that it can be the default for branching gates. 
     # Think of U3 or amplitude damping 
@@ -94,6 +95,7 @@ end
 Overload of `applytoall!` for `ImaginaryPauliRotation` gates and a propagating `VectorPauliSum`.
 """
 function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::VectorPauliPropagationCache, tau; kwargs...)
+    _check_qind_range(nqubits(prop_cache), gate.qinds)
 
     # TODO: design this function in a way that it can be the default for branching gates. 
     # Think of U3 or amplitude damping 
@@ -185,6 +187,8 @@ Overload of `applytoall!` for `CliffordGate`s and a propagating `VectorPauliSum`
 function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::VectorPauliPropagationCache; kwargs...)
     # TODO: This needs to be reworked for GPU support
 
+    _check_qind_range(nqubits(prop_cache), gate.qinds)
+
     lookup_map = clifford_map[gate.symbol]
 
     # everything is done in place
@@ -216,6 +220,7 @@ requiresmerging(::CliffordGate) = false
 Overload of `applytoall!` for `PauliNoise` gates with noise strength `p` and a propagating `VectorPauliSum`.
 """
 function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::VectorPauliPropagationCache, p; kwargs...)
+    _check_qind_range(nqubits(prop_cache), gate.qind)
 
     # check that the noise strength is in the correct range
     _check_noise_strength(PauliNoise, p)

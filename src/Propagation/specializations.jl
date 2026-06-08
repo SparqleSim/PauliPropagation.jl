@@ -16,6 +16,8 @@ It fixes the type-instability of the `apply()` function and reduces moving Pauli
 `psum` and `aux_psum` are merged later.
 """
 function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropagationCache, theta; kwargs...)
+    _check_qind_range(nqubits(prop_cache), gate.qinds)
+    
     # unpack the pauli sums
     psum = mainsum(prop_cache)
     aux_psum = auxsum(prop_cache)
@@ -110,6 +112,8 @@ function PropagationBase.applymergetruncate!(gate::ImaginaryPauliRotation, prop_
 end
 
 function PauliPropagation.applytoall!(gate::ImaginaryPauliRotation, prop_cache::PauliPropagationCache, tau; kwargs...)
+    _check_qind_range(nqubits(prop_cache), gate.qinds)
+    
     # unpack the pauli sums
     psum = mainsum(prop_cache)
     aux_psum = auxsum(prop_cache)
@@ -169,6 +173,8 @@ Overload of `applytoall!` for `CliffordGate`s with a propagating `PauliSum`.
 Provides the Clifford lookup map to the default `applytoall!`, and `apply` functions.
 """
 function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache, ; kwargs...)
+    _check_qind_range(nqubits(prop_cache), gate.qinds)
+
     # greedy overload for Clifford gates
     # this is the most concrete function for them, but with an additional arg it will go into the generic applytoall!
     # there the apply function will receive the lookup map directly
@@ -207,6 +213,8 @@ end
 Overload of `applytoall!` for `PauliNoise` gates with noise strength `p` and a propagating `PauliSum`.
 """
 function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::PauliPropagationCache, p; kwargs...)
+    _check_qind_range(nqubits(prop_cache), gate.qind)
+
     # unpack the main pauli sum, aux is not needed
     psum = mainsum(prop_cache)
 
@@ -240,6 +248,8 @@ end
 Overload of `applytoall!` for `AmplitudeDampingNoise` gates and a propagating `PauliSum`.
 """
 function PropagationBase.applytoall!(gate::AmplitudeDampingNoise, prop_cache::PauliPropagationCache, gamma; kwargs...)
+    _check_qind_range(nqubits(prop_cache), gate.qind)
+
     # unpack the pauli sums
     psum = mainsum(prop_cache)
     aux_psum = auxsum(prop_cache)
