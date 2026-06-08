@@ -121,6 +121,15 @@ end
     @test propagate(issue_gate, issue_pstr) == PauliSum(issue_pstr)
     @test PauliSum(propagate(issue_gate, VectorPauliSum(issue_pstr); min_abs_coeff=0)) == PauliSum(issue_pstr)
 
+    noncontiguous_gate = CliffordGate(:CNOT, [1, 3])
+    noncontiguous_tmap = totransfermap(2, [CliffordGate(:CNOT, [1, 2])])
+    noncontiguous_tmap_gate = TransferMapGate(noncontiguous_tmap, [1, 3])
+    noncontiguous_pstr = PauliString(4, [:X, :Y, :Z], [1, 3, 4])
+    noncontiguous_psum = propagate(noncontiguous_tmap_gate, noncontiguous_pstr)
+    expected_noncontiguous_psum = propagate(noncontiguous_gate, noncontiguous_pstr)
+    @test noncontiguous_psum == expected_noncontiguous_psum
+    @test PauliSum(propagate(noncontiguous_tmap_gate, VectorPauliSum(noncontiguous_pstr); min_abs_coeff=0)) == expected_noncontiguous_psum
+
 
 
     nq = 2

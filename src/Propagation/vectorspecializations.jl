@@ -249,11 +249,12 @@ Overload of `applytoall!` for `TransferMapGate`s and a propagating `VectorPauliS
 function PropagationBase.applytoall!(gate::TransferMapGate, prop_cache::VectorPauliPropagationCache; kwargs...)
     aux_psum = auxsum(prop_cache)
     empty!(aux_psum)
+    qind_mask = paulitype(prop_cache)(gate.qind_mask)
 
     for (pstr, coeff) in zip(activeterms(prop_cache), activecoeffs(prop_cache))
-        pauli_int = getpauli(pstr, gate.qinds)
-        for (new_pstr, factor) in gate.transfer_map[pauli_int]
-            add!(aux_psum, setpauli(pstr, new_pstr, gate.qinds), coeff * factor)
+        pauli_int = _transfermapindex(gate, pstr)
+        for (shifted_pstr, factor) in gate.shifted_transfer_map[pauli_int]
+            add!(aux_psum, _applytransfermap(pstr, shifted_pstr, qind_mask), coeff * factor)
         end
     end
 
