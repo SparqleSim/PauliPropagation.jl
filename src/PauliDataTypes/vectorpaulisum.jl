@@ -41,19 +41,6 @@ Contructor for an empty `VectorPauliSum` on `nqubits` qubits. The type of the co
 """
 VectorPauliSum(::Type{CT}, nqubits::Int) where {CT} = VectorPauliSum(nqubits, getinttype(nqubits)[], CT[])
 
-"""
-    VectorPauliSum(::Type{CT}, nqubits::Int, ::Type{TT})
-
-Constructor for an empty `VectorPauliSum` on `nqubits` qubits with an explicit Pauli string type `TT`.
-Use this to construct a `VectorPauliSum` backed by `NTuplePauliString` for GPU propagation.
-
-```julia
-TT = getntupleinttype(nqubits; word=UInt32)
-vpsum = VectorPauliSum(Float64, nqubits, TT)
-```
-"""
-VectorPauliSum(::Type{CT}, nqubits::Int, ::Type{TT}) where {CT, TT} = VectorPauliSum(nqubits, TT[], CT[])
-
 PropagationBase.storage(vpsum::VectorPauliSum) = (vpsum.terms, vpsum.coeffs)
 
 """
