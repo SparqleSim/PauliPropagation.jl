@@ -124,15 +124,15 @@ println("CUDA runtime version: ", CUDA.runtime_version())
         end
 
         vps_gpu = cu(deepcopy(vps_cpu))
-        truncate!(vps_cpu; maxweight=2)
-        truncate!(vps_gpu; maxweight=2)
+        # truncate! does not accept maxweight directly; use customtruncfunc instead.
+        wtrunc = (pstr, coeff) -> countweight(pstr) > 2
+        truncate!(vps_cpu; customtruncfunc=wtrunc)
+        truncate!(vps_gpu; customtruncfunc=wtrunc)
 
         # After truncation, all surviving strings have weight ≤ 2 on
-        # both CPU and GPU. Number of survivors may differ by Float32
-        # rounding at the boundary, so check the per-string weight
-        # invariant and the count for the strictly-below-threshold set.
+        # both CPU and GPU. paulis(vps_gpu) is a CuArray, so collect to CPU first.
         @test all(countweight(p) <= 2 for p in paulis(vps_cpu))
-        @test all(countweight(p) <= 2 for p in paulis(vps_gpu))
+        @test all(countweight(p) <= 2 for p in Array(paulis(vps_gpu)))
     end
 
 end
