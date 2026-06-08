@@ -26,21 +26,22 @@ struct DepolarizingNoise <: PauliNoise
 
     @doc """
         DepolarizingNoise(qind::Int)
-        DepolarizingNoise(qind::Int, p::Real)
+        DepolarizingNoise(qind::Int, lambda::Real)
 
     A depolarizing noise channel acting on the qubit at index `qind`.
-    If `p` is provided, this returns a frozen gate with that noise strength.
-    Will damp X, Y, and Z Paulis equally by a factor of `1-p`.
+    If `lambda` is provided, this returns a frozen gate with that noise strength.
+    Will damp X, Y, and Z Paulis equally by a factor of `1-lambda`.
+    This corresponds to inserting a random Pauli operator into the circuit with probability `p=lambda`.
     """
     DepolarizingNoise(qind::Int) = (_qinds_check(qind); new(qind))
 end
 
 
 # the frozen gate version
-function DepolarizingNoise(qind::Int, p::Real)
-    _check_noise_strength(DepolarizingNoise, p)
+function DepolarizingNoise(qind::Int, lambda::Real)
+    _check_noise_strength(DepolarizingNoise, lambda)
 
-    return FrozenGate(DepolarizingNoise(qind), p)
+    return FrozenGate(DepolarizingNoise(qind), lambda)
 end
 
 function isdamped(::DepolarizingNoise, pauli::PauliType)
@@ -56,22 +57,22 @@ struct PauliXNoise <: PauliNoise
 
     @doc """
         PauliXNoise(qind::Int)
-        PauliXNoise(qind::Int, p::Real)
+        PauliXNoise(qind::Int, lambda::Real)
 
     A Pauli-X noise channel acting on the qubit at index `qind`.
-    If `p` is provided, this returns a frozen gate with that noise strength.
-    Will damp Y and Z Paulis equally by a factor of `1-p`.
-    This corresponds to inserting a Pauli X operator into the circuit with probability `p/2`.
+    If `lambda` is provided, this returns a frozen gate with that noise strength.
+    Will damp Y and Z Paulis equally by a factor of `1-lambda`.
+    This corresponds to inserting a Pauli X operator into the circuit with probability `p=lambda/2`.
     """
     PauliXNoise(qind::Int) = (_qinds_check(qind); new(qind))
 end
 
 
 # the frozen gate version
-function PauliXNoise(qind::Int, p::Real)
-    _check_noise_strength(DephasingNoise, p)
+function PauliXNoise(qind::Int, lambda::Real)
+    _check_noise_strength(PauliXNoise, lambda)
 
-    return FrozenGate(PauliXNoise(qind), p)
+    return FrozenGate(PauliXNoise(qind), lambda)
 end
 
 
@@ -88,22 +89,22 @@ struct PauliYNoise <: PauliNoise
 
     @doc """
         PauliYNoise(qind::Int)
-        PauliYNoise(qind::Int, p::Real)
+        PauliYNoise(qind::Int, lambda::Real)
 
     A Pauli-Y noise channel acting on the qubit at index `qind`.
-    If `p` is provided, this returns a frozen gate with that noise strength.
-    Will damp X and Z Paulis equally by a factor of `1-p`.
-    This corresponds to inserting a Pauli Y operator into the circuit with probability `p/2`.
+    If `lambda` is provided, this returns a frozen gate with that noise strength.
+    Will damp X and Z Paulis equally by a factor of `1-lambda`.
+    This corresponds to inserting a Pauli Y operator into the circuit with probability `p=lambda/2`.
     """
     PauliYNoise(qind::Int) = (_qinds_check(qind); new(qind))
 end
 
 
 # the frozen gate version
-function PauliYNoise(qind::Int, p::Real)
-    _check_noise_strength(DephasingNoise, p)
+function PauliYNoise(qind::Int, lambda::Real)
+    _check_noise_strength(PauliYNoise, lambda)
 
-    return FrozenGate(PauliYNoise(qind), p)
+    return FrozenGate(PauliYNoise(qind), lambda)
 end
 
 
@@ -120,22 +121,22 @@ struct PauliZNoise <: PauliNoise
 
     @doc """
         PauliZNoise(qind::Int)
-        PauliZNoise(qind::Int, p::Real)
+        PauliZNoise(qind::Int, lambda::Real)
 
     A Pauli-Z noise channel acting on the qubit at index `qind`.
-    If `p` is provided, this returns a frozen gate with that noise strength.
-    Will damp X and Y Paulis equally by a factor of `1-p`.
-    This corresponds to inserting a Pauli Z operator with probability `p/2`.
+    If `lambda` is provided, this returns a frozen gate with that noise strength.
+    Will damp X and Y Paulis equally by a factor of `1-lambda`.
+    This corresponds to inserting a Pauli Z operator with probability `p=lambda/2`.
     """
     PauliZNoise(qind::Int) = (_qinds_check(qind); new(qind))
 end
 
 
 # the frozen gate version 
-function PauliZNoise(qind::Int, p::Real)
-    _check_noise_strength(DephasingNoise, p)
+function PauliZNoise(qind::Int, lambda::Real)
+    _check_noise_strength(PauliZNoise, lambda)
 
-    return FrozenGate(PauliZNoise(qind), p)
+    return FrozenGate(PauliZNoise(qind), lambda)
 end
 
 
@@ -147,12 +148,13 @@ end
 ## DephasingNoise is an alias for PauliZNoise
 """
     DephasingNoise(qind::Int)
-    DephasingNoise(qind::Int, p::Real)
+    DephasingNoise(qind::Int, lambda::Real)
 
 This is an alias for `PauliZNoise`.
-If `p` is provided, this returns a frozen gate with that noise strength.
+If `lambda` is provided, this returns a frozen gate with that noise strength.
 A dephasing noise channel acting on the qubit at index `qind`.
-Will damp X and Y Paulis equally by a factor of `1-p`.
+Will damp X and Y Paulis equally by a factor of `1-lambda`.
+This corresponds to inserting a Pauli Z operator with probability `p=lambda/2`.
 """
 const DephasingNoise = PauliZNoise
 
@@ -164,21 +166,21 @@ struct PauliXDamping <: PauliNoise
     qind::Int
 
     #     PauliXDamping(qind::Int)
-    #     PauliXDamping(qind::Int, p::Real)
+    #     PauliXDamping(qind::Int, lambda::Real)
 
     # A Pauli-X noise damping acting on the qubit at index `qind`.
-    # If `p` is provided, this returns a frozen gate with that damping strength.
-    # Will damp X Paulis by a factor of `1-p`. 
+    # If `lambda` is provided, this returns a frozen gate with that damping strength.
+    # Will damp X Paulis by a factor of `1-lambda`. 
     # This alone is not a valid quantum channel.
     PauliXDamping(qind::Int) = (_qinds_check(qind); new(qind))
 end
 
 
 # the frozen gate version
-function PauliXDamping(qind::Int, p::Real)
-    _check_noise_strength(PauliXDamping, p)
+function PauliXDamping(qind::Int, lambda::Real)
+    _check_noise_strength(PauliXDamping, lambda)
 
-    return FrozenGate(PauliXDamping(qind), p)
+    return FrozenGate(PauliXDamping(qind), lambda)
 end
 
 
@@ -193,18 +195,18 @@ struct PauliYDamping <: PauliNoise
     #     PauliYDamping(qind::Int)
 
     # A Pauli-Y noise damping acting on the qubit at index `qind`.
-    # If `p` is provided, this returns a frozen gate with that damping strength.
-    # Will damp Y Paulis by a factor of `1-p`. 
+    # If `lambda` is provided, this returns a frozen gate with that damping strength.
+    # Will damp Y Paulis by a factor of `1-lambda`. 
     # This alone is not a valid quantum channel.
     PauliYDamping(qind::Int) = (_qinds_check(qind); new(qind))
 end
 
 
 # the frozen gate version
-function PauliYDamping(qind::Int, p::Real)
-    _check_noise_strength(PauliYDamping, p)
+function PauliYDamping(qind::Int, lambda::Real)
+    _check_noise_strength(PauliYDamping, lambda)
 
-    return FrozenGate(PauliYDamping(qind), p)
+    return FrozenGate(PauliYDamping(qind), lambda)
 end
 
 
@@ -219,18 +221,18 @@ struct PauliZDamping <: PauliNoise
     #     PauliZDamping(qind::Int)
 
     # A Pauli-Z noise damping acting on the qubit at index `qind`.
-    # If `p` is provided, this returns a frozen gate with that damping strength.
-    # Will damp Z Paulis by a factor of `1-p`. 
+    # If `lambda` is provided, this returns a frozen gate with that damping strength.
+    # Will damp Z Paulis by a factor of `1-lambda`. 
     # This alone is not a valid quantum channel.
     PauliZDamping(qind::Int) = (_qinds_check(qind); new(qind))
 end
 
 
 # the frozen gate version
-function PauliZDamping(qind::Int, p::Real)
-    _check_noise_strength(PauliZDamping, p)
+function PauliZDamping(qind::Int, lambda::Real)
+    _check_noise_strength(PauliZDamping, lambda)
 
-    return FrozenGate(PauliZDamping(qind), p)
+    return FrozenGate(PauliZDamping(qind), lambda)
 end
 
 function isdamped(::PauliZDamping, pauli::PauliType)
@@ -265,8 +267,8 @@ function AmplitudeDampingNoise(qind::Int, gamma::Real)
 end
 
 
-function _check_noise_strength(::Type{G}, p) where {G<:ParametrizedNoiseChannel}
-    if !(0 <= p <= 1)
-        throw(ArgumentError("$G parameter must be between 0 and 1. Got $p."))
+function _check_noise_strength(::Type{G}, lambda::Real) where {G<:ParametrizedNoiseChannel}
+    if !(0 <= lambda <= 1)
+        throw(ArgumentError("$G parameter must be between 0 and 1. Got $lambda."))
     end
 end
