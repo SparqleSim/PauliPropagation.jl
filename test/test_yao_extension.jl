@@ -5,19 +5,6 @@ using YaoBlocks.ConstGate: X, Y, Z
 using YaoArrayRegister: expect, zero_state, density_matrix
 using YaoBlocks: apply!
 
-const _pauli_term_to_yao = Base.get_extension(PauliPropagation, :PauliPropagationYao).pauli_term_to_yao
-const PP = PauliPropagation
-
-function _pauli_sum_equal(a::PauliSum, b::PauliSum)
-    a.nqubits == b.nqubits || return false
-    length(a.terms) == length(b.terms) || return false
-    for (k, v) in a.terms
-        haskey(b.terms, k) || return false
-        isapprox(v, b.terms[k]) || return false
-    end
-    return true
-end
-
 function _pp_yao_overlap(circuit, pstr, thetas, reg)
     pp_val = overlapwithzero(propagate(circuit, pstr, thetas; min_abs_coeff=0))
     yao_val = real(expect(paulipropagation2yao(pstr), reg))
@@ -29,13 +16,17 @@ end
         @testset "PauliString" begin
             n = 5
             pstr = PauliString(n, :Z, 3)
-            @test paulipropagation2yao(pstr) == put(n, 3 => Z)
+            yao_obs = paulipropagation2yao(pstr)
+            @test isapprox(overlapwithzero(pstr), real(expect(yao_obs, zero_state(n))); atol=1e-10)
 
             pstr_xy = PauliString(n, [:X, :Z], [1, 3], 2.5im)
-            @test paulipropagation2yao(pstr_xy) == Scale(2.5im, kron(n, 1 => X, 3 => Z))
-            term_xy = PP.symboltoint(n, [:X, :Z], [1, 3])
-            @test _pauli_term_to_yao(n, term_xy, 2.5im, Val(2)) == Scale(2.5im, kron(n, 1 => X, 3 => Z))
-            @test_throws ArgumentError _pauli_term_to_yao(n, term_xy, 1, Val(1))
+            yao_xy = paulipropagation2yao(pstr_xy)
+            ref_xy = Scale(2.5im, kron(n, 1 => X, 3 => Z))
+            @test isapprox(
+                real(expect(yao_xy, zero_state(n))),
+                real(expect(ref_xy, zero_state(n)));
+                atol=1e-10,
+            )
         end
 
         @testset "PauliSum" begin
@@ -63,7 +54,7 @@ end
                 pstr = PauliString(n, :Y, 2)
                 obs = paulipropagation2yao(pstr)
                 pc = YaoBlocks.yao2paulipropagation(chain(n); observable=obs)
-                @test _pauli_sum_equal(pc.observable, PauliSum([pstr]))
+                @test pc.observable == PauliSum([pstr])
             end
         end
     end

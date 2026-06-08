@@ -109,119 +109,25 @@ function _pauli_to_yao_gate!(c::ChainBlock, g::PP.Gate)
     error("Unsupported gate type for Yao conversion: $(typeof(g))")
 end
 
-@inline _scale_if_needed(coeff, base) = isone(coeff) ? base : Scale(coeff, base)
-
-const _GATES_BY_PG = (X, Y, Z)
-
-function _pauli_kron_base(n::Int, term::Integer, ::Val{0})
-    return put(n, 1 => I2)
-end
-
-function _pauli_kron_base(n::Int, term::Integer, ::Val{1})
-    @inbounds for i in 1:n
-        p = PP.getpauli(term, i)
-        if p == 1
-            return put(n, i => X)
-        elseif p == 2
-            return put(n, i => Y)
-        elseif p == 3
-            return put(n, i => Z)
-        end
-    end
-    error("invalid weight-1 Pauli term")
-end
-
-function _generated_kron_scan(W::Int)
-    loc_decls = [:( $(Symbol("loc_", k)) = 0 ) for k in 1:W]
-    pg_decls = [:( $(Symbol("pg_", k)) = 0 ) for k in 1:W]
-    assign_exprs = [
-        quote
-            if j == $k
-                $(Symbol("loc_", k)) = i
-                $(Symbol("pg_", k)) = p
-            end
-        end for k in 1:W
-    ]
-    return quote
-        $(loc_decls...)
-        $(pg_decls...)
-        j = 0
-        @inbounds for i in 1:n
-            p = PP.getpauli(term, i)
-            p == 0 && continue
-            j += 1
-            $(assign_exprs...)
-        end
-    end
-end
-
-function _generated_kron_unrolled_return(W::Int)
-    ex = :(error("invalid Pauli term with weight $W"))
-    for combo in Iterators.product(ntuple(_ -> 1:3, W)...)
-        pairs = [:( $(Symbol("loc_", k)) => $(_GATES_BY_PG[combo[k]])) for k in 1:W]
-        cond = W == 1 ? :($(Symbol("pg_", 1)) == $(combo[1])) :
-               Expr(:&&, [:( $(Symbol("pg_", k)) == $(combo[k])) for k in 1:W]...)
-        ex = Expr(:if, cond, :(return kron(n, $(pairs...))), ex)
-    end
-    return ex
-end
-
-"""
-    _pauli_kron_base(n, term, ::Val{W})
-
-Build a type-stable `PutBlock` or `KronBlock` for an integer Pauli string with Hamming weight `W`.
-No heap arrays are allocated; gate locations are collected in generated locals for `W ≥ 2`.
-"""
-@generated function _pauli_kron_base(n::Int, term::Integer, ::Val{2})
-    scan = _generated_kron_scan(2)
-    ret = _generated_kron_unrolled_return(2)
-    return quote
-        $scan
-        return $ret
-    end
-end
-
-@generated function _pauli_kron_base(n::Int, term::Integer, ::Val{W}) where {W}
-    W >= 3 || return :(error("internal error: weight $W should use a dedicated method"))
-    scan = _generated_kron_scan(W)
-    gate_assigns = [
-        quote
-            if $(Symbol("pg_", k)) == 1
-                $(Symbol("g_", k)) = X
-            elseif $(Symbol("pg_", k)) == 2
-                $(Symbol("g_", k)) = Y
-            else
-                $(Symbol("g_", k)) = Z
-            end
-        end for k in 1:W
-    ]
-    kron_pairs = [:( $(Symbol("loc_", k)) => $(Symbol("g_", k)) ) for k in 1:W]
-    return quote
-        $scan
-        $(gate_assigns...)
-        return kron(n, $(kron_pairs...))
-    end
-end
-
 """
     pauli_term_to_yao(n::Int, term::Integer, coeff=1)
-    pauli_term_to_yao(n::Int, term::Integer, coeff, ::Val{W})
 
 Build a Yao observable block from an integer Pauli string on `n` qubits and scalar `coeff`.
-
-Pass `Val(W)` when the Hamming weight is known (e.g. fixed `max_weight` batches) for a
-fully specialized `_pauli_kron_base` call. `W` must match `countweight(term)`.
 """
-function pauli_term_to_yao(n::Int, term::Integer, coeff, ::Val{W}) where {W}
-    PP.countweight(term) == W ||
-        throw(ArgumentError(
-            "Pauli term weight $(PP.countweight(term)) does not match Val{$W}."
-        ))
-    return _scale_if_needed(coeff, _pauli_kron_base(n, term, Val(W)))
-end
-
 function pauli_term_to_yao(n::Int, term::Integer, coeff=1)
-    return pauli_term_to_yao(n, term, coeff, Val(PP.countweight(term)))
+    if term == 0
+        return coeff * put(n, 1 => I2)
+    end
+
+    full_op = 1.0   
+    @inbounds for i in 1:n
+        p = PP.getpauli(term, i)
+        if p != 0
+            op = p == 1 ? X : p == 2 ? Y : Z
+            full_op *= put(n, i => op)
+        end
+    end
+    return coeff * full_op
 end
 
 """
