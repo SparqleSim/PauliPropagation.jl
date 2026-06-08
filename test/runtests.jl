@@ -46,8 +46,6 @@ using Random
 
     include("test_gates_against_yao.jl")
 
-    include("test_yao_observables.jl")
-
-    include("test_yao_circuits.jl")
+    include("test_yao_extension.jl")
 
 end

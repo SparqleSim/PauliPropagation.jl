@@ -58,23 +58,13 @@ function _clifford_to_yao!(c::ChainBlock, sym::Val{S}, qinds) where {S}
     return c
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.FrozenGate, thetas::AbstractVector)
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.FrozenGate)
     _pauli_to_yao_gate!(c, g.gate, g.parameter)
     return c
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.CliffordGate, ::AbstractVector)
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.CliffordGate)
     _clifford_to_yao!(c, Val(g.symbol), g.qinds)
-    return c
-end
-
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.CliffordGate, ::Number)
-    _clifford_to_yao!(c, Val(g.symbol), g.qinds)
-    return c
-end
-
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.ParametrizedGate, thetas::AbstractVector)
-    _pauli_to_yao_gate!(c, g, popfirst!(thetas))
     return c
 end
 
@@ -115,44 +105,123 @@ function _pauli_to_yao_gate!(c::ChainBlock, g::PP.ParametrizedGate, ::Number)
     error("Unsupported parametrized gate for Yao conversion: $(typeof(g))")
 end
 
-function _pauli_to_yao_gate!(c::ChainBlock, g::PP.Gate, ::AbstractVector)
+function _pauli_to_yao_gate!(c::ChainBlock, g::PP.Gate)
     error("Unsupported gate type for Yao conversion: $(typeof(g))")
 end
 
-const _PAULI_GATES = (I2, X, Y, Z)
+@inline _scale_if_needed(coeff, base) = isone(coeff) ? base : Scale(coeff, base)
 
-"""
-    pauli_term_to_yao(n::Int, term::Integer, coeff=1)
+const _GATES_BY_PG = (X, Y, Z)
 
-Build a Yao observable block from an integer Pauli string on `n` qubits and scalar `coeff`.
-"""
-function pauli_term_to_yao(n::Int, term::Integer, coeff=1)
-    w = PP.countweight(term)
-    if w == 0
-        base = put(n, 1 => I2)
-    elseif w == 1
-        base = put(n, 1 => I2)
-        @inbounds for i in 1:n
-            p = PP.getpauli(term, i)
-            if p != 0
-                base = put(n, i => _PAULI_GATES[p + 1])
-                break
-            end
+function _pauli_kron_base(n::Int, term::Integer, ::Val{0})
+    return put(n, 1 => I2)
+end
+
+function _pauli_kron_base(n::Int, term::Integer, ::Val{1})
+    @inbounds for i in 1:n
+        p = PP.getpauli(term, i)
+        if p == 1
+            return put(n, i => X)
+        elseif p == 2
+            return put(n, i => Y)
+        elseif p == 3
+            return put(n, i => Z)
         end
-    else
-        locs = Vector{Int}(undef, w)
-        pinds = Vector{Int}(undef, w)
+    end
+    error("invalid weight-1 Pauli term")
+end
+
+function _generated_kron_scan(W::Int)
+    loc_decls = [:( $(Symbol("loc_", k)) = 0 ) for k in 1:W]
+    pg_decls = [:( $(Symbol("pg_", k)) = 0 ) for k in 1:W]
+    assign_exprs = [
+        quote
+            if j == $k
+                $(Symbol("loc_", k)) = i
+                $(Symbol("pg_", k)) = p
+            end
+        end for k in 1:W
+    ]
+    return quote
+        $(loc_decls...)
+        $(pg_decls...)
         j = 0
         @inbounds for i in 1:n
             p = PP.getpauli(term, i)
             p == 0 && continue
             j += 1
-            locs[j] = i
-            pinds[j] = p
+            $(assign_exprs...)
         end
-        base = kron(n, (locs[k] => _PAULI_GATES[pinds[k] + 1] for k in 1:w)...)
     end
-    return isone(coeff) ? base : Scale(coeff, base)
+end
+
+function _generated_kron_unrolled_return(W::Int)
+    ex = :(error("invalid Pauli term with weight $W"))
+    for combo in Iterators.product(ntuple(_ -> 1:3, W)...)
+        pairs = [:( $(Symbol("loc_", k)) => $(_GATES_BY_PG[combo[k]])) for k in 1:W]
+        cond = W == 1 ? :($(Symbol("pg_", 1)) == $(combo[1])) :
+               Expr(:&&, [:( $(Symbol("pg_", k)) == $(combo[k])) for k in 1:W]...)
+        ex = Expr(:if, cond, :(return kron(n, $(pairs...))), ex)
+    end
+    return ex
+end
+
+"""
+    _pauli_kron_base(n, term, ::Val{W})
+
+Build a type-stable `PutBlock` or `KronBlock` for an integer Pauli string with Hamming weight `W`.
+No heap arrays are allocated; gate locations are collected in generated locals for `W ≥ 2`.
+"""
+@generated function _pauli_kron_base(n::Int, term::Integer, ::Val{2})
+    scan = _generated_kron_scan(2)
+    ret = _generated_kron_unrolled_return(2)
+    return quote
+        $scan
+        return $ret
+    end
+end
+
+@generated function _pauli_kron_base(n::Int, term::Integer, ::Val{W}) where {W}
+    W >= 3 || return :(error("internal error: weight $W should use a dedicated method"))
+    scan = _generated_kron_scan(W)
+    gate_assigns = [
+        quote
+            if $(Symbol("pg_", k)) == 1
+                $(Symbol("g_", k)) = X
+            elseif $(Symbol("pg_", k)) == 2
+                $(Symbol("g_", k)) = Y
+            else
+                $(Symbol("g_", k)) = Z
+            end
+        end for k in 1:W
+    ]
+    kron_pairs = [:( $(Symbol("loc_", k)) => $(Symbol("g_", k)) ) for k in 1:W]
+    return quote
+        $scan
+        $(gate_assigns...)
+        return kron(n, $(kron_pairs...))
+    end
+end
+
+"""
+    pauli_term_to_yao(n::Int, term::Integer, coeff=1)
+    pauli_term_to_yao(n::Int, term::Integer, coeff, ::Val{W})
+
+Build a Yao observable block from an integer Pauli string on `n` qubits and scalar `coeff`.
+
+Pass `Val(W)` when the Hamming weight is known (e.g. fixed `max_weight` batches) for a
+fully specialized `_pauli_kron_base` call. `W` must match `countweight(term)`.
+"""
+function pauli_term_to_yao(n::Int, term::Integer, coeff, ::Val{W}) where {W}
+    PP.countweight(term) == W ||
+        throw(ArgumentError(
+            "Pauli term weight $(PP.countweight(term)) does not match Val{$W}."
+        ))
+    return _scale_if_needed(coeff, _pauli_kron_base(n, term, Val(W)))
+end
+
+function pauli_term_to_yao(n::Int, term::Integer, coeff=1)
+    return pauli_term_to_yao(n, term, coeff, Val(PP.countweight(term)))
 end
 
 """
@@ -191,18 +260,25 @@ end
 
 Convert a PauliPropagation circuit to a Yao `ChainBlock`.
 
-`thetas` must have one entry per `ParametrizedGate` in `circ` (see `countparameters`).
-`FrozenGate` entries carry their parameter and do not consume `thetas`.
+`thetas` must have one entry per `ParametrizedGate` in `circ` (see `countparameters`), matching
+`PropagationBase.propagate!`. `FrozenGate` is a `StaticGate` with a bundled parameter and does not
+consume entries from `thetas`.
 """
 function PauliPropagation.paulipropagation2yao(n::Integer, circ, thetas)
-    PP.countparameters(circ) == length(thetas) ||
+    nparams = PP.countparameters(circ)
+    nparams == length(thetas) ||
         throw(ArgumentError(
-            "Expected $(PP.countparameters(circ)) parameters, got $(length(thetas))."
+            "The number of parameters must match the number of parametrized gates in the circuit. " *
+            "countparameters(circ)=$nparams, length(thetas)=$(length(thetas))."
         ))
     thetas = collect(thetas)
     c = chain(Int(n))
     for g in circ
-        _pauli_to_yao_gate!(c, g, thetas)
+        if g isa PP.ParametrizedGate
+            _pauli_to_yao_gate!(c, g, popfirst!(thetas))
+        else
+            _pauli_to_yao_gate!(c, g)
+        end
     end
     return c
 end
