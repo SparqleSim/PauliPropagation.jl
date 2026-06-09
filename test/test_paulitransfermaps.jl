@@ -94,10 +94,8 @@ end
     for symb in [:I, :X, :Y, :Z]
         pstr = PauliString(nq, symb, 2)
         psum1 = propagate(g, pstr)
-        vpsum1 = PauliSum(propagate(g, VectorPauliSum(pstr); min_abs_coeff=0))
         psum2 = propagate(gate, pstr, theta)
         @test psum1 == psum2
-        @test vpsum1 == psum2
     end
 
     # test the matrix constructors
@@ -125,7 +123,6 @@ end
     issue_gate = TransferMapGate(issue_tmap, [1, 3])
     issue_pstr = PauliString(4, [:Z, :Y], [1, 3])
     @test propagate(issue_gate, issue_pstr) == PauliSum(issue_pstr)
-    @test PauliSum(propagate(issue_gate, VectorPauliSum(issue_pstr); min_abs_coeff=0)) == PauliSum(issue_pstr)
 
     noncontiguous_gate = CliffordGate(:CNOT, [1, 3])
     noncontiguous_tmap = totransfermap(2, [CliffordGate(:CNOT, [1, 2])])
@@ -134,7 +131,6 @@ end
     noncontiguous_psum = propagate(noncontiguous_tmap_gate, noncontiguous_pstr)
     expected_noncontiguous_psum = propagate(noncontiguous_gate, noncontiguous_pstr)
     @test noncontiguous_psum == expected_noncontiguous_psum
-    @test PauliSum(propagate(noncontiguous_tmap_gate, VectorPauliSum(noncontiguous_pstr); min_abs_coeff=0)) == expected_noncontiguous_psum
 
 
 

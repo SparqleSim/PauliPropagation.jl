@@ -239,4 +239,3 @@ function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::VectorPauliPr
 end
 
 requiresmerging(::PauliNoise) = false
-

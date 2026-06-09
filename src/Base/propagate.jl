@@ -104,13 +104,11 @@ In particular, this function can be used to manipulate both `term_sum` and `aux_
 Note that manipulating `term_sum` on anything other than the current term will likely lead to errors.
 """
 function applytoall!(gate, prop_cache::AbstractPropagationCache, args...; kwargs...)
-    storage_type = StorageType(prop_cache)
     term_sum = mainsum(prop_cache)
     aux_term_sum = auxsum(prop_cache)
-    empty!(aux_term_sum)
 
     # Loop over all terms in term_sum and apply the gate to them.
-    for (term, coeff) in _active_terms_and_coeffs(storage_type, prop_cache, term_sum)
+    for (term, coeff) in term_sum
         # this is expected to return a tuple of (new_term, new_coeff) pairs
         # other non-allocating iterables are also possible
         terms_and_coeffs = apply(gate, term, coeff, args...; kwargs...)
@@ -125,21 +123,9 @@ function applytoall!(gate, prop_cache::AbstractPropagationCache, args...; kwargs
 
     # by default we can already swap the term sums here
     # merge!(prop_cache) will then likely not do anything
-    new_size = length(aux_term_sum)
     swapsums!(prop_cache)
-    _set_active_size_after_applytoall!(storage_type, prop_cache, new_size)
 
     return
-end
-
-_active_terms_and_coeffs(::StorageType, prop_cache, term_sum) = term_sum
-_active_terms_and_coeffs(::ArrayStorage, prop_cache, term_sum) = zip(activeterms(prop_cache), activecoeffs(prop_cache))
-
-_set_active_size_after_applytoall!(::StorageType, prop_cache, new_size) = prop_cache
-function _set_active_size_after_applytoall!(::ArrayStorage, prop_cache, new_size)
-    resize!(prop_cache, new_size)
-    setactivesize!(prop_cache, new_size)
-    return prop_cache
 end
 
 @inline function _batch_add!(storage, terms_and_coeffs)
