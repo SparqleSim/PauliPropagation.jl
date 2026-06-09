@@ -16,17 +16,10 @@ end
         @testset "PauliString" begin
             n = 5
             pstr = PauliString(n, :Z, 3)
-            yao_obs = paulipropagation2yao(pstr)
-            @test isapprox(overlapwithzero(pstr), real(expect(yao_obs, zero_state(n))); atol=1e-10)
+            @test paulipropagation2yao(pstr) == put(n, 3 => Z)
 
             pstr_xy = PauliString(n, [:X, :Z], [1, 3], 2.5im)
-            yao_xy = paulipropagation2yao(pstr_xy)
-            ref_xy = Scale(2.5im, kron(n, 1 => X, 3 => Z))
-            @test isapprox(
-                real(expect(yao_xy, zero_state(n))),
-                real(expect(ref_xy, zero_state(n)));
-                atol=1e-10,
-            )
+            @test paulipropagation2yao(pstr_xy) == Scale(2.5im, kron(n, 1 => X, 3 => Z))
         end
 
         @testset "PauliSum" begin

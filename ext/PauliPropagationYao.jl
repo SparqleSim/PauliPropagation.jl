@@ -109,25 +109,44 @@ function _pauli_to_yao_gate!(c::ChainBlock, g::PP.Gate)
     error("Unsupported gate type for Yao conversion: $(typeof(g))")
 end
 
+@inline _scale_if_needed(coeff, base) = isone(coeff) ? base : coeff * base
+
+@inline _pauli_gate(p::Integer) = p == 1 ? X : p == 2 ? Y : Z
+
 """
     pauli_term_to_yao(n::Int, term::Integer, coeff=1)
 
 Build a Yao observable block from an integer Pauli string on `n` qubits and scalar `coeff`.
+
+Uses `put` for weight-1 strings and `kron` for higher weight (Yao's recommended form for
+Pauli observables; avoids `ChainBlock` products of commuting `PutBlock`s).
 """
 function pauli_term_to_yao(n::Int, term::Integer, coeff=1)
     if term == 0
-        return coeff * put(n, 1 => I2)
+        return _scale_if_needed(coeff, put(n, 1 => I2))
     end
 
-    full_op = 1.0   
+    w = PP.countweight(term)
+    if w == 1
+        @inbounds for i in 1:n
+            p = PP.getpauli(term, i)
+            if p != 0
+                return _scale_if_needed(coeff, put(n, i => _pauli_gate(p)))
+            end
+        end
+        error("invalid weight-1 Pauli term")
+    end
+
+    pairs = Vector{Pair{Int, YaoBlocks.ConstGate.PauliGate}}(undef, w)
+    j = 0
     @inbounds for i in 1:n
         p = PP.getpauli(term, i)
         if p != 0
-            op = p == 1 ? X : p == 2 ? Y : Z
-            full_op *= put(n, i => op)
+            j += 1
+            pairs[j] = i => _pauli_gate(p)
         end
     end
-    return coeff * full_op
+    return _scale_if_needed(coeff, kron(n, pairs...))
 end
 
 """
