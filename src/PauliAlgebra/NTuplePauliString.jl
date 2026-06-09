@@ -77,17 +77,6 @@ Bits.bitsize(x::NTupleUInt) = Bits.bitsize(typeof(x))
 
 
 """
-    maxqubits(::Type{NTupleUInt{N,W}})
-    maxqubits(::NTupleUInt{N,W})
-
-Return the maximum number of qubits this type can represent.
-Overloads the `maxqubits` function from `utils.jl`.
-"""
-maxqubits(::Type{NTupleUInt{N,W}}) where {N,W} = N * 4 * sizeof(W)
-maxqubits(::NTupleUInt{N,W}) where {N,W} = maxqubits(NTupleUInt{N,W})
-
-
-"""
     getchunkedinttype(nqubits; word=UInt64)
 
 Return the smallest `NTupleUInt{N,W}` type that can represent `nqubits` qubits.

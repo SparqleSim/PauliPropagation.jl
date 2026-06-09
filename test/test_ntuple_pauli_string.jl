@@ -1,6 +1,6 @@
 using Test
 using Random
-using Bits: bitsize, mask as bits_mask
+using Bits: bitsize
 
 let dir = joinpath(@__DIR__, "..")
     dir ∉ LOAD_PATH && push!(LOAD_PATH, dir)
@@ -10,7 +10,7 @@ using PauliPropagation
 
 import PauliPropagation: _countbitweight, _countbitxy, _countbityz,
     _countbitx, _countbity, _countbitz, _bitcommutes, _bitpaulimultiply,
-    _setpaulibits, _getpaulibits
+    _setpaulibits, _getpaulibits, alternatingmask
 
 pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
 
@@ -30,10 +30,10 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         @test o == 1
         @test o != z
 
-        @test max_qubits(T32)  == 32
-        @test max_qubits(T64)  == 64
-        @test max_qubits(T128) == 128
-        @test max_qubits(T256) == 256
+        @test maxqubits(T32)  == 32
+        @test maxqubits(T64)  == 64
+        @test maxqubits(T128) == 128
+        @test maxqubits(T256) == 256
 
         x = NTupleUInt{2,UInt32}(0xDEADBEEF)
         @test x.data[1] == 0xDEADBEEF
@@ -228,7 +228,7 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
     @testset "256-qubit smoke test" begin
         T  = NTupleUInt{16,UInt32}
         nq = 256
-        @test max_qubits(T) == 256
+        @test maxqubits(T) == 256
 
         paulis_large = [isodd(i) ? :X : :Z for i in 1:nq]
         pstr = symboltoint(T, paulis_large, collect(1:nq))

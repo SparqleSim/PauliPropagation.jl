@@ -95,11 +95,13 @@ println("CUDA runtime version: ", CUDA.runtime_version())
 
         expected_coeff = 0.4 + 0.6
 
+        # Move duplicates to GPU first, then merge on each independently.
+        vps_gpu = cu(deepcopy(vps_cpu))
+
         merge!(vps_cpu)
         cpu_n     = length(paulis(vps_cpu))
         cpu_coeff = sum(coefficients(vps_cpu))
 
-        vps_gpu   = cu(deepcopy(vps_cpu))
         merge!(vps_gpu)
         gpu_n     = length(paulis(vps_gpu))
         gpu_coeff = sum(Array(coefficients(vps_gpu)))
