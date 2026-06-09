@@ -42,7 +42,7 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropa
 
     # turn the (potentially) PauliRotation gate into a MaskedPauliRotation gate
     # this allows for faster operations
-    gate_mask = symboltoint(nqubits(psum), gate.symbols, gate.qinds)
+    gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
 
     # loop over all Pauli strings and their coefficients in the Pauli sum
     for (pstr, coeff) in psum
