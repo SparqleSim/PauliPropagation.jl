@@ -50,8 +50,10 @@ println("CUDA runtime version: ", CUDA.runtime_version())
 
     @testset "propagate() matches CPU (64 qubits)" begin
         # 64 qubits: small enough for CI, exercises the full GPU path.
+        # We use getchunkedinttype here because getinttype(64) returns a
+        # BitIntegers-backed UInt128 that is not isbits on the device.
         nq = 64
-        TM = getinttype(nq)
+        TM = getchunkedinttype(nq)   # NTupleUInt{2,UInt64}
         @test TM <: NTupleUInt
         @test isbitstype(TM)
 
@@ -76,7 +78,7 @@ println("CUDA runtime version: ", CUDA.runtime_version())
 
     @testset "merge!() matches CPU (64 qubits)" begin
         nq = 64
-        TM = getinttype(nq)
+        TM = getchunkedinttype(nq)   # NTupleUInt{2,UInt64}, isbits on device
 
         # Two copies of the same Pauli string with different coefficients.
         # merge!() should combine them into a single term whose coefficient
@@ -110,7 +112,7 @@ println("CUDA runtime version: ", CUDA.runtime_version())
 
     @testset "truncate!() matches CPU (64 qubits)" begin
         nq = 64
-        TM = getinttype(nq)
+        TM = getchunkedinttype(nq)   # NTupleUInt{2,UInt64}, isbits on device
 
         Random.seed!(7)
         vps_cpu = VectorPauliSum(nq, TM[], Float64[])

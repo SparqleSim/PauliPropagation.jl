@@ -1,29 +1,19 @@
 """
-    getinttype(nqubits::Integer; word::Type=UInt64)
+    getinttype(nqubits::Integer)
 
 Function to return the smallest integer type that can hold `nqubits`.
 This is the type that will be used internally for representing Pauli strings.
-
-For `nqubits <= 32` (up to 64 bits) the original BitIntegers-backed type is
-returned. For `nqubits > 32` an `NTupleUInt{N, word}` is returned instead,
-which is GPU-friendly. `word` selects the word type (UInt32 or UInt64) used
-in the NTuple backing.
 """
-function getinttype(nqubits::Integer; word::Type=UInt64)
+function getinttype(nqubits::Integer)
     # we need 2 bits per qubit
     nbits = 2 * nqubits
 
-    # For more than 64 bits, BitIntegers-defined wide integers are not
-    # GPU-friendly. Route to NTupleUInt instead.
-    if nbits > 64
-        return getchunkedinttype(nqubits; word=word)
-    end
 
-    # up to 8.3 Million is the largest integer type we can generate
-    for trial_bits in nbits:2:64
+    # just over 8.3 Million is the largest integer type we can generate
+    for trial_bits in nbits:2:8_300_000
 
         # we can check if the number of bits is divisible by 8
-        # otherwise we know it cannot be defined
+        # othervise we know it cannot be defined
         if !(trial_bits % 8 == 0)
             continue
         end
@@ -74,7 +64,7 @@ function _countbitweight(pstr::PauliStringType)
     # get our super bit mask looking like ....1010101.
     mask = alternatingmask(pstr)
 
-    # m1 carries the 1's of the Paulis on odd bits
+    # m1 carries the 1's of the Paulis on odd bits 
     m1 = pstr & mask
 
     # m2 carries the 1's of the pauliP on even bits
@@ -124,7 +114,7 @@ end
 ### Count X, Y, Z occurrences in PauliString ###
 function _countbitx(pstr::PauliStringType)
 
-    # super bit mask
+    # super bit mask 
     mask_x = alternatingmask(pstr) # ....1010101 representing XXX...
     mask_y = mask_x << 1  # ...101010 representing YYY...
 
@@ -137,25 +127,25 @@ end
 
 function _countbity(pstr::PauliStringType)
 
-    # super bit mask
+    # super bit mask 
     mask_x = alternatingmask(pstr) # ....1010101 representing XXX...
     mask_y = mask_x << 1  # ...101010 representing YYY...
 
     # And with NOT of X to get only Y
     op = ((pstr & mask_y) >> 1 ) & (~pstr & mask_x)  # Shift right to align
-
+    
     # count 1's to get the number of Y Paulis
     return count_ones(op)
 end
 
 function _countbitz(pstr::PauliStringType)
 
-    # super bit mask
+    # super bit mask 
     mask_x = alternatingmask(pstr) # ....1010101 representing XXX...
     mask_y = mask_x << 1  # ...101010 representing YYY...
 
     # AND with both masks to extract the 1's on both bits
-    op = ((pstr & mask_y) >> 1 ) & (pstr & mask_x)
+    op = ((pstr & mask_y) >> 1 ) & (pstr & mask_x)  
 
     # count 1's to get the number of Z Paulis
     return count_ones(op)
