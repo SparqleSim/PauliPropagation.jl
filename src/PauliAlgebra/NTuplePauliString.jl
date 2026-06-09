@@ -1,5 +1,3 @@
-using Bits
-
 """
     NTupleUInt{N,W<:Union{UInt32,UInt64}}
 
@@ -72,31 +70,32 @@ Base.iszero(x::NTupleUInt) = x == zero(x)
 _wordbits(::Type{NTupleUInt{N,W}}) where {N,W} = 8 * sizeof(W)
 _wordbits(x::NTupleUInt) = _wordbits(typeof(x))
 
-# bitsize: our own definition plus an Integer fallback so the test's `bitsize(T64)` works
-# without importing from Bits explicitly.
-bitsize(::Type{NTupleUInt{N,W}}) where {N,W} = N * 8 * sizeof(W)
-bitsize(x::NTupleUInt) = bitsize(typeof(x))
-bitsize(::Type{T}) where {T<:Integer} = 8 * sizeof(T)
-bitsize(x::Integer) = bitsize(typeof(x))
-
-# Bits.jl interface: tell Bits how wide NTupleUInt is so Bits.bitsize and Bits.mask work.
+# bitsize: required by alternatingmask() in bitoperations.jl, and by maxqubits() in utils.jl.
+# We define it for NTupleUInt here; the definition for plain Integer types comes from Bits.jl.
 Bits.bitsize(::Type{NTupleUInt{N,W}}) where {N,W} = N * 8 * sizeof(W)
+Bits.bitsize(x::NTupleUInt) = Bits.bitsize(typeof(x))
+
 
 """
-    max_qubits(::Type{NTupleUInt{N,W}})
+    maxqubits(::Type{NTupleUInt{N,W}})
+    maxqubits(::NTupleUInt{N,W})
 
 Return the maximum number of qubits this type can represent.
+Overloads the `maxqubits` function from `utils.jl`.
 """
-max_qubits(::Type{NTupleUInt{N,W}}) where {N,W} = N * 4 * sizeof(W)
+maxqubits(::Type{NTupleUInt{N,W}}) where {N,W} = N * 4 * sizeof(W)
+maxqubits(::NTupleUInt{N,W}) where {N,W} = maxqubits(NTupleUInt{N,W})
 
 
 """
     getchunkedinttype(nqubits; word=UInt64)
 
 Return the smallest `NTupleUInt{N,W}` type that can represent `nqubits` qubits.
+This type is `isbitstype` and therefore compatible with GPU kernels, unlike the
+types returned by `getinttype` for large qubit counts.
 Defaults to `UInt64` words.
 """
-function getchunkedinttype(nqubits::Integer; word::Type{W}=UInt64) where {W}
+function getchunkedinttype(nqubits::Integer; word::Type{W}=UInt64) where {W<:Union{UInt32,UInt64}}
     bits_needed = 2 * nqubits
     bits_per_word = 8 * sizeof(W)
     N = cld(bits_needed, bits_per_word)
@@ -286,80 +285,6 @@ function Base.show(io::IO, a::NTupleUInt{N,W}) where {N,W}
     print(io, "NTupleUInt{$N,$W}(0x", hex, ")")
 end
 
-
-"""
-    alternatingmask(::Type{NTupleUInt{N,W}})
-
-Return the compile-time constant mask `...10101010101` used by the Pauli bit-twiddling
-routines. Even-indexed bits are 1, odd-indexed bits are 0.
-"""
-@generated function alternatingmask(::Type{NTupleUInt{N,W}}) where {N,W}
-    wb = 8 * sizeof(W)
-    word_mask = zero(W)
-    for bit in 0:(wb-1)
-        if bit % 2 == 0
-            word_mask |= W(1) << bit
-        end
-    end
-    words = ntuple(_ -> word_mask, N)
-    return :(NTupleUInt{$N,$W}($words))
-end
-
-alternatingmask(x::NTupleUInt{N,W}) where {N,W} = alternatingmask(NTupleUInt{N,W})
-
-
-function _countbitweight(pstr::NTupleUInt)
-    mask = alternatingmask(pstr)
-    m1   = pstr & mask
-    m2   = pstr & (mask << 1)
-    res  = m1 | (m2 >> 1)
-    return count_ones(res)
-end
-
-function _countbitxy(pstr::NTupleUInt)
-    mask = alternatingmask(pstr)
-    op   = pstr ⊻ (pstr >> 1)
-    op   = op & mask
-    return count_ones(op)
-end
-
-function _countbityz(pstr::NTupleUInt)
-    mask = alternatingmask(pstr)
-    op   = pstr & (mask << 1)
-    return count_ones(op)
-end
-
-function _countbitx(pstr::NTupleUInt)
-    mask_x = alternatingmask(pstr)
-    mask_y = mask_x << 1
-    xs     = (pstr & mask_x) & ((~pstr & mask_y) >> 1)
-    return count_ones(xs)
-end
-
-function _countbity(pstr::NTupleUInt)
-    mask_x = alternatingmask(pstr)
-    mask_y = mask_x << 1
-    op     = ((pstr & mask_y) >> 1) & (~pstr & mask_x)
-    return count_ones(op)
-end
-
-function _countbitz(pstr::NTupleUInt)
-    mask_x = alternatingmask(pstr)
-    mask_y = mask_x << 1
-    op     = ((pstr & mask_y) >> 1) & (pstr & mask_x)
-    return count_ones(op)
-end
-
-function _bitcommutes(pstr1::NTupleUInt, pstr2::NTupleUInt)
-    mask0  = alternatingmask(pstr1)
-    mask1  = mask0 << 1
-    aBits0 = mask0 & pstr1
-    aBits1 = (mask1 & pstr1) >> 1
-    bBits0 = mask0 & pstr2
-    bBits1 = (mask1 & pstr2) >> 1
-    flags  = (aBits0 & bBits1) ⊻ (aBits1 & bBits0)
-    return (count_ones(flags) % 2) == 0
-end
 
 _bitpaulimultiply(pstr1::NTupleUInt, pstr2::NTupleUInt) = pstr1 ⊻ pstr2
 

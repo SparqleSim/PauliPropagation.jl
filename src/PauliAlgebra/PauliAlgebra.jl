@@ -1,3 +1,4 @@
 include("bitoperations.jl")
 include("paulioperations.jl")
 include("utils.jl")
+include("NTuplePauliString.jl")

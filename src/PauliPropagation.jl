@@ -10,8 +10,6 @@ using Base.Threads
 include("./Base/Base.jl")
 using .PropagationBase
 
-include("./PauliAlgebra/NTuplePauliString.jl")
-
 include("./PauliDataTypes/PauliDataTypes.jl")
 export
     PauliStringType,
@@ -62,9 +60,7 @@ export
     getinttype,
     NTupleUInt,
     getchunkedinttype,
-    max_qubits,
-    bitsize,
-    alternatingmask
+    maxqubits
 
 include("PauliTransferMatrix/PauliTransferMatrix.jl")
 export

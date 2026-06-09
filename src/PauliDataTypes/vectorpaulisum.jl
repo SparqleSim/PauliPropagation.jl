@@ -85,6 +85,11 @@ function Base.show(io::IO, vecpsum::VectorPauliSum)
 end
 
 
+function Base.conj!(vpsum::VectorPauliSum)
+    vpsum.coeffs .= conj.(vpsum.coeffs)
+    return vpsum
+end
+
 
 function Base.sort!(vpsum::VectorPauliSum; by=nothing, kwargs...)
     # instead of using sortperm, we use sort!() on an index array 
