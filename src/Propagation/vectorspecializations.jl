@@ -211,14 +211,14 @@ requiresmerging(::CliffordGate) = false
 ##########################################
 
 """
-    applytoall!(gate::PauliNoise, prop_cache::VectorPauliPropagationCache, p; kwargs...)
+    applytoall!(gate::PauliNoise, prop_cache::VectorPauliPropagationCache, lambda; kwargs...)
 
-Overload of `applytoall!` for `PauliNoise` gates with noise strength `p` and a propagating `VectorPauliSum`.
+Overload of `applytoall!` for `PauliNoise` gates with noise strength `lambda` and a propagating `VectorPauliSum`.
 """
-function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::VectorPauliPropagationCache, p; kwargs...)
+function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::VectorPauliPropagationCache, lambda; kwargs...)
 
     # check that the noise strength is in the correct range
-    _check_noise_strength(PauliNoise, p)
+    _check_noise_strength(PauliNoise, lambda)
 
     # everything is done in place
     terms_view = activeterms(prop_cache)
@@ -231,7 +231,7 @@ function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::VectorPauliPr
         pauli = getpauli(pstr, gate.qind)
 
         if isdamped(gate, pauli)
-            coeffs_view[ii] = coeff * (1 - p)
+            coeffs_view[ii] = coeff * (1 - lambda)
         end
     end
 
