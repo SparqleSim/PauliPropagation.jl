@@ -6,7 +6,7 @@
 ###
 
 
-# Depolarzing noise channel
+# Depolarizing noise channel
 """
 Abstract type for parametrized noise channels.
 """
@@ -31,7 +31,8 @@ struct DepolarizingNoise <: PauliNoise
     A depolarizing noise channel acting on the qubit at index `qind`.
     If `lambda` is provided, this returns a frozen gate with that noise strength.
     Will damp X, Y, and Z Paulis equally by a factor of `1-lambda`.
-    This corresponds to inserting a random Pauli operator into the circuit with probability `p=lambda`.
+    In the Schrödinger picture, this corresponds to inserting a random X, Y, or Z 
+    Pauli operator into the circuit with probability `p=lambda`.
     """
     DepolarizingNoise(qind::Int) = (_qinds_check(qind); new(qind))
 end
@@ -62,7 +63,8 @@ struct PauliXNoise <: PauliNoise
     A Pauli-X noise channel acting on the qubit at index `qind`.
     If `lambda` is provided, this returns a frozen gate with that noise strength.
     Will damp Y and Z Paulis equally by a factor of `1-lambda`.
-    This corresponds to inserting a Pauli X operator into the circuit with probability `p=lambda/2`.
+    In the Schrödinger picture, this corresponds to inserting a random X 
+    Pauli operator into the circuit with probability `p=lambda/2`.
     """
     PauliXNoise(qind::Int) = (_qinds_check(qind); new(qind))
 end
@@ -94,7 +96,8 @@ struct PauliYNoise <: PauliNoise
     A Pauli-Y noise channel acting on the qubit at index `qind`.
     If `lambda` is provided, this returns a frozen gate with that noise strength.
     Will damp X and Z Paulis equally by a factor of `1-lambda`.
-    This corresponds to inserting a Pauli Y operator into the circuit with probability `p=lambda/2`.
+    In the Schrödinger picture, this corresponds to inserting a random Y 
+    Pauli operator into the circuit with probability `p=lambda/2`.
     """
     PauliYNoise(qind::Int) = (_qinds_check(qind); new(qind))
 end
@@ -126,7 +129,8 @@ struct PauliZNoise <: PauliNoise
     A Pauli-Z noise channel acting on the qubit at index `qind`.
     If `lambda` is provided, this returns a frozen gate with that noise strength.
     Will damp X and Y Paulis equally by a factor of `1-lambda`.
-    This corresponds to inserting a Pauli Z operator with probability `p=lambda/2`.
+    In the Schrödinger picture, this corresponds to inserting a random Z 
+    Pauli operator into the circuit with probability `p=lambda/2`.
     """
     PauliZNoise(qind::Int) = (_qinds_check(qind); new(qind))
 end
@@ -154,7 +158,8 @@ This is an alias for `PauliZNoise`.
 If `lambda` is provided, this returns a frozen gate with that noise strength.
 A dephasing noise channel acting on the qubit at index `qind`.
 Will damp X and Y Paulis equally by a factor of `1-lambda`.
-This corresponds to inserting a Pauli Z operator with probability `p=lambda/2`.
+In the Schrödinger picture, this corresponds to inserting a random Z 
+Pauli operator into the circuit with probability `p=lambda/2`.
 """
 const DephasingNoise = PauliZNoise
 
@@ -253,7 +258,7 @@ struct AmplitudeDampingNoise <: ParametrizedNoiseChannel
     An amplitude damping noise channel acting on the qubit at index `qind`.
     If `gamma` is provided, this returns a frozen gate with that noise strength.
     Damps X and Y Paulis by a factor of sqrt(1-gamma)
-    and splits Z into and gamma * I and (1-gamma) * Z component (in the transposed Heisenberg picture).
+    and splits Z into gamma * I and (1-gamma) * Z component (in the transposed Heisenberg picture).
     """
     AmplitudeDampingNoise(qind::Int) = (_qinds_check(qind); new(qind))
 end
