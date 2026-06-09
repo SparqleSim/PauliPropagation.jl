@@ -296,3 +296,31 @@ end
         @test result == expected_result
     end
 end
+
+@testset "Test conj" begin
+    nq = 101
+    for coeff in [1.3, -0.0 - 0.2im, 0.5 + 0.5im]
+        pstr = PauliString(nq, rand([:I, :X, :Y, :Z], nq), 1:nq, coeff)
+        psum = PauliSum(pstr)
+        vpsum = VectorPauliSum(pstr)
+        
+        conj_pstr = conj(pstr)
+        conj_psum = conj(psum)
+        conj_vpsum = conj(vpsum)
+
+        @test conj_pstr == PauliString(nq, pstr.term, conj(pstr.coeff))
+        @test conj_psum == PauliSum(conj(pstr))
+        @test conj_vpsum == VectorPauliSum(conj(pstr))
+
+        # double conj
+        @test conj(conj_pstr) == pstr
+        @test conj(conj_psum) == psum
+        @test conj(conj_vpsum) == vpsum
+
+        # in-place
+        @test conj!(psum) === psum == conj_psum
+        @test conj!(vpsum) === vpsum == conj_psum
+        
+
+    end
+end

@@ -20,6 +20,9 @@ function PropagationBase.PropagationCache(psum::AbstractPauliSum)
     return PauliPropagationCache(psum)
 end
 
+function PropagationBase.PropagationCache(psum::PauliString)
+    return PauliPropagationCache(PauliSum(psum))
+end
 
 PropagationBase.mainsum(prop_cache::AbstractPauliPropagationCache) = prop_cache.psum
 PropagationBase.auxsum(prop_cache::AbstractPauliPropagationCache) = prop_cache.aux_psum

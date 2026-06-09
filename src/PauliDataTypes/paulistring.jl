@@ -75,6 +75,10 @@ function PropagationBase.numcoefftype(pstr::PauliString{TT,CT}) where {TT,CT}
 end
 
 
+function Base.conj(pstr::PauliString)
+    return PauliString(pstr.nqubits, pstr.term, conj(pstr.coeff))
+end
+
 
 #     *(pstr::PauliString, c::Number)
 # Multiply a `PauliString` by a scalar `c`. Returns a new `PauliString`.

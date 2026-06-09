@@ -488,7 +488,7 @@ function pauliprod(psum1::PauliSum, psum2::PauliSum)
     _checktermtype(psum1, psum2)
     nq = _checknumberofqubits(psum1, psum2)
 
-    psum = PauliSum(ComplexF64, nq)
+    psum = PauliSum(nq, Dict{paulitype(psum1), ComplexF64}())
     sizehint!(psum, length(psum1))
 
     for (pstr1, coeff1) in psum1

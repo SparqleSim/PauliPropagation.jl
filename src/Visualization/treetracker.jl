@@ -73,33 +73,63 @@ function format_pauli_string(pstr::PauliString)
     return inttostring(pstr.term, pstr.nqubits)
 end
 
-"""
-    mergewith!(combine, d1::PauliSum{TT,PauliTreeTracker{T}}, d2::PauliSum{TT,PauliTreeTracker{T}}) where {TT,T}
+function PropagationBase.merge!(prop_cache::PauliPropagationCache{PauliSum{TT, PauliTreeTracker{CT}}}; kwargs...) where {TT,CT<:Number}
+    psum1 = mainsum(prop_cache)
+    psum2 = auxsum(prop_cache)
 
-Specialized mergewith! for PauliSum with PauliTreeTracker coefficients.
-This provides the context of which Pauli string is being merged and properly tracks the genealogy.
-"""
-function Base.mergewith!(combine, d1::PauliSum{TT,PauliTreeTracker{T}}, d2::PauliSum{TT,PauliTreeTracker{T}}) where {TT,T}
-    # Ensure d1 is the larger dictionary for efficiency (similar to the base implementation)
-    if length(d1) < length(d2)
-        d1, d2 = d2, d1
+    # merge the smaller into the larger 
+    if length(psum1) < length(psum2)
+        psum2, psum1 = psum1, psum2
     end
 
-    # Iterate through all entries in d2
-    for (pstr, tracker2) in d2
-        if haskey(d1.terms, pstr)
+    # Iterate through all entries in psum2
+    for (pstr, tracker2) in psum2
+        if haskey(psum1.terms, pstr)
             # This Pauli string exists in both sums - we need to merge the trackers
-            tracker1 = d1.terms[pstr]
-            merged_tracker = merge_trackers_with_context(tracker1, tracker2, pstr, d1.nqubits)
-            d1.terms[pstr] = merged_tracker
+            tracker1 = psum1.terms[pstr]
+            merged_tracker = merge_trackers_with_context(tracker1, tracker2, pstr, psum1.nqubits)
+            psum1.terms[pstr] = merged_tracker
         else
-            # This Pauli string only exists in d2 - just add it to d1
-            d1.terms[pstr] = tracker2
+            # This Pauli string only exists in psum2 - just add it to psum1
+            psum1.terms[pstr] = tracker2
         end
     end
 
-    return d1
+    empty!(psum2)
+
+    setmainsum!(prop_cache, psum1)
+    setauxsum!(prop_cache, psum2)
+
+    return prop_cache
 end
+
+# """
+#     mergewith!(combine, d1::PauliSum{TT,PauliTreeTracker{T}}, d2::PauliSum{TT,PauliTreeTracker{T}}) where {TT,T}
+
+# Specialized mergewith! for PauliSum with PauliTreeTracker coefficients.
+# This provides the context of which Pauli string is being merged and properly tracks the genealogy.
+# """
+# function Base.mergewith!(combine, d1::PauliSum{TT,PauliTreeTracker{T}}, d2::PauliSum{TT,PauliTreeTracker{T}}) where {TT,T}
+#     # Ensure d1 is the larger dictionary for efficiency (similar to the base implementation)
+#     if length(d1) < length(d2)
+#         d1, d2 = d2, d1
+#     end
+
+#     # Iterate through all entries in d2
+#     for (pstr, tracker2) in d2
+#         if haskey(d1.terms, pstr)
+#             # This Pauli string exists in both sums - we need to merge the trackers
+#             tracker1 = d1.terms[pstr]
+#             merged_tracker = merge_trackers_with_context(tracker1, tracker2, pstr, d1.nqubits)
+#             d1.terms[pstr] = merged_tracker
+#         else
+#             # This Pauli string only exists in d2 - just add it to d1
+#             d1.terms[pstr] = tracker2
+#         end
+#     end
+
+#     return d1
+# end
 
 """
     merge_trackers_with_context(tracker1::PauliTreeTracker, tracker2::PauliTreeTracker, pstr, nqubits::Int)
@@ -130,15 +160,9 @@ end
 
 ### Specialized methods for gate applications
 
-"""
-    splitapply(gate::MaskedPauliRotation, pstr::PauliStringType, coeff::PauliTreeTracker, theta; nqubits::Int, kwargs...)
-
-Specialized splitapply for PauliTreeTracker that tracks the tree evolution.
-This creates two child nodes with cos and sin coefficients.
-"""
-function splitapply(gate::MaskedPauliRotation, pstr::PauliStringType, coeff::PauliTreeTracker, theta; nqubits::Int, kwargs...)
+function splitapply(gate::PauliRotation, gate_mask::Integer, pstr::Integer, coeff::PauliTreeTracker, theta; nqubits::Int, kwargs...)
     # Get the gate name for labeling - extract first symbol from gate.symbols
-    gate_symbol = isempty(gate.symbols) ? "?" : string(gate.symbols[1])
+    gate_symbol = isempty(gate.symbols) ? "?" : prod(string(sym) for sym in gate.symbols)
     gate_name = "R$(gate_symbol)"
 
     # Add the current node to the tree if not already there
@@ -152,7 +176,7 @@ function splitapply(gate::MaskedPauliRotation, pstr::PauliStringType, coeff::Pau
     add_node!(cos_child.node_id, pstr_str, gate_name)
 
     # Get new Pauli string and sign for sin coefficient
-    new_pstr, sign = paulirotationproduct(gate, pstr)
+    new_pstr, sign = paulirotationproduct(gate_mask, pstr)
     sin_coeff_value = coeff.coeff * sin(theta) * sign
     sin_multiplier = sin(theta) * sign
     sin_child = create_child_tracker(coeff, sin_coeff_value, string(round(sin_multiplier, digits=3)), gate_name)
@@ -196,7 +220,7 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropa
         end
 
         # Apply the gate and track the split
-        pstr, coeff1, new_pstr, coeff2 = splitapply(gate_mask, pstr, coeff, theta; nqubits=psum.nqubits, kwargs...)
+        pstr, coeff1, new_pstr, coeff2 = splitapply(gate, gate_mask, pstr, coeff, theta; nqubits=psum.nqubits, kwargs...)
 
         # Set the coefficient of the original Pauli string
         set!(psum, pstr, coeff1)
@@ -218,13 +242,16 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::PauliPropag
     psum = mainsum(prop_cache)
     aux_psum = auxsum(prop_cache)
 
+    # load the lookup map like normal
+    lookup_map = clifford_map[gate.symbol]
+
+    # Format the gate name for display
+    gate_name = string(gate.symbol)
+
     # Loop over all Pauli strings and their coefficients in the Pauli sum
     for (pstr, coeff) in psum
         # Apply the Clifford gate to get the new Pauli string and coefficient
-        new_pstr, new_coeff_value = apply(gate, pstr, coeff.coeff; kwargs...)
-
-        # Format the gate name for display
-        gate_name = string(gate.symbol)
+        new_pstr, new_coeff_value = only(apply(gate, pstr, coeff.coeff, lookup_map; kwargs...))
 
         # Create a new child tracker for the transformed Pauli string
         edge_num = new_coeff_value / coeff.coeff
