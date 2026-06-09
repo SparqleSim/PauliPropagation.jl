@@ -202,16 +202,16 @@ end
 
 ### Pauli Noise
 """
-    applytoall!(gate::PauliNoise, prop_cache::PauliPropagationCache, p; kwargs...)
+    applytoall!(gate::PauliNoise, prop_cache::PauliPropagationCache, lambda; kwargs...)
 
-Overload of `applytoall!` for `PauliNoise` gates with noise strength `p` and a propagating `PauliSum`.
+Overload of `applytoall!` for `PauliNoise` gates with noise strength `lambda` and a propagating `PauliSum`.
 """
-function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::PauliPropagationCache, p; kwargs...)
+function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::PauliPropagationCache, lambda; kwargs...)
     # unpack the main pauli sum, aux is not needed
     psum = mainsum(prop_cache)
 
     # check that the noise strength is in the correct range
-    _check_noise_strength(PauliNoise, p)
+    _check_noise_strength(PauliNoise, lambda)
 
     # loop over all Pauli strings and their coefficients in the Pauli sum
     for (pstr, coeff) in psum
@@ -225,7 +225,7 @@ function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::PauliPropagat
             continue
         end
 
-        new_coeff = coeff * (1 - p)
+        new_coeff = coeff * (1 - lambda)
         # change the coefficient in psum, don't move anything to aux_psum
         set!(psum, pstr, new_coeff)
     end
