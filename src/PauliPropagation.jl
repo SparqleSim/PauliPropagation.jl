@@ -6,6 +6,7 @@ using LinearAlgebra
 using AcceleratedKernels
 const AK = AcceleratedKernels
 using Base.Threads
+include("gpu_types.jl")
 
 include("./Base/Base.jl")
 using .PropagationBase
