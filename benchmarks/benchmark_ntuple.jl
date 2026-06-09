@@ -13,8 +13,8 @@ let dir = joinpath(@__DIR__, "..")
 end
 
 using PauliPropagation
-using BenchmarkTools
 using Random
+using Printf
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +35,41 @@ function bench_section(title)
     println("=" ^ 60)
 end
 
+"""
+    bench(f; samples=100, evals=1)
+
+Minimal `@btime` replacement that needs no external package.
+Runs `f()` once to warm up, then `samples` times and reports the
+minimum elapsed wall time (matching BenchmarkTools' default metric).
+"""
+function bench(f; samples::Int=100, evals::Int=1)
+    # warm-up
+    f()
+    GC.gc()
+
+    best_ns = typemax(Int64)
+    for _ in 1:samples
+        t0 = time_ns()
+        for _ in 1:evals
+            f()
+        end
+        t1 = time_ns()
+        dt = (t1 - t0) ÷ evals
+        best_ns = min(best_ns, Int64(dt))
+    end
+
+    # format like BenchmarkTools: pick the right unit
+    if best_ns < 1_000
+        @printf("  %d ns\n", best_ns)
+    elseif best_ns < 1_000_000
+        @printf("  %.3f μs\n", best_ns / 1e3)
+    elseif best_ns < 1_000_000_000
+        @printf("  %.3f ms\n", best_ns / 1e6)
+    else
+        @printf("  %.3f s\n",  best_ns / 1e9)
+    end
+end
+
 # ── 1. propagate() ─────────────────────────────────────────────────────────────
 
 bench_section("propagate()  —  64 qubits, 2-layer hardware-efficient circuit")
@@ -48,19 +83,13 @@ let nq = 64
     T_bi = getinttype(nq)                    # UInt128 (BitIntegers)
     T_ch = getchunkedinttype(nq)             # NTupleUInt{2,UInt64}
 
-    obs_bi = VectorPauliSum(nq, T_bi[], Float64[])
-    push!(paulis(obs_bi), symboltoint(T_bi, [:Z], [div(nq, 2)]))
-    push!(coefficients(obs_bi), 1.0)
-
-    obs_ch = VectorPauliSum(nq, T_ch[], Float64[])
-    push!(paulis(obs_ch), symboltoint(T_ch, [:Z], [div(nq, 2)]))
-    push!(coefficients(obs_ch), 1.0)
+    make_obs(T) = (o = VectorPauliSum(nq, T[], Float64[]); push!(paulis(o), symboltoint(T, [:Z], [div(nq, 2)])); push!(coefficients(o), 1.0); o)
 
     println("\nBitIntegers  (UInt128):")
-    @btime propagate($circ, $obs_bi, $thetas)
+    bench(() -> propagate(circ, make_obs(T_bi), thetas))
 
     println("NTupleUInt{2,UInt64}:")
-    @btime propagate($circ, $obs_ch, $thetas)
+    bench(() -> propagate(circ, make_obs(T_ch), thetas))
 end
 
 bench_section("propagate()  —  128 qubits, 2-layer hardware-efficient circuit")
@@ -74,19 +103,13 @@ let nq = 128
     T_bi = getinttype(nq)                    # BitIntegers UInt256
     T_ch = getchunkedinttype(nq)             # NTupleUInt{4,UInt64}
 
-    obs_bi = VectorPauliSum(nq, T_bi[], Float64[])
-    push!(paulis(obs_bi), symboltoint(T_bi, [:Z], [div(nq, 2)]))
-    push!(coefficients(obs_bi), 1.0)
-
-    obs_ch = VectorPauliSum(nq, T_ch[], Float64[])
-    push!(paulis(obs_ch), symboltoint(T_ch, [:Z], [div(nq, 2)]))
-    push!(coefficients(obs_ch), 1.0)
+    make_obs(T) = (o = VectorPauliSum(nq, T[], Float64[]); push!(paulis(o), symboltoint(T, [:Z], [div(nq, 2)])); push!(coefficients(o), 1.0); o)
 
     println("\nBitIntegers  (UInt256):")
-    @btime propagate($circ, $obs_bi, $thetas)
+    bench(() -> propagate(circ, make_obs(T_bi), thetas))
 
     println("NTupleUInt{4,UInt64}:")
-    @btime propagate($circ, $obs_ch, $thetas)
+    bench(() -> propagate(circ, make_obs(T_ch), thetas))
 end
 
 # ── 2. countweight() ──────────────────────────────────────────────────────────
@@ -102,10 +125,10 @@ let nq = 128, n = 10_000
     ps_ch = make_random_pstrs(T_ch, n; nq=nq)
 
     println("\nBitIntegers  (UInt256):")
-    @btime sum(countweight(p) for p in $ps_bi)
+    bench(() -> sum(countweight(p) for p in ps_bi))
 
     println("NTupleUInt{4,UInt64}:")
-    @btime sum(countweight(p) for p in $ps_ch)
+    bench(() -> sum(countweight(p) for p in ps_ch))
 end
 
 # ── 3. pauliprod() ────────────────────────────────────────────────────────────
@@ -123,14 +146,18 @@ let nq = 128, n = 10_000
     bs_ch = make_random_pstrs(T_ch, n; nq=nq)
 
     println("\nBitIntegers  (UInt256):")
-    @btime for i in eachindex($as_bi)
-        pauliprod($as_bi[i], $bs_bi[i])
-    end
+    bench(() -> begin
+        for i in eachindex(as_bi)
+            pauliprod(as_bi[i], bs_bi[i])
+        end
+    end)
 
     println("NTupleUInt{4,UInt64}:")
-    @btime for i in eachindex($as_ch)
-        pauliprod($as_ch[i], $bs_ch[i])
-    end
+    bench(() -> begin
+        for i in eachindex(as_ch)
+            pauliprod(as_ch[i], bs_ch[i])
+        end
+    end)
 end
 
 # ── 4. sorting ────────────────────────────────────────────────────────────────
@@ -146,10 +173,10 @@ let nq = 128, n = 10_000
     ps_ch = make_random_pstrs(T_ch, n; nq=nq)
 
     println("\nBitIntegers  (UInt256):")
-    @btime sort($ps_bi)
+    bench(() -> sort(ps_bi))
 
     println("NTupleUInt{4,UInt64}:")
-    @btime sort($ps_ch)
+    bench(() -> sort(ps_ch))
 end
 
 println()
