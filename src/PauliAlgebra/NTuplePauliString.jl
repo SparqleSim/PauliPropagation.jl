@@ -278,3 +278,7 @@ end
 _bitpaulimultiply(pstr1::NTupleUInt, pstr2::NTupleUInt) = pstr1 ⊻ pstr2
 
 _paulishiftright(pstr::NTupleUInt) = pstr >> 2
+
+# Bridge so callers can pass a Type as well as an instance.
+# The @generated alternatingmask in bitoperations.jl only accepts instances.
+alternatingmask(::Type{T}) where {T<:NTupleUInt} = alternatingmask(zero(T))
