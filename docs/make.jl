@@ -90,7 +90,8 @@ makedocs(
             "examples/PP-from-Python.md",
             "examples/PP-Surrogate.md",
             "examples/Symmetry-PP.md",
-            "examples/visualization_example.md"
+            "examples/visualization_example.md",
+            "examples/circuit_compression_example.md"
         ],
 
         # these 'lower-level' files also exist, and will
