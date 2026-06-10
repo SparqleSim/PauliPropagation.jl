@@ -1,21 +1,23 @@
 """
-    getinttype(nqubits::Integer; use_multiuint::Bool=true)
+    getinttype(nqubits::Integer; use_multiuint::Bool=false)
 
 Function to return the smallest integer type that can hold `nqubits`.
 This is the type that will be used internally for representing Pauli strings.
 
-For `nqubits` requiring more than 64 bits (i.e. `nqubits > 32`), this
-returns a `MultiUInt{N, UInt64}` packed in `N = cld(2*nqubits, 64)` 64-bit
-words. `MultiUInt` is `isbits`, lives happily in GPU registers, and
-implements the exact bitwise contract this codebase uses — fixing the
-known limitation of the CUDA extension at >32 qubits (issue #145).
+By default, for `nqubits` requiring more than 64 bits (i.e. `nqubits > 32`),
+this returns a dynamically-defined `BitIntegers.jl` wide unsigned, exactly as
+before — so the default behaviour is unchanged and non-breaking.
 
-Set `use_multiuint=false` to fall back to the dynamically-defined
-BitIntegers.jl types (the pre-issue-#145 behaviour). This is mainly useful
-for benchmarking and reproducing legacy results; the BitIntegers path does
-not work on GPU.
+Pass `use_multiuint=true` to opt into `MultiUInt{N, UInt64}` (packed in
+`N = cld(2*nqubits, 64)` 64-bit words) for the >64-bit code path instead.
+`MultiUInt` is `isbits` and lives happily in GPU registers, which lifts the
+known limitation of the CUDA extension at >32 qubits (issue #145). It is
+opt-in because it is a different in-memory representation, and we do not want
+to switch the whole library over to it unless it is clearly beneficial on CPU
+too; that trade-off is what the benchmarks in `benchmark/multiuint_bench.jl`
+are there to measure.
 """
-function getinttype(nqubits::Integer; use_multiuint::Bool=true)
+function getinttype(nqubits::Integer; use_multiuint::Bool=false)
     # we need 2 bits per qubit
     nbits = 2 * nqubits
 
@@ -50,9 +52,10 @@ function getinttype(nqubits::Integer; use_multiuint::Bool=true)
         return UInt64                       # unreachable but defensive
     end
 
-    # > 64 bits: default to MultiUInt so that GPU kernels can carry the
+    # > 64 bits: opt into MultiUInt so that GPU kernels can carry the
     # Pauli string in registers (issue #145). N is the smallest number of
-    # 64-bit words that holds `nbits` bits.
+    # 64-bit words that holds `nbits` bits. Off by default — see the legacy
+    # BitIntegers path below.
     if use_multiuint
         nwords = cld(nbits, 64)
         return MultiUInt{nwords, UInt64}

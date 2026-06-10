@@ -13,18 +13,26 @@ using PauliPropagation: MultiUInt
 
 @testset "MultiUInt-backed Pauli ops (>64-bit regime, issue #145)" begin
 
-    @testset "getinttype routes to MultiUInt above 64 bits" begin
+    # MultiUInt is opt-in: it is not the default integer backing, so request it
+    # explicitly for these >64-bit integration tests.
+    gt(nq) = getinttype(nq; use_multiuint=true)
+
+    @testset "getinttype opts into MultiUInt above 64 bits" begin
         @test getinttype(32) === UInt64                              # 64 bits, native
-        @test getinttype(33) === MultiUInt{2, UInt64}                 # 66 bits
-        @test getinttype(64) === MultiUInt{2, UInt64}                 # 128 bits
-        @test getinttype(65) === MultiUInt{3, UInt64}                 # 130 bits
-        @test getinttype(128) === MultiUInt{4, UInt64}                # 256 bits
-        @test getinttype(256) === MultiUInt{8, UInt64}                # partial-reward target
+        # Default is non-breaking: >64-bit widths keep the BitIntegers types.
+        @test !(getinttype(33) <: MultiUInt)
+        @test !(getinttype(256) <: MultiUInt)
+        # Opt-in routes the >64-bit path to MultiUInt instead.
+        @test gt(33) === MultiUInt{2, UInt64}                         # 66 bits
+        @test gt(64) === MultiUInt{2, UInt64}                         # 128 bits
+        @test gt(65) === MultiUInt{3, UInt64}                         # 130 bits
+        @test gt(128) === MultiUInt{4, UInt64}                        # 256 bits
+        @test gt(256) === MultiUInt{8, UInt64}                        # partial-reward target
     end
 
     @testset "getpauli / setpauli round-trip at $(nq) qubits" for nq in (50, 128, 256)
         Random.seed!(42 + nq)
-        T = getinttype(nq)
+        T = gt(nq)
         @test T <: MultiUInt
         pstr = zero(T)
         # set a few sites to non-identity Paulis (1=X, 2=Z, 3=Y in the encoding)
@@ -41,7 +49,7 @@ using PauliPropagation: MultiUInt
     end
 
     @testset "countweight / count{x,y,z,xy,yz} at $(nq) qubits" for nq in (50, 128, 256)
-        T = getinttype(nq)
+        T = gt(nq)
         pstr = zero(T)
         # site 1: X (encoding 1), site 2: Y (encoding 3), site 3: Z (encoding 2)
         pstr = setpauli(pstr, 1, 1)
@@ -59,7 +67,7 @@ using PauliPropagation: MultiUInt
 
     @testset "commutes is symmetric and consistent (nq=$(nq))" for nq in (40, 100, 200)
         Random.seed!(nq)
-        T = getinttype(nq)
+        T = gt(nq)
         for _ in 1:10
             a = zero(T); b = zero(T)
             for k in 1:5
@@ -73,7 +81,7 @@ using PauliPropagation: MultiUInt
     end
 
     @testset "pauliprod is involutive on identical strings" for nq in (50, 128, 256)
-        T = getinttype(nq)
+        T = gt(nq)
         a = zero(T)
         for k in 1:5
             a = setpauli(a, (k % 3) + 1, k * (nq ÷ 10))
@@ -86,7 +94,7 @@ using PauliPropagation: MultiUInt
 
     @testset "ordering is total (required for sort)" for nq in (40, 128)
         Random.seed!(nq + 1)
-        T = getinttype(nq)
+        T = gt(nq)
         items = T[zero(T)]
         a = zero(T)
         for k in 1:20
@@ -100,7 +108,7 @@ using PauliPropagation: MultiUInt
 
     @testset "PauliSum can hold MultiUInt-backed PauliStrings (nq=80)" begin
         nq = 80
-        T = getinttype(nq)
+        T = gt(nq)
         @test T <: MultiUInt
         ps = PauliSum(nq)
         # Add three terms with distinct Pauli supports.

@@ -31,7 +31,8 @@ using Test
     using PauliPropagation: MultiUInt
 
     nq = 256
-    T = getinttype(nq)
+    # MultiUInt is opt-in (not the default integer backing); request it.
+    T = getinttype(nq; use_multiuint=true)
     @test T === MultiUInt{8, UInt64}
     @test isbitstype(T)
 
