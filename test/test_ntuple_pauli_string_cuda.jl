@@ -8,7 +8,7 @@
 #
 # Or via the JuliaGPU Buildkite pipeline (.buildkite/pipeline.yml).
 #
-# Tests verify that `propagate!`, `merge!`, and `truncate!` give the same
+# Tests verify that propagate!, merge!, and truncate! give the same
 # result on GPU as the existing BitIntegers-backed path on CPU.
 
 using Test
@@ -20,20 +20,20 @@ end
 
 using PauliPropagation
 
-# Load CUDA — skip gracefully if not installed.
-const _cuda_available = !isnothing(Base.find_package("CUDA"))
-if _cuda_available
-    import CUDA: CUDA, cu, CuArray
+# Try to load CUDA.jl. Skip the whole file gracefully if it is not installed
+# or if the GPU driver is not functional.
+const _cuda_loaded = try
+    @eval import CUDA: CUDA, cu, CuArray
+    true
+catch
+    false
 end
 
-if !_cuda_available
-    @warn "CUDA.jl not installed — skipping GPU tests."
+if !_cuda_loaded
+    @warn "CUDA.jl not installed -- skipping GPU tests."
+elseif !CUDA.functional()
+    @warn "CUDA not functional -- skipping GPU integration tests."
 else
-
-if !CUDA.functional()
-    @warn "CUDA not functional — skipping GPU integration tests."
-    exit(0)
-end
 
 println("CUDA device: ", CUDA.name(CUDA.device()))
 println("CUDA runtime version: ", CUDA.runtime_version())
@@ -71,14 +71,14 @@ println("CUDA runtime version: ", CUDA.runtime_version())
         # GPU path: same data moved to device, propagate, collect back
         gpu_result = overlapwithzero(collect(propagate(circ, cu(vps_cpu), thetas)))
 
-        # GPU operates in Float32; allow Float32 precision tolerance (~1e-6)
+        # GPU operates in Float32; allow Float32 precision tolerance
         @test cpu_result ≈ gpu_result rtol=1e-5
         @info "GPU propagate() 64q passed" device=string(CUDA.device())
     end
 
     @testset "merge!() matches CPU (64 qubits)" begin
         nq = 64
-        TM = getchunkedinttype(nq)   # NTupleUInt{2,UInt64}, isbits on device
+        TM = getchunkedinttype(nq)
 
         # Two copies of the same Pauli string with different coefficients.
         # merge!() should combine them into a single term whose coefficient
@@ -114,7 +114,7 @@ println("CUDA runtime version: ", CUDA.runtime_version())
 
     @testset "truncate!() matches CPU (64 qubits)" begin
         nq = 64
-        TM = getchunkedinttype(nq)   # NTupleUInt{2,UInt64}, isbits on device
+        TM = getchunkedinttype(nq)
 
         Random.seed!(7)
         vps_cpu = VectorPauliSum(nq, TM[], Float64[])
@@ -123,18 +123,17 @@ println("CUDA runtime version: ", CUDA.runtime_version())
             for _ in 1:5
                 pstr = setpauli(pstr, rand(0:3), rand(1:nq))
             end
-            push!(paulis(vps_cpu),     pstr)
+            push!(paulis(vps_cpu),       pstr)
             push!(coefficients(vps_cpu), randn())
         end
 
         vps_gpu = cu(deepcopy(vps_cpu))
-        # truncate! does not accept maxweight directly; use customtruncfunc instead.
         wtrunc = (pstr, coeff) -> countweight(pstr) > 2
         truncate!(vps_cpu; customtruncfunc=wtrunc)
         truncate!(vps_gpu; customtruncfunc=wtrunc)
 
-        # After truncation, all surviving strings have weight ≤ 2 on
-        # both CPU and GPU. paulis(vps_gpu) is a CuArray, so collect to CPU first.
+        # After truncation, all surviving strings have weight <= 2.
+        # paulis(vps_gpu) is a CuArray, so collect to CPU first.
         @test all(countweight(p) <= 2 for p in paulis(vps_cpu))
         @test all(countweight(p) <= 2 for p in Array(paulis(vps_gpu)))
     end

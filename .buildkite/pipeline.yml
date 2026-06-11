@@ -1,8 +1,7 @@
 steps:
-  # ── CPU smoke test ──────────────────────────────────────────────────────────
-  # Run the NTuplePauliString unit tests on plain CPU agents first so a basic
-  # regression is caught cheaply before we queue a GPU agent.
-  - label: ":julia: CPU – NTuplePauliString (Julia {{matrix.version}})"
+  # CPU smoke test: run NTuplePauliString unit tests on a plain CPU agent first
+  # so basic regressions are caught cheaply before queuing a GPU agent.
+  - label: ":julia: CPU - NTuplePauliString (Julia {{matrix.version}})"
     key: cpu-ntuple
     matrix:
       setup:
@@ -17,17 +16,17 @@ steps:
           dirs:
             - src
     command: |
-      julia --project=. -e 'println("--- :julia: Instantiating project")
-                            using Pkg; Pkg.instantiate()'
+      julia --project=. -e 'using Pkg; Pkg.instantiate()'
       julia --project=. test/test_ntuple_pauli_string.jl
     agents:
       queue: "juliagpu"
     timeout_in_minutes: 30
 
-  # ── CUDA integration test ───────────────────────────────────────────────────
-  # Exercises NTuplePauliString end-to-end on real GPU hardware via the
-  # PauliPropagationCUDA extension. Depends on CPU tests passing first.
-  - label: ":nvidia: CUDA – NTuplePauliString (Julia {{matrix.version}})"
+  # CUDA integration test: exercises NTuplePauliString end-to-end on real GPU
+  # hardware via the PauliPropagationCUDA extension.
+  # CUDA.jl is a weakdep so it is not installed by Pkg.instantiate() by default;
+  # we add it explicitly here before running the test.
+  - label: ":nvidia: CUDA - NTuplePauliString (Julia {{matrix.version}})"
     key: cuda-ntuple
     depends_on: cpu-ntuple
     matrix:
@@ -44,19 +43,17 @@ steps:
             - src
             - ext
     command: |
-      julia --project=. -e 'println("--- :julia: Instantiating project with CUDA")
-                            using Pkg; Pkg.instantiate()'
+      julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.add("CUDA")'
       julia --project=. test/test_ntuple_pauli_string_cuda.jl
     agents:
       queue: "juliagpu"
       cuda: "*"
     timeout_in_minutes: 60
     soft_fail:
-      - exit_status: 1   # keep the pipeline green on driver mismatches
+      - exit_status: 1
 
-  # ── Full test suite ─────────────────────────────────────────────────────────
-  # Runs the entire test/runtests.jl on a GPU agent to confirm nothing in the
-  # wider package regressed.
+  # Full test suite: runs test/runtests.jl on a GPU agent to confirm nothing
+  # in the wider package regressed.
   - label: ":julia: Full test suite (Julia {{matrix.version}})"
     key: full-tests
     depends_on: cuda-ntuple
@@ -73,8 +70,7 @@ steps:
           dirs:
             - src
     command: |
-      julia --project=. -e 'println("--- :julia: Instantiating project")
-                            using Pkg; Pkg.instantiate()'
+      julia --project=. -e 'using Pkg; Pkg.instantiate()'
       julia --project=. -e 'using Pkg; Pkg.test()'
     agents:
       queue: "juliagpu"
