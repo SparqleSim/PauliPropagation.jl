@@ -47,3 +47,5 @@ using Random
     include("test_gates_against_yao.jl")
 
 end
+include("test_gpu_types.jl")
+include("test_gpu_types.jl")

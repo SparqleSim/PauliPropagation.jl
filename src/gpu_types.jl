@@ -1,3 +1,4 @@
+export GPULongInt, get_bit, set_bit, commutes, pauliprod
 struct GPULongInt{N}
     blocks::NTuple{N, UInt64}
 end
