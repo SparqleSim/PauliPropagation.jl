@@ -1,39 +1,26 @@
+# Buildkite pipeline for the GPU-backed NTupleUInt path (issue #145).
+#
+# This pipeline targets the JuliaGPU Buildkite agents, whose only queue
+# ("juliagpu") provides CUDA hardware. There is no separate CPU-only queue
+# there, so rather than allocate a GPU agent for a CPU-only step, the cheap
+# CPU sanity checks run inline at the start of the GPU job (fail fast),
+# followed by the GPU correctness test on the agent's device. Broad CPU-matrix
+# coverage is left to the package's existing GitHub Actions CI.
+#
+# The GPU step is blocking (no soft_fail): a GPU regression must fail the build,
+# which is the whole point of gating issue #145 on real hardware.
+#
+# Note: requires the repository to be registered with the JuliaGPU Buildkite
+# organisation before these steps execute.
 steps:
-  # CPU smoke test: run NTuplePauliString unit tests on a plain CPU agent first
-  # so basic regressions are caught cheaply before queuing a GPU agent.
-  - label: ":julia: CPU - NTuplePauliString (Julia {{matrix.version}})"
-    key: cpu-ntuple
+  - label: ":nvidia: NTupleUInt CPU sanity + GPU (Julia {{matrix.version}})"
+    key: ntuple-gpu
     matrix:
       setup:
         version:
           - "1.10"
           - "1.11"
-    plugins:
-      - JuliaCI/julia#v1:
-          version: "{{matrix.version}}"
-      - JuliaCI/julia-coverage#v1:
-          codecov: true
-          dirs:
-            - src
-    command: |
-      julia --project=. -e 'using Pkg; Pkg.instantiate()'
-      julia --project=. test/test_ntuple_pauli_string.jl
-    agents:
-      queue: "juliagpu"
-    timeout_in_minutes: 30
-
-  # CUDA integration test: exercises NTuplePauliString end-to-end on real GPU
-  # hardware via the PauliPropagationCUDA extension.
-  # CUDA.jl is a weakdep so it is not installed by Pkg.instantiate() by default;
-  # we add it explicitly here before running the test.
-  - label: ":nvidia: CUDA - NTuplePauliString (Julia {{matrix.version}})"
-    key: cuda-ntuple
-    depends_on: cpu-ntuple
-    matrix:
-      setup:
-        version:
-          - "1.10"
-          - "1.11"
+          - "1.12"
     plugins:
       - JuliaCI/julia#v1:
           version: "{{matrix.version}}"
@@ -43,36 +30,13 @@ steps:
             - src
             - ext
     command: |
+      # CUDA.jl is a weakdep, so it is not pulled by Pkg.instantiate(); add it explicitly.
       julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.add("CUDA")'
+      # Cheap CPU sanity first, so a basic regression fails fast before the GPU work.
+      julia --project=. test/test_ntuple_pauli_string.jl
+      # GPU correctness on the agent's CUDA device (NTupleUInt propagate / merge / truncate).
       julia --project=. test/test_ntuple_pauli_string_cuda.jl
     agents:
       queue: "juliagpu"
       cuda: "*"
     timeout_in_minutes: 60
-    soft_fail:
-      - exit_status: 1
-
-  # Full test suite: runs test/runtests.jl on a GPU agent to confirm nothing
-  # in the wider package regressed.
-  - label: ":julia: Full test suite (Julia {{matrix.version}})"
-    key: full-tests
-    depends_on: cuda-ntuple
-    matrix:
-      setup:
-        version:
-          - "1.10"
-          - "1.11"
-    plugins:
-      - JuliaCI/julia#v1:
-          version: "{{matrix.version}}"
-      - JuliaCI/julia-coverage#v1:
-          codecov: true
-          dirs:
-            - src
-    command: |
-      julia --project=. -e 'using Pkg; Pkg.instantiate()'
-      julia --project=. -e 'using Pkg; Pkg.test()'
-    agents:
-      queue: "juliagpu"
-      cuda: "*"
-    timeout_in_minutes: 90
