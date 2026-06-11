@@ -1,0 +1,44 @@
+# Buildkite pipeline for the GPU-backed MultiUInt path (issue #145).
+#
+# This pipeline targets the JuliaGPU Buildkite agents, whose only queue
+# ("juliagpu") provides CUDA hardware -- there is no separate CPU queue there.
+# So rather than allocate a GPU agent for a CPU-only step, the cheap CPU sanity
+# checks run *inline* at the start of the GPU job (fail fast), followed by the
+# GPU correctness test on the agent's device. Broad CPU-matrix coverage is left
+# to the package's existing CPU CI.
+#
+# The GPU step is blocking (no `soft_fail`): a GPU regression must fail the
+# build, which is the whole point of gating issue #145 on real hardware.
+#
+# Note: requires the repository to be registered with the JuliaGPU Buildkite
+# organisation before these steps execute.
+
+steps:
+  - label: ":nvidia: MultiUInt CPU sanity + GPU (Julia {{matrix.version}})"
+    key: multiuint-gpu
+    matrix:
+      setup:
+        version:
+          - "1.10"
+          - "1.11"
+          - "1.12"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "{{matrix.version}}"
+      - JuliaCI/julia-coverage#v1:
+          codecov: true
+          dirs:
+            - src
+            - ext
+    command: |
+      # CUDA.jl is a weakdep, so it is not pulled by `Pkg.instantiate()`; add it explicitly.
+      julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.add("CUDA")'
+      # Cheap CPU sanity first, so a basic regression fails fast before the GPU work.
+      julia --project=. test/multiuint_smoke.jl
+      julia --project=. test/test_multiuint_integration.jl
+      # GPU correctness on the agent's CUDA device (256-qubit MultiUInt Pauli ops).
+      julia --project=. test/test_multiuint_cuda.jl
+    agents:
+      queue: "juliagpu"
+      cuda: "*"
+    timeout_in_minutes: 60
