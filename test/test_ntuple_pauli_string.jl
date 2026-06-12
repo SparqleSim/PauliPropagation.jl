@@ -95,6 +95,27 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         arr    = [b, a, big, small, c]
         sorted = sort(arr)
         @test sorted == [a, c, b, small, big]
+
+        # sortperm exercises Base's integer sort optimizations, which probe
+        # the type with Base.Checked.sub_with_overflow (regression test).
+        perm = sortperm(arr)
+        @test arr[perm] == sorted
+
+        # oneunit calls T(one(x)); needs the identity constructor (regression test).
+        @test oneunit(a) == one(a)
+        @test oneunit(NTupleInteger{2,UInt32}) == one(NTupleInteger{2,UInt32})
+
+        # Direct BigInt conversion and promotion with machine integers.
+        @test BigInt(b) == 20
+        @test BigInt(big) == BigInt(1) << 32
+        @test b == 20 && 20 == b
+        @test promote_type(NTupleInteger{2,UInt32}, Int64) == NTupleInteger{2,UInt32}
+
+        @test Base.Checked.sub_with_overflow(b, a) == (NTupleInteger{2,UInt32}(10), false)
+        @test Base.Checked.sub_with_overflow(a, b)[2] == true   # borrow -> overflow
+        @test Base.Checked.add_with_overflow(a, b) == (NTupleInteger{2,UInt32}(30), false)
+        m = typemax(NTupleInteger{2,UInt32})
+        @test Base.Checked.add_with_overflow(m, a)[2] == true   # wraps -> overflow
     end
 
     @testset "count_ones" begin

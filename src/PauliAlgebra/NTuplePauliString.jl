@@ -226,6 +226,20 @@ end
 @inline Base.:-(a::NTupleInteger{N,W}, b::Integer) where {N,W} = a - NTupleInteger{N,W}(b)
 @inline Base.:+(b::Integer, a::NTupleInteger{N,W}) where {N,W} = NTupleInteger{N,W}(b) + a
 
+# Overflow-aware arithmetic, required by Base's sortperm/sort machinery which
+# probes Integer types with sub_with_overflow to decide whether counting sort
+# applies (BitIntegers.jl defines these for its types for the same reason).
+# For unsigned arithmetic: subtraction overflows iff a < b (a borrow out),
+# and addition overflows iff the wrapped sum is smaller than an operand.
+@inline function Base.Checked.sub_with_overflow(a::NTupleInteger{N,W}, b::NTupleInteger{N,W}) where {N,W}
+    return (a - b, a < b)
+end
+
+@inline function Base.Checked.add_with_overflow(a::NTupleInteger{N,W}, b::NTupleInteger{N,W}) where {N,W}
+    s = a + b
+    return (s, s < a)
+end
+
 
 @inline function Base.count_ones(a::NTupleInteger{N,W}) where {N,W}
     s = 0
@@ -239,29 +253,42 @@ end
 Base.UInt64(a::NTupleInteger{N,W}) where {N,W} = UInt64(a.data[1])
 Base.Int(a::NTupleInteger) = Int(UInt64(a))
 
-Base.convert(::Type{NTupleInteger{N,W}}, x::Integer) where {N,W} = NTupleInteger{N,W}(x)
-Base.convert(::Type{NTupleInteger{N,W}}, x::NTupleInteger{N,W}) where {N,W} = x
+# Identity "conversion": constructing from a value that already has the exact
+# type must be a no-op. Without this, Base functions like oneunit(x), which
+# call T(one(x)), fall into the generic Integer constructor and round-trip
+# through BigInt.
+NTupleInteger{N,W}(x::NTupleInteger{N,W}) where {N, W<:Union{UInt32,UInt64}} = x
 
-function Base.convert(::Type{NTupleInteger{N2,W2}}, x::NTupleInteger{N1,W1}) where {N1,W1,N2,W2}
-    val = BigInt(0)
-    wb1 = 8 * sizeof(W1)
-    for i in N1:-1:1
-        val = (val << wb1) | BigInt(x.data[i])
-    end
-    return NTupleInteger{N2,W2}(val)
-end
-
-
-# hash must match Base integer hash so that hash(NTupleInteger(x)) == hash(x) for small x.
-function Base.hash(a::NTupleInteger{N,W}, h::UInt) where {N,W}
-    # Round-trip through BigInt and use Base.hash_integer, which is what all
-    # standard integer types use. This ensures hash(zero(T)) == hash(0) etc.
+# Direct BigInt conversion by assembling words, most significant first.
+# This bypasses GMP's generic Integer fallback, which probes the value with
+# mixed-type comparisons that need promotion rules.
+function Base.BigInt(a::NTupleInteger{N,W}) where {N,W}
     val = BigInt(0)
     wb  = 8 * sizeof(W)
     for i in N:-1:1
         val = (val << wb) | BigInt(a.data[i])
     end
-    return Base.hash_integer(val, h)
+    return val
+end
+
+# Promotion: mixed arithmetic/comparisons with machine integers promote to
+# the NTupleInteger type (matching how UInt64 + UInt8 promotes to UInt64).
+Base.promote_rule(::Type{NTupleInteger{N,W}}, ::Type{T}) where {N, W, T<:Base.BitInteger} = NTupleInteger{N,W}
+Base.promote_rule(::Type{NTupleInteger{N,W}}, ::Type{Bool}) where {N, W} = NTupleInteger{N,W}
+
+Base.convert(::Type{NTupleInteger{N,W}}, x::Integer) where {N,W} = NTupleInteger{N,W}(x)
+Base.convert(::Type{NTupleInteger{N,W}}, x::NTupleInteger{N,W}) where {N,W} = x
+
+function Base.convert(::Type{NTupleInteger{N2,W2}}, x::NTupleInteger{N1,W1}) where {N1,W1,N2,W2}
+    return NTupleInteger{N2,W2}(BigInt(x))
+end
+
+
+# hash must match Base integer hash so that hash(NTupleInteger(x)) == hash(x) for small x.
+function Base.hash(a::NTupleInteger, h::UInt)
+    # Base.hash_integer on the BigInt value is what all standard integer
+    # types use, ensuring hash(zero(T)) == hash(0) etc.
+    return Base.hash_integer(BigInt(a), h)
 end
 
 
