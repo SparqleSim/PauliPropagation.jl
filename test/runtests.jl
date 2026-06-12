@@ -46,7 +46,6 @@ using Random
 
     include("test_gates_against_yao.jl")
 
-    # NTupleUInt CPU tests (always run, no GPU required)
     include("test_ntuple_pauli_string.jl")
 
     # GPU tests. We only run them when CUDA.jl is installed AND functional.

@@ -58,7 +58,7 @@ export
     commutator,
     trace,
     getinttype,
-    NTupleUInt,
+    NTupleInteger,
     getchunkedinttype,
     maxqubits
 

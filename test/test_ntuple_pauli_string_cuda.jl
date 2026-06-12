@@ -1,6 +1,6 @@
 # test/test_ntuple_pauli_string_cuda.jl
 #
-# GPU integration tests for NTupleUInt, focused on the propagation pipeline.
+# GPU integration tests for NTupleInteger, focused on the propagation pipeline.
 #
 # Run on a CUDA-capable machine with:
 #
@@ -39,13 +39,13 @@ println("CUDA device: ", CUDA.name(CUDA.device()))
 println("CUDA runtime version: ", CUDA.runtime_version())
 
 
-@testset "NTupleUInt GPU integration" begin
+@testset "NTupleInteger GPU integration" begin
 
     @testset "isbitstype on device" begin
-        @test isbitstype(NTupleUInt{4, UInt64})
-        @test isbitstype(NTupleUInt{8, UInt32})
-        @test getchunkedinttype(256)              == NTupleUInt{8,  UInt64}
-        @test getchunkedinttype(256; word=UInt32) == NTupleUInt{16, UInt32}
+        @test isbitstype(NTupleInteger{4, UInt64})
+        @test isbitstype(NTupleInteger{8, UInt32})
+        @test getchunkedinttype(256)              == NTupleInteger{8,  UInt64}
+        @test getchunkedinttype(256; word=UInt32) == NTupleInteger{16, UInt32}
     end
 
     @testset "propagate() matches CPU (64 qubits)" begin
@@ -53,8 +53,8 @@ println("CUDA runtime version: ", CUDA.runtime_version())
         # We use getchunkedinttype here because getinttype(64) returns a
         # BitIntegers-backed UInt128 that is not isbits on the device.
         nq = 64
-        TM = getchunkedinttype(nq)   # NTupleUInt{2,UInt64}
-        @test TM <: NTupleUInt
+        TM = getchunkedinttype(nq)   # NTupleInteger{2,UInt64}
+        @test TM <: NTupleInteger
         @test isbitstype(TM)
 
         Random.seed!(42)

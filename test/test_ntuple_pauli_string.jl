@@ -14,12 +14,12 @@ import PauliPropagation: _countbitweight, _countbitxy, _countbityz,
 
 pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
 
-@testset "NTupleUInt" begin
+@testset "NTupleInteger" begin
 
-    T32  = NTupleUInt{2,  UInt32}
-    T64  = NTupleUInt{2,  UInt64}
-    T128 = NTupleUInt{8,  UInt32}
-    T256 = NTupleUInt{16, UInt32}
+    T32  = NTupleInteger{2,  UInt32}
+    T64  = NTupleInteger{2,  UInt64}
+    T128 = NTupleInteger{8,  UInt32}
+    T256 = NTupleInteger{16, UInt32}
 
     @testset "Construction and basics" begin
         z = zero(T64)
@@ -35,11 +35,11 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         @test maxqubits(T128) == 128
         @test maxqubits(T256) == 256
 
-        x = NTupleUInt{2,UInt32}(0xDEADBEEF)
+        x = NTupleInteger{2,UInt32}(0xDEADBEEF)
         @test x.data[1] == 0xDEADBEEF
         @test x.data[2] == 0x00000000
 
-        y = NTupleUInt{2,UInt32}(0xDEADBEEF_CAFEBABE)
+        y = NTupleInteger{2,UInt32}(0xDEADBEEF_CAFEBABE)
         @test y.data[1] == 0xCAFEBABE
         @test y.data[2] == 0xDEADBEEF
     end
@@ -47,17 +47,17 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
     @testset "Bitwise operations" begin
         # 0xAAAAAAAA = ...1010 1010 1010 (every other bit set, starting from bit 1)
         # 0x55555555 = ...0101 0101 0101 (every other bit set, starting from bit 0)
-        a = NTupleUInt{2,UInt32}((0xAAAAAAAA, 0xAAAAAAAA))
-        b = NTupleUInt{2,UInt32}((0x55555555, 0x55555555))
+        a = NTupleInteger{2,UInt32}((0xAAAAAAAA, 0xAAAAAAAA))
+        b = NTupleInteger{2,UInt32}((0x55555555, 0x55555555))
 
         @test (a & b) == 0
-        @test (a | b) == typemax(NTupleUInt{2,UInt32})
-        @test (a ⊻ b) == typemax(NTupleUInt{2,UInt32})
+        @test (a | b) == typemax(NTupleInteger{2,UInt32})
+        @test (a ⊻ b) == typemax(NTupleInteger{2,UInt32})
         @test (~a)     == b
     end
 
     @testset "Shift operations" begin
-        one64 = NTupleUInt{2,UInt32}(1)
+        one64 = NTupleInteger{2,UInt32}(1)
         @test (one64 << 3) == 8
         @test (one64 << 3 >> 3) == 1
 
@@ -67,7 +67,7 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
 
         @test (shifted >> 32) == one64
 
-        val = NTupleUInt{2,UInt32}((0xFFFFFFFF, 0x00000000))
+        val = NTupleInteger{2,UInt32}((0xFFFFFFFF, 0x00000000))
         shifted2 = val << 1
         @test shifted2.data[1] == 0xFFFFFFFE
         @test shifted2.data[2] == 0x00000001
@@ -77,9 +77,9 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
     end
 
     @testset "Comparison and sorting" begin
-        a = NTupleUInt{2,UInt32}(10)
-        b = NTupleUInt{2,UInt32}(20)
-        c = NTupleUInt{2,UInt32}(10)
+        a = NTupleInteger{2,UInt32}(10)
+        b = NTupleInteger{2,UInt32}(20)
+        c = NTupleInteger{2,UInt32}(10)
 
         @test a < b
         @test b > a
@@ -88,8 +88,8 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         @test a == c
         @test a != b
 
-        big   = NTupleUInt{2,UInt32}((0x00000000, 0x00000001))
-        small = NTupleUInt{2,UInt32}((0xFFFFFFFF, 0x00000000))
+        big   = NTupleInteger{2,UInt32}((0x00000000, 0x00000001))
+        small = NTupleInteger{2,UInt32}((0xFFFFFFFF, 0x00000000))
         @test small < big
 
         arr    = [b, a, big, small, c]
@@ -104,7 +104,7 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         all_ones = typemax(T64)
         @test count_ones(all_ones) == bitsize(T64)
 
-        x = NTupleUInt{2,UInt64}((0xAAAAAAAAAAAAAAAA, 0x0000000000000000))
+        x = NTupleInteger{2,UInt64}((0xAAAAAAAAAAAAAAAA, 0x0000000000000000))
         @test count_ones(x) == 32
     end
 
@@ -120,10 +120,10 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
     end
 
     @testset "Pauli count functions" begin
-        # Build the NTupleUInt reference using the production symboltoint() encoder
+        # Build the NTupleInteger reference using the production symboltoint() encoder
         # so that any mistake in the encoder will surface here, not be papered over.
         paulis7 = [:X, :Y, :Z, :I, :X, :Y, :Z]
-        T1 = NTupleUInt{1,UInt32}
+        T1 = NTupleInteger{1,UInt32}
         pstr  = symboltoint(T1, paulis7, collect(1:length(paulis7)))
         ref32 = symboltoint(UInt32, paulis7, collect(1:length(paulis7)))
 
@@ -141,7 +141,7 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
     end
 
     @testset "Pauli product" begin
-        T1 = NTupleUInt{1,UInt32}
+        T1 = NTupleInteger{1,UInt32}
         pX = symboltoint(T1, [:X], [1])
         pY = symboltoint(T1, [:Y], [1])
         pZ = symboltoint(T1, [:Z], [1])
@@ -157,7 +157,7 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         # Drive commutation and Pauli products through the high-level
         # PauliString / PauliSum / VectorPauliSum API to show the new type
         # is compatible end-to-end.
-        T1 = NTupleUInt{1,UInt32}
+        T1 = NTupleInteger{1,UInt32}
 
         pX = symboltoint(T1, [:X], [1])
         pY = symboltoint(T1, [:Y], [1])
@@ -197,7 +197,7 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
     end
 
     @testset "getpauli / setpauli round-trip" begin
-        T    = NTupleUInt{4,UInt32}
+        T    = NTupleInteger{4,UInt32}
         pstr = zero(T)
         syms = [:X, :Y, :Z, :I, :X, :Z, :Y]
 
@@ -215,7 +215,7 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         nq         = 15
         paulis_ref = [:X, :Y, :Z, :I, :X, :Y, :Z, :I, :X, :Y, :Z, :I, :X, :Y, :Z]
         ref        = symboltoint(UInt64, paulis_ref, collect(1:length(paulis_ref)))
-        ntp        = symboltoint(NTupleUInt{2,UInt32}, paulis_ref, collect(1:length(paulis_ref)))
+        ntp        = symboltoint(NTupleInteger{2,UInt32}, paulis_ref, collect(1:length(paulis_ref)))
 
         @test _countbitweight(ntp) == _countbitweight(ref)
         @test _countbitxy(ntp)     == _countbitxy(ref)
@@ -226,7 +226,7 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
     end
 
     @testset "256-qubit smoke test" begin
-        T  = NTupleUInt{16,UInt32}
+        T  = NTupleInteger{16,UInt32}
         nq = 256
         @test maxqubits(T) == 256
 
@@ -244,10 +244,10 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
     end
 
     @testset "getchunkedinttype factory" begin
-        @test getchunkedinttype(16;  word=UInt32) == NTupleUInt{1,  UInt32}
-        @test getchunkedinttype(64;  word=UInt32) == NTupleUInt{4,  UInt32}
-        @test getchunkedinttype(256; word=UInt32) == NTupleUInt{16, UInt32}
-        @test getchunkedinttype(128; word=UInt64) == NTupleUInt{4,  UInt64}
+        @test getchunkedinttype(16;  word=UInt32) == NTupleInteger{1,  UInt32}
+        @test getchunkedinttype(64;  word=UInt32) == NTupleInteger{4,  UInt32}
+        @test getchunkedinttype(256; word=UInt32) == NTupleInteger{16, UInt32}
+        @test getchunkedinttype(128; word=UInt64) == NTupleInteger{4,  UInt64}
     end
 
     @testset "propagate() matches BitIntegers baseline" begin
