@@ -135,6 +135,28 @@ Therefore, the trace is equivalent to the sum over the coefficients of Pauli str
 
 All of the above can be addressed by writing the additional missing code due to the nice extensibility of Julia.
 
+## Yao.jl integration
+
+Load `Yao` or `YaoBlocks` together with `PauliPropagation` to convert observables to Yao blocks:
+
+```julia
+using PauliPropagation, Yao
+
+pstr = PauliString(10, :Z, 5)
+yao_obs = paulipropagation2yao(pstr)   # e.g. put(10, 5 => Z)
+psum = PauliSum([PauliString(10, :X, 1), PauliString(10, :Z, 2, 0.5)])
+yao_ham = paulipropagation2yao(psum)
+```
+
+Circuits convert the same way:
+
+```julia
+thetas = randn(countparameters(circuit))
+yao_circ = paulipropagation2yao(nqubits, circuit, thetas)
+```
+
+The inverse (`yao2paulipropagation`) remains in [YaoBlocks](https://github.com/QuantumBFS/Yao.jl) when its PauliPropagation extension is loaded.
+
 ## Upcoming Features
 This package is still work-in-progress. You will probably find certain features that you would like to have and that are currently missing.\
 Here are some features that we want to implement in the future. Feel free to contribute!

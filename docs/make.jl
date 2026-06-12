@@ -87,6 +87,7 @@ makedocs(
             "examples/ex_ttfi_op_evolution.md",
             "examples/imaginary-time-evolution.md",
             "examples/introduction-example-error-mitigation.md",
+            "examples/circuit_compression_example.md",
             "examples/PP-from-Python.md",
             "examples/PP-Surrogate.md",
             "examples/Symmetry-PP.md",
