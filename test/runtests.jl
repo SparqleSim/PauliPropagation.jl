@@ -46,6 +46,8 @@ using Random
 
     include("test_gates_against_yao.jl")
 
+    include("test_yao_extension.jl")
+
     include("test_ntuple_pauli_string.jl")
 
     # GPU tests. We only run them when CUDA.jl is installed AND functional.
