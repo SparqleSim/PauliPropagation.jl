@@ -154,7 +154,7 @@ end
 
 Convert a `PauliString` to a Yao observable (`PutBlock`, `KronBlock`, or `Scale` thereof).
 """
-function PauliPropagation.paulipropagation2yao(pstr::PP.PauliString)
+function paulipropagation2yao(pstr::PP.PauliString)
     return pauli_term_to_yao(pstr.nqubits, pstr.term, pstr.coeff)
 end
 
@@ -163,7 +163,7 @@ end
 
 Convert an `AbstractPauliSum` to a Yao observable (`Add` of Pauli terms, possibly scaled).
 """
-function PauliPropagation.paulipropagation2yao(psum::PP.AbstractPauliSum)
+function paulipropagation2yao(psum::PP.AbstractPauliSum)
     m = length(psum)
     m == 0 && throw(ArgumentError("Cannot convert empty Pauli sum to Yao observable."))
     n = PP.nqubits(psum)
@@ -189,7 +189,7 @@ Convert a PauliPropagation circuit to a Yao `ChainBlock`.
 `PropagationBase.propagate!`. `FrozenGate` is a `StaticGate` with a bundled parameter and does not
 consume entries from `thetas`.
 """
-function PauliPropagation.paulipropagation2yao(n::Integer, circ, thetas)
+function paulipropagation2yao(n::Integer, circ, thetas)
     nparams = PP.countparameters(circ)
     nparams == length(thetas) ||
         throw(ArgumentError(

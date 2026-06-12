@@ -207,25 +207,26 @@ export
     propagate_with_tree_tracking
 
 """
-    paulipropagation2yao(pstr::PauliString)
-    paulipropagation2yao(psum::AbstractPauliSum)
-    paulipropagation2yao(n::Integer, circ, thetas)
+    paulipropagation2yao(args...)
 
 Convert PauliPropagation observables or circuits to Yao blocks.
 
+Supported call patterns (when Yao/YaoBlocks is loaded):
+
+- `paulipropagation2yao(pstr::PauliString)`
+- `paulipropagation2yao(psum::AbstractPauliSum)`
+- `paulipropagation2yao(n::Integer, circ, thetas)`
+
 Load Yao or YaoBlocks first (`using Yao`).
 """
-function paulipropagation2yao(::PauliString)
-    error("Load Yao or YaoBlocks (`using Yao`) to use `paulipropagation2yao`.")
+function paulipropagation2yao(args...)
+    ext = Base.get_extension(PauliPropagation, :PauliPropagationYao)
+    if ext === nothing
+        error("Load Yao or YaoBlocks (`using Yao`) to use `paulipropagation2yao`.")
+    end
+    return ext.paulipropagation2yao(args...)
 end
 
-function paulipropagation2yao(::AbstractPauliSum)
-    error("Load Yao or YaoBlocks (`using Yao`) to use `paulipropagation2yao`.")
-end
-
-function paulipropagation2yao(::Integer, circ, thetas)
-    error("Load Yao or YaoBlocks (`using Yao`) to use `paulipropagation2yao`.")
-end
 export paulipropagation2yao
 
 # # experimental vector propagation 
