@@ -49,16 +49,27 @@ using Random
     # NTupleUInt CPU tests (always run, no GPU required)
     include("test_ntuple_pauli_string.jl")
 
-    # GPU tests — only run when CUDA.jl is loadable and functional.
-    try
+    # GPU tests. We only run them when CUDA.jl is installed AND functional.
+    # Loading CUDA and the functional() check are wrapped in try/catch so a
+    # missing or broken install only warns and skips. The include() that runs
+    # the actual tests is deliberately OUTSIDE the try/catch, so a genuine
+    # failure inside the GPU tests propagates and fails the suite rather than
+    # being swallowed and reported as "CUDA not available".
+    cuda_ready = try
         cuda = Base.require(Base.PkgId(Base.UUID("052768ef-5323-5732-b1bb-66c8b64840ba"), "CUDA"))
         if cuda.functional()
-            include("test_ntuple_pauli_string_cuda.jl")
+            true
         else
-            @info "CUDA not functional — skipping GPU tests."
+            @warn "CUDA.jl is installed but not functional; skipping GPU tests."
+            false
         end
     catch
-        @info "CUDA.jl not available — skipping GPU tests."
+        @warn "CUDA.jl is not installed; skipping GPU tests."
+        false
+    end
+
+    if cuda_ready
+        include("test_ntuple_pauli_string_cuda.jl")
     end
 
 end
