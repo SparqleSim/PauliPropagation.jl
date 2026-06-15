@@ -9,7 +9,7 @@ end
 using PauliPropagation
 
 import PauliPropagation: _countbitweight, _countbitxy, _countbityz,
-    _countbitx, _countbity, _countbitz, _bitcommutes, _bitpaulimultiply,
+    _countbitx, _countbity, _countbitz, _bitcommutes,
     _setpaulibits, _getpaulibits, alternatingmask
 
 pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
@@ -36,12 +36,25 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         @test maxqubits(T256) == 256
 
         x = NTupleInteger{2,UInt32}(0xDEADBEEF)
-        @test x.data[1] == 0xDEADBEEF
-        @test x.data[2] == 0x00000000
+        @test x._limbs[1] == 0xDEADBEEF
+        @test x._limbs[2] == 0x00000000
 
         y = NTupleInteger{2,UInt32}(0xDEADBEEF_CAFEBABE)
-        @test y.data[1] == 0xCAFEBABE
-        @test y.data[2] == 0xDEADBEEF
+        @test y._limbs[1] == 0xCAFEBABE
+        @test y._limbs[2] == 0xDEADBEEF
+
+        # chunks() is the public accessor for the limbs.
+        @test chunks(y) == (0xCAFEBABE, 0xDEADBEEF)
+        @test chunks(y) === y._limbs
+
+        # typemin of an unsigned type is zero.
+        @test typemin(T64) == zero(T64)
+        @test typemin(y) == zero(y)
+
+        # UInt64 conversion must assemble BOTH 32-bit limbs, not just the low one.
+        @test UInt64(y) == 0xDEADBEEF_CAFEBABE
+        @test UInt64(NTupleInteger{2,UInt64}(0x1234)) == 0x1234
+        @test UInt32(x) == 0xDEADBEEF
     end
 
     @testset "Bitwise operations" begin
@@ -62,15 +75,15 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         @test (one64 << 3 >> 3) == 1
 
         shifted = one64 << 32
-        @test shifted.data[1] == 0x00000000
-        @test shifted.data[2] == 0x00000001
+        @test shifted._limbs[1] == 0x00000000
+        @test shifted._limbs[2] == 0x00000001
 
         @test (shifted >> 32) == one64
 
         val = NTupleInteger{2,UInt32}((0xFFFFFFFF, 0x00000000))
         shifted2 = val << 1
-        @test shifted2.data[1] == 0xFFFFFFFE
-        @test shifted2.data[2] == 0x00000001
+        @test shifted2._limbs[1] == 0xFFFFFFFE
+        @test shifted2._limbs[2] == 0x00000001
 
         @test (one64 << 64) == 0
         @test (one64 >> 64) == 0
@@ -118,6 +131,31 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         @test Base.Checked.add_with_overflow(m, a)[2] == true   # wraps -> overflow
     end
 
+    @testset "Integer arithmetic (+, -, *, div, rem)" begin
+        # Cross-check the full Integer arithmetic against native UInt64 over a
+        # range of operand pairs (NTupleInteger must agree bit-for-bit, with
+        # wrapping semantics on overflow).
+        T = NTupleInteger{2,UInt32}   # 64 bits total, compare against UInt64
+        Random.seed!(99)
+        for _ in 1:200
+            x = rand(UInt64)
+            y = rand(UInt64) | 0x1   # nonzero divisor
+            tx = T(x); ty = T(y)
+            @test UInt64(tx + ty) == x + y
+            @test UInt64(tx - ty) == x - y
+            @test UInt64(tx * ty) == x * y
+            @test UInt64(div(tx, ty)) == div(x, y)
+            @test UInt64(rem(tx, ty)) == rem(x, y)
+        end
+        @test_throws DivideError div(T(5), zero(T))
+
+        # Cross-size conversion goes limb-to-limb, not through BigInt.
+        wide = NTupleInteger{2,UInt64}((0x1122334455667788, 0x99AABBCCDDEEFF00))
+        narrow = NTupleInteger{4,UInt32}(wide)
+        @test chunks(narrow) == (0x55667788, 0x11223344, 0xDDEEFF00, 0x99AABBCC)
+        @test NTupleInteger{2,UInt64}(narrow) == wide   # round-trips
+    end
+
     @testset "count_ones" begin
         z = zero(T64)
         @test count_ones(z) == 0
@@ -130,11 +168,13 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
     end
 
     @testset "alternatingmask" begin
-        mask = alternatingmask(T64)
+        # alternatingmask is inherited via the Integer subtyping, so it works
+        # on an NTupleInteger instance with no bespoke definition.
+        mask = alternatingmask(zero(T64))
         for i in 0:(bitsize(T64)-1)
             word_idx    = i ÷ 64 + 1
             bit_in_word = i % 64
-            bit_val  = (mask.data[word_idx] >> bit_in_word) & one(UInt64)
+            bit_val  = (chunks(mask)[word_idx] >> bit_in_word) & one(UInt64)
             expected = (i % 2 == 0) ? one(UInt64) : zero(UInt64)
             @test bit_val == expected
         end
@@ -168,10 +208,12 @@ pauli_to_bits = Dict(:I => 0, :X => 1, :Y => 2, :Z => 3)
         pZ = symboltoint(T1, [:Z], [1])
         pI = symboltoint(T1, [:I], [1])
 
-        @test _bitpaulimultiply(pX, pX) == pI
-        @test _bitpaulimultiply(pY, pY) == pI
-        @test _bitpaulimultiply(pZ, pZ) == pI
-        @test _bitpaulimultiply(pX, pY) == pZ
+        # Pauli multiplication on the bit encoding is XOR, inherited from the
+        # Integer interface (no bespoke _bitpaulimultiply needed).
+        @test (pX ⊻ pX) == pI
+        @test (pY ⊻ pY) == pI
+        @test (pZ ⊻ pZ) == pI
+        @test (pX ⊻ pY) == pZ
     end
 
     @testset "Commutation, products via PauliString, PauliSum, VectorPauliSum" begin
