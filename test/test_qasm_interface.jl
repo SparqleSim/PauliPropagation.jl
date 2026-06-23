@@ -1,7 +1,7 @@
 using Test
 using PauliPropagation
 using PauliPropagation.OpenQASMInterface
-import PauliPropagation: TransferMapGate
+import PauliPropagation: TransferMapGate, TGate
 
 @testset "OpenQASM Interface" begin
     @testset "Basic functionality" begin
@@ -37,6 +37,34 @@ import PauliPropagation: TransferMapGate
         @test circuit[2].qinds == [1, 2]      # CORRECT FIELD: .qinds, not .qubits
 
         # Clean up the temporary file
+        rm(test_filepath)
+    end
+
+    @testset "expression parameters" begin
+        qasm_content = """
+        OPENQASM 2.0;
+        include "qelib1.inc";
+        qreg q[4];
+        ry(0.8*pi) q[3];
+        u3(0.1, 0.2*pi, pi/2) q[0];
+        """
+        test_filepath = "test_expr_params.qasm"
+        write(test_filepath, qasm_content)
+
+        nq, circuit, thetas = readqasm(test_filepath)
+
+        @test nq == 4
+        @test length(circuit) == 2
+        @test length(thetas) == 1
+
+        @test circuit[1] isa PauliRotation
+        @test circuit[1].symbols == [:Y]
+        @test circuit[1].qinds == [4]
+        @test thetas[1] ≈ 0.8 * pi
+
+        @test circuit[2] isa TransferMapGate
+        @test circuit[2].qinds == [1]
+
         rm(test_filepath)
     end
 
@@ -654,7 +682,7 @@ import PauliPropagation: TransferMapGate
 
         @test nq_ext == 3
         @test length(circuit_ext) == 10
-        @test length(thetas_ext) == 0  # rzz(pi/2) becomes ZZpihalf Clifford gate, so no theta
+        @test length(thetas_ext) == 0  # rzz(π/2) becomes ZZpihalf Clifford gate, so no theta
 
         # h q[0]
         @test circuit_ext[1] isa CliffordGate
@@ -701,7 +729,7 @@ import PauliPropagation: TransferMapGate
         @test circuit_ext[9].symbol == :SWAP
         @test circuit_ext[9].qinds == [2, 3]
 
-        # rzz(1.5708...) q[0], q[1] - should be ZZpihalf Clifford gate since angle is pi/2
+        # rzz(1.5708...) q[0], q[1] - should be ZZpihalf Clifford gate since angle is π/2
         @test circuit_ext[10] isa CliffordGate
         @test circuit_ext[10].symbol == :ZZpihalf
         @test circuit_ext[10].qinds == [1, 2]

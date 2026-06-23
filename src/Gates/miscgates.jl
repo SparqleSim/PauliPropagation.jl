@@ -4,8 +4,6 @@
 ##
 ###
 
-using LinearAlgebra
-
 ## T gate
 
 struct TGate <: StaticGate
@@ -15,7 +13,7 @@ struct TGate <: StaticGate
         TGate(qind::Integer)
 
     Returns a T gate acting on qubit `qind`.
-    It acts on qubit `qind` like a `PauliRotation(:Z, qind)` with angle pi/4.
+    It acts on qubit `qind` like a `PauliRotation(:Z, qind)` with angle π/4.
     """
     TGate(qind::Integer) = (_qinds_check(qind); new(qind))
 

@@ -45,88 +45,111 @@ end
 
 """
     tomatrix(gate::CliffordGate)
+
 Compute the unitary matrix for a `CliffordGate` in the computational basis.
 """
 function tomatrix(gate::CliffordGate)
-    nq = length(gate.qinds)
-    sym = gate.symbol
+    return _clifford_tomatrix(Val(gate.symbol), gate.qinds)
+end
 
-    # Single-qubit Cliffords
-    if sym in (:H, :X, :Y, :Z, :S, :SX, :SY)
-        if nq != 1
-            throw(ArgumentError("CliffordGate($sym, ...) must act on exactly one qubit, got $nq."))
-        end
+# Fallback for Clifford gates without a unitary matrix implementation.
+function _clifford_tomatrix(sym_val::Val{G}, qinds::Vector{Int}) where {G}
+    throw(ArgumentError("tomatrix not implemented for CliffordGate with symbol $G."))
+end
 
-        if sym == :H
-            invsqrt2 = 1 / sqrt(2)
-            return invsqrt2 * [1 1; 1 -1]
-        elseif sym == :X
-            return [0 1; 1 0]
-        elseif sym == :Y
-            return [0 -1.0im; 1.0im 0]
-        elseif sym == :Z
-            return [1 0; 0 -1]
-        elseif sym == :S
-            return [1 0; 0 1.0im]
-        elseif sym == :SX
-            half = 1 / 2
-            return half * [1 + 1.0im   1 - 1.0im;
-                           1 - 1.0im   1 + 1.0im]
-        elseif sym == :SY
-            half = 1 / 2
-            return half * [1 + 1.0im   -1 - 1.0im;
-                           1 + 1.0im    1 + 1.0im]
-        end
+# --- Single-qubit Cliffords ---
+
+function _clifford_tomatrix(::Val{:H}, qinds::Vector{Int})
+    length(qinds) == 1 || throw(ArgumentError("CliffordGate(:H, ...) must act on exactly one qubit, got $(length(qinds))."))
+    invsqrt2 = 1 / sqrt(2)
+    return invsqrt2 * [1 1; 1 -1]
+end
+
+function _clifford_tomatrix(::Val{:X}, qinds::Vector{Int})
+    length(qinds) == 1 || throw(ArgumentError("CliffordGate(:X, ...) must act on exactly one qubit, got $(length(qinds))."))
+    return [0 1; 1 0]
+end
+
+function _clifford_tomatrix(::Val{:Y}, qinds::Vector{Int})
+    length(qinds) == 1 || throw(ArgumentError("CliffordGate(:Y, ...) must act on exactly one qubit, got $(length(qinds))."))
+    return [0 -1.0im; 1.0im 0]
+end
+
+function _clifford_tomatrix(::Val{:Z}, qinds::Vector{Int})
+    length(qinds) == 1 || throw(ArgumentError("CliffordGate(:Z, ...) must act on exactly one qubit, got $(length(qinds))."))
+    return [1 0; 0 -1]
+end
+
+function _clifford_tomatrix(::Val{:S}, qinds::Vector{Int})
+    length(qinds) == 1 || throw(ArgumentError("CliffordGate(:S, ...) must act on exactly one qubit, got $(length(qinds))."))
+    return [1 0; 0 1.0im]
+end
+
+function _clifford_tomatrix(::Val{:SX}, qinds::Vector{Int})
+    length(qinds) == 1 || throw(ArgumentError("CliffordGate(:SX, ...) must act on exactly one qubit, got $(length(qinds))."))
+    half = 1 / 2
+    return half * [1 + 1.0im   1 - 1.0im;
+                   1 - 1.0im   1 + 1.0im]
+end
+
+function _clifford_tomatrix(::Val{:SY}, qinds::Vector{Int})
+    length(qinds) == 1 || throw(ArgumentError("CliffordGate(:SY, ...) must act on exactly one qubit, got $(length(qinds))."))
+    half = 1 / 2
+    return half * [1 + 1.0im   -1 - 1.0im;
+                   1 + 1.0im    1 + 1.0im]
+end
+
+# --- Two-qubit Cliffords ---
+
+function _clifford_tomatrix(::Val{:CNOT}, qinds::Vector{Int})
+    length(qinds) == 2 || throw(ArgumentError("CliffordGate(:CNOT, ...) must act on exactly two qubits, got $(length(qinds))."))
+    a, b = qinds
+    if a < b
+        return [
+            1 0 0 0;
+            0 1 0 0;
+            0 0 0 1;
+            0 0 1 0
+        ]
+    else
+        return [
+            1 0 0 0;
+            0 0 0 1;
+            0 0 1 0;
+            0 1 0 0
+        ]
     end
+end
 
-    # Two-qubit Clifford gates
-    if sym in (:CNOT, :CZ, :ZZpihalf, :SWAP)
-        if nq != 2
-            throw(ArgumentError("CliffordGate($sym, ...) must act on exactly two qubits, got $nq."))
-        end
+function _clifford_tomatrix(::Val{:CZ}, qinds::Vector{Int})
+    length(qinds) == 2 || throw(ArgumentError("CliffordGate(:CZ, ...) must act on exactly two qubits, got $(length(qinds))."))
+    return [
+        1 0 0 0;
+        0 1 0 0;
+        0 0 1 0;
+        0 0 0 -1
+    ]
+end
 
-        if sym == :CNOT
-            a, b = gate.qinds
-            if a < b
-                return [
-                    1 0 0 0;
-                    0 1 0 0;
-                    0 0 0 1;
-                    0 0 1 0
-                ]
-            else
-                return [
-                    1 0 0 0;
-                    0 0 0 1;
-                    0 0 1 0;
-                    0 1 0 0
-                ]
-            end
-        elseif sym == :CZ
-            return [
-                1 0 0 0;
-                0 1 0 0;
-                0 0 1 0;
-                0 0 0 -1
-            ]
-        elseif sym == :ZZpihalf
-            invsqrt2 = 1 / sqrt(2)
-            return invsqrt2 * [
-                1 - 1.0im   0           0           0;
-                0           1 + 1.0im   0           0;
-                0           0           1 + 1.0im   0;
-                0           0           0           1 - 1.0im
-            ]
-        elseif sym == :SWAP
-            return [
-                1 0 0 0;
-                0 0 1 0;
-                0 1 0 0;
-                0 0 0 1
-            ]
-        end
-    end
-    throw(ArgumentError("tomatrix not implemented for CliffordGate with symbol $sym."))
+function _clifford_tomatrix(::Val{:ZZpihalf}, qinds::Vector{Int})
+    length(qinds) == 2 || throw(ArgumentError("CliffordGate(:ZZpihalf, ...) must act on exactly two qubits, got $(length(qinds))."))
+    invsqrt2 = 1 / sqrt(2)
+    return invsqrt2 * [
+        1 - 1.0im   0           0           0;
+        0           1 + 1.0im   0           0;
+        0           0           1 + 1.0im   0;
+        0           0           0           1 - 1.0im
+    ]
+end
+
+function _clifford_tomatrix(::Val{:SWAP}, qinds::Vector{Int})
+    length(qinds) == 2 || throw(ArgumentError("CliffordGate(:SWAP, ...) must act on exactly two qubits, got $(length(qinds))."))
+    return [
+        1 0 0 0;
+        0 0 1 0;
+        0 1 0 0;
+        0 0 0 1
+    ]
 end
 
 

@@ -649,6 +649,14 @@ end
         @test _approx_equal_up_to_phase(U_cp_swapped, _reference_cp_swapped(lambda_cp))
     end
 
+    @testset "CU3 gate" begin
+        theta_cu3 = 0.5
+        phi_cu3 = -0.3
+        lambda_cu3 = 0.7
+        U_cu3 = _single_gate_unitary(2, "cu3($theta_cu3, $phi_cu3, $lambda_cu3) q[0], q[1];")
+        @test _approx_equal_up_to_phase(U_cu3, _reference_cu3(theta_cu3, phi_cu3, lambda_cu3))
+    end
+
     @testset "CU3 gate (swapped qubits)" begin
         theta_cu3 = 0.5
         phi_cu3 = -0.3
