@@ -103,6 +103,7 @@ export
     bricklayertopology,
     staircasetopology,
     rectangletopology,
+    rectanglebricktopology,
     staircasetopology2d,
     ibmeagletopology,
     hardwareefficientcircuit,
