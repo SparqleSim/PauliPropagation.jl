@@ -138,9 +138,9 @@ function PropagationBase.truncate!(psum::AbstractPauliSum; min_abs_coeff::Real=1
 
     function truncfunc(pstr, coeff)
         is_truncated = false
-        if truncateweight(pstr, max_weight)
+        if truncatemincoeff(coeff, min_abs_coeff)
             is_truncated = true
-        elseif truncatemincoeff(coeff, min_abs_coeff)
+        elseif truncateweight(pstr, max_weight)
             is_truncated = true
         elseif truncatefrequency(coeff, max_freq)
             is_truncated = true

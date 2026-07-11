@@ -33,11 +33,7 @@ function _truncate!(::DictStorage, truncfunc::F, prop_cache::AbstractPropagation
 end
 
 function _truncate!(::DictStorage, truncfunc::F, term_sum::AbstractTermSum; kwargs...) where F<:Function
-    for (pstr, coeff) in term_sum
-        if truncfunc(pstr, coeff)
-            delete!(term_sum, pstr)
-        end
-    end
+    filter!(_invertfunc(truncfunc), storage(term_sum))
     return term_sum
 end
 
