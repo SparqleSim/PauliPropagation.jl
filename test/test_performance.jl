@@ -81,6 +81,95 @@ end
     end
 end
 
+function _randomimaginarycircuit(nq, ngates; seed)
+    Random.seed!(seed)
+    symbs = [:X, :Y, :Z]
+    gates = ImaginaryPauliRotation[]
+    for _ in 1:ngates
+        support = rand(1:min(3, nq))
+        gate_generator = rand(symbs, support)
+        gate_inds = shuffle(1:nq)[1:support]
+        push!(gates, ImaginaryPauliRotation(gate_generator, gate_inds))
+    end
+    taus = randn(ngates) .* 0.2
+    return gates, taus
+end
+
+@testset "fused Vector ImaginaryPauliRotation matches stock exactly without coefficient truncation" begin
+    # truncation by max_weight should not affect any results during propagation, same as for PauliRotation.
+    # normalize_coeffs assumes a density-matrix-like start (trace 1), so start from the identity string.
+    nq = 6
+
+    for nl in (1, 3, 5)
+        gates, taus = _randomimaginarycircuit(nq, nl * nq; seed=20 + nl)
+        pstr = PauliString(nq, :I, 1)
+
+        for max_weight in (2, 4, nq)
+            stock = propagate(gates, VectorPauliSum(pstr), taus; heisenberg=false, min_abs_coeff=0.0, max_weight)
+            fused_sum = Performance.propagate(gates, VectorPauliSum(pstr), taus; heisenberg=false, min_abs_coeff=0.0, max_weight, fused=true)
+
+            stock_dict = Dict(zip(paulis(stock), coefficients(stock)))
+            fused_dict = Dict(zip(paulis(fused_sum), coefficients(fused_sum)))
+            @test stock_dict == fused_dict
+        end
+    end
+end
+
+@testset "fused Vector ImaginaryPauliRotation agrees with stock within a small tolerance under coefficient truncation" begin
+    # min_abs_coeff makes propagation results differ, but it should not be by much.
+    nq = 8
+    tol = 3e-2
+
+    for nl in (3, 5)
+        gates, taus = _randomimaginarycircuit(nq, nl * nq; seed=42)
+        pstr = PauliString(nq, :I, 1)
+        min_abs_coeff = 1e-4
+
+        stock = propagate(gates, VectorPauliSum(pstr), taus; heisenberg=false, min_abs_coeff)
+        fused_sum = Performance.propagate(gates, VectorPauliSum(pstr), taus; heisenberg=false, min_abs_coeff, fused=true)
+
+        stock_dict = Dict(zip(paulis(stock), coefficients(stock)))
+        fused_dict = Dict(zip(paulis(fused_sum), coefficients(fused_sum)))
+        allkeys = union(keys(stock_dict), keys(fused_dict))
+        stock_vec = [get(stock_dict, k, 0.0) for k in allkeys]
+        fused_vec = [get(fused_dict, k, 0.0) for k in allkeys]
+
+        @test norm(stock_vec - fused_vec) / norm(stock_vec) < tol
+    end
+end
+
+function _localimaginarycircuit(nq, nlayers; topology=bricklayertopology(nq; periodic=false), seed)
+    Random.seed!(seed)
+    gates = ImaginaryPauliRotation[]
+    for _ in 1:nlayers
+        for ii in 1:nq
+            push!(gates, ImaginaryPauliRotation(:X, ii))
+            push!(gates, ImaginaryPauliRotation(:Z, ii))
+        end
+        for pair in topology
+            push!(gates, ImaginaryPauliRotation([:Y, :Y], pair))
+        end
+    end
+    taus = randn(length(gates)) .* 0.3
+    return gates, taus
+end
+
+@testset "fused Vector ImaginaryPauliRotation: thread=false matches thread=true on a multi-task-sized propagation" begin
+    # Unlike PauliRotation, ImaginaryPauliRotation branches on *commutation*, so a densely-connected
+    # random circuit (as in _randomimaginarycircuit) blows up combinatorially; use a local,
+    # topology-constrained circuit instead to reach the multi-task threshold in a controlled way.
+    nq = 8
+    gates, taus = _localimaginarycircuit(nq, 2; seed=9)
+    pstr = PauliString(nq, :I, 1)
+    min_abs_coeff = 1e-6
+
+    d_thread = Performance.propagate(gates, VectorPauliSum(pstr), taus; heisenberg=false, min_abs_coeff, fused=true, thread=true)
+    d_nothread = Performance.propagate(gates, VectorPauliSum(pstr), taus; heisenberg=false, min_abs_coeff, fused=true, thread=false)
+
+    @test length(d_thread) > 16384  # sanity check that this circuit actually exercises multiple tasks
+    @test d_thread == d_nothread
+end
+
 @testset "fused Dict PauliNoise matches stock exactly" begin
     # PauliNoise should not be affected by the fuse and Dict internals usage
     nq = 6

@@ -101,8 +101,8 @@ function PropagationBase.applymergetruncate!(gate::ImaginaryPauliRotation, prop_
     # these can be avoided by setting `normalize_coeffs=false`
     if normalize_coeffs
         # "getmergedcoeff" because we know there are no duplictates.
-        # for array storage, the identity term will also be right at the beginning
-        mult!(prop_cache, 1 / getmergedcoeff(mainsum(prop_cache), 0))
+        # TODO: this should use sortedness of vectors
+        mult!(prop_cache, 1 / getmergedcoeff(activesum(prop_cache), 0))
     end
 
     # normal truncation
