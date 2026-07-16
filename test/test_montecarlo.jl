@@ -50,15 +50,15 @@ end
     exact_term, exact_coeff = only(apply(gate, term, 1.0, clifford_map[gate.symbol]))
     @test exact_coeff ≈ -1.0
 
-    # power=1: Clifford application is deterministic and matches apply() exactly
+    # squared=false: Clifford application is deterministic and matches apply() exactly
     psum1 = VectorPauliSum(nq, [term], [1.0])
     mcapplytoall!(gate, psum1)
     @test only(paulis(psum1)) == exact_term
     @test only(coefficients(psum1)) ≈ exact_coeff
 
-    # power=2: the sign flip is undone so 2-norm sampling never picks up a spurious sign
+    # squared=true: the sign flip is undone so 2-norm sampling never picks up a spurious sign
     psum2 = VectorPauliSum(nq, [term], [1.0])
-    mcapplytoall!(gate, psum2; power=2)
+    mcapplytoall!(gate, psum2; squared=true)
     @test only(paulis(psum2)) == exact_term
     @test only(coefficients(psum2)) ≈ 1.0
 
@@ -80,7 +80,7 @@ end
 end
 
 
-@testset "mcapplytoall! for PauliRotation matches the exact branch formula (power=1)" begin
+@testset "mcapplytoall! for PauliRotation matches the exact branch formula" begin
     nq = 2
     gate = PauliRotation([:X, :Z], [1, 2])
     theta = 0.37
@@ -120,7 +120,7 @@ end
 end
 
 
-@testset "mcapplytoall! for PauliRotation exactly preserves |coeff| (power=2)" begin
+@testset "mcapplytoall! for PauliRotation exactly preserves |coeff| (squared=true)" begin
     nq = 2
     gate = PauliRotation([:X, :Z], [1, 2])
     theta = 0.9
@@ -128,12 +128,12 @@ end
     gate_mask = symboltoint(nq, gate.symbols, gate.qinds)
     new_term, _ = paulirotationproduct(gate_mask, term)
 
-    # for power=2, normalization = cos^2 + sin^2 = 1 exactly, so every branch leaves the
+    # for squared=true, normalization = cos^2 + sin^2 = 1 exactly, so every branch leaves the
     # coefficient bit-for-bit unchanged and only randomizes which term it is attached to
     seen_stay, seen_flip = false, false
     for _ in 1:200
         psum = VectorPauliSum(nq, [term], [2.5])
-        mcapplytoall!(gate, psum, theta; power=2)
+        mcapplytoall!(gate, psum, theta; squared=true)
         t, c = only(paulis(psum)), only(coefficients(psum))
         @test c == 2.5
         seen_stay |= (t == term)
@@ -143,7 +143,7 @@ end
 end
 
 
-@testset "mcsample! statistically reproduces propagate (power=1)" begin
+@testset "mcsample! statistically reproduces propagate" begin
     nq = 3
     nl = 2
     # mixes CliffordGate (CNOT) and PauliRotation gates
@@ -163,7 +163,7 @@ end
 end
 
 
-@testset "mcsample! exactly conserves the squared 2-norm (power=2)" begin
+@testset "mcsample! exactly conserves the squared 2-norm (squared=true)" begin
     nq = 4
     nl = 3
     circuit = efficientsu2circuit(nq, nl)
@@ -171,10 +171,10 @@ end
     pstr = PauliString(nq, :Z, 2)
 
     # each walker's |coeff|^2 is individually preserved by every gate (Clifford and rotation
-    # alike), so the ensemble's squared 2-norm is an exact invariant of power=2 sampling
+    # alike), so the ensemble's squared 2-norm is an exact invariant of squared=true sampling
     psum = VectorPauliSum(nq, fill(pstr.term, 50), fill(1.0, 50))
     norm_before = sum(abs2, coefficients(psum))
-    mcsample!(circuit, psum, thetas; power=2)
+    mcsample!(circuit, psum, thetas; squared=true)
     norm_after = sum(abs2, coefficients(psum))
 
     @test norm_after ≈ norm_before
@@ -212,8 +212,8 @@ end
     @test !isempty(result)
     @test length(result) <= max_size
 
-    # power=2 through a circuit containing Clifford gates should also run cleanly
-    result2 = mcpropagate(circuit, VectorPauliSum(pstr), thetas; max_size, power=2)
+    # squared through a circuit containing Clifford gates should also run cleanly
+    result2 = mcpropagate(circuit, VectorPauliSum(pstr), thetas; max_size, squared=true)
     @test !isempty(result2)
     @test length(result2) <= max_size
 end
