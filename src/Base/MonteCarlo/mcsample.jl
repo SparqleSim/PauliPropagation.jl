@@ -8,21 +8,22 @@
 ###
 
 """
-    mcsample(circuit, psum::VectorPauliSum, params=nothing; power=1, heisenberg=true, kwargs...)
+    mcsample(circuit, tsum::AbstractTermSum, params=nothing; squared=false, heisenberg=true, kwargs...)
+    mcsample(circuit, prop_cache::AbstractPropagationCache, params=nothing; squared=false, heisenberg=true, kwargs...)
 
-Monte Carlo "path sampling" counterpart to `propagate`. Each term in `psum` randomly keeps only
-one of the two branches a non-commuting gate would otherwise deterministically split it into,
-reweighted to remain unbiased in expectation.
-Average many independent calls (or pack many copies of the same term into one large `psum`) to
-converge to the exact `propagate` result.
-Use `power=2` to sample with probabilities proportional to squared coefficients instead of their
+Monte Carlo "path sampling" counterpart to `propagate`. 
+Each term term in the term sum randomly samples a branch that a gate applies.
+For squared=false, that yields an unbiased sample of the propagated term sum, the the coefficients will likely grow expoenntially.
+Average many independent calls (or pack many copies of the same term into one large `tsum`) to
+converge the result.
+Use `squared=true` to sample with probabilities proportional to squared coefficients instead of their
 absolute value (useful for e.g. 2-norm/OTOC-type estimators).
 """
-mcsample(circuit, psum::VectorPauliSum, params=nothing; kwargs...) = mcsample!(circuit, deepcopy(psum), params; kwargs...)
+mcsample(circuit, psum, params=nothing; kwargs...) = mcsample!(circuit, deepcopy(psum), params; kwargs...)
 
 """
-    mcsample!(circuit, prop_cache::VectorPauliPropagationCache, params=nothing; kwargs...)
-    mcsample!(circuit, psum::VectorPauliSum, params=nothing; heisenberg=true, kwargs...)
+    mcsample!(circuit, tsum::AbstractTermSum, params=nothing; squared=false, heisenberg=true, kwargs...)
+    mcsample!(circuit, prop_cache::AbstractPropagationCache, params=nothing; squared=false, heisenberg=true, kwargs...)
 
 In-place version of `mcsample`. See `mcsample` for details.
 """
