@@ -27,15 +27,15 @@ mcsample(circuit, psum, params=nothing; kwargs...) = mcsample!(circuit, deepcopy
 
 In-place version of `mcsample`. See `mcsample` for details.
 """
-function mcsample!(circuit, prop_cache::VectorPauliPropagationCache, params=nothing; kwargs...)
+function mcsample!(circuit, prop_cache::AbstractPropagationCache, params=nothing; kwargs...)
     # manipulates the active view of the prop_cache in place
     mcsample!(circuit, activesum(prop_cache), params; kwargs...)
     return prop_cache
 end
 
-function mcsample!(circuit, psum::VectorPauliSum, params=nothing; heisenberg=true, kwargs...)
+function mcsample!(circuit, tsum::AbstractTermSum, params=nothing; heisenberg=true, kwargs...)
     circuit, params = _preparecircuit(circuit, params, heisenberg)
-    return PropagationBase._propagate!(mcapplytoall!, circuit, psum, params; kwargs...)
+    return PropagationBase._propagate!(mcapplytoall!, circuit, tsum, params; kwargs...)
 end
 
 
