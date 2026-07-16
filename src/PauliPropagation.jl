@@ -155,8 +155,8 @@ export
     resample!,
     multinomial_resample!,
     systematic_resample!,
-    systematic_resample_merged!,
-    semideterministic_systematic_resample_merged!,
+    systematic_resample!,
+    semideterministic_systematic_resample!,
     detfraction_systematic_resample_merged!
 
 

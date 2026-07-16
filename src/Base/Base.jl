@@ -82,7 +82,9 @@ export
     flagcoeffs!,
     flagstoindices!,
     permuteviaindices!,
-    filterviaflags!
+    filterviaflags!,
+    coeffcumsum,
+    coeffcumsum!
 
 include("./MonteCarlo/MonteCarlo.jl")
 export
@@ -96,8 +98,6 @@ export
     resample!,
     multinomial_resample!,
     systematic_resample!,
-    systematic_resample_merged!,
-    semideterministic_systematic_resample_merged!,
-    detfraction_systematic_resample_merged!
+    semideterministic_systematic_resample!
 
 end

@@ -133,3 +133,14 @@ function _copy!(dst_terms, dst_coeffs, src_terms, src_coeffs)
     end
     return dst_terms, dst_coeffs
 end
+
+## Cumulative sums are often used in resampling
+coeffcumsum!(coeffs) = AK.accumulate((x1, x2) -> x1 + abs(x2), coeffs; init=zero(eltype(coeffs)), neutral=zero(eltype(coeffs)))
+
+coeffcumsum(coeffs) = coeffcumsum!(copy(coeffs))
+
+function coeffcumsum(coeffs, power::Real)
+    mapped_coeffs = AK.map(c -> abs(c)^power, coeffs)
+    mapped_coeffs = coeffcumsum!(mapped_coeffs)
+    return mapped_coeffs
+end

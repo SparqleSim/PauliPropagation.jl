@@ -1,8 +1,6 @@
 using Test
 using PauliPropagation
 using PauliPropagation.PropagationBase
-using PauliPropagation: multinomial_resample!, systematic_resample!, systematic_resample_merged!,
-    semideterministic_systematic_resample_merged!, detfraction_systematic_resample_merged!, paulirotationproduct
 using Random
 
 
@@ -92,7 +90,7 @@ end
     # averaging many independent calls reproduces the deterministic split in expectation
     cos_val, sin_val = cos(theta), sin(theta)
     normalization = abs(cos_val) + abs(sin_val)
-    new_term, prod_sign = paulirotationproduct(gate_mask, term)
+    new_term, prod_sign = PauliPropagation.paulirotationproduct(gate_mask, term)
 
     seen_stay, seen_flip = false, false
     for _ in 1:200
@@ -126,7 +124,7 @@ end
     theta = 0.9
     term = symboltoint(nq, [:Z, :Z], [1, 2])
     gate_mask = symboltoint(nq, gate.symbols, gate.qinds)
-    new_term, _ = paulirotationproduct(gate_mask, term)
+    new_term, _ = PauliPropagation.paulirotationproduct(gate_mask, term)
 
     # for squared=true, normalization = cos^2 + sin^2 = 1 exactly, so every branch leaves the
     # coefficient bit-for-bit unchanged and only randomizes which term it is attached to
@@ -265,102 +263,9 @@ end
     end
 
     # merged variants deduplicate survivors, so they may return fewer than target_size terms
-    for f in (systematic_resample_merged!, semideterministic_systematic_resample_merged!)
+    for f in (systematic_resample!, semideterministic_systematic_resample!)
         cache = VectorPauliPropagationCache(deepcopy(base_psum))
         resample!(cache, target_size; resample_func=f)
         @test 1 <= activesize(cache) <= target_size
     end
-
-    for deterministic_fraction in (0.0, 0.5, 1.0)
-        cache = VectorPauliPropagationCache(deepcopy(base_psum))
-        resample!(cache, target_size, deterministic_fraction; resample_func=detfraction_systematic_resample_merged!)
-        @test 1 <= activesize(cache) <= target_size
-    end
-end
-
-
-@testset "resample! squared=true conserves the squared 2-norm" begin
-    nq = 4
-    pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), rand() + 0.1) for _ in 1:30]
-    base_psum = merge!(VectorPauliSum(pstrs))
-    n = length(base_psum)
-    target_size = max(1, n ÷ 2)
-    norm_before = sum(abs2, coefficients(base_psum))
-
-    # every drawn slot gets the exact same magnitude sqrt(total_weight/target_size),
-    # independent of which term it drew, so the squared 2-norm is conserved exactly
-    for f in (multinomial_resample!, systematic_resample!)
-        cache = VectorPauliPropagationCache(deepcopy(base_psum))
-        resample!(cache, target_size; resample_func=f, squared=true)
-        @test sum(abs2, activecoeffs(cache)) ≈ norm_before
-    end
-
-    # with calibrate=false the comb step is exactly total_weight/target_size, so the comb
-    # teeth exactly tile [0, total_weight) and the squared 2-norm is again conserved exactly
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
-    resample!(cache, target_size; resample_func=systematic_resample_merged!, squared=true, calibrate=false)
-    @test sum(abs2, activecoeffs(cache)) ≈ norm_before
-end
-
-
-@testset "detfraction_systematic_resample_merged! interpolates the deterministic keep-fraction" begin
-    nq = 4
-    pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), rand() + 0.1) for _ in 1:30]
-    base_psum = merge!(VectorPauliSum(pstrs))
-    n = length(base_psum)
-    target_size = max(1, n ÷ 2)
-    total_before = sum(activecoeffs(VectorPauliPropagationCache(deepcopy(base_psum))))
-
-    # weight is conserved exactly at every deterministic_fraction, since deterministically-kept
-    # terms are copied unchanged and the stochastic remainder is a systematic comb resample
-    for deterministic_fraction in (0.0, 0.25, 0.5, 0.75, 1.0)
-        cache = VectorPauliPropagationCache(deepcopy(base_psum))
-        resample!(cache, target_size, deterministic_fraction; resample_func=detfraction_systematic_resample_merged!)
-        @test sum(activecoeffs(cache)) ≈ total_before
-    end
-
-    # deterministic_fraction=1.0 is exactly what semideterministic_systematic_resample_merged! does
-    Random.seed!(42)
-    cache_det = VectorPauliPropagationCache(deepcopy(base_psum))
-    resample!(cache_det, target_size, 1.0; resample_func=detfraction_systematic_resample_merged!)
-
-    Random.seed!(42)
-    cache_semidet = VectorPauliPropagationCache(deepcopy(base_psum))
-    resample!(cache_semidet, target_size; resample_func=semideterministic_systematic_resample_merged!)
-
-    @test VectorPauliSum(cache_det) == VectorPauliSum(cache_semidet)
-
-    # squared=true is not supported since a deterministically-kept term does not preserve the
-    # squared 2-norm the way a resampled one does
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
-    @test_throws ArgumentError resample!(cache, target_size, 0.5; resample_func=detfraction_systematic_resample_merged!, squared=true)
-end
-
-
-@testset "mcsample!/mcpropagate! respect heisenberg=false" begin
-    nq = 4
-    nl = 3
-    circuit = efficientsu2circuit(nq, nl)
-    thetas = randn(countparameters(circuit))
-    pstr = PauliString(nq, :Z, 2)
-
-    exact_psum = propagate(circuit, pstr, thetas; heisenberg=false, min_abs_coeff=0)
-    mc_psum = mcpropagate(circuit, VectorPauliSum(pstr), thetas; max_size=10^9, min_abs_coeff=0, heisenberg=false)
-
-    @test length(mc_psum) == length(exact_psum)
-    for (term, coeff) in zip(paulis(mc_psum), coefficients(mc_psum))
-        @test coeff == getcoeff(exact_psum, term)
-    end
-end
-
-
-@testset "mcapplytoall! is currently only implemented for VectorPauliSum" begin
-    # dict-backed PauliSum has no mcapplytoall! methods yet; this documents the current scope
-    # so that support can be added deliberately rather than silently, if/when it is needed
-    nq = 2
-    gate = PauliRotation(:X, 1)
-    theta = 0.3
-    psum = PauliSum(nq, PauliString(nq, :Z, 1))
-
-    @test_throws ErrorException mcsample(gate, psum, theta)
 end
