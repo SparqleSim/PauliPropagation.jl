@@ -84,5 +84,15 @@ export
     permuteviaindices!,
     filterviaflags!
 
+include("./MonteCarlo/MonteCarlo.jl")
+export 
+    mcpropagate,
+    mcpropagate!,
+    applymergetruncateresample!,
+    mcsample,
+    mcsample!,
+    mcapplytoall!,
+    resample,
+    resample!
 
 end

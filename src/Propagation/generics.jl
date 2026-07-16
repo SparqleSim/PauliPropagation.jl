@@ -74,23 +74,29 @@ In-place propagation of an `AbstractPauliPropagationCache` through the circuit `
 """
 function PropagationBase.propagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; max_weight=Inf, min_abs_coeff=1e-10, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, heisenberg=true, kwargs...)
 
-    # if circuit is actually a single gate, promote it to a list [gate]
-    # similarly the thetas if it is a single number
-    circuit, thetas = PropagationBase._promotecircandparams(circuit, thetas)
+    circuit, thetas = _preparecircuit(circuit, thetas, heisenberg)
 
-    # if thetas is nothing, the circuit must contain only StaticGates
-    # also check if the length of thetas equals the number of parametrized gates
-    PropagationBase._checknumberofparams(circuit, thetas)
+    return PropagationBase._propagate!(circuit, prop_cache, thetas; max_weight, min_abs_coeff, max_freq, max_sins, customtruncfunc, kwargs...)
+end
+
+# Shared prelude for propagate!/mcpropagate!/mcsample!: promote a single gate/param into a
+# list, validate the parameter count, then convert to the Heisenberg or Schrödinger picture.
+function _preparecircuit(circuit, params, heisenberg::Bool)
+    # if circuit is actually a single gate, promote it to a list [gate]
+    # similarly the params if it is a single number
+    circuit, params = PropagationBase._promotecircandparams(circuit, params)
+
+    # if params is nothing, the circuit must contain only StaticGates
+    # also check if the length of params equals the number of parametrized gates
+    PropagationBase._checknumberofparams(circuit, params)
 
     if heisenberg
         # this usually just reverses circuit and parameter order
-        circuit, thetas = toheisenberg(circuit, thetas)
+        return toheisenberg(circuit, params)
     else
         # this usually entails a conversion of how gates act
-        circuit, thetas = toschrodinger(circuit, thetas)
+        return toschrodinger(circuit, params)
     end
-
-    return PropagationBase._propagate!(circuit, prop_cache, thetas; max_weight, min_abs_coeff, max_freq, max_sins, customtruncfunc, kwargs...)
 end
 
 

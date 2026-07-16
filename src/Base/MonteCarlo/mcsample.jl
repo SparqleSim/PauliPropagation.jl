@@ -1,42 +1,43 @@
-# TODO: make top-level more general and also adapt to exactly the same high-level code as propagate!()
-# TODO: little code-duplication and same entrypoints for propagate, mcpropagate and mcsample.
+###
+##
+# Monte Carlo "path sampling": instead of deterministically splitting a Pauli term into a
+# cosine- and a sine-branch at every non-commuting gate, randomly keep only one branch,
+# reweighted so that the result stays unbiased in expectation. The size of the Pauli sum
+# never changes, so no merging or truncation is needed.
+##
+###
 
-function mcsample(circuit, psum::VectorPauliSum, params=nothing; kwargs...)
-    psum = mcsample!(circuit, deepcopy(psum), params; kwargs...)
-    return psum
-end
+"""
+    mcsample(circuit, psum::VectorPauliSum, params=nothing; power=1, heisenberg=true, kwargs...)
+
+Monte Carlo "path sampling" counterpart to `propagate`. Each term in `psum` randomly keeps only
+one of the two branches a non-commuting gate would otherwise deterministically split it into,
+reweighted to remain unbiased in expectation.
+Average many independent calls (or pack many copies of the same term into one large `psum`) to
+converge to the exact `propagate` result.
+Use `power=2` to sample with probabilities proportional to squared coefficients instead of their
+absolute value (useful for e.g. 2-norm/OTOC-type estimators).
+"""
+mcsample(circuit, psum::VectorPauliSum, params=nothing; kwargs...) = mcsample!(circuit, deepcopy(psum), params; kwargs...)
+
+"""
+    mcsample!(circuit, prop_cache::VectorPauliPropagationCache, params=nothing; kwargs...)
+    mcsample!(circuit, psum::VectorPauliSum, params=nothing; heisenberg=true, kwargs...)
+
+In-place version of `mcsample`. See `mcsample` for details.
+"""
 function mcsample!(circuit, prop_cache::VectorPauliPropagationCache, params=nothing; kwargs...)
-    # manupulates the active view of the prop_cache in place
+    # manipulates the active view of the prop_cache in place
     mcsample!(circuit, activesum(prop_cache), params; kwargs...)
     return prop_cache
 end
 
-function mcsample!(circuit, psum::VectorPauliSum, params; heisenberg=true, kwargs...)
-    # if circuit is actually a single gate, promote it to a list [gate]
-    # similarly the params if it is a single number
-    circuit, params = PropagationBase._promotecircandparams(circuit, params)
+function mcsample!(circuit, psum::VectorPauliSum, params=nothing; heisenberg=true, kwargs...)
+    circuit, params = _preparecircuit(circuit, params, heisenberg)
+    return PropagationBase._propagate!(mcapplytoall!, circuit, psum, params; kwargs...)
+end
 
-    # if params is nothing, the circuit must contain only StaticGates
-    # also check if the length of params equals the number of parametrized gates
-    PropagationBase._checknumberofparams(circuit, params)
 
-    if heisenberg
-        # this usually just reverses circuit and parameter order
-        circuit, params = toheisenberg(circuit, params)
-    else
-        # this usually entails a conversion of how gates act
-        circuit, params = toschrodinger(circuit, params)
-    end
-
-    parameter_iterator = Iterators.Stateful(params)
-
-    for gate in circuit
-        if isa(gate, ParametrizedGate)
-            param = popfirst!(parameter_iterator)
-            mcapplytoall!(gate, psum, param; kwargs...)
-        else
-            mcapplytoall!(gate, psum; kwargs...)
-        end
-    end
-    return psum
+function mcapplytoall!(gate, object, args...; kwargs...)
+   @throw error("mcapplytoall! not implemented for gate type $(typeof(gate)) and object type $(typeof(object)).")
 end

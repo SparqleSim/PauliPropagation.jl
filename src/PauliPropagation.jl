@@ -143,6 +143,19 @@ export
     mergefunc
 
 
+include("mcsample.jl")
+# most exported function is from PropagationBase
+export
+    mcpropagate,
+    mcpropagate!,
+    applymergetruncateresample!,
+    mcsample,
+    mcsample!,
+    mcapplytoall!,
+    resample,
+    resample!
+
+
 include("PathProperties/PathProperties.jl")
 export
     PathProperties,

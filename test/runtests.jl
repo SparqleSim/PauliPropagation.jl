@@ -1,4 +1,5 @@
 using PauliPropagation
+using PauliPropagation.PropagationBase
 using Test
 using Random
 
@@ -39,6 +40,8 @@ using Random
     include("test_truncations.jl")
 
     include("test_inplace.jl")
+
+    include("test_montecarlo.jl")
 
     include("test_numericalcertificates.jl")
 
