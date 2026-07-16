@@ -20,7 +20,7 @@ end
 
 Resamples `tsum` down (close) to `target_size` terms.
 Renormalizes the survivors so that the sum stays an unbiased estimator of incoming sum.
-If `squared=true`, resampling is performed on the absolute square of the coefficients and 
+If `squared=true`, resampling is performed on the absolute square of the coefficients and
 is not an unbiased estimator of the incoming sum.
 """
 function resample(tsum::AbstractTermSum, target_size::Integer, resample_args...; kwargs...)
@@ -60,14 +60,14 @@ function resample!(prop_cache::AbstractPropagationCache, target_size, resample_a
 end
 
 ## This the naive resampling where one draw's a random number per sample.
-function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false)
+function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, kwargs...)
 
-    dst_terms = paulis(auxsum(prop_cache))
+    dst_terms = terms(auxsum(prop_cache))
     dst_coeffs = coefficients(auxsum(prop_cache))
-    terms = activeterms(prop_cache)
-    coeffs = activecoeffs(prop_cache)
+    src_terms = activeterms(prop_cache)
+    src_coeffs = activecoeffs(prop_cache)
 
-    _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared)
+    _multinomial_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared)
 
     swapsums!(prop_cache)
     setactivesize!(prop_cache, target_size)
@@ -77,7 +77,7 @@ end
 
 function _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared=false)
     power = squared ? 2 : 1
-    
+
     # Compute the cumulative distribution
     # TODO: make non-allocating
     cum_probs = coeffcumsum(coeffs, power)
@@ -92,20 +92,80 @@ function _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_siz
         idx = searchsortedfirst(cum_probs, r)
 
         dst_terms[i] = terms[idx]
-        dst_coeffs[i] = total_weight * sign(coeffs[idx])^power / target_size
+        # for power=2 (squared=true) this is the sqrt of the weight share, so that |dst_coeff|^2
+        # (not |dst_coeff|) equals the assigned share and the squared 2-norm is what's conserved
+        dst_coeffs[i] = (total_weight / target_size)^(1 / power) * sign(coeffs[idx])^power
     end
 
     return nothing
 end
 
 
-function systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, calibrate=true, rtol=0.01, atol=0)
-    dst_terms = paulis(auxsum(prop_cache))
-    dst_coeffs = coefficients(auxsum(prop_cache))
-    terms = activeterms(prop_cache)
-    coeffs = activecoeffs(prop_cache)
+"""
+    systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false)
 
-    _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared, calibrate, rtol, atol)
+Classic (low-variance) systematic resampling: a single evenly-spaced "comb" of `target_size` teeth
+is laid down over the cumulative coefficient distribution (with one shared random offset), and each
+tooth draws whichever term interval it falls into. Always returns exactly `target_size` terms;
+a term with large weight may be drawn into several destination slots.
+See `systematic_resample_merged!` for a variant that instead folds repeat draws of the same term
+into a single slot.
+"""
+function systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, kwargs...)
+    dst_terms = terms(auxsum(prop_cache))
+    dst_coeffs = coefficients(auxsum(prop_cache))
+    src_terms = activeterms(prop_cache)
+    src_coeffs = activecoeffs(prop_cache)
+
+    _systematic_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared)
+
+    swapsums!(prop_cache)
+    setactivesize!(prop_cache, target_size)
+
+    return prop_cache
+end
+
+function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool=false)
+    power = squared ? 2 : 1
+
+    cum_probs = coeffcumsum(coeffs, power)
+    total_weight = cum_probs[end]
+
+    step = total_weight / target_size
+    # the single source of randomness shifting the comb
+    offset = rand() * step
+
+    dst_terms_view = view(dst_terms, 1:target_size)
+    let step = step, offset = offset, power = power
+        AK.foreachindex(dst_terms_view) do i
+            u = offset + (i - 1) * step
+
+            idx = searchsortedfirst(cum_probs, u)
+
+            dst_terms[i] = terms[idx]
+            dst_coeffs[i] = (total_weight / target_size)^(1 / power) * sign(coeffs[idx])^power
+        end
+    end
+
+    return nothing
+end
+
+
+"""
+    systematic_resample_merged!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, calibrate=true, rtol=0.01, atol=0)
+
+Like `systematic_resample!`, but repeat draws of the same term are folded into that term's own slot
+instead of being copied into separate destination slots. The number of surviving (unique) terms is
+therefore only close to, and generally at most, `target_size`; see `calibrate`/`rtol`/`atol` for tuning
+how closely the comb step is chosen to hit `target_size` unique survivors.
+"""
+function systematic_resample_merged!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, calibrate=true, rtol=0.01, atol=0, kwargs...)
+    dst_terms = terms(auxsum(prop_cache))
+    dst_coeffs = coefficients(auxsum(prop_cache))
+    src_terms = activeterms(prop_cache)
+    src_coeffs = activecoeffs(prop_cache)
+
+    _systematic_resample_merged!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared, calibrate, rtol, atol)
 
     swapsums!(prop_cache)
     # active size does not need to be changed.
@@ -117,7 +177,7 @@ function systematic_resample!(prop_cache::AbstractPropagationCache, target_size:
     return prop_cache
 end
 
-function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool=false, calibrate=true, rtol=0.02, atol=1)
+function _systematic_resample_merged!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool=false, calibrate=true, rtol=0.02, atol=1)
     power = squared ? 2 : 1
 
     cum_probs = coeffcumsum(coeffs, power)
@@ -129,7 +189,7 @@ function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size
     if calibrate
         step = _calibrate_prob_step(coeffs, total_weight, target_size; power, rtol, atol)
     else
-        step = total_weight / target_size 
+        step = total_weight / target_size
     end
 
     # the source of randomness shifting the comb
@@ -153,7 +213,7 @@ function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size
             dst_terms[i] = terms[i]
             # write one entry with the combined weight
             # n_copies can be 0, and it will be filtered later
-            dst_coeffs[i] = n_copies * step * sign(coeffs[i])^power
+            dst_coeffs[i] = (n_copies * step)^(1 / power) * sign(coeffs[i])^power
         end
     end
 
@@ -189,32 +249,42 @@ function _calibrate_prob_step(coeffs, total_weight, target_size; power=1, rtol::
 end
 
 
-function semideterministic_systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false)
-    if squared
-        throw(ArgumentError("squared resampling is not supported for semideterministic resampling."))
-    end
+"""
+    detfraction_systematic_resample_merged!(prop_cache::AbstractPropagationCache, target_size::Integer, deterministic_fraction::Real=0.0; squared=false)
 
-    dst_terms = paulis(auxsum(prop_cache))
+Generalizes `systematic_resample_merged!` by always keeping terms whose weight exceeds
+`total_weight / (deterministic_fraction * target_size)`, and filling the remaining slots by
+systematic comb resampling (folded into each term's own slot, as in `systematic_resample_merged!`)
+over what is left. `deterministic_fraction=0` recovers pure stochastic resampling (nothing is kept
+deterministically); `deterministic_fraction=1` recovers `semideterministic_systematic_resample_merged!`.
+`squared=true` is not supported since a deterministically-kept term does not preserve the squared
+2-norm the way a resampled one does.
+"""
+function detfraction_systematic_resample_merged!(prop_cache::AbstractPropagationCache, target_size::Integer, deterministic_fraction::Real=0.0; squared::Bool=false, kwargs...)
+    if squared
+        throw(ArgumentError("squared resampling is not supported for detfraction resampling."))
+    end
+    @assert 0 <= deterministic_fraction <= 1 "deterministic_fraction must be between 0 and 1"
+
+    dst_terms = terms(auxsum(prop_cache))
     dst_coeffs = coefficients(auxsum(prop_cache))
-    terms = activeterms(prop_cache)
-    coeffs = activecoeffs(prop_cache)
+    src_terms = activeterms(prop_cache)
+    src_coeffs = activecoeffs(prop_cache)
 
     @assert 0 < target_size <= activesize(prop_cache) "target_size must be between 1 and activesize(prop_cache)"
 
-    # compute the average weight capacity of the resampled terms
-    # if a term is above this threshold, it is always kept, otherwise it is resampled
-    total_weight = AK.mapreduce(abs, +, coeffs; init=zero(eltype(coeffs)))
-    threshold = total_weight / target_size
+    # a term is always kept deterministically if its weight exceeds this threshold, otherwise it is resampled
+    total_weight = AK.mapreduce(abs, +, src_coeffs; init=zero(eltype(src_coeffs)))
+    threshold = total_weight / (deterministic_fraction * target_size)
 
     # how many terms are taken deterministically
-    n_det = AK.mapreduce(c -> abs(c) > threshold, +, coeffs; init=0)
+    n_det = AK.mapreduce(c -> abs(c) > threshold, +, src_coeffs; init=0)
 
-    # How many slots are left for the stochatic part
-    # this will never be zero unless the distribtion is completely flat and target_size==activesize
+    # How many slots are left for the stochastic part
     n_stoch = target_size - n_det
 
     # the weights of terms that are resampled. Deterministic coeffs are set to zero.
-    stoch_weights = AK.map(c -> abs(c) > threshold ? zero(eltype(coeffs)) : abs(c), coeffs)
+    stoch_weights = AK.map(c -> abs(c) > threshold ? zero(eltype(src_coeffs)) : abs(c), src_coeffs)
     # get the probability distribution for the stochastic part
     stoch_cum_probs = AK.accumulate!(+, stoch_weights; init=0.0)
     total_stoch_weight = stoch_cum_probs[end]
@@ -223,13 +293,12 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
     step = n_stoch > 0 ? total_stoch_weight / n_stoch : 0.0
     offset = rand() * step
 
-    # TODO: feed the stochastic part into the systematic resampling function to avoid code duplication
-    AK.foreachindex(terms) do i
-        coeff = coeffs[i]
+    AK.foreachindex(src_terms) do i
+        coeff = src_coeffs[i]
         abs_coeff = abs(coeff)
 
         # the term is always copied
-        dst_terms[i] = terms[i]
+        dst_terms[i] = src_terms[i]
 
         if abs_coeff > threshold
             dst_coeffs[i] = coeff
@@ -255,3 +324,15 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
     return prop_cache
 end
 
+
+"""
+    semideterministic_systematic_resample_merged!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false)
+
+Terms whose weight exceeds the average per-slot weight `total_weight / target_size` are always kept;
+the remaining slots are filled by systematic comb resampling over what is left, folded into each
+term's own slot as in `systematic_resample_merged!`. Equivalent to
+`detfraction_systematic_resample_merged!(prop_cache, target_size, 1.0; kwargs...)`.
+"""
+function semideterministic_systematic_resample_merged!(prop_cache::AbstractPropagationCache, target_size::Integer; kwargs...)
+    return detfraction_systematic_resample_merged!(prop_cache, target_size, 1.0; kwargs...)
+end

@@ -85,7 +85,7 @@ export
     filterviaflags!
 
 include("./MonteCarlo/MonteCarlo.jl")
-export 
+export
     mcpropagate,
     mcpropagate!,
     applymergetruncateresample!,
@@ -93,6 +93,11 @@ export
     mcsample!,
     mcapplytoall!,
     resample,
-    resample!
+    resample!,
+    multinomial_resample!,
+    systematic_resample!,
+    systematic_resample_merged!,
+    semideterministic_systematic_resample_merged!,
+    detfraction_systematic_resample_merged!
 
 end

@@ -79,22 +79,43 @@ function PropagationBase.propagate!(circuit, prop_cache::AbstractPauliPropagatio
     return PropagationBase._propagate!(circuit, prop_cache, thetas; max_weight, min_abs_coeff, max_freq, max_sins, customtruncfunc, kwargs...)
 end
 
-# Shared prelude for propagate!/mcpropagate!/mcsample!: promote a single gate/param into a
-# list, validate the parameter count, then convert to the Heisenberg or Schrödinger picture.
-function _preparecircuit(circuit, params, heisenberg::Bool)
-    # if circuit is actually a single gate, promote it to a list [gate]
-    # similarly the params if it is a single number
-    circuit, params = PropagationBase._promotecircandparams(circuit, params)
 
-    # if params is nothing, the circuit must contain only StaticGates
-    # also check if the length of params equals the number of parametrized gates
+### MONTE CARLO
+
+"""
+    mcpropagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; heisenberg=true, kwargs...)
+
+Pauli-specific `mcpropagate!` method that additionally converts the circuit to the Heisenberg or
+Schrödinger picture (see `propagate!`) before delegating to the generic Monte Carlo propagation loop.
+"""
+function PropagationBase.mcpropagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; heisenberg=true, kwargs...)
+    circuit, thetas = _preparecircuit(circuit, thetas, heisenberg)
+    return PropagationBase._propagate!(PropagationBase.applymergetruncateresample!, circuit, prop_cache, thetas; kwargs...)
+end
+
+"""
+    mcsample!(circuit, tsum::AbstractPauliSum, params=nothing; heisenberg=true, kwargs...)
+
+Pauli-specific `mcsample!` method that additionally converts the circuit to the Heisenberg or
+Schrödinger picture (see `propagate!`) before delegating to the generic Monte Carlo sampling loop.
+"""
+function PropagationBase.mcsample!(circuit, tsum::AbstractPauliSum, params=nothing; heisenberg=true, kwargs...)
+    circuit, params = _preparecircuit(circuit, params, heisenberg)
+    return PropagationBase._propagate!(PropagationBase.mcapplytoall!, circuit, tsum, params; kwargs...)
+end
+
+
+# Shared prelude for the Pauli-specific `propagate!`/`mcpropagate!`/`mcsample!` methods
+# promote a single gate/param into a list, 
+# validate the parameter count, 
+# then convert to the Heisenberg or Schrödinger picture.
+function _preparecircuit(circuit, params, heisenberg::Bool)
+    circuit, params = PropagationBase._promotecircandparams(circuit, params)
     PropagationBase._checknumberofparams(circuit, params)
 
     if heisenberg
-        # this usually just reverses circuit and parameter order
         return toheisenberg(circuit, params)
     else
-        # this usually entails a conversion of how gates act
         return toschrodinger(circuit, params)
     end
 end
@@ -141,6 +162,7 @@ function PropagationBase.truncate!(prop_cache::AbstractPauliPropagationCache; mi
 end
 
 function PropagationBase.truncate!(psum::AbstractPauliSum; min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing, kwargs...)
+    # TODO: add min_rel_coeff truncation
 
     function truncfunc(pstr, coeff)
         is_truncated = false

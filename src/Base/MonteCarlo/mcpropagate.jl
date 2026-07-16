@@ -7,13 +7,14 @@
 ###
 
 """
-    mcpropagate(circuit, tsum::AbstractTermSum, thetas=nothing; max_size, resampling_size=round(Int, max_size/2), resample_func=nothing, heisenberg=true, kwargs...)
-    mcpropagate(circuit, prop_cache::AbstractPropagationCache, thetas=nothing; max_size, resampling_size=round(Int, max_size/2), resample_func=nothing, heisenberg=true, kwargs...)
+    mcpropagate(circuit, tsum::AbstractTermSum, thetas=nothing; max_size, resampling_size=round(Int, max_size/2), resample_func=nothing, kwargs...)
+    mcpropagate(circuit, prop_cache::AbstractPropagationCache, thetas=nothing; max_size, resampling_size=round(Int, max_size/2), resample_func=nothing, kwargs...)
 
 Monte Carlo variant of `propagate()`.
 Once the number of terms exceeds `max_size`, the running term sum is resampling down (close) to resampling_size.
 `resample_func` selects the resampling strategy (see `resample!`); `kwargs` are also passed to
-`applymergetruncate!` (e.g. `min_abs_coeff`, `max_weight`) and to the resampling strategy (e.g. `power`).
+`applymergetruncate!` (e.g. `min_abs_coeff`, `max_weight`) and to the resampling strategy (e.g. `squared`).
+For Pauli sums, `heisenberg=true` additionally selects the Heisenberg vs. Schrödinger picture (see `propagate`).
 """
 mcpropagate(circuit, object, thetas=nothing; kwargs...) = mcpropagate!(circuit, deepcopy(object), thetas; kwargs...)
 
@@ -24,12 +25,11 @@ mcpropagate(circuit, object, thetas=nothing; kwargs...) = mcpropagate!(circuit, 
 In-place version of `mcpropagate`. See `mcpropagate` for details.
 """
 function mcpropagate!(circuit, psum::AbstractTermSum, thetas=nothing; kwargs...)
-    prop_cache = mcpropagate!(circuit, VectorPauliPropagationCache(psum), thetas; kwargs...)
+    prop_cache = mcpropagate!(circuit, PropagationCache(psum), thetas; kwargs...)
     return extractsum!(prop_cache, psum)
 end
 
-function mcpropagate!(circuit, prop_cache::AbstractPropagationCache, thetas=nothing; heisenberg=true, kwargs...)
-    circuit, thetas = _preparecircuit(circuit, thetas, heisenberg)
+function mcpropagate!(circuit, prop_cache::AbstractPropagationCache, thetas=nothing; kwargs...)
     return PropagationBase._propagate!(applymergetruncateresample!, circuit, prop_cache, thetas; kwargs...)
 end
 
