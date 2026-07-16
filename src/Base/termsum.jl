@@ -21,9 +21,23 @@ _storagetype(x) = _thrownotimplemented(typeof(x), :StorageType)
 # often this is a Dict{TermType,CoeffType} but it can be anything
 storage(term_sum::TS) where TS<:AbstractTermSum = _thrownotimplemented(TS, :storage)
 
-# Number of leading terms known sorted by integer value and duplicate-free. 0 is always a safe
-# default; only array-backed term sums have any reason to override this.
+
+"""
+    sortedprefix(term_sum::AbstractTermSum)
+
+Get the number of leading terms in `term_sum` that are known to be sorted by integer value and duplicate-free.
+Defaults to 0 for all `AbstractTermSum` types. 
+Can be overloaded for array-based `AbstractTermSum` that carry that corresponding information.
+"""
 sortedprefix(term_sum::AbstractTermSum)::Int = 0
+
+"""
+    setsortedprefix!(term_sum::AbstractTermSum, n::Int)
+
+Set the number of leading terms in `term_sum` that are known to be sorted by integer value and duplicate-free.
+IMPORTANT: Inproper use of this function can silently lead to incorrect results.
+Defaults to a no-op for all `AbstractTermSum` types.
+"""
 setsortedprefix!(term_sum::AbstractTermSum, n::Int) = term_sum
 
 Base.length(term_sum::AbstractTermSum) = length(terms(term_sum))
