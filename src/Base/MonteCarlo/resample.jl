@@ -56,13 +56,14 @@ function resample!(prop_cache::AbstractPropagationCache, target_size, resample_a
     return prop_cache
 end
 
+# the auxsum's raw arrays (write destination) and the cache's active terms/coeffs (read source)
+_resamplearrays(prop_cache::AbstractPropagationCache) = (terms(auxsum(prop_cache)), coefficients(auxsum(prop_cache)),
+    activeterms(prop_cache), activecoeffs(prop_cache))
+
 ## This the naive resampling where one draw's a random number per sample.
 function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, kwargs...)
 
-    dst_terms = terms(auxsum(prop_cache))
-    dst_coeffs = coefficients(auxsum(prop_cache))
-    src_terms = activeterms(prop_cache)
-    src_coeffs = activecoeffs(prop_cache)
+    dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
 
     _multinomial_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared)
 
@@ -105,19 +106,15 @@ The number of surviving terms is often close to, and generally at most, `target_
 See `calibrate`/`rtol`/`atol` for tuning how closely the comb step is chosen to hit `target_size` unique survivors.
 """
 function systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, calibrate=true, rtol=0.01, atol=0, kwargs...)
-    dst_terms = terms(auxsum(prop_cache))
-    dst_coeffs = coefficients(auxsum(prop_cache))
-    src_terms = activeterms(prop_cache)
-    src_coeffs = activecoeffs(prop_cache)
+    dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
 
     _systematic_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared, calibrate, rtol, atol)
 
     swapsums!(prop_cache)
     # active size does not need to be changed.
 
-    # now filter out the exactly 0.0
+    # now filter out the exactly 0.0 and set active size
     truncate!(prop_cache; min_abs_coeff=eps())
-
 
     return prop_cache
 end
@@ -207,12 +204,9 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
         throw(ArgumentError("semideterministic_systematic_resample! does not support squared=true."))
     end
 
-    dst_terms = terms(auxsum(prop_cache))
-    dst_coeffs = coefficients(auxsum(prop_cache))
-    src_terms = activeterms(prop_cache)
-    src_coeffs = activecoeffs(prop_cache)
-
     @assert 0 < target_size <= activesize(prop_cache) "target_size must be between 1 and activesize(prop_cache)"
+
+    dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
 
     # compute the average weight capacity of the resampled terms
     # if a term is above this threshold, it is always kept, otherwise it is resampled
@@ -222,39 +216,41 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
     # how many terms are taken deterministically
     n_det = AK.mapreduce(c -> abs(c) > threshold, +, src_coeffs; init=0)
 
-    # How many slots are left for the stochatic part
-    # this will never be zero unless the distribtion is completely flat and target_size==activesize
+    # how many slots are left for the stochastic part
     n_stoch = target_size - n_det
 
-    # the weights of terms that are resampled. Deterministic coeffs are set to zero.
+    # the weight of the terms that go through resampling; deterministic terms get zero weight
+    # so they don't compete with the stochastic terms for a comb slot
     stoch_weights = AK.map(c -> abs(c) > threshold ? zero(eltype(src_coeffs)) : abs(c), src_coeffs)
-    # get the probability distribution for the stochastic part
-    stoch_cum_probs = AK.accumulate!(+, stoch_weights; init=0.0)
+    stoch_cum_probs = AK.accumulate!(+, stoch_weights; init=zero(eltype(src_coeffs)))
     total_stoch_weight = stoch_cum_probs[end]
 
-    # step and offset of the comb for systematic resampling
-    step = n_stoch > 0 ? total_stoch_weight / n_stoch : 0.0
+    # step and offset of the comb for systematic resampling; step is only meaningful if there
+    # are stochastic slots left to fill
+    step = n_stoch > 0 ? total_stoch_weight / n_stoch : zero(total_stoch_weight)
     offset = rand() * step
 
-    # TODO: slot this stochastic part into systematic_resample!
-    AK.foreachindex(src_terms) do i
-        coeff = src_coeffs[i]
-        abs_coeff = abs(coeff)
+    # single pass: each term is either kept deterministically or assigned its comb share
+    let step = step, offset = offset, threshold = threshold, n_stoch = n_stoch
+        AK.foreachindex(src_terms) do i
+            coeff = src_coeffs[i]
+            dst_terms[i] = src_terms[i]
 
-        # the term is always copied
-        dst_terms[i] = src_terms[i]
+            if abs(coeff) > threshold
+                dst_coeffs[i] = coeff
+            elseif n_stoch == 0
+                # no stochastic slots left, so every sub-threshold term is dropped
+                dst_coeffs[i] = zero(eltype(src_coeffs))
+            else
+                c_end = stoch_cum_probs[i]
+                c_start = (i == 1) ? zero(c_end) : stoch_cum_probs[i-1]
 
-        if abs_coeff > threshold
-            dst_coeffs[i] = coeff
-        else
-            c_end = stoch_cum_probs[i]
-            c_start = (i == 1) ? zero(c_end) : stoch_cum_probs[i-1]
+                lower_idx = floor((c_start - offset) / step)
+                upper_idx = floor((c_end - offset) / step)
+                n_copies = upper_idx - lower_idx
 
-            lower_idx = floor((c_start - offset) / step)
-            upper_idx = floor((c_end - offset) / step)
-            n_copies = upper_idx - lower_idx
-
-            dst_coeffs[i] = n_copies * step * sign(coeff)
+                dst_coeffs[i] = n_copies * step * sign(coeff)
+            end
         end
     end
 
