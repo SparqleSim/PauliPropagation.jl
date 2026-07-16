@@ -1,3 +1,4 @@
+# TODO: make this file adapt ./mcsample.jl code
 using StatsBase
 
 """
