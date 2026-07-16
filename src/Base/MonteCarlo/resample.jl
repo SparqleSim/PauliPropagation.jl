@@ -3,7 +3,7 @@
 # Resampling: reduces the number of terms in a TermSum by randomly sampling from the coefficient distribution
 ##
 ###
-# TODO: Make this general and not specific to VectorPauliSum.
+# TODO: Resampling currently only works for array-based TermSums
 using StatsBase
 
 ## RE-SAMPLING
