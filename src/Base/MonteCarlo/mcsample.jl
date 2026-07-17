@@ -8,8 +8,8 @@
 ###
 
 """
-    mcsample(circuit, tsum::AbstractTermSum, params=nothing; squared=false, kwargs...)
-    mcsample(circuit, prop_cache::AbstractPropagationCache, params=nothing; squared=false, kwargs...)
+    mcsample(circuit, tsum::AbstractTermSum, params=nothing; squared=false, thread=true, kwargs...)
+    mcsample(circuit, prop_cache::AbstractPropagationCache, params=nothing; squared=false, thread=true, kwargs...)
 
 Monte Carlo "path sampling" counterpart to `propagate`.
 Each term term in the term sum randomly samples a branch that a gate applies.
@@ -19,12 +19,14 @@ converge the result.
 Use `squared=true` to sample with probabilities proportional to squared coefficients instead of their
 absolute value (useful for e.g. 2-norm/OTOC-type estimators).
 For Pauli sums, `heisenberg=true` additionally selects the Heisenberg vs. Schrödinger picture (see `propagate`).
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread,
+allowing efficient multi-threading on a higher level (e.g. `Threads.@threads for _ in 1:10; propagate(...; thread=false); end`).
 """
 mcsample(circuit, psum, params=nothing; kwargs...) = mcsample!(circuit, deepcopy(psum), params; kwargs...)
 
 """
-    mcsample!(circuit, tsum::AbstractTermSum, params=nothing; squared=false, kwargs...)
-    mcsample!(circuit, prop_cache::AbstractPropagationCache, params=nothing; squared=false, kwargs...)
+    mcsample!(circuit, tsum::AbstractTermSum, params=nothing; squared=false, thread=true, kwargs...)
+    mcsample!(circuit, prop_cache::AbstractPropagationCache, params=nothing; squared=false, thread=true, kwargs...)
 
 In-place version of `mcsample`. See `mcsample` for details.
 """

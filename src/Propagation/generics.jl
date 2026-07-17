@@ -85,10 +85,11 @@ end
 ### MONTE CARLO
 
 """
-    mcpropagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; heisenberg=true, kwargs...)
+    mcpropagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; heisenberg=true, thread=true, kwargs...)
 
 Pauli-specific `mcpropagate!` method that additionally converts the circuit to the Heisenberg or
 Schrödinger picture (see `propagate!`) before delegating to the generic Monte Carlo propagation loop.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function PropagationBase.mcpropagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; heisenberg=true, kwargs...)
     circuit, thetas = _preparecircuit(circuit, thetas, heisenberg)
@@ -96,10 +97,11 @@ function PropagationBase.mcpropagate!(circuit, prop_cache::AbstractPauliPropagat
 end
 
 """
-    mcsample!(circuit, tsum::AbstractPauliSum, params=nothing; heisenberg=true, kwargs...)
+    mcsample!(circuit, tsum::AbstractPauliSum, params=nothing; heisenberg=true, thread=true, kwargs...)
 
 Pauli-specific `mcsample!` method that additionally converts the circuit to the Heisenberg or
 Schrödinger picture (see `propagate!`) before delegating to the generic Monte Carlo sampling loop.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function PropagationBase.mcsample!(circuit, tsum::AbstractPauliSum, params=nothing; heisenberg=true, kwargs...)
     circuit, params = _preparecircuit(circuit, params, heisenberg)

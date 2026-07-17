@@ -7,13 +7,14 @@
 ###
 
 """
-    mcapplytoall!(gate, psum::VectorPauliSum, [param]; squared=false, kwargs...)
+    mcapplytoall!(gate, psum::VectorPauliSum, [param]; squared=false, thread=true, kwargs...)
 
 1st-level function below `mcsample!` that stochastically applies one `gate` to every term in `psum`,
 in place. This is the Monte Carlo analogue of `applytoall!`: instead of branching a term into two,
 it randomly keeps one branch, reweighted to remain unbiased. Must be overloaded for each custom gate type.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
-function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::VectorPauliSum; squared=false, kwargs...)
+function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::VectorPauliSum; squared=false, thread::Bool=true, kwargs...)
     # Clifford gates act deterministically even in Monte Carlo mode.
     lookup_map = clifford_map[gate.symbol]
 
@@ -21,7 +22,7 @@ function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::VectorPauliSum;
 
     term_vec = paulis(psum)
     coeff_vec = coefficients(psum)
-    AK.foreachindex(term_vec) do ii
+    AK.foreachindex(term_vec; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         term = term_vec[ii]
         coeff = coeff_vec[ii]
 
@@ -37,7 +38,7 @@ function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::VectorPauliSum;
 end
 
 
-function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::VectorPauliSum, theta; squared=false, kwargs...)
+function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::VectorPauliSum, theta; squared=false, thread::Bool=true, kwargs...)
     power = squared ? 2 : 1
 
     sin_val = sin(theta)
@@ -58,7 +59,7 @@ function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::VectorPauliSum
 
     term_vec = paulis(psum)
     coeff_vec = coefficients(psum)
-    AK.foreachindex(term_vec) do ii
+    AK.foreachindex(term_vec; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         term = term_vec[ii]
         coeff = coeff_vec[ii]
 

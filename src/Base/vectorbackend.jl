@@ -146,12 +146,12 @@ function _copy!(dst_terms, dst_coeffs, src_terms, src_coeffs; thread::Bool=true)
 end
 
 ## Cumulative sums are often used in resampling
-coeffcumsum!(coeffs) = AK.accumulate!((x1, x2) -> x1 + abs(x2), coeffs; init=zero(eltype(coeffs)), neutral=zero(eltype(coeffs)))
+coeffcumsum!(coeffs; thread::Bool=true) = AK.accumulate!((x1, x2) -> x1 + abs(x2), coeffs; init=zero(eltype(coeffs)), neutral=zero(eltype(coeffs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
-coeffcumsum(coeffs) = coeffcumsum!(copy(coeffs))
+coeffcumsum(coeffs; thread::Bool=true) = coeffcumsum!(copy(coeffs); thread)
 
-function coeffcumsum(coeffs, power::Real)
-    mapped_coeffs = AK.map(c -> abs(c)^power, coeffs)
-    coeffcumsum!(mapped_coeffs)
+function coeffcumsum(coeffs, power::Real; thread::Bool=true)
+    mapped_coeffs = AK.map(c -> abs(c)^power, coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    coeffcumsum!(mapped_coeffs; thread)
     return mapped_coeffs
 end

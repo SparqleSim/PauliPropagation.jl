@@ -8,20 +8,21 @@ using StatsBase
 
 ## RE-SAMPLING
 """
-    resample(tsum::AbstractTermSum, target_size::Integer; resample_func=nothing, squared=false, kwargs...)
+    resample(tsum::AbstractTermSum, target_size::Integer; resample_func=nothing, squared=false, thread=true, kwargs...)
 
 Resamples `tsum` down (close) to `target_size` terms.
 Renormalizes the survivors so that the sum stays an unbiased estimator of incoming sum.
 If `squared=true`, resampling is performed on the absolute square of the coefficients and
 is not an unbiased estimator of the incoming sum.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function resample(tsum::AbstractTermSum, target_size::Integer, resample_args...; kwargs...)
     return resample!(deepcopy(tsum), target_size, resample_args...; kwargs...)
 end
 
 """
-    resample!(tsum::AbstractTermSum, target_size::Integer; kwargs...)
-    resample!(prop_cache::AbstractPropagationCache, target_size::Integer; kwargs...)
+    resample!(tsum::AbstractTermSum, target_size::Integer; thread=true, kwargs...)
+    resample!(prop_cache::AbstractPropagationCache, target_size::Integer; thread=true, kwargs...)
 
 In-place version of `resample`. See `resample` for details.
 """
@@ -63,11 +64,11 @@ _resamplearrays(prop_cache::AbstractPropagationCache) = (terms(auxsum(prop_cache
     activeterms(prop_cache), activecoeffs(prop_cache))
 
 ## This the naive resampling where one draw's a random number per sample.
-function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, kwargs...)
+function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread::Bool=true, kwargs...)
 
     dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
 
-    _multinomial_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared)
+    _multinomial_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared, thread)
 
     swapsums!(prop_cache)
     setactivesize!(prop_cache, target_size)
@@ -75,16 +76,16 @@ function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size
     return prop_cache
 end
 
-function _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared=false)
+function _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared=false, thread::Bool=true)
     power = squared ? 2 : 1
 
     # Compute the cumulative distribution
     # TODO: make non-allocating
-    cum_probs = coeffcumsum(coeffs, power)
+    cum_probs = coeffcumsum(coeffs, power; thread)
     total_weight = cum_probs[end]
 
     dst_terms_view = view(dst_terms, 1:target_size)
-    AK.foreachindex(dst_terms_view) do i
+    AK.foreachindex(dst_terms_view; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do i
         # Sample a random number in [0, total_weight)
         r = rand() * total_weight
 
@@ -101,40 +102,41 @@ function _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_siz
 end
 
 """
-    systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, calibrate=true, rtol=0.01, atol=0)
+    systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, calibrate=true, rtol=0.01, atol=0, thread=true)
 
-Low variance resampling technique that returns unique terms. 
+Low variance resampling technique that returns unique terms.
 The number of surviving terms is often close to, and generally at most, `target_size`.
 See `calibrate`/`rtol`/`atol` for tuning how closely the comb step is chosen to hit `target_size` unique survivors.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
-function systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, calibrate=true, rtol=0.01, atol=0, kwargs...)
+function systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, calibrate=true, rtol=0.01, atol=0, thread::Bool=true, kwargs...)
     dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
 
-    _systematic_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared, calibrate, rtol, atol)
+    _systematic_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared, calibrate, rtol, atol, thread)
 
     swapsums!(prop_cache)
     # active size does not need to be changed.
 
     # now filter out the exactly 0.0 and set active size
-    truncate!(prop_cache; min_abs_coeff=eps())
+    truncate!(prop_cache; min_abs_coeff=eps(), thread)
 
     return prop_cache
 end
 
-function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool=false, calibrate=true, rtol=0.02, atol=1)
+function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool=false, calibrate=true, rtol=0.02, atol=1, thread::Bool=true)
     power = squared ? 2 : 1
 
     # we can write into existing memory with a slightly more complicated comp later
     cum_probs = view(dst_coeffs, 1:length(coeffs))
-    AK.map!(c -> abs(c)^power, cum_probs, coeffs)
-    AK.accumulate!(+, cum_probs; init=zero(eltype(cum_probs)))
+    AK.map!(c -> abs(c)^power, cum_probs, coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    AK.accumulate!(+, cum_probs; init=zero(eltype(cum_probs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
     total_weight = cum_probs[end]
 
     # Normally: step = total_weight / target_size
     # but this will generally produce less unique terms
     # scale the step to go toward target_size many unique terms
     if calibrate
-        step = _calibrate_prob_step(coeffs, total_weight, target_size; power, rtol, atol)
+        step = _calibrate_prob_step(coeffs, total_weight, target_size; power, rtol, atol, thread)
     else
         step = total_weight / target_size
     end
@@ -146,7 +148,7 @@ function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size
     # We iterate over INPUT terms. Each term is processed once.
     # The "let" block is necessary because otherwise "step" get boxed (wow again)
     let step=step, offset=offset, power=power
-        AK.foreachindex(terms) do i
+        AK.foreachindex(terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do i
 
             # c_start is technically stoch_cum_probs[i-1],
             # but we thread, so need to recompute from coeff
@@ -169,11 +171,11 @@ function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size
 end
 
 
-function _calibrate_prob_step(coeffs, total_weight, target_size; power=1, rtol::Real=0.02, atol::Real=0)
+function _calibrate_prob_step(coeffs, total_weight, target_size; power=1, rtol::Real=0.02, atol::Real=0, thread::Bool=true)
 
     # this function estimates the mean number of unique samples (or something close to it)
     # when resampling we can overshoot if rtol is small
-    getcurrentsum(cs, inv_s) = AK.mapreduce(c -> min(1.0, abs(c)^power * inv_s), +, cs; init=zero(eltype(cs)))
+    getcurrentsum(cs, inv_s) = AK.mapreduce(c -> min(1.0, abs(c)^power * inv_s), +, cs; init=zero(eltype(cs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
     inv_step = target_size / total_weight
 
@@ -195,13 +197,14 @@ end
 
 
 """
-    semideterministic_systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false)
+    semideterministic_systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread=true)
 
 Terms whose weight exceeds the average per-slot weight `total_weight / target_size` are always kept;
 the remaining slots are filled by systematic comb resampling over what is left, folded into each term's own slot.
 `squared=true` is disallowed.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
-function semideterministic_systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, kwargs...)
+function semideterministic_systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread::Bool=true, kwargs...)
     if squared
         throw(ArgumentError("semideterministic_systematic_resample! does not support squared=true."))
     end
@@ -212,19 +215,19 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
 
     # compute the average weight capacity of the resampled terms
     # if a term is above this threshold, it is always kept, otherwise it is resampled
-    total_weight = AK.mapreduce(abs, +, src_coeffs; init=zero(eltype(src_coeffs)))
+    total_weight = AK.mapreduce(abs, +, src_coeffs; init=zero(eltype(src_coeffs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
     threshold = total_weight / target_size
 
     # how many terms are taken deterministically
-    n_det = AK.mapreduce(c -> abs(c) > threshold, +, src_coeffs; init=0)
+    n_det = AK.mapreduce(c -> abs(c) > threshold, +, src_coeffs; init=0, max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
     # how many slots are left for the stochastic part
     n_stoch = target_size - n_det
 
    # we can write into existing memory with a slightly more complicated comp later
     stoch_cum_probs = view(dst_coeffs, 1:length(src_coeffs))
-    AK.map!(c -> abs(c) > threshold ? zero(eltype(src_coeffs)) : abs(c), stoch_cum_probs, src_coeffs)
-    AK.accumulate!(+, stoch_cum_probs; init=zero(eltype(stoch_cum_probs)))
+    AK.map!(c -> abs(c) > threshold ? zero(eltype(src_coeffs)) : abs(c), stoch_cum_probs, src_coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    AK.accumulate!(+, stoch_cum_probs; init=zero(eltype(stoch_cum_probs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
     total_stoch_weight = stoch_cum_probs[end]
 
     # step and offset of the comb for systematic resampling; step is only meaningful if there
@@ -234,7 +237,7 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
 
     # single pass: each term is either kept deterministically or assigned its comb share
     let step = step, offset = offset, threshold = threshold, n_stoch = n_stoch
-        AK.foreachindex(src_terms) do i
+        AK.foreachindex(src_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do i
             coeff = src_coeffs[i]
             abs_coeff = abs(coeff)
             dst_terms[i] = src_terms[i]
@@ -263,7 +266,7 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
     # active size does not need to be changed.
 
     # now filter out the exactly 0.0
-    truncate!(prop_cache; min_abs_coeff=eps())
+    truncate!(prop_cache; min_abs_coeff=eps(), thread)
 
 
     return prop_cache
