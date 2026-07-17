@@ -63,6 +63,26 @@ function _truncate!(::ArrayStorage, truncfunc::F, term_sum::AbstractTermSum; kwa
 end
 
 
+"""
+    maxabscoeff(term_sum::AbstractTermSum)
+    maxabscoeff(prop_cache::AbstractPropagationCache)
+
+Returns the maximum absolute coefficient currently present in `term_sum`, or in the active
+view of `prop_cache`.
+"""
+function maxabscoeff(thing::Union{AbstractTermSum,AbstractPropagationCache})
+    return _maxabscoeff(StorageType(thing), thing)
+end
+
+function _maxabscoeff(::DictStorage, thing::Union{AbstractTermSum,AbstractPropagationCache})
+    return mapreduce(abs, max, coefficients(thing); init=zero(coefftype(thing)))
+end
+
+function _maxabscoeff(::ArrayStorage, thing::Union{AbstractTermSum,AbstractPropagationCache})
+    return AK.mapreduce(abs, max, coefficients(thing); init=zero(coefftype(thing)))
+end
+
+
 # Truncations on unsuitable coefficient types defaults to false.
 function truncatemincoeff(coeff, min_abs_coeff)
     return false

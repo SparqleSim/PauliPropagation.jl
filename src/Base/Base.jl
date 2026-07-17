@@ -71,7 +71,7 @@ include("./merge.jl")
 export merge, merge!, mergefunc
 
 include("./truncate.jl")
-export truncate, truncate!
+export truncate, truncate!, maxabscoeff
 
 
 include("./vectorbackend.jl")

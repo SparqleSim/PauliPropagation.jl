@@ -137,7 +137,17 @@ A custom truncation function can be passed as `customtruncfunc` with the signatu
 
 This function combines all truncation criteria into a single truncation function `truncfunc()` calls PropagationBase.truncate!(truncfunc, prop_cache).
 """
-function PropagationBase.truncate!(prop_cache::AbstractPauliPropagationCache; min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing, kwargs...)
+function PropagationBase.truncate!(
+    prop_cache::AbstractPauliPropagationCache; 
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing,
+    customtruncfunc=nothing, kwargs...
+    )
+
+    if !isnothing(min_rel_coeff)
+        # compute the maximum absolute coefficient in the active view of the prop_cache
+        max_abs_coeff = maxabscoeff(prop_cache)
+        min_abs_coeff = max(min_rel_coeff * max_abs_coeff, min_abs_coeff)
+    end
 
     function truncfunc(pstr, coeff)
         is_truncated = false
@@ -161,8 +171,17 @@ function PropagationBase.truncate!(prop_cache::AbstractPauliPropagationCache; mi
     return prop_cache
 end
 
-function PropagationBase.truncate!(psum::AbstractPauliSum; min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing, kwargs...)
-    # TODO: add min_rel_coeff truncation
+function PropagationBase.truncate!(
+    psum::AbstractPauliSum; 
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing, 
+    customtruncfunc=nothing, kwargs...
+    )
+    
+    if !isnothing(min_rel_coeff)
+        # compute the maximum absolute coefficient in the active view of the prop_cache
+        max_abs_coeff = maxabscoeff(psum)
+        min_abs_coeff = max(min_rel_coeff * max_abs_coeff, min_abs_coeff)
+    end
 
     function truncfunc(pstr, coeff)
         is_truncated = false
