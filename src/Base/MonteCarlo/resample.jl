@@ -63,6 +63,17 @@ end
 _resamplearrays(prop_cache::AbstractPropagationCache) = (terms(auxsum(prop_cache)), coefficients(auxsum(prop_cache)),
     activeterms(prop_cache), activecoeffs(prop_cache))
 
+# a real-valued scratch buffer of length(coeffs) for cumulative weights
+# always real, even for complex coeffs. 
+# Reuses `dst`'s memory if possible, else allocates a new array
+function _realweightbuffer(dst, coeffs)
+    if eltype(coeffs) <: Real
+        return view(dst, 1:length(coeffs))
+    else
+        return similar(coeffs, real(eltype(coeffs)))
+    end
+end
+
 ## This the naive resampling where one draw's a random number per sample.
 function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread::Bool=true, kwargs...)
 
@@ -126,8 +137,8 @@ end
 function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool=false, calibrate=true, rtol=0.02, atol=1, thread::Bool=true)
     power = squared ? 2 : 1
 
-    # we can write into existing memory with a slightly more complicated comp later
-    cum_probs = view(dst_coeffs, 1:length(coeffs))
+    # cumulative weights are always real; reuses dst_coeffs's memory when possible (see _realweightbuffer)
+    cum_probs = _realweightbuffer(dst_coeffs, coeffs)
     AK.map!(c -> abs(c)^power, cum_probs, coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
     AK.accumulate!(+, cum_probs; init=zero(eltype(cum_probs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
     total_weight = cum_probs[end]
@@ -172,14 +183,16 @@ end
 
 
 function _calibrate_prob_step(coeffs, total_weight, target_size; power=1, rtol::Real=0.02, atol::Real=0, thread::Bool=true)
+    # coeffs may be complex, but the sums/tolerances computed here are always real
+    RT = real(eltype(coeffs))
 
     # this function estimates the mean number of unique samples (or something close to it)
     # when resampling we can overshoot if rtol is small
-    getcurrentsum(cs, inv_s) = AK.mapreduce(c -> min(1.0, abs(c)^power * inv_s), +, cs; init=zero(eltype(cs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    getcurrentsum(cs, inv_s) = AK.mapreduce(c -> min(1.0, abs(c)^power * inv_s), +, cs; init=zero(RT), neutral=zero(RT), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
     inv_step = target_size / total_weight
 
-    tolsatisfied(r) = ((1.0 - rtol) * target_size - atol) / target_size <= r <= 1.0 - eps(eltype(coeffs))
+    tolsatisfied(r) = ((1.0 - rtol) * target_size - atol) / target_size <= r <= 1.0 - eps(RT)
     for i in 1:5
         current_sum = getcurrentsum(coeffs, inv_step)
 
@@ -212,21 +225,23 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
     @assert 0 < target_size <= activesize(prop_cache) "target_size must be between 1 and activesize(prop_cache)"
 
     dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
+    # src_coeffs may be complex; weights/counts computed below are always real
+    RT = real(eltype(src_coeffs))
 
     # compute the average weight capacity of the resampled terms
     # if a term is above this threshold, it is always kept, otherwise it is resampled
-    total_weight = AK.mapreduce(abs, +, src_coeffs; init=zero(eltype(src_coeffs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    total_weight = AK.mapreduce(abs, +, src_coeffs; init=zero(RT), neutral=zero(RT), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
     threshold = total_weight / target_size
 
     # how many terms are taken deterministically
-    n_det = AK.mapreduce(c -> abs(c) > threshold, +, src_coeffs; init=0, max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    n_det = AK.mapreduce(c -> abs(c) > threshold, +, src_coeffs; init=0, neutral=0, max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
     # how many slots are left for the stochastic part
     n_stoch = target_size - n_det
 
-   # we can write into existing memory with a slightly more complicated comp later
-    stoch_cum_probs = view(dst_coeffs, 1:length(src_coeffs))
-    AK.map!(c -> abs(c) > threshold ? zero(eltype(src_coeffs)) : abs(c), stoch_cum_probs, src_coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    # cumulative weights are always real; reuses dst_coeffs's memory when possible (see _realweightbuffer)
+    stoch_cum_probs = _realweightbuffer(dst_coeffs, src_coeffs)
+    AK.map!(c -> abs(c) > threshold ? zero(eltype(stoch_cum_probs)) : abs(c), stoch_cum_probs, src_coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
     AK.accumulate!(+, stoch_cum_probs; init=zero(eltype(stoch_cum_probs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
     total_stoch_weight = stoch_cum_probs[end]
 

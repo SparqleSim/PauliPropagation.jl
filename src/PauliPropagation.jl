@@ -138,6 +138,7 @@ export
     apply,
     truncate,
     truncate!,
+    maxabscoeff,
     merge,
     merge!,
     mergefunc

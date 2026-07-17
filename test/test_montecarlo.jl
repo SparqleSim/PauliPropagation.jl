@@ -250,6 +250,45 @@ end
 end
 
 
+@testset "mcpropagate! handles complex coefficients" begin
+    nq = 4
+    nl = 3
+    circuit = efficientsu2circuit(nq, nl)
+    thetas = randn(countparameters(circuit))
+    pstr = PauliString(nq, :Z, 2, 1.0 + 0.5im)
+
+    result = mcpropagate(circuit, VectorPauliSum(pstr), thetas; max_size=10, min_abs_coeff=1e-8)
+    @test !isempty(result)
+    @test length(result) <= 10
+
+    # squared=true routes through multinomial_resample!
+    result_sq = mcpropagate(circuit, VectorPauliSum(pstr), thetas; max_size=10, squared=true)
+    @test !isempty(result_sq)
+    @test length(result_sq) <= 10
+end
+
+
+@testset "resample! variants handle complex coefficients" begin
+    nq = 4
+    pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), (rand() + 0.1) * cis(2π * rand())) for _ in 1:30]
+    base_psum = merge!(VectorPauliSum(pstrs))
+    n = length(base_psum)
+    target_size = max(1, n ÷ 2)
+    term_tol = 3
+
+    # multinomial_resample! draws exactly target_size samples, so its count is always exact
+    cache = VectorPauliPropagationCache(deepcopy(base_psum))
+    resample!(cache, target_size; resample_func=multinomial_resample!)
+    @test activesize(cache) == target_size
+
+    for f in (systematic_resample!, semideterministic_systematic_resample!)
+        cache = VectorPauliPropagationCache(deepcopy(base_psum))
+        resample!(cache, target_size; resample_func=f)
+        @test 1 <= activesize(cache) <= target_size + term_tol
+    end
+end
+
+
 @testset "resample! variants stay within target_size" begin
     nq = 4
     pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), rand() + 0.1) for _ in 1:30]

@@ -72,6 +72,19 @@ end
 
     vpsum = VectorPauliSum(psum)
     @test maxabscoeff(vpsum) ≈ maximum(abs, coeffs)
+
+    # complex coefficients: the reduction must stay real-valued internally
+    complex_coeffs = (0.1 + 0.2im, -0.7 - 0.3im, 0.3im)
+
+    cpsum = PauliSum(ComplexF64, nq)
+    for (pauli, qind, coeff) in zip(paulis, qinds, complex_coeffs)
+        add!(cpsum, pauli, qind, coeff)
+    end
+
+    @test maxabscoeff(cpsum) ≈ maximum(abs, complex_coeffs)
+
+    cvpsum = VectorPauliSum(cpsum)
+    @test maxabscoeff(cvpsum) ≈ maximum(abs, complex_coeffs)
 end
 
 @testset "Truncate relative coefficient Tests" begin

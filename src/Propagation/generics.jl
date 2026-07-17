@@ -47,7 +47,8 @@ If thetas are not passed, the circuit must contain only non-parametrized `Static
 Default truncations are `min_abs_coeff`, `max_weight`, `max_freq`, and `max_sins`.
 `max_freq`, and `max_sins` will lead to automatic conversion if the coefficients are not already wrapped in suitable `PathProperties` objects.
 A custom truncation function can be passed as `customtruncfunc` with the signature customtruncfunc(pstr::PauliStringType, coefficient)::Bool.
-`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread. It's safe to call from inside your own threaded loop (e.g. `Threads.@threads for _ in 1:10; propagate(...; thread=false); end`), since it won't spawn extra threads competing with yours.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread,
+allowing efficient multi-threading on a higher level (e.g. `Threads.@threads for _ in 1:10; propagate(...; thread=false); end`).
 Further `kwargs` are passed to the lower-level functions `applymergetruncate!`, `applytoall!`, and `apply`.
 """
 function PropagationBase.propagate(circuit, psum::AbstractPauliSum, thetas=nothing; max_weight=Inf, min_abs_coeff=1e-10, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, heisenberg=true, thread::Bool=true, kwargs...)

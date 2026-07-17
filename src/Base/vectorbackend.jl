@@ -148,10 +148,13 @@ end
 ## Cumulative sums are often used in resampling
 coeffcumsum!(coeffs; thread::Bool=true) = AK.accumulate!((x1, x2) -> x1 + abs(x2), coeffs; init=zero(eltype(coeffs)), neutral=zero(eltype(coeffs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
-coeffcumsum(coeffs; thread::Bool=true) = coeffcumsum!(copy(coeffs); thread)
+coeffcumsum(coeffs; thread::Bool=true) = coeffcumsum(coeffs, 1; thread)
 
 function coeffcumsum(coeffs, power::Real; thread::Bool=true)
-    mapped_coeffs = AK.map(c -> abs(c)^power, coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    # `abs(c)^power` is always real, but AK.map's output eltype follows `coeffs`, not `f`, so a
+    # complex `coeffs` needs an explicitly real destination rather than the allocating AK.map
+    mapped_coeffs = similar(coeffs, real(eltype(coeffs)))
+    AK.map!(c -> abs(c)^power, mapped_coeffs, coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
     coeffcumsum!(mapped_coeffs; thread)
     return mapped_coeffs
 end

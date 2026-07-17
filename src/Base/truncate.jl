@@ -83,11 +83,14 @@ function maxabscoeff(thing::Union{AbstractTermSum,AbstractPropagationCache})
 end
 
 function _maxabscoeff(::DictStorage, thing::Union{AbstractTermSum,AbstractPropagationCache})
-    return mapreduce(abs, max, coefficients(thing); init=zero(coefftype(thing)))
+    return mapreduce(coeff -> abs(tonumber(coeff)), max, coefficients(thing); init=zero(real(numcoefftype(thing))))
 end
 
 function _maxabscoeff(::ArrayStorage, thing::Union{AbstractTermSum,AbstractPropagationCache})
-    return AK.mapreduce(abs, max, coefficients(thing); init=zero(coefftype(thing)))
+    RT = real(numcoefftype(thing))
+    # `neutral` must be given explicitly since AK's default (typemin) is undefined for RT here;
+    # zero is a valid neutral element for `max` since all mapped values (abs(...)) are >= 0
+    return AK.mapreduce(coeff -> abs(tonumber(coeff)), max, coefficients(thing); init=zero(RT), neutral=zero(RT))
 end
 
 
