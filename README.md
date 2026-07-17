@@ -99,7 +99,7 @@ max_weight = 6 # maximum Pauli weight
 min_abs_coeff = 1e-4 # minimal coefficient magnitude
 
 ## propagate through the circuit
-init_pauli_sum = PauliSum(pstr)  # you can also propagate `pstr` use use VectorPauliSum
+init_pauli_sum = PauliSum(pstr)  # you can also propagate `pstr` or VectorPauliSum(pstr)
 pauli_sum = propagate(circuit, init_pauli_sum, parameters; max_weight, min_abs_coeff)
 ```
 The output `pauli_sum` gives us an approximation of propagated Pauli strings

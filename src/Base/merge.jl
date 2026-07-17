@@ -113,10 +113,8 @@ function _flaggroupbegin!(prop_cache::AbstractPropagationCache; thread::Bool=tru
     return prop_cache
 end
 
-# Given flagged group beginnings, merge the groups. Accepts (and ignores) `truncfunc` only for a
-# uniform signature with the tail-merge path: dropping a group here would leave a gap in the dense
-# prefix-sum indexing, so truncation is skipped and left for the next gate's merge to catch instead.
-function _mergegroups!(prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing)
+# Given flagged group beginnings, merge the groups.
+function _mergegroups!(prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
 
     term_view = activeterms(prop_cache)
     coeffs = activecoeffs(prop_cache)

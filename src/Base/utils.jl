@@ -26,7 +26,7 @@ function _offsetsfromcounts(counts::AbstractVector{Int})
     return offsets
 end
 
-# for CPU-only code likeThreads.@spawn
+# for CPU-only code using Threads.@spawn
 # GPU extensions override this for their array for fallback functionality
 _iscpuarray(::AbstractArray) = true
 

@@ -106,8 +106,7 @@ function _mainauxarrays(prop_cache::AbstractPropagationCache)
     )
 end
 
-# Publishes a pass's result: the auxsum just written becomes the new mainsum, active up to
-# new_activesize with new_sortedprefix leading terms known sorted.
+# Publishes a pass's result: the auxsum just written becomes the new mainsum
 function _commitwrite!(prop_cache::AbstractPropagationCache, new_activesize::Int, new_sortedprefix::Int)
     swapsums!(prop_cache)
     setactivesize!(prop_cache, new_activesize)
