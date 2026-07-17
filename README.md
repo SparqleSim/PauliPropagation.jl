@@ -145,6 +145,11 @@ A few tips to get the most performance out of PauliPropagation.jl, in particular
 
 All of the above can be addressed by writing the additional missing code due to the nice extensibility of Julia.
 
+
+## Randomized Evolution
+Starting version `0.8`, we provide an `mcpropagate(...; max_size)` function. It propagates as usual, truncates if you pass truncation parameters, and when the number of terms exceeds `max_size`, it resamples down to a `resampling_size` (default `max_size / 2`) an unbiased procedure. This in principle allows one to arbitrarily trade memory for averaging time, but note that all coefficients become increasingly large and inaccurate the more often it must resample.
+ 
+
 ## Yao.jl integration
 
 Load `Yao` or `YaoBlocks` together with `PauliPropagation` to convert observables to Yao blocks:
@@ -170,8 +175,7 @@ The inverse (`yao2paulipropagation`) remains in [YaoBlocks](https://github.com/Q
 ## Upcoming Features
 This package is still work-in-progress. You will probably find certain features that you would like to have and that are currently missing.\
 Here are some features that we want to implement in the future. Feel free to contribute!
-- **GPU acceleration**. Since version `0.7`, we provide a PauliPropagationCUDA extension in `ext/`. So far, it only works with `PauliRotation` gates and is not yet maximally performant. 
-- **Stochastic evolution**. Propagation methods are mainly memory-limited. We aim to change this and introduce time vs memory trade-offs.
+- **GPU acceleration**. Since version `0.7`, we provide a PauliPropagationCUDA extension in `ext/`. So far, it only works with `PauliRotation` gates and is not yet performant. 
 
 ## How to contribute
 We have a Slack channel `#pauli-propagation` in the [Julia Slack](https://join.slack.com/t/julialang/shared_invite/zt-2zljxdwnl-kSXbwuwFHeERyxSD3iFJdQ).
