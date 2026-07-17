@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>3. Utility Example · PauliPropagation.jl</title><meta name="title" content="3. Utility Example · PauliPropagation.jl"/><meta property="og:title" content="3. Utility Example · PauliPropagation.jl"/><meta property="twitter:title" content="3. Utility Example · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li class="is-active"><a class="tocitem" href>3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>3. Utility Example</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>3. Utility Example</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/3-utility-example.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="3.-Utility-Example"><a class="docs-heading-anchor" href="#3.-Utility-Example">3. Utility Example</a><a id="3.-Utility-Example-1"></a><a class="docs-heading-anchor-permalink" href="#3.-Utility-Example" title="Permalink"></a></h1><pre><code class="language-julia hljs">using PauliPropagation
+using Base.Threads
+using Plots</code></pre><pre><code class="language-julia hljs">IBM_mitigated_vals = [1.01688859, 1.00387483, 0.95615886, 0.95966435, 0.83946763,
+    0.81185907, 0.54640995, 0.45518584, 0.19469377, 0.01301832,0.01016334]
+IBM_angles = [0.    , 0.1   , 0.2   , 0.3   , 0.4   , 0.5   , 0.6   , 0.7   , 0.8   , 1.    , 1.5707]
+
+tn_vals = [9.99999254e-01,  9.99593653e-01,  9.95720077e-01,  9.88301532e-01,
+        9.78553511e-01,  9.58023054e-01,  9.21986059e-01,  8.81726079e-01,
+        8.49816779e-01,  8.24900527e-01,  7.91257641e-01,  7.37435202e-01,
+        6.68573798e-01,  5.88096040e-01,  4.81874079e-01,  3.50316579e-01,
+        2.26709331e-01,  1.39724659e-01,  7.86639143e-02,  4.24124371e-02,
+        1.90595136e-02,  6.18879050e-03, -8.27168956e-04, -4.63372099e-03,
+       -7.05202121e-03, -7.68387421e-03, -6.33121142e-03, -4.32594440e-03,
+        6.52050191e-04,  1.72598340e-04,  5.64696020e-05, -7.70582375e-07]
+tn_angles = LinRange(0, π/2, length(tn_vals));
+
+
+google_vals = [1, 0.9957248494988796,0.9785691808859784,0.9227771228638144,0.8549387301071374,
+    0.7790027681081058,0.6093954499261214,0.4257824480390532,0.2090085348069826,0.0116245678393245, -4.8872551798147e-09]
+google_angles = [0.000, 0.100, 0.200, 0.300, 0.400,0.500,0.600,0.700,0.800,1.000,1.571]</code></pre><pre><code class="language-julia hljs">function kickedisingcircuit(nq, nl; topology=nothing)
+    
+    # just in case a topology is not provided
+    if isnothing(topology)
+        topology = bricklayertopology(nq)
+    end
+    
+    # define a layer of parametrized Rx-gates
+    xlayer(circuit) = append!(circuit, (PauliRotation([:X], [qind]) for qind in 1:nq))
+    
+    # define a layer of fixed RZZ(π/2)-gates
+    zzlayer(circuit) = append!(circuit, (PauliRotation([:Z, :Z], pair, -π/2) for pair in topology))
+    
+    # define the empty circuit
+    circuit = Gate[]
+    # append to the circuit
+    for _ in 1:nl
+        xlayer(circuit)
+        zzlayer(circuit)
+    end
+
+    return circuit
+end</code></pre><pre><code class="nohighlight hljs">kickedisingcircuit (generic function with 1 method)</code></pre><pre><code class="language-julia hljs"># number of qubits
+nq = 127
+# the IBM Eagle topology
+topology = ibmeagletopology
+# 20 layers for the hardest simulation
+nl = 20
+
+# create the circuit
+circuit = kickedisingcircuit(nq, nl; topology);
+# count the number of parameters. Here only the RX gates, the RZZ are frozen to π/2
+nparams = countparameters(circuit)
+
+# define the observable (note the index is 62 if you start with 0)
+pstr = PauliString(nq, :Z, 63)</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 127, 1.0 * IIIIIIIIIIIIIIIIIIII...)</code></pre><pre><code class="language-julia hljs"># perform one simulation
+# the reason we make this into a function is so that the Julia garbage collector gets rid of `psum` after we leave the function
+# otherwise it floats around in the global name space and takes up RAM
+function onesimulation(circuit, pstr, thetas; min_abs_coeff=0, max_weight=Inf)
+    # propagate
+    psum = propagate(circuit, pstr, thetas; min_abs_coeff, max_weight)
+    # overlap with the zero-state
+    return overlapwithzero(psum)
+end</code></pre><pre><code class="nohighlight hljs">onesimulation (generic function with 1 method)</code></pre><pre><code class="language-julia hljs"># set the truncations
+min_abs_coeff = 1e-4
+max_weight = 8
+
+# prepare everything and run
+x_angles = LinRange(0, π/2, 20)
+expectations = zeros(length(x_angles))
+# multi-thread over the different x_angles
+t = @timed @threads for ii in eachindex(x_angles)
+    angle = x_angles[ii]
+    thetas = ones(nparams) * angle
+    @time expectations[ii] = onesimulation(circuit, pstr, thetas; min_abs_coeff, max_weight)
+end
+
+print(&quot;Total simulation time: &quot;, t.time, &quot; seconds&quot;)</code></pre><pre><code class="nohighlight hljs">  3.316386 seconds (2.20 M allocations: 106.772 MiB, 9.44% gc time, 99.88% compilation time)
+  0.018794 seconds (254.01 k allocations: 4.375 MiB)
+
+
+  0.107511 seconds (1.21 M allocations: 19.185 MiB)
+
+
+  0.636244 seconds (3.86 M allocations: 60.260 MiB, 10.38% gc time)
+
+
+  1.055676 seconds (8.86 M allocations: 136.957 MiB, 3.41% gc time)
+
+
+  1.699666 seconds (17.78 M allocations: 274.254 MiB, 1.17% gc time)
+
+
+  3.792328 seconds (31.70 M allocations: 489.475 MiB, 1.23% gc time)
+
+
+  5.680391 seconds (51.74 M allocations: 794.631 MiB, 1.25% gc time)
+
+
+ 10.703196 seconds (70.37 M allocations: 1.066 GiB, 5.07% gc time)
+
+
+  9.660027 seconds (80.52 M allocations: 1.212 GiB, 1.17% gc time)
+
+
+ 12.131685 seconds (79.86 M allocations: 1.208 GiB, 3.81% gc time)
+
+
+  9.767661 seconds (65.94 M allocations: 1.000 GiB, 0.87% gc time)
+
+
+  7.489759 seconds (42.03 M allocations: 659.314 MiB, 5.32% gc time)
+
+
+  3.711979 seconds (21.01 M allocations: 325.811 MiB, 0.86% gc time)
+
+
+  1.651978 seconds (8.99 M allocations: 142.289 MiB, 0.70% gc time)
+
+
+  0.467797 seconds (3.16 M allocations: 50.873 MiB, 0.93% gc time)
+
+
+  0.189778 seconds (1.15 M allocations: 19.138 MiB, 1.10% gc time)
+
+
+  0.042800 seconds (295.07 k allocations: 5.317 MiB)
+  0.007463 seconds (76.71 k allocations: 1.689 MiB)
+  0.002491 seconds (32.77 k allocations: 1002.758 KiB)
+Total simulation time: 73.194562167
+
+ seconds</code></pre><pre><code class="language-julia hljs">pl = plot(xlabel=&quot;θ_x Angle&quot;, ylabel=&quot;⟨Z62⟩&quot;)
+plot!(tn_angles, tn_vals, label=&quot;Flatiron Tensor Network&quot;, color=&quot;black&quot;, linewidth=3)
+plot!(google_angles, google_vals, label=&quot;Google Lightcone Statevector&quot;, color=&quot;grey&quot;, linewidth=3)
+plot!(x_angles, expectations, marker=:circle, label=&quot;Pauli Propagation&quot;, linewidth=3, color=&quot;royalblue&quot;)
+scatter!(IBM_angles, IBM_mitigated_vals, label=&quot;IBM Quantum Computer&quot;, color=&quot;Red&quot;, ms=4)
+</code></pre><p><img src="../3-utility-example_files/3-utility-example_7_0.svg" alt="svg"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../2-datatypes/">« 2. Explaining our Data Types</a><a class="docs-footer-nextpage" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 17 July 2026 14:35">Friday 17 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
