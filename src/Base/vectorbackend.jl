@@ -108,12 +108,19 @@ function filterviaflags!(prop_cache::AbstractPropagationCache; thread::Bool=true
     flags = activeflags(prop_cache)
     indices = activeindices(prop_cache)
 
+    # capture before swapsums!() swaps which sum is "main"
+    old_sorted = sortedprefix(mainsum(prop_cache))
+
     filterviaflags!(flags, indices, aux_terms, aux_coeffs, terms_view, coeffs; thread)
 
     swapsums!(prop_cache)
 
     n_new = lastactiveindex(prop_cache)
     setactivesize!(prop_cache, n_new)
+
+    # filtering keeps relative order (if it had any)
+    new_sorted = old_sorted == 0 ? 0 : indices[old_sorted]
+    setsortedprefix!(mainsum(prop_cache), new_sorted)
 
     return prop_cache
 end
