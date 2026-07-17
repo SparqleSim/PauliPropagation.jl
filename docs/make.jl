@@ -102,10 +102,8 @@ makedocs(
             "api/PauliAlgebra.md",
             "api/Gates.md",
             "api/Circuits.md",
-            "Propagation" => [
-                "Overview" => "api/Propagation.md",
-                "Monte Carlo" => "api/MonteCarlo.md",
-            ],
+            "api/Propagation.md",
+            "api/MonteCarlo.md",
             "api/StateOverlap.md",
             "api/PathProperties.md",
             "api/PauliTransferMatrix.md",
