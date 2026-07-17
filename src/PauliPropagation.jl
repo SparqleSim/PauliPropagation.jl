@@ -187,6 +187,9 @@ export
     evaluateagainstdict,
     tonumber
 
+include("gradient.jl")
+export rewindgradient
+
 include("numericalcertificates.jl")
 export
     estimatemse,
