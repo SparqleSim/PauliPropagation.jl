@@ -248,7 +248,7 @@ end
 
 export paulipropagation2yao
 
-# # experimental vector propagation 
-# include("Propagation/VectorPropagate/VectorPropagate.jl")
+# experimental Performance module
+include("Performance/Performance.jl")
 
 end

@@ -2,9 +2,10 @@ module PropagationBase
 using LinearAlgebra
 using AcceleratedKernels
 const AK = AcceleratedKernels
+using Base.Threads
 
 include("./utils.jl")
-export tonumber
+export tonumber, maxtasks
 
 include("./termsum.jl")
 export
@@ -25,7 +26,9 @@ export
     set!,
     empty!,
     similar,
-    capacity
+    capacity,
+    sortedprefix,
+    setsortedprefix!
 
 include("./propagationcache.jl")
 export
@@ -85,6 +88,8 @@ export
     filterviaflags!,
     coeffcumsum,
     coeffcumsum!
+
+include("./sortedtailmerge.jl")
 
 include("./MonteCarlo/MonteCarlo.jl")
 export

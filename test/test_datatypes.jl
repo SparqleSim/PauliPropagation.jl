@@ -320,7 +320,76 @@ end
         # in-place
         @test conj!(psum) === psum == conj_psum
         @test conj!(vpsum) === vpsum == conj_psum
-        
 
+
+    end
+end
+
+@testset "VectorPauliSum sortedprefix" begin
+    sortedprefix = PauliPropagation.sortedprefix
+    setsortedprefix! = PauliPropagation.setsortedprefix!
+
+    nq = 5
+    pstr1 = createpaulistring(nq)
+    pstr2 = createpaulistring(nq)
+
+    vpsum = VectorPauliSum(nq)
+    @test sortedprefix(vpsum) == 0
+
+    setsortedprefix!(vpsum, 3)
+    @test sortedprefix(vpsum) == 3
+
+    # similar() always resets to 0, regardless of the source's value
+    @test sortedprefix(similar(vpsum)) == 0
+
+    # copy! carries the source's value over, overwriting whatever the destination held
+    # (dst needs at least src's capacity already, as copy! requires -- similar() matches it)
+    src = VectorPauliSum([pstr1, pstr2])
+    setsortedprefix!(src, 1)
+    dst = similar(src)
+    setsortedprefix!(dst, 99)
+    copy!(dst, src)
+    @test sortedprefix(dst) == 1
+
+    # empty! resets to 0
+    empty!(dst)
+    @test sortedprefix(dst) == 0
+
+    # resize! clamps on shrink, leaves untouched on grow
+    vpsum2 = VectorPauliSum(nq)
+    resize!(vpsum2, 10)
+    setsortedprefix!(vpsum2, 7)
+    resize!(vpsum2, 5)
+    @test sortedprefix(vpsum2) == 5
+    resize!(vpsum2, 20)
+    @test sortedprefix(vpsum2) == 5
+
+    # sort! always invalidates to 0
+    vpsum3 = VectorPauliSum([pstr1, pstr2])
+    setsortedprefix!(vpsum3, 2)
+    sort!(vpsum3)
+    @test sortedprefix(vpsum3) == 0
+end
+
+@testset "getmergedcoeff sortedprefix speedup" begin
+    nq = 6
+    pstrs = [createpaulistring(nq) for _ in 1:8]
+    vpsum = VectorPauliSum(pstrs)
+    sort!(vpsum)  # dedup isn't needed here, just a valid ascending order for the sorted view
+
+    n = length(vpsum)
+    linearscan(term_sum, trm) = begin
+        i = findfirst(==(trm), PauliPropagation.paulis(term_sum))
+        isnothing(i) ? zero(PauliPropagation.coefftype(term_sum)) : PauliPropagation.coefficients(term_sum)[i]
+    end
+
+    # every present term, from every possible split point between "sorted head" and "unsorted tail"
+    for n_sorted in 0:n
+        PauliPropagation.setsortedprefix!(vpsum, n_sorted)
+        for trm in PauliPropagation.paulis(vpsum)
+            @test PauliPropagation.getmergedcoeff(vpsum, trm) == linearscan(vpsum, trm)
+        end
+        # and a term guaranteed absent (identity, assuming none of the random strings are trivial)
+        @test PauliPropagation.getmergedcoeff(vpsum, zero(PauliPropagation.paulitype(vpsum))) == linearscan(vpsum, zero(PauliPropagation.paulitype(vpsum)))
     end
 end

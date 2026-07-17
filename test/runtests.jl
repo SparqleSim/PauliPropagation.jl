@@ -43,6 +43,8 @@ using Random
 
     include("test_montecarlo.jl")
 
+    include("test_performance.jl")
+
     include("test_numericalcertificates.jl")
 
     include("test_visualization.jl")

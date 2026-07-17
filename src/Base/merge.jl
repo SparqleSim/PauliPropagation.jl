@@ -51,42 +51,59 @@ function _merge!(::DictStorage, prop_cache::AbstractPropagationCache; kwargs...)
     return prop_cache
 end
 
-# Assumptions:
-# TODO
-function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; kwargs...)
+function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing, kwargs...)
 
     if isempty(prop_cache)
         return prop_cache
     end
 
-    # sorts by isless and identity by default
-    # TODO: allow sorting kwargs?
-    sortbyterm!(prop_cache)
+    n_sorted = sortedprefix(mainsum(prop_cache))
+    n_total = activesize(prop_cache)
 
-    _deduplicate!(prop_cache)
+    if n_sorted > n_total
+        # something went wrong. Set to zero and do a full merge.
+        setsortedprefix!(mainsum(prop_cache), 0)
+        n_sorted = sortedprefix(mainsum(prop_cache))
+    end
+
+    if n_sorted / n_total > _TAILMERGE_SORTEDPREFIX_FRACTION && _iscpuarray(terms(mainsum(prop_cache)))
+        # the sorted head covers most of the array: sort just the unsorted tail and merge it in
+        # (CPU-only scalar code, hence the backing-array check -- GPU backends fall through to
+        # the fully AK-portable path below instead)
+        sortedtailmerge!(prop_cache; thread, truncfunc)
+        return prop_cache
+    end
+
+    # fallback: sort everything
+    # TODO: allow sorting kwargs?
+    sortbyterm!(prop_cache; thread)
+
+    _deduplicate!(prop_cache; thread, truncfunc)
+
+    setsortedprefix!(mainsum(prop_cache), activesize(prop_cache))
 
     return prop_cache
 
 end
 
 
-function _deduplicate!(prop_cache::AbstractPropagationCache)
+function _deduplicate!(prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing)
 
-    _flaggroupbegin!(prop_cache)
+    _flaggroupbegin!(prop_cache; thread)
 
-    flagstoindices!(prop_cache)
+    flagstoindices!(prop_cache; thread)
 
-    _mergegroups!(prop_cache)
+    _mergegroups!(prop_cache; thread, truncfunc)
 
     return prop_cache
 end
 
 # flags if term at i is different from term at i-1
-function _flaggroupbegin!(prop_cache::AbstractPropagationCache)
+function _flaggroupbegin!(prop_cache::AbstractPropagationCache; thread::Bool=true)
     term_view = activeterms(prop_cache)
     flags_view = activeflags(prop_cache)
 
-    AK.foreachindex(term_view) do ii
+    AK.foreachindex(term_view; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         if ii == 1
             flags_view[ii] = true
         else
@@ -96,8 +113,8 @@ function _flaggroupbegin!(prop_cache::AbstractPropagationCache)
     return prop_cache
 end
 
-# given flagged group beginnings, merge the groups
-function _mergegroups!(prop_cache::AbstractPropagationCache)
+# Given flagged group beginnings, merge the groups.
+function _mergegroups!(prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
 
     term_view = activeterms(prop_cache)
     coeffs = activecoeffs(prop_cache)
@@ -107,7 +124,7 @@ function _mergegroups!(prop_cache::AbstractPropagationCache)
     indices = activeindices(prop_cache)
     active_size = activesize(prop_cache)
 
-    AK.foreachindex(term_view) do ii
+    AK.foreachindex(term_view; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         # if this is the start of a new group
         if flags[ii]
             # end index is the before the next flag or the end of the array

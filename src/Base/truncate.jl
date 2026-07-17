@@ -37,17 +37,25 @@ function _truncate!(::DictStorage, truncfunc::F, term_sum::AbstractTermSum; kwar
     return term_sum
 end
 
-function _truncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPropagationCache; kwargs...) where F<:Function
+function _truncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...) where F<:Function
 
     if isempty(prop_cache)
         return prop_cache
     end
 
+    # capture before filterviaflags!() swaps which sum is "main"
+    old_sorted = sortedprefix(mainsum(prop_cache))
+
     # flag the indices that we keep
     keepfunc(pstr, coeff) = !truncfunc(pstr, coeff)
-    flag!(keepfunc, prop_cache)
+    flag!(keepfunc, prop_cache; thread)
 
-    filterviaflags!(prop_cache)
+    filterviaflags!(prop_cache; thread)
+
+    # filtering keeps relative order, so however many of the old sorted terms survived is exactly
+    # how many new leading terms are still sorted -- that count is already sitting in indices(...)
+    new_sorted = old_sorted == 0 ? 0 : indices(prop_cache)[old_sorted]
+    setsortedprefix!(mainsum(prop_cache), new_sorted)
 
     return prop_cache
 end

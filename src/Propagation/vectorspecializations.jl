@@ -3,11 +3,11 @@
 
 Overload of `applytoall!` for `PauliRotation` gates and a propagating `VectorPauliSum`.
 """
-function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::VectorPauliPropagationCache, theta; kwargs...)
+function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::VectorPauliPropagationCache, theta; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    # TODO: design this function in a way that it can be the default for branching gates. 
-    # Think of U3 or amplitude damping 
+    # TODO: design this function in a way that it can be the default for branching gates.
+    # Think of U3 or amplitude damping
 
     if prop_cache.active_size == 0
         return prop_cache
@@ -21,10 +21,10 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::VectorPaul
     # this needs to be in a separate function because variable names cannot be duplicated (WOW)
     # _flaganticommuting!(prop_cache, gate_mask)
     anticommutesfunc(trm) = !commutes(trm, gate_mask)
-    flagterms!(anticommutesfunc, prop_cache)
+    flagterms!(anticommutesfunc, prop_cache; thread)
 
     # this runs a cumsum over the flags to get the indices
-    flagstoindices!(prop_cache)
+    flagstoindices!(prop_cache; thread)
 
     # the final index is the number of new terms
     n_noncommutes = lastactiveindex(prop_cache)
@@ -39,12 +39,12 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::VectorPaul
     end
 
     # does the branching logic
-    _applypaulirotation!(prop_cache, gate_mask, theta)
+    _applypaulirotation!(prop_cache, gate_mask, theta; thread)
 
     return prop_cache
 end
 
-function _applypaulirotation!(prop_cache::VectorPauliPropagationCache, gate_mask::TT, theta) where {TT}
+function _applypaulirotation!(prop_cache::VectorPauliPropagationCache, gate_mask::TT, theta; thread::Bool=true) where {TT}
 
     # pre-compute the sine and cosine values because the are used for every Pauli string that does not commute with the gate
     cos_val = cos(theta)
@@ -65,7 +65,7 @@ function _applypaulirotation!(prop_cache::VectorPauliPropagationCache, gate_mask
     indices = activeindices(prop_cache)
 
     # TODO: modularize this into something like "two-branching pattern"
-    AK.foreachindex(active_terms) do ii
+    AK.foreachindex(active_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         # here it anticommutes
         if flags[ii]
             term = terms[ii]
@@ -94,11 +94,11 @@ end
 
 Overload of `applytoall!` for `ImaginaryPauliRotation` gates and a propagating `VectorPauliSum`.
 """
-function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::VectorPauliPropagationCache, tau; kwargs...)
+function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::VectorPauliPropagationCache, tau; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    # TODO: design this function in a way that it can be the default for branching gates. 
-    # Think of U3 or amplitude damping 
+    # TODO: design this function in a way that it can be the default for branching gates.
+    # Think of U3 or amplitude damping
 
     if prop_cache.active_size == 0
         return prop_cache
@@ -111,16 +111,16 @@ function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::V
 
     # Imaginary Rotation branches on commutation, not anticommutation
     commutesfunc(trm) = commutes(trm, gate_mask)
-    flagterms!(commutesfunc, prop_cache)
+    flagterms!(commutesfunc, prop_cache; thread)
 
     # this runs a cumsum over the flags to get the indices
-    flagstoindices!(prop_cache)
+    flagstoindices!(prop_cache; thread)
 
     # the final index is the number of new terms
-    n_noncommutes = lastactiveindex(prop_cache)
+    n_commutes = lastactiveindex(prop_cache)
 
     # slit off into the same array
-    n_new = n_old + n_noncommutes
+    n_new = n_old + n_commutes
 
     # potential resize factor
     resize_factor = 1.5
@@ -129,13 +129,13 @@ function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::V
     end
 
     # does the branching logic
-    _applyimaginarypaulirotation!(prop_cache, gate_mask, tau)
+    _applyimaginarypaulirotation!(prop_cache, gate_mask, tau; thread)
 
 
     return prop_cache
 end
 
-function _applyimaginarypaulirotation!(prop_cache::VectorPauliPropagationCache, gate_mask::TT, tau) where {TT}
+function _applyimaginarypaulirotation!(prop_cache::VectorPauliPropagationCache, gate_mask::TT, tau; thread::Bool=true) where {TT}
 
     # pre-compute the sine and cosine values because the are used for every Pauli string that does not commute with the gate
     cosh_val = cosh(tau)
@@ -155,7 +155,7 @@ function _applyimaginarypaulirotation!(prop_cache::VectorPauliPropagationCache, 
     flags = activeflags(prop_cache)
     indices = activeindices(prop_cache)
 
-    AK.foreachindex(active_terms) do ii
+    AK.foreachindex(active_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         # branching upon commutation
         if flags[ii]
             term = terms[ii]
@@ -184,7 +184,7 @@ end
     
 Overload of `applytoall!` for `CliffordGate`s and a propagating `VectorPauliSum`.
 """
-function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::VectorPauliPropagationCache; kwargs...)
+function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::VectorPauliPropagationCache; thread::Bool=true, kwargs...)
     # TODO: This needs to be reworked for GPU support
 
     _check_qind_range(nqubits(prop_cache), gate.qinds)
@@ -195,7 +195,7 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::VectorPauli
     terms_view = activeterms(prop_cache)
     coeffs_view = activecoeffs(prop_cache)
     @assert length(terms_view) == length(coeffs_view)
-    AK.foreachindex(terms_view) do ii
+    AK.foreachindex(terms_view; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         term = terms_view[ii]
         coeff = coeffs_view[ii]
 
@@ -207,10 +207,12 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::VectorPauli
         coeffs_view[ii] = coeff
     end
 
+    setsortedprefix!(mainsum(prop_cache), 0)  # term values changed in place, order not preserved
+
     return prop_cache
 end
 
-requiresmerging(::CliffordGate) = false
+PropagationBase.requiresmerging(::CliffordGate) = false
 
 ##########################################
 
@@ -219,7 +221,7 @@ requiresmerging(::CliffordGate) = false
 
 Overload of `applytoall!` for `PauliNoise` gates with noise strength `lambda` and a propagating `VectorPauliSum`.
 """
-function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::VectorPauliPropagationCache, lambda; kwargs...)
+function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::VectorPauliPropagationCache, lambda; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qind)
 
     # check that the noise strength is in the correct range
@@ -229,7 +231,7 @@ function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::VectorPauliPr
     terms_view = activeterms(prop_cache)
     coeffs_view = activecoeffs(prop_cache)
     @assert length(terms_view) == length(coeffs_view)
-    AK.foreachindex(terms_view) do ii
+    AK.foreachindex(terms_view; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         pstr = terms_view[ii]
         coeff = coeffs_view[ii]
 
@@ -243,4 +245,4 @@ function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::VectorPauliPr
     return prop_cache
 end
 
-requiresmerging(::PauliNoise) = false
+PropagationBase.requiresmerging(::PauliNoise) = false
