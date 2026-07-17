@@ -5,25 +5,30 @@
 ##
 ###
 
-# This type multi-threads where possible. 
+# This type multi-threads where possible.
 using AcceleratedKernels
 const AK = AcceleratedKernels
+
+const _MIN_ELEMS_PER_TASK = PropagationBase._MIN_ELEMS_PER_TASK
 
 """
     VectorPauliSum{TV,CV} <: AbstractPauliSum
 
-`VectorPauliSum` is a `struct` that represents a sum of Pauli strings acting on `nqubits` qubits.
+`VectorPauliSum` is a `mutable struct` that represents a sum of Pauli strings acting on `nqubits` qubits.
 It is a wrapper around two vectors: one for the Pauli strings (as unsigned Integers for efficiency reasons), and one for the coefficients.
 Using it defaults to multi-threaded operations where possible.
 """
-struct VectorPauliSum{TV,CV} <: AbstractPauliSum
+mutable struct VectorPauliSum{TV,CV} <: AbstractPauliSum
     nqubits::Int
     terms::TV
     coeffs::CV
+    # number of leading terms known sorted by integer value and duplicate-free; 0 is always safe
+    _terms_sorted::Int
 
-    function VectorPauliSum(nqubits::Int, terms::TV, coeffs::CV) where {TV,CV}
+    function VectorPauliSum(nqubits::Int, terms::TV, coeffs::CV, _terms_sorted::Int=0) where {TV,CV}
         @assert length(terms) == length(coeffs) "Length of terms and coeffs must be the same. Got $(length(terms)) and $(length(coeffs))."
-        return new{TV,CV}(nqubits, terms, coeffs)
+        @assert 0 <= _terms_sorted <= length(terms) "Sorted prefix length cannot be greater than the number of terms. Got $(length(terms)) and $( _terms_sorted)."
+        return new{TV,CV}(nqubits, terms, coeffs, _terms_sorted)
     end
 end
 
@@ -43,6 +48,9 @@ VectorPauliSum(::Type{CT}, nqubits::Int) where {CT} = VectorPauliSum(nqubits, ge
 
 PropagationBase.storage(vpsum::VectorPauliSum) = (vpsum.terms, vpsum.coeffs)
 
+PropagationBase.sortedprefix(vpsum::VectorPauliSum) = vpsum._terms_sorted
+PropagationBase.setsortedprefix!(vpsum::VectorPauliSum, n::Int) = (vpsum._terms_sorted = n; vpsum)
+
 """
     nqubits(vpsum::VectorPauliSum)
 
@@ -56,6 +64,7 @@ Base.similar(vpsum::VectorPauliSum) = VectorPauliSum(vpsum.nqubits, similar(vpsu
 function Base.resize!(vpsum::VectorPauliSum, n_new::Int)
     resize!(vpsum.terms, n_new)
     resize!(vpsum.coeffs, n_new)
+    setsortedprefix!(vpsum, min(sortedprefix(vpsum), n_new))  # clamp on shrink, no-op on grow
     return vpsum
 end
 
@@ -103,5 +112,6 @@ function Base.sort!(vpsum::VectorPauliSum; by=nothing, kwargs...)
     AK.sort!(indices; by=byfunc, kwargs...)
     vpsum.terms .= view(vpsum.terms, indices)
     vpsum.coeffs .= view(vpsum.coeffs, indices)
+    setsortedprefix!(vpsum, 0)  # arbitrary order, no dedup: can't assume sorted+unique after this
     return vpsum
 end

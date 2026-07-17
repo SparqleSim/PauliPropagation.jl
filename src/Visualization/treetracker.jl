@@ -315,6 +315,18 @@ function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::PauliPropagat
 end
 
 """
+    applymergetruncate!(gate::PauliNoise, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, p; kwargs...) where {TT<:PauliStringType,T<:Number}
+
+Falls back to the generic apply-then-truncate pipeline instead of the core fast path, so that a tree
+node/edge is still recorded for each transformed Pauli string.
+"""
+function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, p; kwargs...) where {TT<:PauliStringType,T<:Number}
+    applytoall!(gate, prop_cache, p; kwargs...)
+    truncate!(prop_cache; kwargs...)
+    return prop_cache
+end
+
+"""
     applytoall!(gate::AmplitudeDampingNoise, gamma, psum::PauliSum{TT,PauliTreeTracker{T}}, aux_psum; kwargs...)
 
 Specialized applytoall! for AmplitudeDampingNoise with PauliSum containing PauliTreeTracker coefficients.

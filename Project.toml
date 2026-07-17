@@ -1,7 +1,7 @@
 name = "PauliPropagation"
 uuid = "293282d5-3c99-4fb6-92d0-fd3280a19750"
 authors = ["Manuel S. Rudolph"]
-version = "0.7.3"
+version = "0.8.0"
 
 [deps]
 AcceleratedKernels = "6a4ca0a5-0e36-4168-a932-d9be78d558f1"

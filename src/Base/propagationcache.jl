@@ -86,7 +86,7 @@ end
 
 """
     copyswapsums!(prop_cache::AbstractPropagationCache)
-    
+
 Copies the active contents of the mainsum into the auxsum and then calls swapsums!(prop_cache).
 This is useful for when the current auxsum is meant to carry the final result.
 """
@@ -95,6 +95,22 @@ function copyswapsums!(prop_cache::AbstractPropagationCache)
     # we need to copy the mainsum into the aux sum and then swap the sums
     copy!(auxsum(prop_cache), mainsum(prop_cache))
     swapsums!(prop_cache)
+    return prop_cache
+end
+
+# The four backing arrays most merge/apply passes read from (main) and write into (aux).
+function _mainauxarrays(prop_cache::AbstractPropagationCache)
+    return (
+        main_terms=terms(mainsum(prop_cache)), main_coeffs=coefficients(mainsum(prop_cache)),
+        aux_terms=terms(auxsum(prop_cache)), aux_coeffs=coefficients(auxsum(prop_cache)),
+    )
+end
+
+# Publishes a pass's result: the auxsum just written becomes the new mainsum
+function _commitwrite!(prop_cache::AbstractPropagationCache, new_activesize::Int, new_sortedprefix::Int)
+    swapsums!(prop_cache)
+    setactivesize!(prop_cache, new_activesize)
+    setsortedprefix!(mainsum(prop_cache), new_sortedprefix)
     return prop_cache
 end
 

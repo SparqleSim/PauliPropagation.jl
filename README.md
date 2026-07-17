@@ -99,7 +99,8 @@ max_weight = 6 # maximum Pauli weight
 min_abs_coeff = 1e-4 # minimal coefficient magnitude
 
 ## propagate through the circuit
-pauli_sum = propagate(circuit, observable, parameters; max_weight, min_abs_coeff)
+init_pauli_sum = PauliSum(pstr)  # you can also propagate `pstr` or VectorPauliSum(pstr)
+pauli_sum = propagate(circuit, init_pauli_sum, parameters; max_weight, min_abs_coeff)
 ```
 The output `pauli_sum` gives us an approximation of propagated Pauli strings
 
@@ -125,6 +126,15 @@ Therefore, the trace is equivalent to the sum over the coefficients of Pauli str
 ```math
 \mathrm{Tr}[U^\dagger O U \rho] \approx \sum_{\alpha \in \{\mathbb{I}, Z\}\, \text{strings}} c_{\alpha}.
 ```
+
+## Performance Considerations
+A few tips to get the most performance out of PauliPropagation.jl, in particular in the `propagate(...)` function:
+- Pretty much always use at least coefficient truncation via `propagate(...; min_abs_coeff)`. Start high (e.g., `1e-3`) and gradually decrease until expectation values stabilize.
+- For common gates, the `VectorPauliSum` is currently more performant.
+- If you can, start Julia with more threads, for example via `Julia -t 8` if you have 8 fast threads. `VectorPauliSum` is inherently multithreaded, which you can toggle off via `propagation(...; thread=false)` if you are multithreading outside `propagate()`. For small Pauli sums, single-threaded propagation can be faster, but at scale with many threads, multithreading can be an order of magnitude faster. 
+- When propagating gate by gate or layer by layer, consider using the in-place `propagate!(...)` function that mutates the incoming `PauliSum`/`VectorPauliSum`.
+- For maximal performance that may yield slightly different results to default behavior, you can import our `PauliPropagation.Performance` module and run `Performance.propagate!(...)`.
+ 
 
 ## Important Notes and Caveats
 - Circuits are specified in the _Schrödinger_ picture, as if operated upon states. Behind the scenes, `propagate()` will (by default) apply the _adjoint_ circuit upon the passed `PauliSum` which is treated as the observable operator. The default can be changed by passing `heisenberg=false` to `propagate()`, though it will not make simulating dense quantum states efficient. 

@@ -101,8 +101,8 @@ function VectorPauliSum(prop_cache::VectorPauliPropagationCache)
     return vecpsum
 end
 
-function PauliSum(prop_cache::VectorPauliPropagationCache)
-    merge!(prop_cache)
+function PauliSum(prop_cache::VectorPauliPropagationCache; thread::Bool=true)
+    merge!(prop_cache; thread)
     return PauliSum(nqubits(prop_cache), Dict(zip(activeterms(prop_cache), activecoeffs(prop_cache))))
 end
 
