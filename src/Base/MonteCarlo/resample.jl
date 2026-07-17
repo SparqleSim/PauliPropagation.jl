@@ -122,7 +122,10 @@ end
 function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool=false, calibrate=true, rtol=0.02, atol=1)
     power = squared ? 2 : 1
 
-    cum_probs = coeffcumsum(coeffs, power)
+    # we can write into existing memory with a slightly more complicated comp later
+    cum_probs = view(dst_coeffs, 1:length(coeffs))
+    AK.map!(c -> abs(c)^power, cum_probs, coeffs)
+    AK.accumulate!(+, cum_probs; init=zero(eltype(cum_probs)))
     total_weight = cum_probs[end]
 
     # Normally: step = total_weight / target_size
@@ -143,9 +146,10 @@ function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size
     let step=step, offset=offset, power=power
         AK.foreachindex(terms) do i
 
-            # Calculate the interval this term occupies in the cumulative probability distribution
+            # c_start is technically stoch_cum_probs[i-1],
+            # but we thread, so need to recompute from coeff
             c_end = cum_probs[i]
-            c_start = (i == 1) ? zero(c_end) : cum_probs[i-1]
+            c_start = c_end - abs(coeffs[i])^power
 
             # Calculate how many "comb teeth" fall into [c_start, c_end)
             lower_idx = floor((c_start - offset) / step)
@@ -169,14 +173,10 @@ function _calibrate_prob_step(coeffs, total_weight, target_size; power=1, rtol::
     # when resampling we can overshoot if rtol is small
     getcurrentsum(cs, inv_s) = AK.mapreduce(c -> min(1.0, abs(c)^power * inv_s), +, cs; init=zero(eltype(cs)))
 
-    # println("Total raw: ", total_weight)
-
     inv_step = target_size / total_weight
-    # println("Starting with: ", inv_step)
 
     tolsatisfied(r) = ((1.0 - rtol) * target_size - atol) / target_size <= r <= 1.0 - eps(eltype(coeffs))
-    for i in 1:10
-        # println(i)
+    for i in 1:5
         current_sum = getcurrentsum(coeffs, inv_step)
 
         ratio = current_sum / target_size
@@ -219,10 +219,10 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
     # how many slots are left for the stochastic part
     n_stoch = target_size - n_det
 
-    # the weight of the terms that go through resampling; deterministic terms get zero weight
-    # so they don't compete with the stochastic terms for a comb slot
-    stoch_weights = AK.map(c -> abs(c) > threshold ? zero(eltype(src_coeffs)) : abs(c), src_coeffs)
-    stoch_cum_probs = AK.accumulate!(+, stoch_weights; init=zero(eltype(src_coeffs)))
+   # we can write into existing memory with a slightly more complicated comp later
+    stoch_cum_probs = view(dst_coeffs, 1:length(src_coeffs))
+    AK.map!(c -> abs(c) > threshold ? zero(eltype(src_coeffs)) : abs(c), stoch_cum_probs, src_coeffs)
+    AK.accumulate!(+, stoch_cum_probs; init=zero(eltype(stoch_cum_probs)))
     total_stoch_weight = stoch_cum_probs[end]
 
     # step and offset of the comb for systematic resampling; step is only meaningful if there
@@ -234,16 +234,19 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
     let step = step, offset = offset, threshold = threshold, n_stoch = n_stoch
         AK.foreachindex(src_terms) do i
             coeff = src_coeffs[i]
+            abs_coeff = abs(coeff)
             dst_terms[i] = src_terms[i]
 
-            if abs(coeff) > threshold
+            if abs_coeff > threshold
                 dst_coeffs[i] = coeff
             elseif n_stoch == 0
                 # no stochastic slots left, so every sub-threshold term is dropped
                 dst_coeffs[i] = zero(eltype(src_coeffs))
             else
+                # c_start is technically stoch_cum_probs[i-1],
+                # but we thread, so need to recompute from coeff
                 c_end = stoch_cum_probs[i]
-                c_start = (i == 1) ? zero(c_end) : stoch_cum_probs[i-1]
+                c_start = c_end - abs_coeff
 
                 lower_idx = floor((c_start - offset) / step)
                 upper_idx = floor((c_end - offset) / step)
