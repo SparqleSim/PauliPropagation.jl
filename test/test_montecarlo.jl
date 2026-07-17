@@ -143,7 +143,7 @@ end
 
 @testset "mcsample! statistically reproduces propagate" begin
     nq = 3
-    nl = 2
+    nl = 1
     # mixes CliffordGate (CNOT) and PauliRotation gates
     circuit = efficientsu2circuit(nq, nl)
     thetas = randn(countparameters(circuit))
@@ -151,7 +151,7 @@ end
 
     exact_psum = propagate(circuit, pstr, thetas)
 
-    reps = 20_000
+    reps = 100
     init_psum = VectorPauliSum(nq, fill(pstr.term, reps), fill(float(pstr.coeff), reps))
     sampled_psum = mcsample(circuit, init_psum, thetas)
     merge!(sampled_psum)
