@@ -47,7 +47,9 @@ function resample!(prop_cache::AbstractPropagationCache, target_size, resample_a
             # but not compatible with 2-norm sampling
             resample_func = semideterministic_systematic_resample!
         else
-            resample_func = systematic_resample!
+            # likely we just draw one sample
+            # and probably we don't want coefficients to be pre-merged
+            resample_func = multinomial_resample!
         end
     end
 
