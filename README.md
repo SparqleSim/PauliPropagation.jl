@@ -147,8 +147,8 @@ All of the above can be addressed by writing the additional missing code due to 
 
 
 ## Randomized Evolution
-Starting version `0.8`, we provide an `mcpropagate(...; max_size)` function. It propagates as usual, truncates if you pass truncation parameters, and when the number of terms exceeds `max_size`, it resamples down to a `resampling_size` (default `max_size / 2`) an unbiased procedure. This in principle allows one to arbitrarily trade memory for averaging time, but note that all coefficients become increasingly large and inaccurate the more often it must resample.
- 
+Starting version `0.8`, we provide an `mcpropagate(...; max_size)` function. It propagates as usual, truncates if you pass truncation parameters, and when the number of terms exceeds `max_size`, it resamples down to a `resampling_size` (default `max_size / 2`) an unbiased procedure. This in principle allows one to arbitrarily trade memory for averaging time, but note that all coefficients become increasingly large and inaccurate the more often it must resample. See the `mcpropagate.ipynb` notebook in the example folder.
+
 
 ## Yao.jl integration
 
