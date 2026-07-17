@@ -152,12 +152,7 @@ export
     mcsample!,
     mcapplytoall!,
     resample,
-    resample!,
-    multinomial_resample!,
-    systematic_resample!,
-    systematic_resample!,
-    semideterministic_systematic_resample!,
-    detfraction_systematic_resample_merged!
+    resample!
 
 
 include("PathProperties/PathProperties.jl")
