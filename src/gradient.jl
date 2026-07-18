@@ -20,7 +20,11 @@ backward sweep.
 Returns `(expec, grad)`.
 """
 function rewindgradient(circuit, psum::AbstractPauliSum, params, overlapfunc; kwargs...)
-    return rewindgradient!(circuit, deepcopy(VectorPauliSum(psum)), params, overlapfunc; kwargs...)
+    return rewindgradient!(circuit, VectorPauliSum(psum), params, overlapfunc; kwargs...)
+end
+
+function rewindgradient(circuit, psum::VectorPauliSum, params, overlapfunc; kwargs...)
+    return rewindgradient!(circuit, deepcopy(psum), params, overlapfunc; kwargs...)
 end
 
 """
@@ -34,7 +38,7 @@ end
 
 function rewindgradient!(circuit, forward_cache::VectorPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
     # check that the only parameterized gates are PauliRotations
-    @assert all(gate -> !isparametrized(gate) || gate isa PauliRotation, circuit) "All parameterized gates must be PauliRotations."
+    @assert all(gate -> isa(gate, StaticGate) || gate isa PauliRotation, circuit) "All parameterized gates must be PauliRotations."
 
     nq = nqubits(forward_cache)
 

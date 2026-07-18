@@ -142,6 +142,36 @@ end
         _checkgradient(circuit, psum, params, overlapwithzero)
     end
 
+    @testset "Equivalent results for PauliSum and PropagationCache inputs" begin
+        nq = 4
+        circuit = [
+            PauliRotation(:X, 1),
+            CliffordGate(:H, [2]),
+            PauliRotation([:Y, :Z], [1, 3]),
+            PauliRotation(:Z, 4, -0.31),  # frozen
+            PauliRotation([:X, :X], [1, 4]),
+        ]
+        params = [0.44, -0.9, 0.12]
+
+        dict_psum = PauliSum(nq)
+        add!(dict_psum, [:Z, :X], [2, 3], 0.6)
+        add!(dict_psum, [:X, :Y], [1, 4], -0.3)
+        vec_psum = VectorPauliSum(dict_psum)
+
+        expec_vec, grad_vec = rewindgradient(circuit, vec_psum, params, overlapwithzero; min_abs_coeff=0.0)
+        expec_dict, grad_dict = rewindgradient(circuit, dict_psum, params, overlapwithzero; min_abs_coeff=0.0)
+        cache = PropagationCache(deepcopy(vec_psum))
+        expec_cache, grad_cache = rewindgradient!(circuit, cache, params, overlapwithzero; min_abs_coeff=0.0)
+
+        @test expec_dict ≈ expec_vec
+        @test grad_dict ≈ grad_vec
+        @test expec_cache ≈ expec_vec
+        @test grad_cache ≈ grad_vec
+
+        # the non-mutating entry point must leave the caller's Pauli sums untouched
+        @test vec_psum == VectorPauliSum(dict_psum)
+    end
+
     @testset "Random small circuits" begin
         Random.seed!(24)
 
