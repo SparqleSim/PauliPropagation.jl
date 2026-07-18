@@ -110,6 +110,10 @@ function filterviaflags!(prop_cache::AbstractPropagationCache; thread::Bool=true
 
     # capture before swapsums!() swaps which sum is "main"
     old_sorted = sortedprefix(mainsum(prop_cache))
+    if old_sorted > length(indices)
+        # stale sortedprefix left over from the last time this buffer was mainsum: ignore it
+        old_sorted = 0
+    end
 
     filterviaflags!(flags, indices, aux_terms, aux_coeffs, terms_view, coeffs; thread)
 
