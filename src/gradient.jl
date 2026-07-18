@@ -32,7 +32,7 @@ function rewindgradient!(circuit, psum::VectorPauliSum, params, overlapfunc; kwa
     return rewindgradient!(circuit, PropagationCache(psum), params, overlapfunc; kwargs...)
 end
 
-function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
+function rewindgradient!(circuit, forward_cache::VectorPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
     # check that the only parameterized gates are PauliRotations
     @assert all(gate -> !isparametrized(gate) || gate isa PauliRotation, circuit) "All parameterized gates must be PauliRotations."
 
