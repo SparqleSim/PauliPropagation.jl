@@ -100,9 +100,9 @@ function PropagationBase.applymergetruncate!(gate::ImaginaryPauliRotation, prop_
     # example failure modes are if the coefficient is zero, of if it is supposed to be a number other than 1
     # these can be avoided by setting `normalize_coeffs=false`
     if normalize_coeffs
-        # "getmergedcoeff" because we know there are no duplictates.
-        # TODO: this should use sortedness of vectors
-        mult!(prop_cache, 1 / getmergedcoeff(activesum(prop_cache), 0))
+        # getcoeff is fast here even for VectorPauliSum
+        # because we just merged and can do sorted search.
+        mult!(prop_cache, 1 / getcoeff(activesum(prop_cache), 0))
     end
 
     # normal truncation

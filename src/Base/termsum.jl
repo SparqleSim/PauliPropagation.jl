@@ -87,6 +87,31 @@ function _getcoeff(::ST, term_sum::AbstractTermSum, trm) where {ST<:StorageType}
     return val
 end
 
+# binary-search the known-sorted (and thus dedup) prefix for at most one match, then
+# linear-scan the remaining tail summing all matches (duplicates may still be present there)
+function _getcoeff(::ArrayStorage, term_sum::AbstractTermSum, trm)
+    terms_vec, coeffs_vec = storage(term_sum)
+    n_sorted = sortedprefix(term_sum)
+
+    val = zero(coefftype(term_sum))
+
+    if n_sorted > 0
+        sorted_view = view(terms_vec, 1:n_sorted)
+        i = searchsortedfirst(sorted_view, trm)
+        if i <= n_sorted && sorted_view[i] == trm
+            val += coeffs_vec[i]
+        end
+    end
+
+    for i in (n_sorted+1):length(terms_vec)
+        if terms_vec[i] == trm
+            val += coeffs_vec[i]
+        end
+    end
+
+    return val
+end
+
 # this assumes everything is merged and de-duplicated
 # may result in wrong results if not
 function getmergedcoeff(term_sum::AbstractTermSum, trm)
@@ -343,14 +368,14 @@ function _delete!(::DictStorage, term_sum::AbstractTermSum, term)
     return term_sum
 end
 
-function Base_delete!(::ArrayStorage, term_sum::AbstractTermSum, term)
+function _delete!(::ArrayStorage, term_sum::AbstractTermSum, term)
     terms_vec, coeffs_vec = storage(term_sum)
     ind = findfirst(t -> t == term, terms_vec)
     if !isnothing(ind)
         deleteat!(terms_vec, ind)
         deleteat!(coeffs_vec, ind)
-        # removing a term at or before the sorted prefix shifts everything after it down by
-        # one, so the prefix is still sorted but one shorter; a term after it leaves the prefix untouched
+        
+        # if before sorted prefix, bump it down by 1
         n_sorted = sortedprefix(term_sum)
         if ind <= n_sorted
             setsortedprefix!(term_sum, n_sorted - 1)

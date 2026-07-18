@@ -82,6 +82,10 @@ function permuteviaindices!(prop_cache::AbstractPropagationCache; thread::Bool=t
     # the destination arrays should be the main ones
     swapsums!(prop_cache)
 
+    # in general permuting will not sort
+    # merge! will set it to a non-zero value when it calls this function
+    setsortedprefix!(mainsum(prop_cache), 0)
+
     return prop_cache
 end
 

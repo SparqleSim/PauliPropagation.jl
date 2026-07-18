@@ -34,6 +34,9 @@ function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::VectorPauliSum;
         coeff_vec[ii] = new_coeff
     end
 
+    # term values changed in place, order not preserved
+    setsortedprefix!(psum, 0) 
+
     return psum
 end
 
@@ -79,6 +82,9 @@ function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::VectorPauliSum
             end
         end
     end
+
+    # term values changed in place, order not preserved
+    setsortedprefix!(psum, 0)
 
     return psum
 end
