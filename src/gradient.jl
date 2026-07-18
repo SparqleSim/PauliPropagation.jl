@@ -6,7 +6,7 @@
 
 
 """
-    rewindgradient(circuit, psum::VectorPauliSum, params, overlapfunc; thread=true, kwargs...)
+    rewindgradient(circuit, psum::AbstractPauliSum, params, overlapfunc; thread=true, kwargs...)
 
 Compute `overlapfunc(propagate(circuit, psum, params; kwargs...))` together with its gradient with
 respect to `params`, in one paired forward and backward sweep costing O(length(circuit)) gate applications.
@@ -19,12 +19,26 @@ All other gates must not be parametrized or frozen via `freeze(gate, param)` bef
 backward sweep.
 Returns `(expec, grad)`.
 """
-function rewindgradient(circuit, psum::VectorPauliSum, params, overlapfunc; thread::Bool=true, kwargs...)
-    nq = nqubits(psum)
-    n_params = length(params)
+function rewindgradient(circuit, psum::AbstractPauliSum, params, overlapfunc; kwargs...)
+    return rewindgradient!(circuit, deepcopy(VectorPauliSum(psum)), params, overlapfunc; kwargs...)
+end
+
+"""
+    rewindgradient!(circuit, psum::VectorPauliSum, params, overlapfunc; kwargs...)
+
+In-place version of `rewindgradient`. Only allows the Pauli sum to be a `VectorPauliSum`.
+"""
+function rewindgradient!(circuit, psum::VectorPauliSum, params, overlapfunc; kwargs...)
+    return rewindgradient!(circuit, PropagationCache(psum), params, overlapfunc; kwargs...)
+end
+
+function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
+    # check that the only parameterized gates are PauliRotations
+    @assert all(gate -> !isparametrized(gate) || gate isa PauliRotation, circuit) "All parameterized gates must be PauliRotations."
+
+    nq = nqubits(forward_cache)
 
     # forward sweep: ordinary Heisenberg propagation, exactly as in `propagate`.
-    forward_cache = PropagationCache(deepcopy(psum))
     propagate!(circuit, forward_cache, params; thread, kwargs...)
     expec = overlapfunc(activesum(forward_cache))
 
@@ -45,7 +59,7 @@ function rewindgradient(circuit, psum::VectorPauliSum, params, overlapfunc; thre
     undo_circuit, undo_params = _preparecircuit(circuit, params, false)
 
     commutator_buffer = Vector{ComplexF64}(undef, length(forward_cache))
-    state = _BackwardSweepState(reverse_cache, dual_cache, nq, zeros(n_params), 0, commutator_buffer)
+    state = _BackwardSweepState(reverse_cache, dual_cache, nq, zeros(length(params)), 0, commutator_buffer)
     PropagationBase._propagate!(_undostep!, undo_circuit, state, undo_params; thread, kwargs...)
 
     return expec, state.grad

@@ -188,7 +188,7 @@ export
     tonumber
 
 include("gradient.jl")
-export rewindgradient
+export rewindgradient, rewindgradient!
 
 include("numericalcertificates.jl")
 export
