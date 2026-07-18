@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Operator evolution Tilted Transverse Field Ising model · PauliPropagation.jl</title><meta name="title" content="Operator evolution Tilted Transverse Field Ising model · PauliPropagation.jl"/><meta property="og:title" content="Operator evolution Tilted Transverse Field Ising model · PauliPropagation.jl"/><meta property="twitter:title" content="Operator evolution Tilted Transverse Field Ising model · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li class="is-active"><a class="tocitem" href>Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Operator evolution Tilted Transverse Field Ising model</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Operator evolution Tilted Transverse Field Ising model</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/ex_ttfi_op_evolution.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Operator-evolution-Tilted-Transverse-Field-Ising-model"><a class="docs-heading-anchor" href="#Operator-evolution-Tilted-Transverse-Field-Ising-model">Operator evolution Tilted Transverse Field Ising model</a><a id="Operator-evolution-Tilted-Transverse-Field-Ising-model-1"></a><a class="docs-heading-anchor-permalink" href="#Operator-evolution-Tilted-Transverse-Field-Ising-model" title="Permalink"></a></h1><pre><code class="language-julia hljs">using PauliPropagation
+using Plots</code></pre><p>In this example, we will compute the two-point correlation function of an  observable undergoing a unitary evolution given by the transverse field Ising  model with a tilted field. </p><p class="math-container">\[
+H = \sum_{(j,\, j+1)} Z_j Z_{j+1} 
+  + g_z \sum_{j=1}^{n} Z_j + g_x \sum_{j=1}^{n} X_j.
+\]</p><p>The unitary for its Trotterized Hamiltonian evolution of <span>$l$</span>-layer with time <span>$\Delta t$</span> is implemented in <code>tiltedtfitrottercircuit</code>.</p><p class="math-container">\[
+U(\Delta t) = \prod_{a=1}^{l} \prod_{j=1}^n e^{-i \Delta t g_x   X_j} \prod_{j=1}^{n-1} e^{-i \Delta t g_z  Z_j} e^{-i \Delta t g_z Z_j Z_{j+1}}.
+\]</p><pre><code class="language-julia hljs"># Define the set of local operators that are part of the Hamiltonian
+&quot;&quot;&quot;
+    function tiltedtfi_local_ham_pauli(
+        nq::Int,
+        gx::Float64,
+        gz::Float64,
+        topology=nothing,
+        site=nothing, 
+    )
+
+Construct local energy operator for the tilted transverse field Ising model.
+
+# Arguments
+- `nq::Int`: The number of qubits in the system.
+- `gx::Float64`: The transverse field strength.
+- `gz::Float64`: The longitudinal field strength.
+- `topology=nothing`: Circuit topology used to construct the local energy operator.
+- `site=nothing`: The site at which to construct the local energy operator.
+
+# Returns
+- `PauliSum`: The local energy operator.
+&quot;&quot;&quot;
+function tiltedtfi_local_ham_pauli(
+    nq::Int,
+    gx::Float64,
+    gz::Float64,
+    topology=nothing,
+    site=nothing, 
+)
+    if isnothing(site)
+        if nq % 2 == 0
+            site = Int(nq / 2)
+        else
+            site = Int((nq + 1) / 2)
+        end
+    else
+        site = site
+    end
+    
+    # check if the site is in the topology
+    if topology != nothing
+        max_site = maximum(Iterators.flatten(topology))
+        if site ∉ Iterators.flatten(topology)
+          throw(ArgumentError(&quot;Site $site is not in the topology.&quot;))
+        end
+
+        # check that number of qubits 
+        if nq != max_site
+          throw(ArgumentError(
+              &quot;The number of qubits $nq is not equal to the \
+              maximum index $max_site in the topology.&quot;
+          ))
+        end
+    else
+        topology = [(ii, ii + 1) for ii in 1:nq-1]
+    end
+
+    # Build local energy operator
+    local_energy = PauliSum(nq, PauliString(nq, :X, site, gx))
+    add!(local_energy, :Z, site, gz)
+
+    terms_site = Base.filter(x -&gt; site in x, topology)
+    for pair in terms_site
+        # coefficient is split as 1 / number of terms
+        add!(local_energy, [:Z, :Z], pair, 0.5)
+    end
+
+    return local_energy
+end
+
+# define evolution angles for TTFI model
+&quot;&quot;&quot;
+Compute the evolution angles for the tiltied transverse field Ising model.
+&quot;&quot;&quot;
+
+function thetas_ttfi(circuit; deltat=1., J=1, gz=0.9045, gx=1.4)
+    thetas = []
+
+    indices_gate_zz = getparameterindices(circuit, PauliRotation, [:Z, :Z])
+    indices_gate_x = getparameterindices(circuit, PauliRotation, [:X])
+    indices_gate_z = getparameterindices(circuit, PauliRotation, [:Z])
+
+    for (idx, gate) in enumerate(circuit)
+
+        if idx in indices_gate_zz
+            coupling_strength = deltat * J
+        elseif idx in indices_gate_x
+            coupling_strength = deltat * gx
+        elseif idx in indices_gate_z
+            coupling_strength = deltat * gz
+        else
+            throw(ArgumentError(&quot;Gate at index $idx is neither ZZ, X nor Z rotation&quot;))
+        end
+        push!(thetas, coupling_strength * 2) # e^i t P / 2 * 2
+    end
+            
+    return thetas
+end</code></pre><pre><code class="nohighlight hljs">thetas_ttfi (generic function with 1 method)</code></pre><pre><code class="language-julia hljs"># Define time evolution function
+&quot;&quot;&quot;
+Perform Pauli propagation using the merging BFS algorithm.
+
+Args:
+    circuit: The circuit to be applied.
+    p_init: The operator to be propagated.
+    thetas: The angles for the Trotter steps.
+    max_weight: The maximal operator weight.
+    min_abs_coeff: Neglect small coefficients.
+
+
+Returns:
+    p_propagated: The evolved operator; correlation_matrix: ccorrelation matrix.
+&quot;&quot;&quot;
+function pauli_propagation(
+    nq::Int,
+    p_init::PauliSum;
+    max_weight=Inf,
+    min_abs_coeff=0.,
+    customtruncationfunction=nothing,
+    nl=1,
+    deltat=0.25,
+    periodic=false,
+    circuit = tiltedtfitrottercircuit,
+    topology=bricklayertopology,
+    gx=1.4,
+    gz=0.9045,
+)
+    circ = circuit(nq, 1; topology=topology(nq, periodic=periodic))
+    thetas = thetas_ttfi(circ; deltat=deltat, gx=gx, gz=gz)
+    correlation_matrix = zeros(nl + 1, nq)
+    init_overlap = zeros(nq)
+    fixed_paulis = [
+        tiltedtfi_local_ham_pauli(nq, gx, gz, topo, j) for j in 1:nq
+    ]
+    # Compute the renormalized expectation values for the initial pauli p_init: 
+    # Tr[P P_fixed]/ 2^n
+    # note this is directly the coefficient of P_fixed.
+    for j in 1:nq
+        init_overlap[j] = scalarproduct(p_init, fixed_paulis[j])
+    end
+
+    norm = sum(init_overlap)
+    correlation_matrix[1, :] = init_overlap / norm 
+    p_propagated = p_init / norm  # normalize the initial state
+
+    for i in 1:nl
+        # Pauli propagation for a single Trotter step
+        p_propagated = propagate(
+            circ, p_propagated, thetas; max_weight=max_weight, 
+            min_abs_coeff=min_abs_coeff,
+            customtruncationfunction=customtruncationfunction
+        )
+        # Compute the local expectation values for p_propagated
+        for j in 1:nq
+            correlation_matrix[i+1, j] = scalarproduct(
+                p_propagated, fixed_paulis[j]
+            )
+        end
+    end
+
+    return p_propagated, correlation_matrix
+end</code></pre><pre><code class="nohighlight hljs">pauli_propagation</code></pre><h3 id="Operator-evolution-Tilted-Transverse-Field-Ising-model-(TTFI)-(L9)"><a class="docs-heading-anchor" href="#Operator-evolution-Tilted-Transverse-Field-Ising-model-(TTFI)-(L9)">Operator evolution Tilted Transverse Field Ising model (TTFI) (L=9)</a><a id="Operator-evolution-Tilted-Transverse-Field-Ising-model-(TTFI)-(L9)-1"></a><a class="docs-heading-anchor-permalink" href="#Operator-evolution-Tilted-Transverse-Field-Ising-model-(TTFI)-(L9)" title="Permalink"></a></h3><p>Given an initial local Hamiltonian operator <code>p_init</code> at site <span>$j$</span>, e.g.</p><p class="math-container">\[
+p_{j} = \frac{1}{2} (Z_{j-1}Z_{j} + Z_{j}Z_{j+1}) + g_z Z_j + g_x X_j
+\]</p><p>Now we compute the evolved operator <span>$p_j(t) = U(t)^\dagger p_j U(t)$</span> after a depth-<span>$l$</span> circuit with <span>$t = l\Delta t$</span>. Here <span>$p_j(t)$</span> is given by <code>p_propagated</code>. <br/>We also compute the <code>correlation matrix</code></p><p class="math-container">\[
+M_{ij}(t) = \text{Tr}[p_i(t) p_j].
+\]</p><p>In particular, in the example code below we compare the correlation matrix for propagation computed from different <code>truncations</code> Pauli weights. <br/>The exact evolution is given by setting the truncation weight to be <code>Inf</code>. However, we will see in practice high weight Paulis can be truncated for approximate evolutions.</p><pre><code class="language-julia hljs">nq = 9  # number of qubits
+nl = 80  # number of layers l
+gx = 1.4  # transverse field strength
+gz = 0.9045  # longitudinal field strength
+deltat = 0.25  # Trotterization time step
+periodic = false
+truncations = [2, 3, 4, Inf]  # truncation Pauli weights
+
+topo = bricklayertopology(nq, periodic=periodic)
+p_init = tiltedtfi_local_ham_pauli(nq, gx, gz, topo)
+corr_mats_truncations = Dict()
+p_propagated_truncations = Dict()
+for max_weight in truncations
+    p_propagated, correlation_matrix = pauli_propagation(
+        nq, p_init, gx=gx, gz=gz, nl=nl, periodic=periodic, 
+        max_weight=max_weight, deltat=deltat
+    )
+    corr_mats_truncations[max_weight] = correlation_matrix
+    p_propagated_truncations[max_weight] = p_propagated
+end
+</code></pre><p>We can look at the correlation matrix <span>$M_{5j}(l)$</span> (here we have set <span>$i=5$</span>). <br/>Notice that the correlation becomes non-zero for positions that grow linearly with the number of layers (time). The slope is roughly is &quot;butterfly velocity&quot;. <br/>Moreover, the weight of the matrix at the intial site <span>$5$</span> decreases with time, showing the &quot;spreading&quot; of operators.</p><pre><code class="language-julia hljs"># Let&#39;s plot the exact correlation matrix for short times
+corrmat_exact = corr_mats_truncations[Inf]
+heatmap(corrmat_exact[1:30, 1:end], yflip=true, c=:balance, xlabel=&quot;Site&quot;, ylabel=&quot;Layer l&quot;, title=&quot;Correlation Matrix L=9&quot;)</code></pre><p><img src="../ex_ttfi_op_evolution_files/ex_ttfi_op_evolution_9_0.svg" alt="svg"/></p><p>Now we are ready to extract the <code>diffusion constant</code> <span>$D$</span> of this model. This has been analyzed in Reference <a href="https://arxiv.org/abs/2004.05177">RKF22</a>. <br/>The diffusion constant is defined via the slope of the <code>mean-squared displacement</code> (MSD) <span>$d^2(t)$</span> as</p><p class="math-container">\[
+D = \frac{1}{2} \partial_t d^2(t).
+\]</p><p>MSD roughly measures how far an operator has traveled to, defined as (see EQ(3) in the paper above)</p><p class="math-container">\[
+d^2(t) = (\sum_j C_j(t) j^2) - (\sum_j C_j(t) j)^2,
+\]</p><p>where <span>$C_j(t) = \text{Tr} [p_{i=5}(t) p_j]$</span> is the evolved amplitude of the local Hamiltonian operator <span>$p_j$</span>. </p><pre><code class="language-julia hljs">
+#@title | Some utility functions for extracting diffusion constants
+
+function msd(cor_mat)
+    &quot;&quot;&quot;
+    Compute the mean square displacement from correlation matrix.
+  
+    Args:
+        cor_mat: correlation matrix (time, site).
+  
+    Returns:
+        msd: mean square displacement d^2(time).
+    &quot;&quot;&quot;
+    nt = size(cor_mat)[1]  # number of time steps
+    dsquared = zeros(nt) 
+    
+    for i in 1:nt
+        first_term = 0
+        second_term = 0
+        for (j, c) in enumerate(cor_mat[i, :])
+            first_term += c * j^2 
+            second_term += c * j
+        end
+        dsquared[i] = first_term - second_term^2
+    end
+    
+    return dsquared
+  end
+  
+  &quot;&quot;&quot;
+  function to perform linear regression using the closed-form solution
+  &quot;&quot;&quot;
+  function linear_regression(x, y)
+    # Create the design matrix with a column of ones (for intercept) and x values
+    X = [ones(length(x)) x]
+    
+    # Compute the least squares solution
+    intercept, slope = X \ y  # This solves (X&#39;X) \ (X&#39;y), returning [intercept, slope]
+  
+    return slope, intercept
+  end
+  
+  &quot;&quot;&quot;
+  function to fit the mean square displacement
+  &quot;&quot;&quot;
+  function fit_msd(msd_result, fit_range, deltat)
+    fit_time = collect(fit_range) * deltat
+    slope, intercept = linear_regression(fit_time, msd_result[fit_range])
+    fitted_line = slope * collect(fit_time) .+ intercept
+    return slope, intercept, fitted_line
+  end
+  
+  &quot;&quot;&quot;
+  Postprocessing fitted lines for the mean square displacement.
+  
+  Args:
+      corr_mats_truncations (Dict(Vector)): correlation matrices for different truncations.
+      truncations (Vector): truncation values.
+      fit_range (UnitRange): range of time steps to fit the mean square displacement.
+      deltat (Float): time step.
+  
+  Returns:
+      fitted_lines (Dict(Vector)): fitted lines for the mean square displacement.
+      slopes (Dict(Float)): slopes of the fitted lines.
+  &quot;&quot;&quot;
+  function collect_fitted_lines(corr_mats_truncations, truncations, fit_range, deltat)
+      fitted_lines = Dict()
+      slopes = Dict()
+      for max_weight in truncations
+          msd_result = msd(corr_mats_truncations[max_weight][2:end, :])
+          slope, intercept, fitted_line = fit_msd(msd_result, fit_range, deltat);
+          fitted_lines[max_weight] = fitted_line
+          slopes[max_weight] = slope
+      end
+      return fitted_lines, slopes
+  end</code></pre><pre><code class="nohighlight hljs">collect_fitted_lines</code></pre><p>Using the utility functions to compute the mean-sqaured displacement (MSD) <span>$d^2(t)$</span>, we fit the MSD to extract the diffusion constant <span>$D$</span>. <br/>Moreover, we compare the MSDs extracted using Pauli Propagation with various truncation weights <span>$l^* = 2, 3, 4$</span> as well as MSD from the exact evolution <span>$l^* = \infty$</span>. <br/>We see that the evolution quickly converges with finite truncation weight. Our results here reproduce Fig.2(b) for <span>$L=9$</span> in <a href="https://arxiv.org/abs/2004.05177">RKF22</a>.</p><pre><code class="language-julia hljs">fit_range = 2:15
+fitted_lines, slopes = collect_fitted_lines(corr_mats_truncations, truncations, fit_range, deltat)
+dpi = 300
+Plot = plot()
+
+colors = palette(:rainbow, length(truncations))
+plot_truncations = truncations
+for (i, max_weight) in enumerate(plot_truncations)
+    msd_result = msd(corr_mats_truncations[max_weight][2:end, :])
+    time = collect(1:nl) * deltat
+    fit_time = collect(fit_range) * deltat
+    slope = slopes[max_weight]
+    fitted_line = fitted_lines[max_weight]
+    scatter!(
+        Plot, time, msd_result, label=&quot;l*=$max_weight&quot;, xlabel=&quot;Time&quot;, ylabel=&quot;MSD&quot;, 
+        dpi=dpi, markercolor=colors[i], alpha=0.5, markershape=:circle,
+    )
+    plot!(Plot, fit_time, fitted_lines[max_weight], lw=2, color=colors[i],
+        label=&quot;Fit: slope=$(round(slope, digits=2)), D=$(round(slope*2, digits=2))&quot;, 
+        title=&quot;Mean Square Displacement, L=$nq&quot;, legend=:bottomright)
+end
+
+display(Plot)</code></pre><p><img src="../ex_ttfi_op_evolution_files/ex_ttfi_op_evolution_13_0.svg" alt="svg"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../9-advanced-custom-gates/">« 9. Advanced - How to Define Custom Gates</a><a class="docs-footer-nextpage" href="../imaginary-time-evolution/">Imaginary Time Evolution »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Saturday 18 July 2026 21:41">Saturday 18 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
