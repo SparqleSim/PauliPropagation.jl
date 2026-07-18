@@ -26,7 +26,7 @@ function rewindgradient(circuit, psum::VectorPauliSum, params, overlapfunc; thre
     # forward sweep: ordinary Heisenberg propagation, exactly as in `propagate`.
     forward_cache = PropagationCache(deepcopy(psum))
     propagate!(circuit, forward_cache, params; thread, kwargs...)
-    expec = overlapfunc(forward_cache)
+    expec = overlapfunc(activesum(forward_cache))
 
     # seed the operator sum directly from the final operator
     # and the dual sum from overlapfunc applied to each of its Pauli strings individually.
@@ -111,6 +111,12 @@ function _generatorcommutatordot(gate_mask::TT, op_terms, op_coeffs, dual_terms_
         return zero(ComplexF64)
     end
     n_dual = length(dual_terms_sorted)
+    # the operator's active size does not alwaysshrink monotonically going backward 
+    # merges cancancel terms out of order along the trajectory
+    # so we need to check for resizes
+    if n > length(buffer)
+        resize!(buffer, n)
+    end
     partial = @view buffer[1:n]
 
     AK.foreachindex(op_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii

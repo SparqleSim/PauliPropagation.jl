@@ -41,6 +41,8 @@ using Random
 
     include("test_inplace.jl")
 
+    include("test_gradient.jl")
+
     include("test_montecarlo.jl")
 
     include("test_performance.jl")
