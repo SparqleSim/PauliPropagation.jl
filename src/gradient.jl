@@ -129,7 +129,7 @@ function _generatorcommutatordot(gate_mask::TT, op_terms, op_coeffs, dual_terms_
         return zero(ComplexF64)
     end
     n_dual = length(dual_terms_sorted)
-    # the operator's active size does not alwaysshrink monotonically going backward 
+    # the operator's active size does not always shrink monotonically going backward 
     # merges cancancel terms out of order along the trajectory
     # so we need to check for resizes
     if n > length(buffer)
@@ -155,12 +155,9 @@ function _generatorcommutatordot(gate_mask::TT, op_terms, op_coeffs, dual_terms_
     return AK.mapreduce(identity, +, partial; init=zero(ComplexF64), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 end
 
-# Caps dual_cache's support down to op_cache's (already truncated) support. Both sides are sorted and
-# duplicate-free at this point (dual_cache was just `merge!`d, op_cache just `applymergetruncate!`d), 
-#so this is a single sequential merge-join of the two term arrays -- O(n+m) with only sequential memory
-# versus a per-term binary search (O(n log m) random access, plus thread-dispatch overhead per
-# call). Keeps the dual sum from ever growing past the operator sum's own size, without ever building it
-# as an explicit, possibly exponential-size, operator.
+# Caps dual_cache's support down to op_cache's (already truncated) support. 
+# Both sides are sorted and duplicate-free at this point 
+# so this is a single sequential merge-join of the two term arrays versus a per-term binary search (O(n log m) random access
 function _intersectfilter!(dual_cache, op_cache; thread::Bool=true)
     dual_terms_sorted = activeterms(dual_cache)
     op_terms_sorted = activeterms(op_cache)
