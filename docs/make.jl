@@ -105,6 +105,7 @@ makedocs(
             "api/Propagation.md",
             "api/MonteCarlo.md",
             "api/StateOverlap.md",
+            "api/Gradients.md",
             "api/PathProperties.md",
             "api/PauliTransferMatrix.md",
             "api/Surrogate.md",
