@@ -104,23 +104,48 @@ function Base.convert(::Type{PauliSum{TT1,CT1}}, psum::PauliSum{TT2,CT2}) where 
 
 end
 
-# # Examples
-# ```julia
-# convertcoefftype(Float64, PauliString(2, :X, 1, 1+0im))
-# ```
-# """
+"""
+    convertcoefftype(::Type{CT1}, pstr::PauliString)
+
+Convert the coefficient type of `pstr` to `CT1`, returning a new `PauliString`.
+
+# Examples
+```julia
+convertcoefftype(Float64, PauliString(2, :X, 1, 1+0im))
+```
+"""
 function convertcoefftype(::Type{CT1}, pstr::PauliString{TT,CT2}) where {TT,CT1,CT2}
     return PauliString(pstr.nqubits, pstr.term, convert(CT1, pstr.coeff))
 end
 
-# # Examples
-# ```julia
-# psum = PauliSum(PauliString(2, :X, 1, 1+0im))
-# convertcoefftype(Float64, psum)
-# ```
-# """
+"""
+    convertcoefftype(::Type{CT1}, psum::PauliSum)
+
+Convert the coefficient type of `psum` to `CT1`, returning a new `PauliSum`.
+
+# Examples
+```julia
+psum = PauliSum(PauliString(2, :X, 1, 1+0im))
+convertcoefftype(Float64, psum)
+```
+"""
 function convertcoefftype(::Type{CT1}, psum::PauliSum{TT,CT2}) where {TT,CT1,CT2}
     return PauliSum(psum.nqubits, convert(Dict{TT,CT1}, psum.terms))
+end
+
+"""
+    convertcoefftype(::Type{CT1}, vpsum::VectorPauliSum)
+
+Convert the coefficient type of `vpsum` to `CT1`, returning a new `VectorPauliSum`.
+
+# Examples
+```julia
+vpsum = VectorPauliSum(PauliString(2, :X, 1, 1+0im))
+convertcoefftype(Float64, vpsum)
+```
+"""
+function convertcoefftype(::Type{CT1}, vpsum::VectorPauliSum) where {CT1}
+    return VectorPauliSum(vpsum.nqubits, copy(vpsum.terms), convert(Vector{CT1}, vpsum.coeffs), vpsum._terms_sorted)
 end
 
 
