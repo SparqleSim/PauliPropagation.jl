@@ -513,9 +513,10 @@ function pauliprod(pstr1::PauliStringType, pstr2::PauliStringType)
     return pstr3, sign
 end
 
-# Calculate the sign of the product of two integer Pauli strings. Outcomes are either ±1 or ±i.
+# Calculate the exponent e such that pauli1 * pauli2 == im^e * (pauli1 ⊻ pauli2).
+# Outcomes are e ∈ {0, 1, 2, 3}, i.e. the product is ±1 or ±im.
 function _calculatesignexponent(pauli1::PauliType, pauli2::PauliType)
-    # get left and right bits of a pauli    
+    # get left and right bits of a pauli
     mask_right = alternatingmask(pauli1)
 
     pauli1_1 = (pauli1 >> 1) & mask_right
@@ -547,17 +548,21 @@ function _calculatesignexponent(pauli1::PauliType, pauli2::PauliType)
     negative_sign = not_commuting & ((pauli1_1 ⊻ pauli2_2)
                                      |
                                      (~pauli1_2 & ~pauli2_1))
-    positive_sign = not_commuting & (~negative_sign)
-    # You can use modular addition to achieve addition of the exponent,
-    # since it is cyclic, and the global phase can be determined by the number
-    # of 1's in each expression.
-    # i.e. -im = im^(3); im = im^(1); 1 = im^0.  
-    return ((3 * count_ones(negative_sign) + count_ones(positive_sign)) % 4)
+
+    # Every anticommuting qubit pair contributes a factor of +im or -im to the total phase
+    # Every commuting pair contributes a factor of 1.
+    # anticommuting pairs alone, n, already fixes how many factors of im go into the product;
+    # among those, k = count_ones(negative_sign) are -im == im^3
+    # the remaining n - k are +im == im^1. 
+    # The total exponent is thus 3k + (n - k) = 2k + n (mod 4)
+    n_anticommuting = count_ones(not_commuting)
+    n_negative = count_ones(negative_sign)
+    return (2 * n_negative + n_anticommuting) & 3
 end
 
-#speeds up pauliprod by a factor of 2 since we know we only want integer powers
-const impowers = [1, im, -1, -im]
+# Raise im to an integer power in {0, 1, 2, 3}
+# Bit 0 of `power` picks the real or imaginary axis, bit 1 flips the sign
 function _impow(power::Integer)
-    ind = (power % 4) + 1
-    return impowers[ind]
+    sign = 1 - (power & 2)
+    return isodd(power) ? Complex(0, sign) : Complex(sign, 0)
 end
