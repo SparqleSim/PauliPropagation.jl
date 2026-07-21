@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>The Pauli Propagation Surrogate · PauliPropagation.jl</title><meta name="title" content="The Pauli Propagation Surrogate · PauliPropagation.jl"/><meta property="og:title" content="The Pauli Propagation Surrogate · PauliPropagation.jl"/><meta property="twitter:title" content="The Pauli Propagation Surrogate · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li class="is-active"><a class="tocitem" href>The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>The Pauli Propagation Surrogate</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>The Pauli Propagation Surrogate</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/PP-Surrogate.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="The-Pauli-Propagation-Surrogate"><a class="docs-heading-anchor" href="#The-Pauli-Propagation-Surrogate">The Pauli Propagation Surrogate</a><a id="The-Pauli-Propagation-Surrogate-1"></a><a class="docs-heading-anchor-permalink" href="#The-Pauli-Propagation-Surrogate" title="Permalink"></a></h1><p>Given that large parts of the Pauli path branching are determined by the observable and the types of gates in the circuit, could we do the propagation once, somehow compile the paths, and never re-compute the full problem? Especially in expectation value calculations, where a lot fewer paths than we compute end up contributing? This is what our <strong>Pauli propagation surrogate</strong> is for! With an initial investment of time and especially memory, we try to make consecutive evaluations a lot faster. </p><p>The surrogate is not the main focus of the PauliPropagation.jl package, and there are still a lot of potential improvements, but it may already be what you are looking for in some cases.</p><pre><code class="language-julia hljs">using PauliPropagation</code></pre><p>Let&#39;s define some arbitrary small example simulation. Please know that the surrogate currently only accepts circuits with <code>CliffordGate</code>s and <code>PauliRotation</code>s. </p><pre><code class="language-julia hljs">nq = 8
+nl = 4
+
+topology = bricklayertopology(nq)
+circuit = efficientsu2circuit(nq, nl; topology)
+nparams = countparameters(circuit)</code></pre><pre><code class="nohighlight hljs">64</code></pre><pre><code class="language-julia hljs">observable = PauliSum(nq)
+add!(observable, :Z, 1)
+add!(observable, :Z, nq)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 8, 2 Pauli terms:
+ 1.0 * IIIIIIIZ
+ 1.0 * ZIIIIIII
+)</code></pre><h3 id="Using-the-Surrogate"><a class="docs-heading-anchor" href="#Using-the-Surrogate">Using the Surrogate</a><a id="Using-the-Surrogate-1"></a><a class="docs-heading-anchor-permalink" href="#Using-the-Surrogate" title="Permalink"></a></h3><p>Our surrogation approach is based on a custom <code>PathPropergies</code> type called <code>NodePathProperties</code>. Similar to the <code>PauliFreqTracker</code>, we use can truncate via <code>max_freq</code> and <code>max_sins</code>, but it also carries objects instead of coefficients that build a propagation graph on the fly. This graph will later be evaluated.</p><p>Here is how you prepare the surrogate by wrapping your observable, i.e. your <code>PauliString</code> or <code>PauliSum</code> into <code>NodePathProperties</code>. This may become simpler in the future.</p><pre><code class="language-julia hljs">wrapped_observable = wrapcoefficients(observable, NodePathProperties)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 8, 2 Pauli terms:
+ NodePathProperties * IIIIIIIZ
+ NodePathProperties * ZIIIIIII
+)</code></pre><p>To surrogate, simply propagate without passing any parameters <code>thetas</code>. Those come later. Note that for any harder simulation we should set truncation values!</p><pre><code class="language-julia hljs">@time surrogate_psum = propagate(circuit, wrapped_observable)</code></pre><pre><code class="nohighlight hljs">  2.336492 seconds (3.14 M allocations: 150.576 MiB, 1.33% gc time, 99.27% compilation time)
+
+
+
+
+
+PauliSum(nqubits: 8, 15314 Pauli terms:
+ NodePathProperties * IIYZXIXI
+ NodePathProperties * ZXXYXYZY
+ NodePathProperties * XXIXXYXY
+ NodePathProperties * XZIZYZYZ
+ NodePathProperties * ZZIZIZYZ
+ NodePathProperties * IIXZZXZI
+ NodePathProperties * ZXXXZXXI
+ NodePathProperties * YZIXXZII
+ NodePathProperties * IIXZZZYZ
+ NodePathProperties * ZZZZYXZZ
+ NodePathProperties * ZZXYIYZZ
+ NodePathProperties * XZZXZYIZ
+ NodePathProperties * IIYYZZYX
+ NodePathProperties * ZZZZIYZZ
+ NodePathProperties * XZZXZZYZ
+ NodePathProperties * IIYXXIYI
+ NodePathProperties * ZZXZZXII
+ NodePathProperties * XZXZZIZX
+ NodePathProperties * XXXYIYXZ
+ NodePathProperties * ZZIXZXZY
+  ⋮)</code></pre><p>Done. Now we define the parameters for the Pauli rotations.</p><pre><code class="language-julia hljs">using Random
+Random.seed!(42)
+thetas = randn(nparams)</code></pre><p>By calling <code>evaluate!()</code> on the surrogate Pauli sum, the computational graph is properly evaluated for specific parameter values.</p><pre><code class="language-julia hljs"># the surrogate_psum is evaluated in-place
+evaluate!(surrogate_psum, thetas)</code></pre><p>Now we can use the surrogate like the Pauli sums that you are used to.</p><pre><code class="language-julia hljs">overlapwithzero(surrogate_psum)</code></pre><pre><code class="nohighlight hljs">-0.2488994501782641</code></pre><p>Now compare this with the conventional Pauli propagation simulation:</p><pre><code class="language-julia hljs">psum = propagate(circuit, observable, thetas)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 8, 15314 Pauli terms:
+ 0.00094943 * IIYZXIXI
+ 0.0012401 * ZXXYXYZY
+ -8.8328e-5 * XXIXXYXY
+ -8.9315e-5 * XZIZYZYZ
+ 0.00079019 * ZZIZIZYZ
+ -0.0027623 * IIXZZXZI
+ 2.3068e-5 * ZXXXZXXI
+ 0.013333 * YZIXXZII
+ -0.0047358 * IIXZZZYZ
+ -0.00024593 * ZZZZYXZZ
+ 0.00046659 * ZZXYIYZZ
+ 2.7781e-5 * XZZXZYIZ
+ 0.00014479 * IIYYZZYX
+ 3.3844e-5 * ZZZZIYZZ
+ -9.6428e-6 * XZZXZZYZ
+ -0.0016772 * IIYXXIYI
+ -0.0037817 * ZZXZZXII
+ 2.8355e-6 * XZXZZIZX
+ 4.4524e-6 * XXXYIYXZ
+ -0.0002194 * ZZIXZXZY
+  ⋮)</code></pre><pre><code class="language-julia hljs"># the same result
+overlapwithzero(psum)</code></pre><pre><code class="nohighlight hljs">-0.2488994501782641</code></pre><h3 id="Benchmarking"><a class="docs-heading-anchor" href="#Benchmarking">Benchmarking</a><a id="Benchmarking-1"></a><a class="docs-heading-anchor-permalink" href="#Benchmarking" title="Permalink"></a></h3><p>We mentioned this approach would be faster, but is it? First addressing the elephant in the room: The initial surrogation propagation is <strong>a lot</strong> slower. It also uses drastically more memory. These are things that can be improved in the future, but you may still find this useful. Also note that these notebooks are run with 12 usable CPU threads in the Julia kernel. Results may vary with more or less.</p><pre><code class="language-julia hljs"># load Julia&#39;s benchmarking library
+using BenchmarkTools</code></pre><pre><code class="language-julia hljs"># benchmark the surrogate
+@btime evaluate!($surrogate_psum, $thetas)</code></pre><pre><code class="nohighlight hljs">  6.912 ms
+
+ (17 allocations: 479.45 KiB)</code></pre><pre><code class="language-julia hljs"># benchmark the normal propagation
+@btime propagate($circuit, $observable, $thetas)</code></pre><pre><code class="nohighlight hljs">  4.431 ms
+
+ (518 allocations: 1.16 MiB)</code></pre><p>Depending on whether you started started your Julia kernel with several CPU threads, this might already be faster. While we will discuss some caveats further down, this is not the surrogate&#39;s final form.</p><p>We have not yet made use of the main advantage of a surrogate: If we know at the end which Pauli strings contribute to expectation values, we can call <code>evaluate!()</code>  only on those paths and none of the others. Let&#39;s filter the surrogate Pauli sum so that it only contains the Pauli strings relevant to <code>overlapwithzero()</code>, i.e. the <span>$|0\rangle\langle0|$</span> state. </p><pre><code class="language-julia hljs"># zerofilter! actually changes the surrogate in-place. Copying may lead to wrong behavior.
+surrogate_psum = zerofilter!(surrogate_psum);
+
+## zerofilter!() is the same as this:
+# for pstr in paulis(surrogate_psum)
+#     if containsXorY(pstr)
+#         delete!(surrogate_psum, pstr)
+#     end
+# end</code></pre><pre><code class="language-julia hljs">@btime evaluate!($surrogate_psum, $thetas)</code></pre><pre><code class="nohighlight hljs">  441.862 μs (17 allocations: 4.01 KiB)</code></pre><p>And this is substantially faster! </p><p>So far we covered a very small-scale problem without the need to perform any truncations. Though this is what we will now do, highlighting some of the nuances and issues of a(/our) surrogate.</p><h3 id="Truncating-the-Surrogate"><a class="docs-heading-anchor" href="#Truncating-the-Surrogate">Truncating the Surrogate</a><a id="Truncating-the-Surrogate-1"></a><a class="docs-heading-anchor-permalink" href="#Truncating-the-Surrogate" title="Permalink"></a></h3><p>Set up a bigger problem on a 2D topology. Don&#39;t run this without truncations!</p><pre><code class="language-julia hljs">nx = 6
+ny = 6
+nq = nx * ny
+
+nl = 4
+
+topology = rectangletopology(nx, ny)
+
+circuit = hardwareefficientcircuit(nq, nl; topology)
+
+nparams = countparameters(circuit)</code></pre><pre><code class="nohighlight hljs">672</code></pre><pre><code class="language-julia hljs"># a Pauli Z observable in the middle
+pstr = PauliString(nq, :Z, 21)</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 36, 1.0 * IIIIIIIIIIIIIIIIIIII...)</code></pre><pre><code class="language-julia hljs"># wrap it in `NodePathProperties` again
+wrapped_pstr = wrapcoefficients(pstr, NodePathProperties)</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 36, NodePathProperties * IIIIIIIIIIIIIIIIIIII...)</code></pre><p>Now we set the truncation values. For this demonstration, we will chose them as rather inaccurate truncations. Otherwise we might run out of memory pretty quickly.</p><pre><code class="language-julia hljs">max_freq = 26
+# max_sins = 10   # another option if your rotation angles are small
+max_weight = 7</code></pre><pre><code class="language-julia hljs">@time surrogate_psum = propagate(circuit, wrapped_pstr; max_freq, max_weight)</code></pre><pre><code class="nohighlight hljs">  8.248582 seconds (46.52 M allocations: 1.735 GiB, 21.87% gc time, 20.46% compilation time)
+
+
+
+
+
+PauliSum(nqubits: 36, 1626 Pauli terms:
+ NodePathProperties * IIIIIIIIIIIIIXIIIIIZ...
+ NodePathProperties * IIIIIIIIIIIIIIIIIIII...
+ NodePathProperties * IIIIIIIIIIIIIIZIIIII...
+ NodePathProperties * IIIIIIIIIIIIIIIIIIII...
+ NodePathProperties * IIIIIIIIIIIIIIYIIIIZ...
+ NodePathProperties * IIIIIIIIIIIIIIYXIIII...
+ NodePathProperties * IIIIIIIIIIIIIIIYIIII...
+ NodePathProperties * IIIIIIIIIIIIIIXIIIIX...
+ NodePathProperties * IIIIIIIIIIIIIIXIIIIZ...
+ NodePathProperties * IIIIIIIIIIIIIIYIIIIY...
+ NodePathProperties * IIIIIIIIIIIIIIIIIIII...
+ NodePathProperties * IIIIIIIIXIIIIIZXIIII...
+ NodePathProperties * IIIIIIIIIIIIIIIZIIII...
+ NodePathProperties * IIIIIIIIIIIIIIZIIIIY...
+ NodePathProperties * IIIIIIIIIIIIIIIIIIIY...
+ NodePathProperties * IIIIIIIIIIIIIIZIIIIZ...
+ NodePathProperties * IIIIIIIIIIIIIIYIIIIY...
+ NodePathProperties * IIIIIIIIIIIIIIIIIIII...
+ NodePathProperties * IIIIIIIIIIIIZIIIIIXI...
+ NodePathProperties * IIIIIIIIYIIIIIYZIIII...
+  ⋮)</code></pre><pre><code class="language-julia hljs"># filter against the initial state to speed up evaluation
+surrogate_psum = zerofilter!(surrogate_psum)</code></pre><p>Now we can compare against non-surrogate Pauli propagation simulation. </p><p>First, compare to the fully equivalent simulation with coefficients wrapped in <code>PauliFreqTracker</code></p><pre><code class="language-julia hljs">Random.seed!(420)
+
+for _ in 1:10
+    thetas = randn(nparams)
+    t1 = @timed psum = propagate(circuit, wrapcoefficients(pstr, PauliFreqTracker), thetas; max_freq, max_weight)
+    t2 = @timed evaluate!(surrogate_psum, thetas)
+    println(&quot;Equivalent Pauli propagation takes time: $(t1.time). Expectation: &quot;, overlapwithzero(psum))
+    println(&quot;Pauli propagation surrogate takes time:  $(t2.time). Expectation: &quot;, overlapwithzero(surrogate_psum))
+    println(&quot;&quot;) # for space
+end</code></pre><pre><code class="nohighlight hljs">Equivalent Pauli propagation takes time: 3.606301538. Expectation: -0.09195551666054731
+
+
+Pauli propagation surrogate takes time:  0.18161424. Expectation: 
+
+-0.09195551665437668
+
+
+
+Equivalent Pauli propagation takes time: 2.206442653. Expectation: 0.006196102025874881
+Pauli propagation surrogate takes time:  0.298072983. Expectation: 
+
+0.006196102025828214
+
+
+
+Equivalent Pauli propagation takes time: 2.302797593. Expectation: 0.26122265730227046
+Pauli propagation surrogate takes time:  0.183945444. Expectation: 0.2612226572956533
+
+
+
+Equivalent Pauli propagation takes time: 2.545576595. Expectation: 0.23681986847693884
+Pauli propagation surrogate takes time:  0.281775666. Expectation: 0.23681986862949683
+
+
+
+Equivalent Pauli propagation takes time: 2.798600061. Expectation: 0.017753943018382908
+Pauli propagation surrogate takes time:  0.189420928. Expectation: 0.017753942996396717
+
+
+
+Equivalent Pauli propagation takes time: 2.770335482. Expectation: 0.11424995928834948
+Pauli propagation surrogate takes time:  0.262467782. Expectation: 0.11424995897094593
+
+
+
+Equivalent Pauli propagation takes time: 2.251626341. Expectation: -0.02330422748624532
+Pauli propagation surrogate takes time:  0.201845586. Expectation: -0.0233042274864537
+
+
+
+Equivalent Pauli propagation takes time: 2.010205979. Expectation: -0.021730640866541515
+Pauli propagation surrogate takes time:  0.1534817. Expectation: -0.02173064086670088
+
+
+
+Equivalent Pauli propagation takes time: 2.471355645. Expectation: -0.24370682737291208
+Pauli propagation surrogate takes time:  0.141150832. Expectation: -0.24370682744191186
+
+
+
+Equivalent Pauli propagation takes time: 1.960973214. Expectation: -0.00026444458430952933
+Pauli propagation surrogate takes time:  0.209590475. Expectation: -0.00026408645889508054</code></pre><p>In some sense, this comparison is <em>fair</em> in that it shows the power of the fast re-evaluation of the surrogate. On the other hand, though, truncation via <code>max_freq</code> (as used here) is a little unnatural when the parameters are known. If the parameters are known then you can simply use coefficient truncation via <code>min_abs_coeff</code> which is both quicker and more accurate. So let&#39;s compare against some simulations with <code>min_abs_coeff</code> truncation.</p><pre><code class="language-julia hljs">min_abs_coeff = 1e-3  # this is a very inaccurate truncation for simulations of interest
+
+Random.seed!(420)
+
+for _ in 1:10
+    thetas = randn(nparams)
+    t1 = @timed psum = propagate(circuit, pstr, thetas; min_abs_coeff, max_weight)
+    t2 = @timed evaluate!(surrogate_psum, thetas)
+    println(&quot;Conventional Pauli propagation takes time: $(t1.time). Expectation: &quot;, overlapwithzero(psum))
+    println(&quot;Pauli propagation surrogate takes time:    $(t2.time). Expectation: &quot;, overlapwithzero(surrogate_psum))
+    println(&quot;&quot;) # for space
+end</code></pre><pre><code class="nohighlight hljs">Conventional Pauli propagation takes time: 2.199211293. Expectation: -0.11957680055685284
+
+
+Pauli propagation surrogate takes time:    0.293900139. Expectation: -0.09195551665437668
+
+
+
+Conventional Pauli propagation takes time: 0.534973. Expectation: 0.039055569410942605
+Pauli propagation surrogate takes time:    0.148153622. Expectation: 0.006196102025828214
+
+
+
+Conventional Pauli propagation takes time: 0.447659234. Expectation: 0.2592670505089841
+Pauli propagation surrogate takes time:    0.216283504. Expectation: 0.2612226572956533
+
+
+
+Conventional Pauli propagation takes time: 0.360722708. Expectation: 0.2228438487160257
+Pauli propagation surrogate takes time:    0.164001624. Expectation: 0.23681986862949683
+
+
+
+Conventional Pauli propagation takes time: 0.628304457. Expectation: 0.049819592824997774
+Pauli propagation surrogate takes time:    0.207173022. Expectation: 0.017753942996396717
+
+
+
+Conventional Pauli propagation takes time: 0.536491128. Expectation: 0.05547121704791134
+Pauli propagation surrogate takes time:    0.231045198. Expectation: 0.11424995897094593
+
+
+
+Conventional Pauli propagation takes time: 0.648108222. Expectation: 0.03410853823943496
+Pauli propagation surrogate takes time:    0.166467322. Expectation: -0.0233042274864537
+
+
+
+Conventional Pauli propagation takes time: 0.359960904. Expectation: -0.03623847105288109
+Pauli propagation surrogate takes time:    0.151276777. Expectation: -0.02173064086670088
+
+
+
+Conventional Pauli propagation takes time: 0.231050671. Expectation: -0.223124545768324
+Pauli propagation surrogate takes time:    0.158163422. Expectation: -0.24370682744191186
+
+
+
+Conventional Pauli propagation takes time: 0.442305287. Expectation: -0.08455886704434287
+Pauli propagation surrogate takes time:    0.144009468. Expectation: -0.00026408645889508054</code></pre><p>Which approach is more accurate? The precise comparison is beyond the scope of this notebook and highly implementation dependent. What we can say at this point is that there is a potential advantage of using the surrogate <strong>if you can afford the extra memory</strong>. There is also some initial time overhead, but the faster re-evaluation should quickly compensate <strong>if you are doing lots of evaluations</strong>. When you are happy with rough but rapid estimates, the surrogate might be the way to go. </p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../PP-from-Python/">« Using PauliPropagation.jl from Python</a><a class="docs-footer-nextpage" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 21 July 2026 19:52">Tuesday 21 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

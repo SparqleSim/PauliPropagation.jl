@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>8. An example of Automatic Differentiation · PauliPropagation.jl</title><meta name="title" content="8. An example of Automatic Differentiation · PauliPropagation.jl"/><meta property="og:title" content="8. An example of Automatic Differentiation · PauliPropagation.jl"/><meta property="twitter:title" content="8. An example of Automatic Differentiation · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li class="is-active"><a class="tocitem" href>8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>8. An example of Automatic Differentiation</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>8. An example of Automatic Differentiation</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/8-automatic-differentiation.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="8.-An-example-of-Automatic-Differentiation"><a class="docs-heading-anchor" href="#8.-An-example-of-Automatic-Differentiation">8. An example of Automatic Differentiation</a><a id="8.-An-example-of-Automatic-Differentiation-1"></a><a class="docs-heading-anchor-permalink" href="#8.-An-example-of-Automatic-Differentiation" title="Permalink"></a></h1><p>Pauli propagation has promise in optimizing variational models because its elementary operations are very simple and automatically differentiable. Additionally, it may be the case that strongly truncated simulations still yield final parameters that translate to high-quality quantum circuits on, for example, a quantum computer. This means that we could (perhaps) very cheaply train/optimize, and then deploy the learned model on a different classical or quantum method. There are some initial indications of this being possible, but they require further exploration. </p><p>In this notebook, we demonstrate how to calculate fast automatic gradients of a quantum circuit using Pauli propagation.</p><pre><code class="language-julia hljs">using PauliPropagation</code></pre><p>Let us set up a simulation:</p><pre><code class="language-julia hljs">nq = 64
+
+topology = bricklayertopology(nq)</code></pre><p>We define a transverse field Hamiltonian, whose derivative we will compute. This could be used within a variational energy minimization routine to find its ground state. </p><p>The Hamiltonian here reads <span>$H = \sum_{i}X_i + \sum_{\langle i, j\rangle}Z_iZ_j$</span> where <span>$\langle i, j\rangle$</span> denotes neighbors on the topology.</p><pre><code class="language-julia hljs">H = PauliSum(nq)
+
+for qind in 1:nq
+    add!(H, :X, qind, 1.0)
+end
+
+for pair in topology
+    add!(H, [:Z, :Z], collect(pair), 1.0)
+end
+
+H</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 64, 127 Pauli terms:
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IZZIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIXIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIXIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIXIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIXIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIXIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+ 1.0 * IIIIIIIIIIIIIIIIIIII...
+  ⋮)</code></pre><p>Define some generic quantum circuit</p><pre><code class="language-julia hljs">nl = 4
+
+# if we begin with the ZZ layer, it commutes with the |0&gt; state and gives zero gradients
+circuit = tfitrottercircuit(nq, nl; topology=topology, start_with_ZZ=false)
+nparams = countparameters(circuit)</code></pre><pre><code class="nohighlight hljs">508</code></pre><p>Importantly, we need to set our truncations. Depending on which package and which method you are using to compute your gradients, you can use different truncations. </p><p><code>ReverseDiff.jl</code> for example is a sophisticated package for automatic <em>reverse-mode</em> differentiation (others may or may not work better). It will build a computational graph that it then differentiates using the chain rule. This is how large-scale neural networks are trained, and is commonly referred to as gradient <em>backpropagation</em>. The challenge here is that the fastest gradients are achieved with a <em>compiled</em> version of the gradient function where the graph for the chain rule is computed once (to the best of our knowledge). In that case, only truncations during the initial computation will be respected. Truncations that we think work well here are <code>max_weight</code>, <code>max_freq</code>, and <code>max_sins</code>, as they do not depend on the particular parameters of the quantum circuit. On the other hand, which paths are explore with truncations such as <code>min_abs_coeff</code> will not be updated (again, to the best of our knowledge) as the gradients are computed. If you want to use such parameter-dependent truncations, you may need to use un-compiled gradient functions.</p><p><code>Mooncake.jl</code> is an up-and-coming package written fully in Julia that differentiates <em>the code itself</em>. It allows for reverse-mode differentiation with truncations like <code>min_abs_coeff</code> working and being differentiated as intended. We hope to provide a tutorial for this library soon.</p><p><code>ForwardDiff.jl</code> is a straight-up improvement over manual numerical differentiation, both in terms of speed and accuracy. Compared to reverse-mode differentiation libraries it is slower for circuits with more than several dozen parameters, but it requires very little additional memory. We will use it for this notebook. Generate some generic parameters:</p><pre><code class="language-julia hljs">using Random
+Random.seed!(42)
+thetas = randn(nparams)</code></pre><p>One expectation evaluation</p><pre><code class="language-julia hljs">min_abs_coeff = 1e-4
+max_weight = 5
+
+@time psum = propagate(circuit, H, thetas; min_abs_coeff, max_weight);
+overlapwithzero(psum)</code></pre><pre><code class="nohighlight hljs">  2.438653 seconds (2.11 M allocations: 102.917 MiB, 0.71% gc time, 99.54% compilation time)
+
+
+
+
+
+7.26631983654383</code></pre><p><strong>Note</strong>: To make these following functionsfaster, you should look into <code>let</code> blocks for local variable namespaces. You will want to define <em>closures</em> and refrain from using global variables.</p><h4 id="What-does-not-work:"><a class="docs-heading-anchor" href="#What-does-not-work:">What does not work:</a><a id="What-does-not-work:-1"></a><a class="docs-heading-anchor-permalink" href="#What-does-not-work:" title="Permalink"></a></h4><p>Now wrap these steps into a function that takes only <code>thetas</code> as argument. (keep in mind our comment about using <code>let</code> blocks)</p><p>This loss function does not work because the <code>ForwardDiff</code> package needs to propagate its custom coefficient type. But <code>H</code> is already strictly typed. So the following loss function would not be automatically differentiable.</p><pre><code class="language-julia hljs">function naivelossfunction(thetas)
+    # this function is not fully type-stable because min_abs_coeff and max_weight are global variables
+    psum = propagate(circuit, H, thetas; min_abs_coeff, max_weight);
+    return overlapwithzero(psum)
+end</code></pre><pre><code class="nohighlight hljs">naivelossfunction (generic function with 1 method)</code></pre><p>The loss works</p><pre><code class="language-julia hljs">@time naivelossfunction(thetas)</code></pre><pre><code class="nohighlight hljs">  0.609394 seconds (3.05 M allocations: 148.972 MiB, 4.03% gc time, 98.04% compilation time)
+
+
+
+
+
+7.26631983654383</code></pre><p>But the gradient would break with a cryptic error message.</p><pre><code class="language-julia hljs"># using Pkg; Pkg.add(&quot;ForwardDiff&quot;)
+using ForwardDiff: gradient
+
+## this errors 
+# gradient(naivelossfunction, thetas)</code></pre><h4 id="What-works:"><a class="docs-heading-anchor" href="#What-works:">What works:</a><a id="What-works:-1"></a><a class="docs-heading-anchor-permalink" href="#What-works:" title="Permalink"></a></h4><p>To create a loss function that indeed works, we need the propagating Hamiltonian to have the correct coefficient type within the loss function. What tends to work is to type the coefficients in the Pauli sum to the element type of <code>thetas</code>, but this will not always work. In this case, it will make everything differentiable.</p><p>Then we need to use the <code>propagate!()</code> function because otherwise the ForwardDiff library errors or yields zero gradients because we copy the Pauli sum while that library is accumulating the derrivative. Annoying... we agree! We will keep an eye out for better options.</p><p>For maximal performance, we will want to make all functions type stable, which can be achieved by a function <em>closure</em> or function <em>factory</em>: A function that outputs a function. In this case, we want to output a loss function that has all arguments other than <code>thetas</code> pre-loaded.</p><pre><code class="language-julia hljs">function generate_lossfunction(circuit, H, min_abs_coeff, max_weight)
+    
+        function lossfunction(thetas)
+        # differentiation libraries use custom types to trace through the computation
+        # we need to make all of our objects typed like that so that nothing breaks
+        CoeffType = eltype(thetas)
+
+        # convert H to use the correct coefficient type
+        # otherwise it would error like above
+        grad_ready_H = convertcoefftype(CoeffType, H)
+
+        # be also need to run the in-place version with `!`, because by default we copy the Pauli sum
+        output_H = propagate!(circuit, grad_ready_H, thetas; min_abs_coeff, max_weight);
+        return overlapwithzero(output_H)
+    end
+
+    return lossfunction
+end</code></pre><pre><code class="nohighlight hljs">generate_lossfunction (generic function with 1 method)</code></pre><pre><code class="language-julia hljs"># define the loss function that works with AD
+lossfunction = generate_lossfunction(circuit, H, min_abs_coeff, max_weight)</code></pre><pre><code class="language-julia hljs">@time lossfunction(thetas)</code></pre><pre><code class="nohighlight hljs">  0.042178 seconds (22.16 k allocations: 1.158 MiB, 73.23% compilation time)
+
+
+
+
+
+7.26631983654383</code></pre><p>And gradients work.</p><pre><code class="language-julia hljs"># the gradients of the first ZZ layer is 
+@time gradient(lossfunction, thetas)</code></pre><pre><code class="nohighlight hljs">  4.085928 seconds (3.55 M allocations: 203.264 MiB, 10.44% gc time, 82.03% compilation time)
+
+
+
+
+
+508-element Vector{Float64}:
+ -0.6772329930789089
+ -0.22543783632035608
+ -0.42292925319813446
+ -0.4243076836337615
+ -0.7523379732310989
+ -0.07792066987114322
+ -0.8515536079185417
+  0.01990979942877011
+  0.8974187316400088
+ -0.25922854058847183
+  0.506894173618708
+ -0.30613329539066253
+ -0.8354345999607842
+  ⋮
+  1.0546803431129719
+ -0.22261031482081436
+  0.4973379719992734
+  0.8133558792992438
+  0.24969214893578057
+  0.6969899813204755
+  0.17190365988833814
+  0.6511464180672394
+  0.03797818611225978
+  0.3563370395924771
+ -0.21643500323976758
+  0.046996169676417704</code></pre><p>You are now ready to go! Plug this gradient function into your favorite optimizer and see what happens.</p><p>Remember: </p><ul><li>These gradients are approximate when using truncation.</li><li>Forward-mode differentiation scales linearly with the number of parameters in addition to the extra runtime of simulating a deeper circuit.</li><li>Reverse-mode differentiation can be faster, and drastically so when the gradient is compiled at the cost of large memory overheads.</li><li>You can also propagate each Pauli term in the Hamiltonian individually and add up their gradients. That can be easily multi-threaded. </li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../7-custom-pathproperties/">« 7. Record custom path properties</a><a class="docs-footer-nextpage" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 21 July 2026 19:52">Tuesday 21 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
