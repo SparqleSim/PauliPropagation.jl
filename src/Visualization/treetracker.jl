@@ -8,8 +8,8 @@
 using UUIDs
 
 # Import necessary functions from parent modules
-import ..PauliPropagation: PauliSum, PauliString, PauliStringType, PauliRotation, MaskedPauliRotation, CliffordGate
-import ..PauliPropagation: _tomaskedpaulirotation, paulitype, paulirotationproduct, commutes, set!, add!
+import ..PauliPropagation: PauliSum, PauliString, PauliStringType, PauliRotation, CliffordGate
+import ..PauliPropagation: paulitype, paulirotationproduct, commutes, set!, add!
 import ..PauliPropagation: inttostring, symboltoint, getpauli, setpauli, splitapply, applytoall!, apply
 import Base: mergewith!
 
@@ -198,7 +198,7 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropa
     psum = mainsum(prop_cache)
     aux_psum = auxsum(prop_cache)
 
-    # Convert PauliRotation to MaskedPauliRotation for efficiency
+    # compute the bitmask of the gate generator for faster operations
     gate_mask = symboltoint(paulitype(psum), gate.symbols, gate.qinds)
 
     # Loop over all Pauli strings and their coefficients in the Pauli sum

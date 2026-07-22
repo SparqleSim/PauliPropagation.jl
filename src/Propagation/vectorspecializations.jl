@@ -16,7 +16,7 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::VectorPaul
     n_old = prop_cache.active_size
 
     # get the mask out because because the gate cannot be in the function when using GPU
-    gate_mask = symboltoint(nqubits(prop_cache), gate.symbols, gate.qinds)
+    gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
 
     # this needs to be in a separate function because variable names cannot be duplicated (WOW)
     # _flaganticommuting!(prop_cache, gate_mask)
@@ -107,7 +107,7 @@ function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::V
     n_old = prop_cache.active_size
 
     # get the mask out because because the gate cannot be in the function when using GPU
-    gate_mask::paulitype(prop_cache) = symboltoint(nqubits(prop_cache), gate.symbols, gate.qinds)
+    gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
 
     # Imaginary Rotation branches on commutation, not anticommutation
     commutesfunc(trm) = commutes(trm, gate_mask)

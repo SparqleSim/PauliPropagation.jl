@@ -55,20 +55,15 @@ end
 
 
 function paulirotationproduct(gate::PauliRotation, pstr::TT) where TT
-    masked_gate = _tomaskedpaulirotation(gate, TT)
-    return paulirotationproduct(masked_gate, pstr)
-end
-
-# TODO: completely remove MaskedPauliRotation
-function paulirotationproduct(gate::MaskedPauliRotation, pstr::TT) where TT
-    return paulirotationproduct(gate.generator_mask, pstr)
+    gate_mask = symboltoint(TT, gate.symbols, gate.qinds)
+    return paulirotationproduct(gate_mask, pstr)
 end
 
 function paulirotationproduct(gate_mask::TT, pstr::TT) where TT
-    new_pstr = PauliPropagation._bitpaulimultiply(gate_mask, pstr)
+    new_pstr = _bitpaulimultiply(gate_mask, pstr)
 
     # this counts the exponent of the imaginary unit in the new Pauli string
-    im_count = PauliPropagation._calculatesignexponent(gate_mask, pstr)
+    im_count = _calculatesignexponent(gate_mask, pstr)
 
     # now, instead of computing im^im_count followed by another im factor from the gate rules,
     # we do this in one step via a cheeky trick:
