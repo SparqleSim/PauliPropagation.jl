@@ -80,23 +80,23 @@ thetas_optimized = res.minimizer</code></pre><pre><code class="nohighlight hljs"
      0     1.603985e-05     2.843205e-04
 
 
- * time: 0.037032127380371094
+ * time: 0.08229708671569824
 
 
      2     1.165579e-05     5.394587e-05
- * time: 82.16650104522705
+ * time: 75.49333500862122
 
 
      4     8.504315e-06     2.046829e-04
- * time: 136.09394001960754
+ * time: 126.92408394813538
 
 
      6     5.170889e-06     4.151421e-05
- * time: 168.09031105041504
+ * time: 157.60744404792786
 
 
      8     5.032348e-06     6.685522e-06
- * time: 194.90578413009644</code></pre><h2 id="Statevector-simulator"><a class="docs-heading-anchor" href="#Statevector-simulator">Statevector simulator</a><a id="Statevector-simulator-1"></a><a class="docs-heading-anchor-permalink" href="#Statevector-simulator" title="Permalink"></a></h2><p>We use the Yao library to simulate the dynamics of an initial state <span>$\ket{\psi_0}$</span> under the differernt circuits. Note that the following results showing that the expectation value is much more accurate with the compressed ansatz can be strongly problem dependent, and must be taken as illustrative examples only.</p><pre><code class="language-julia hljs">using Yao
+ * time: 181.34104108810425</code></pre><h2 id="Statevector-simulator"><a class="docs-heading-anchor" href="#Statevector-simulator">Statevector simulator</a><a id="Statevector-simulator-1"></a><a class="docs-heading-anchor-permalink" href="#Statevector-simulator" title="Permalink"></a></h2><p>We use the Yao library to simulate the dynamics of an initial state <span>$\ket{\psi_0}$</span> under the differernt circuits. Note that the following results showing that the expectation value is much more accurate with the compressed ansatz can be strongly problem dependent, and must be taken as illustrative examples only.</p><pre><code class="language-julia hljs">using Yao
 using LinearAlgebra
 
 function heisenberg_1d(n, topology; J=1.0)
@@ -215,4 +215,4 @@ Plots.plot!(p_err, timestamps[2:end], transpose(mean(abs.(magnetizations[:, (1+e
 
 
 display(p)
-display(p_err)</code></pre><pre><code class="nohighlight hljs">3, mean AT = 0.011479990614442829, mean deeper = 0.002928244974359276, mean OPT = 0.002245684907039913</code></pre><p><img src="../circuit_compression_example_files/circuit_compression_example_32_1.svg" alt="svg"/></p><p><img src="../circuit_compression_example_files/circuit_compression_example_32_2.svg" alt="svg"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../introduction-example-error-mitigation/">« Error Mitigation using Pauli Propagation</a><a class="docs-footer-nextpage" href="../PP-from-Python/">Using PauliPropagation.jl from Python »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Saturday 18 July 2026 09:41">Saturday 18 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+display(p_err)</code></pre><pre><code class="nohighlight hljs">3, mean AT = 0.011479990614483218, mean deeper = 0.002928244974399666, mean OPT = 0.0022456849070792593</code></pre><p><img src="../circuit_compression_example_files/circuit_compression_example_32_1.svg" alt="svg"/></p><p><img src="../circuit_compression_example_files/circuit_compression_example_32_2.svg" alt="svg"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../introduction-example-error-mitigation/">« Error Mitigation using Pauli Propagation</a><a class="docs-footer-nextpage" href="../PP-from-Python/">Using PauliPropagation.jl from Python »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Wednesday 22 July 2026 07:51">Wednesday 22 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
