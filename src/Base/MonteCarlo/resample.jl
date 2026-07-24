@@ -54,7 +54,7 @@ function resample!(prop_cache::AbstractPropagationCache, target_size, resample_a
         end
     end
 
-    resample_func(prop_cache, target_size, resample_args...; resample_kwargs...)
+    resample_func(prop_cache, target_size, resample_args...; squared, resample_kwargs...)
 
     return prop_cache
 end

@@ -310,3 +310,19 @@ end
         @test 1 <= activesize(cache) <= target_size + term_tol
     end
 end
+
+@testset "resample! forwards squared to the resampler" begin
+    nq = 4
+    pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), rand() + 0.1) for _ in 1:30]
+    base_psum = merge!(VectorPauliSum(pstrs))
+    target_size = 5
+
+    # under squared=true, multinomial_resample! assigns every survivor the same weight share
+    # of the *squared* 2-norm: |coeff| = sqrt(sum(abs2) / target_size). If squared were dropped
+    # on the way to the resampler, the magnitude would be the 1-norm share sum(abs) / target_size.
+    squared_share = sqrt(sum(abs2, coefficients(base_psum)) / target_size)
+
+    cache = VectorPauliPropagationCache(deepcopy(base_psum))
+    resample!(cache, target_size; resample_func=multinomial_resample!, squared=true)
+    @test all(isapprox(abs(c), squared_share) for c in activecoeffs(cache))
+end
