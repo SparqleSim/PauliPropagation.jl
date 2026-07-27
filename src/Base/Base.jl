@@ -102,6 +102,7 @@ export
     resample,
     resample!,
     multinomial_resample!,
+    projection_resample!,
     systematic_resample!,
     semideterministic_systematic_resample!
 

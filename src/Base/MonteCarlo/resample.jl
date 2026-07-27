@@ -115,6 +115,62 @@ function _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_siz
 end
 
 """
+    projection_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread=true)
+
+Draws `target_size` terms i.i.d. with replacement, with probabilities proportional to `abs(coeff)`
+(or `abs2(coeff)` for `squared=true`), and sets every sampled coefficient to one.
+Unlike the other resamplers, this is a *projection* onto unit-coefficient sample terms:
+the coefficient distribution is consumed as sampling probabilities and not reweighted,
+so the result is not an unbiased estimator of the incoming sum.
+Useful for Monte Carlo estimators that track sampled Pauli terms with unit weight,
+e.g. 2-norm sampling of a normalized operator.
+Since draws are with replacement, `target_size` may exceed the current ensemble size;
+the cache buffers are grown as needed.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
+"""
+function projection_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread::Bool=true, kwargs...)
+    # drawing with replacement can legitimately upsample, e.g. many walkers from a small
+    # distribution, so grow the cache buffers if needed (before taking any array views)
+    if target_size > capacity(prop_cache)
+        resize!(prop_cache, target_size)
+    end
+
+    dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
+
+    _projection_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared, thread)
+
+    swapsums!(prop_cache)
+    setactivesize!(prop_cache, target_size)
+    # draws are i.i.d. samples from the source distribution, so the result carries no sorted order
+    setsortedprefix!(mainsum(prop_cache), 0)
+
+    return prop_cache
+end
+
+function _projection_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared=false, thread::Bool=true)
+    power = squared ? 2 : 1
+
+    # Compute the cumulative distribution
+    # TODO: make non-allocating
+    cum_probs = coeffcumsum(coeffs, power; thread)
+    total_weight = cum_probs[end]
+
+    dst_terms_view = view(dst_terms, 1:target_size)
+    AK.foreachindex(dst_terms_view; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do i
+        # Sample a random number in [0, total_weight)
+        r = rand() * total_weight
+
+        # we don't parallelize this because we are already threading over the outer loop
+        idx = searchsortedfirst(cum_probs, r)
+
+        dst_terms[i] = terms[idx]
+        dst_coeffs[i] = one(eltype(dst_coeffs))
+    end
+
+    return nothing
+end
+
+"""
     systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, calibrate=true, rtol=0.01, atol=0, thread=true)
 
 Low variance resampling technique that returns unique terms.

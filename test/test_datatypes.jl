@@ -393,3 +393,22 @@ end
         @test PauliPropagation.getmergedcoeff(vpsum, zero(PauliPropagation.paulitype(vpsum))) == linearscan(vpsum, zero(PauliPropagation.paulitype(vpsum)))
     end
 end
+
+@testset "VectorPauliSum replication constructor" begin
+    nq = 4
+    pstr = PauliString(nq, :Z, 2, 0.5)
+    n_samples = 7
+
+    vpsum = VectorPauliSum(pstr, n_samples)
+    @test length(vpsum) == n_samples
+    @test nqubits(vpsum) == nq
+    @test all(t == pstr.term for t in paulis(vpsum))
+    @test all(c == pstr.coeff for c in coefficients(vpsum))
+
+    # merging collapses the replicas back into a single term
+    merged = merge!(deepcopy(vpsum))
+    @test length(merged) == 1
+    @test getcoeff(merged, pstr.term) ≈ n_samples * pstr.coeff
+
+    @test_throws AssertionError VectorPauliSum(pstr, 0)
+end

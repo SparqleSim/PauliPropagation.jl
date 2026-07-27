@@ -250,6 +250,45 @@ end
 end
 
 
+@testset "projection_resample! sets coefficients to one and respects target_size" begin
+    nq = 4
+    pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), rand() + 0.1) for _ in 1:30]
+    base_psum = merge!(VectorPauliSum(pstrs))
+    target_size = max(1, length(base_psum) ÷ 2)
+
+    # i.i.d. draws with replacement: the count is always exact and every coefficient becomes one
+    cache = VectorPauliPropagationCache(deepcopy(base_psum))
+    projection_resample!(cache, target_size; squared=true)
+    @test activesize(cache) == target_size
+    @test all(c == 1.0 for c in activecoeffs(cache))
+
+    # every sampled term must come from the source support
+    source_terms = Set(paulis(base_psum))
+    @test all(t in source_terms for t in activeterms(cache))
+
+    # also works through the resample! dispatcher on a plain psum
+    psum = deepcopy(base_psum)
+    resample!(psum, target_size; resample_func=projection_resample!, squared=true)
+    @test length(psum) == target_size
+    @test all(c == 1.0 for c in coefficients(psum))
+
+    # squared=true samples proportionally to abs2, so a dominant term takes essentially all
+    # draws; drawing 20 walkers from a 5-term ensemble also exercises upsampling
+    dominant = PauliString(nq, :X, 1, 1.0)
+    tiny = [PauliString(nq, :Z, q, 1e-9) for q in 1:nq]
+    skewed_cache = VectorPauliPropagationCache(merge!(VectorPauliSum([dominant; tiny])))
+    projection_resample!(skewed_cache, 20; squared=true)
+    @test activesize(skewed_cache) == 20
+    @test all(t == dominant.term for t in activeterms(skewed_cache))
+
+    # complex coefficients are projected onto complex unit coefficients
+    cpstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), (rand() + 0.1) * cis(2π * rand())) for _ in 1:30]
+    ccache = VectorPauliPropagationCache(merge!(VectorPauliSum(cpstrs)))
+    projection_resample!(ccache, target_size; squared=true)
+    @test all(c == one(ComplexF64) for c in activecoeffs(ccache))
+end
+
+
 @testset "mcpropagate! handles complex coefficients" begin
     nq = 4
     nl = 3

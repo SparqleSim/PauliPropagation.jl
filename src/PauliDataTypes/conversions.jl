@@ -67,6 +67,18 @@ Constructor for a `VectorPauliSum` from a `PauliString`.
 VectorPauliSum(pstr::PauliString) = VectorPauliSum(pstr.nqubits, [pstr.term], [pstr.coeff])
 
 """
+    VectorPauliSum(pstr::PauliString, n_samples::Integer)
+
+Constructor for a `VectorPauliSum` containing `n_samples` identical copies of `pstr`.
+Useful for building Monte Carlo walker ensembles,
+e.g. `mcsample!(circuit, VectorPauliSum(pstr, 1000); squared=true)`.
+"""
+function VectorPauliSum(pstr::PauliString, n_samples::Integer)
+    @assert n_samples > 0 "n_samples must be positive."
+    return VectorPauliSum(pstr.nqubits, fill(pstr.term, n_samples), fill(pstr.coeff, n_samples))
+end
+
+"""
     VectorPauliSum(psum::PauliSum)
 
 Convert a `PauliSum` to a `VectorPauliSum`.
