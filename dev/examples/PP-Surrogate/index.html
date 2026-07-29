@@ -12,7 +12,7 @@ add!(observable, :Z, nq)</code></pre><pre><code class="nohighlight hljs">PauliSu
 )</code></pre><h3 id="Using-the-Surrogate"><a class="docs-heading-anchor" href="#Using-the-Surrogate">Using the Surrogate</a><a id="Using-the-Surrogate-1"></a><a class="docs-heading-anchor-permalink" href="#Using-the-Surrogate" title="Permalink"></a></h3><p>Our surrogation approach is based on a custom <code>PathPropergies</code> type called <code>NodePathProperties</code>. Similar to the <code>PauliFreqTracker</code>, we use can truncate via <code>max_freq</code> and <code>max_sins</code>, but it also carries objects instead of coefficients that build a propagation graph on the fly. This graph will later be evaluated.</p><p>Here is how you prepare the surrogate by wrapping your observable, i.e. your <code>PauliString</code> or <code>PauliSum</code> into <code>NodePathProperties</code>. This may become simpler in the future.</p><pre><code class="language-julia hljs">wrapped_observable = wrapcoefficients(observable, NodePathProperties)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 8, 2 Pauli terms:
  NodePathProperties * IIIIIIIZ
  NodePathProperties * ZIIIIIII
-)</code></pre><p>To surrogate, simply propagate without passing any parameters <code>thetas</code>. Those come later. Note that for any harder simulation we should set truncation values!</p><pre><code class="language-julia hljs">@time surrogate_psum = propagate(circuit, wrapped_observable)</code></pre><pre><code class="nohighlight hljs">  2.593867 seconds (3.14 M allocations: 150.313 MiB, 1.39% gc time, 99.32% compilation time)
+)</code></pre><p>To surrogate, simply propagate without passing any parameters <code>thetas</code>. Those come later. Note that for any harder simulation we should set truncation values!</p><pre><code class="language-julia hljs">@time surrogate_psum = propagate(circuit, wrapped_observable)</code></pre><pre><code class="nohighlight hljs">  1.427368 seconds (3.14 M allocations: 150.558 MiB, 1.90% gc time, 99.23% compilation time)
 
 
 
@@ -66,10 +66,10 @@ evaluate!(surrogate_psum, thetas)</code></pre><p>Now we can use the surrogate li
   ⋮)</code></pre><pre><code class="language-julia hljs"># the same result
 overlapwithzero(psum)</code></pre><pre><code class="nohighlight hljs">-0.2488994501782641</code></pre><h3 id="Benchmarking"><a class="docs-heading-anchor" href="#Benchmarking">Benchmarking</a><a id="Benchmarking-1"></a><a class="docs-heading-anchor-permalink" href="#Benchmarking" title="Permalink"></a></h3><p>We mentioned this approach would be faster, but is it? First addressing the elephant in the room: The initial surrogation propagation is <strong>a lot</strong> slower. It also uses drastically more memory. These are things that can be improved in the future, but you may still find this useful. Also note that these notebooks are run with 12 usable CPU threads in the Julia kernel. Results may vary with more or less.</p><pre><code class="language-julia hljs"># load Julia&#39;s benchmarking library
 using BenchmarkTools</code></pre><pre><code class="language-julia hljs"># benchmark the surrogate
-@btime evaluate!($surrogate_psum, $thetas)</code></pre><pre><code class="nohighlight hljs">  14.473 ms
+@btime evaluate!($surrogate_psum, $thetas)</code></pre><pre><code class="nohighlight hljs">  3.063 ms
 
  (17 allocations: 479.45 KiB)</code></pre><pre><code class="language-julia hljs"># benchmark the normal propagation
-@btime propagate($circuit, $observable, $thetas)</code></pre><pre><code class="nohighlight hljs">  5.013 ms
+@btime propagate($circuit, $observable, $thetas)</code></pre><pre><code class="nohighlight hljs">  3.588 ms
 
  (518 allocations: 1.16 MiB)</code></pre><p>Depending on whether you started started your Julia kernel with several CPU threads, this might already be faster. While we will discuss some caveats further down, this is not the surrogate&#39;s final form.</p><p>We have not yet made use of the main advantage of a surrogate: If we know at the end which Pauli strings contribute to expectation values, we can call <code>evaluate!()</code>  only on those paths and none of the others. Let&#39;s filter the surrogate Pauli sum so that it only contains the Pauli strings relevant to <code>overlapwithzero()</code>, i.e. the <span>$|0\rangle\langle0|$</span> state. </p><pre><code class="language-julia hljs"># zerofilter! actually changes the surrogate in-place. Copying may lead to wrong behavior.
 surrogate_psum = zerofilter!(surrogate_psum);
@@ -79,7 +79,7 @@ surrogate_psum = zerofilter!(surrogate_psum);
 #     if containsXorY(pstr)
 #         delete!(surrogate_psum, pstr)
 #     end
-# end</code></pre><pre><code class="language-julia hljs">@btime evaluate!($surrogate_psum, $thetas)</code></pre><pre><code class="nohighlight hljs">  449.177 μs (17 allocations: 4.01 KiB)</code></pre><p>And this is substantially faster! </p><p>So far we covered a very small-scale problem without the need to perform any truncations. Though this is what we will now do, highlighting some of the nuances and issues of a(/our) surrogate.</p><h3 id="Truncating-the-Surrogate"><a class="docs-heading-anchor" href="#Truncating-the-Surrogate">Truncating the Surrogate</a><a id="Truncating-the-Surrogate-1"></a><a class="docs-heading-anchor-permalink" href="#Truncating-the-Surrogate" title="Permalink"></a></h3><p>Set up a bigger problem on a 2D topology. Don&#39;t run this without truncations!</p><pre><code class="language-julia hljs">nx = 6
+# end</code></pre><pre><code class="language-julia hljs">@btime evaluate!($surrogate_psum, $thetas)</code></pre><pre><code class="nohighlight hljs">  200.771 μs (17 allocations: 4.01 KiB)</code></pre><p>And this is substantially faster! </p><p>So far we covered a very small-scale problem without the need to perform any truncations. Though this is what we will now do, highlighting some of the nuances and issues of a(/our) surrogate.</p><h3 id="Truncating-the-Surrogate"><a class="docs-heading-anchor" href="#Truncating-the-Surrogate">Truncating the Surrogate</a><a id="Truncating-the-Surrogate-1"></a><a class="docs-heading-anchor-permalink" href="#Truncating-the-Surrogate" title="Permalink"></a></h3><p>Set up a bigger problem on a 2D topology. Don&#39;t run this without truncations!</p><pre><code class="language-julia hljs">nx = 6
 ny = 6
 nq = nx * ny
 
@@ -93,7 +93,7 @@ nparams = countparameters(circuit)</code></pre><pre><code class="nohighlight hlj
 pstr = PauliString(nq, :Z, 21)</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 36, 1.0 * IIIIIIIIIIIIIIIIIIII...)</code></pre><pre><code class="language-julia hljs"># wrap it in `NodePathProperties` again
 wrapped_pstr = wrapcoefficients(pstr, NodePathProperties)</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 36, NodePathProperties * IIIIIIIIIIIIIIIIIIII...)</code></pre><p>Now we set the truncation values. For this demonstration, we will chose them as rather inaccurate truncations. Otherwise we might run out of memory pretty quickly.</p><pre><code class="language-julia hljs">max_freq = 26
 # max_sins = 10   # another option if your rotation angles are small
-max_weight = 7</code></pre><pre><code class="language-julia hljs">@time surrogate_psum = propagate(circuit, wrapped_pstr; max_freq, max_weight)</code></pre><pre><code class="nohighlight hljs"> 11.079186 seconds (46.52 M allocations: 1.735 GiB, 25.01% gc time, 12.93% compilation time)
+max_weight = 7</code></pre><pre><code class="language-julia hljs">@time surrogate_psum = propagate(circuit, wrapped_pstr; max_freq, max_weight)</code></pre><pre><code class="nohighlight hljs">  9.789476 seconds (46.52 M allocations: 1.735 GiB, 28.19% gc time, 17.14% compilation time)
 
 
 
@@ -130,59 +130,55 @@ for _ in 1:10
     println(&quot;Equivalent Pauli propagation takes time: $(t1.time). Expectation: &quot;, overlapwithzero(psum))
     println(&quot;Pauli propagation surrogate takes time:  $(t2.time). Expectation: &quot;, overlapwithzero(surrogate_psum))
     println(&quot;&quot;) # for space
-end</code></pre><pre><code class="nohighlight hljs">Equivalent Pauli propagation takes time: 5.428546289. Expectation: -0.09195551666054731
+end</code></pre><pre><code class="nohighlight hljs">Equivalent Pauli propagation takes time: 2.824062159. Expectation: -0.09195551666054731
 
 
-Pauli propagation surrogate takes time:  0.234934679. Expectation: 
-
--0.09195551665437668
-
-
-
-Equivalent Pauli propagation takes time: 3.007496687. Expectation: 0.006196102025874881
-Pauli propagation surrogate takes time:  0.201713278. Expectation: 0.006196102025828214
+Pauli propagation surrogate takes time:  0.108182772. Expectation: -0.09195551665437668
 
 
 
-
-
-Equivalent Pauli propagation takes time: 3.163626327. Expectation: 0.26122265730227046
-Pauli propagation surrogate takes time:  0.23833649. Expectation: 0.2612226572956533
-
-
-
-Equivalent Pauli propagation takes time: 3.278977306. Expectation: 0.23681986847693884
-Pauli propagation surrogate takes time:  0.232957006. Expectation: 0.23681986862949683
+Equivalent Pauli propagation takes time: 1.460122609. Expectation: 0.006196102025874881
+Pauli propagation surrogate takes time:  0.177806771. Expectation: 0.006196102025828214
 
 
 
-Equivalent Pauli propagation takes time: 2.992546305. Expectation: 0.017753943018382908
-Pauli propagation surrogate takes time:  0.194153902. Expectation: 0.017753942996396717
+Equivalent Pauli propagation takes time: 1.362760132. Expectation: 0.26122265730227046
+Pauli propagation surrogate takes time:  0.162636536. Expectation: 0.2612226572956533
 
 
 
-Equivalent Pauli propagation takes time: 3.298587508. Expectation: 0.11424995928834948
-Pauli propagation surrogate takes time:  0.286398007. Expectation: 0.11424995897094593
+Equivalent Pauli propagation takes time: 1.362333744. Expectation: 0.23681986847693884
+Pauli propagation surrogate takes time:  0.14211638. Expectation: 0.23681986862949683
 
 
 
-Equivalent Pauli propagation takes time: 3.120042302. Expectation: -0.02330422748624532
-Pauli propagation surrogate takes time:  0.338456235. Expectation: -0.0233042274864537
+Equivalent Pauli propagation takes time: 1.30011492. Expectation: 0.017753943018382908
+Pauli propagation surrogate takes time:  0.169146558. Expectation: 0.017753942996396717
 
 
 
-Equivalent Pauli propagation takes time: 3.440139028. Expectation: -0.021730640866541515
-Pauli propagation surrogate takes time:  0.246911302. Expectation: -0.02173064086670088
+Equivalent Pauli propagation takes time: 1.335210657. Expectation: 0.11424995928834948
+Pauli propagation surrogate takes time:  0.172176883. Expectation: 0.11424995897094593
 
 
 
-Equivalent Pauli propagation takes time: 3.227668506. Expectation: -0.24370682737291208
-Pauli propagation surrogate takes time:  0.160654232. Expectation: -0.24370682744191186
+Equivalent Pauli propagation takes time: 1.464841484. Expectation: -0.02330422748624532
+Pauli propagation surrogate takes time:  0.158506817. Expectation: -0.0233042274864537
 
 
 
-Equivalent Pauli propagation takes time: 2.95425501. Expectation: -0.00026444458430952933
-Pauli propagation surrogate takes time:  0.273110194. Expectation: -0.00026408645889508054</code></pre><p>In some sense, this comparison is <em>fair</em> in that it shows the power of the fast re-evaluation of the surrogate. On the other hand, though, truncation via <code>max_freq</code> (as used here) is a little unnatural when the parameters are known. If the parameters are known then you can simply use coefficient truncation via <code>min_abs_coeff</code> which is both quicker and more accurate. So let&#39;s compare against some simulations with <code>min_abs_coeff</code> truncation.</p><pre><code class="language-julia hljs">min_abs_coeff = 1e-3  # this is a very inaccurate truncation for simulations of interest
+Equivalent Pauli propagation takes time: 1.85279476. Expectation: -0.021730640866541515
+Pauli propagation surrogate takes time:  0.173513506. Expectation: -0.02173064086670088
+
+
+
+Equivalent Pauli propagation takes time: 1.244605478. Expectation: -0.24370682737291208
+Pauli propagation surrogate takes time:  0.170248738. Expectation: -0.24370682744191186
+
+
+
+Equivalent Pauli propagation takes time: 1.785183025. Expectation: -0.00026444458430952933
+Pauli propagation surrogate takes time:  0.178956354. Expectation: -0.00026408645889508054</code></pre><p>In some sense, this comparison is <em>fair</em> in that it shows the power of the fast re-evaluation of the surrogate. On the other hand, though, truncation via <code>max_freq</code> (as used here) is a little unnatural when the parameters are known. If the parameters are known then you can simply use coefficient truncation via <code>min_abs_coeff</code> which is both quicker and more accurate. So let&#39;s compare against some simulations with <code>min_abs_coeff</code> truncation.</p><pre><code class="language-julia hljs">min_abs_coeff = 1e-3  # this is a very inaccurate truncation for simulations of interest
 
 Random.seed!(420)
 
@@ -193,52 +189,52 @@ for _ in 1:10
     println(&quot;Conventional Pauli propagation takes time: $(t1.time). Expectation: &quot;, overlapwithzero(psum))
     println(&quot;Pauli propagation surrogate takes time:    $(t2.time). Expectation: &quot;, overlapwithzero(surrogate_psum))
     println(&quot;&quot;) # for space
-end</code></pre><pre><code class="nohighlight hljs">Conventional Pauli propagation takes time: 1.807884135. Expectation: -0.11957680055685284
-
-
-Pauli propagation surrogate takes time:    0.184027217. Expectation: -0.09195551665437668
-
-
-
-Conventional Pauli propagation takes time: 0.493716675. Expectation: 0.039055569410942605
-Pauli propagation surrogate takes time:    0.170417528. Expectation: 0.006196102025828214
+end</code></pre><pre><code class="nohighlight hljs">Conventional Pauli propagation takes time: 1.269291669. Expectation: -0.11957680055685284
+Pauli propagation surrogate takes time:    0.232839127. Expectation: -0.09195551665437668
 
 
 
-Conventional Pauli propagation takes time: 0.420730701. Expectation: 0.2592670505089841
-Pauli propagation surrogate takes time:    0.162612737. Expectation: 0.2612226572956533
+Conventional Pauli propagation takes time: 0.501702895. Expectation: 0.039055569410942605
+Pauli propagation surrogate takes time:    0.217874664. Expectation: 0.006196102025828214
 
 
 
-Conventional Pauli propagation takes time: 0.360323771. Expectation: 0.2228438487160257
-Pauli propagation surrogate takes time:    0.180104043. Expectation: 0.23681986862949683
+Conventional Pauli propagation takes time: 0.290370578. Expectation: 0.2592670505089841
+Pauli propagation surrogate takes time:    0.25562398. Expectation: 0.2612226572956533
 
 
 
-Conventional Pauli propagation takes time: 0.434443615. Expectation: 0.049819592824997774
-Pauli propagation surrogate takes time:    0.322868283. Expectation: 0.017753942996396717
+Conventional Pauli propagation takes time: 0.204354032. Expectation: 0.2228438487160257
+Pauli propagation surrogate takes time:    0.179366622. Expectation: 0.23681986862949683
 
 
 
-Conventional Pauli propagation takes time: 0.711534657. Expectation: 0.05547121704791134
-Pauli propagation surrogate takes time:    0.165960168. Expectation: 0.11424995897094593
+Conventional Pauli propagation takes time: 0.483523222. Expectation: 0.049819592824997774
+Pauli propagation surrogate takes time:    0.333478776. Expectation: 0.017753942996396717
 
 
 
-Conventional Pauli propagation takes time: 0.439222469. Expectation: 0.03410853823943496
-Pauli propagation surrogate takes time:    0.165308683. Expectation: -0.0233042274864537
+Conventional Pauli propagation takes time: 0.514041085. Expectation: 0.05547121704791134
+Pauli propagation surrogate takes time:    0.324936554. Expectation: 0.11424995897094593
 
 
 
-Conventional Pauli propagation takes time: 0.544732695. Expectation: -0.03623847105288109
-Pauli propagation surrogate takes time:    0.275619925. Expectation: -0.02173064086670088
+Conventional Pauli propagation takes time: 0.572047955. Expectation: 0.03410853823943496
+Pauli propagation surrogate takes time:    0.302956639. Expectation: -0.0233042274864537
 
 
 
-Conventional Pauli propagation takes time: 0.188506297. Expectation: -0.223124545768324
-Pauli propagation surrogate takes time:    0.162263731. Expectation: -0.24370682744191186
+Conventional Pauli propagation takes time: 0.477340948. Expectation: -0.03623847105288109
+
+
+Pauli propagation surrogate takes time:    0.311298957. Expectation: -0.02173064086670088
 
 
 
-Conventional Pauli propagation takes time: 0.628722848. Expectation: -0.08455886704434287
-Pauli propagation surrogate takes time:    0.234987738. Expectation: -0.00026408645889508054</code></pre><p>Which approach is more accurate? The precise comparison is beyond the scope of this notebook and highly implementation dependent. What we can say at this point is that there is a potential advantage of using the surrogate <strong>if you can afford the extra memory</strong>. There is also some initial time overhead, but the faster re-evaluation should quickly compensate <strong>if you are doing lots of evaluations</strong>. When you are happy with rough but rapid estimates, the surrogate might be the way to go. </p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../PP-from-Python/">« Using PauliPropagation.jl from Python</a><a class="docs-footer-nextpage" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 19 July 2026 09:01">Sunday 19 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+Conventional Pauli propagation takes time: 0.24579692. Expectation: -0.223124545768324
+Pauli propagation surrogate takes time:    0.319109097. Expectation: -0.24370682744191186
+
+
+
+Conventional Pauli propagation takes time: 0.343893124. Expectation: -0.08455886704434287
+Pauli propagation surrogate takes time:    0.155258748. Expectation: -0.00026408645889508054</code></pre><p>Which approach is more accurate? The precise comparison is beyond the scope of this notebook and highly implementation dependent. What we can say at this point is that there is a potential advantage of using the surrogate <strong>if you can afford the extra memory</strong>. There is also some initial time overhead, but the faster re-evaluation should quickly compensate <strong>if you are doing lots of evaluations</strong>. When you are happy with rough but rapid estimates, the surrogate might be the way to go. </p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../PP-from-Python/">« Using PauliPropagation.jl from Python</a><a class="docs-footer-nextpage" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Wednesday 29 July 2026 13:27">Wednesday 29 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
