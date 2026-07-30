@@ -36,9 +36,11 @@ end
 function resample!(prop_cache::AbstractPropagationCache, target_size, resample_args...; resample_func=nothing, squared=false, resample_kwargs...)
     @assert target_size > 0 "target_size must be positive"
 
-    if target_size > activesize(prop_cache)
-        throw(ArgumentError("target_size must be less than the current active size of the prop_cache."))
+    if target_size > activesize(prop_cache) && resample_func !== multinomial_resample!
+        throw(ArgumentError("target_size must be less than the current active size 
+        of the prop_cache for resample methods (like $(resample_func)) other than multinomial_resample!."))
     end
+    
     # resample_func is expected to take prop_cache and target_size as arguments
     # anything else needs to be wrapped into a closure
 
