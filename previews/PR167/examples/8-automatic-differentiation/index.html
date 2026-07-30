@@ -42,7 +42,7 @@ thetas = randn(nparams)</code></pre><p>One expectation evaluation</p><pre><code 
 max_weight = 5
 
 @time psum = propagate(circuit, H, thetas; min_abs_coeff, max_weight);
-overlapwithzero(psum)</code></pre><pre><code class="nohighlight hljs">  3.113257 seconds (2.52 M allocations: 109.475 MiB, 0.64% gc time, 99.31% compilation time)
+overlapwithzero(psum)</code></pre><pre><code class="nohighlight hljs">  2.468198 seconds (2.52 M allocations: 109.475 MiB, 0.67% gc time, 99.03% compilation time)
 
 
 
@@ -52,7 +52,7 @@ overlapwithzero(psum)</code></pre><pre><code class="nohighlight hljs">  3.113257
     # this function is not fully type-stable because min_abs_coeff and max_weight are global variables
     psum = propagate(circuit, H, thetas; min_abs_coeff, max_weight);
     return overlapwithzero(psum)
-end</code></pre><pre><code class="nohighlight hljs">naivelossfunction (generic function with 1 method)</code></pre><p>The loss works</p><pre><code class="language-julia hljs">@time naivelossfunction(thetas)</code></pre><pre><code class="nohighlight hljs">  0.593873 seconds (3.51 M allocations: 158.001 MiB, 4.71% gc time, 96.40% compilation time)
+end</code></pre><pre><code class="nohighlight hljs">naivelossfunction (generic function with 1 method)</code></pre><p>The loss works</p><pre><code class="language-julia hljs">@time naivelossfunction(thetas)</code></pre><pre><code class="nohighlight hljs">  0.600706 seconds (3.51 M allocations: 158.006 MiB, 3.93% gc time, 96.04% compilation time)
 
 
 
@@ -80,14 +80,14 @@ using ForwardDiff: gradient
 
     return lossfunction
 end</code></pre><pre><code class="nohighlight hljs">generate_lossfunction (generic function with 1 method)</code></pre><pre><code class="language-julia hljs"># define the loss function that works with AD
-lossfunction = generate_lossfunction(circuit, H, min_abs_coeff, max_weight)</code></pre><pre><code class="language-julia hljs">@time lossfunction(thetas)</code></pre><pre><code class="nohighlight hljs">  0.101234 seconds (432.54 k allocations: 7.646 MiB, 36.61% gc time, 30.01% compilation time)
+lossfunction = generate_lossfunction(circuit, H, min_abs_coeff, max_weight)</code></pre><pre><code class="language-julia hljs">@time lossfunction(thetas)</code></pre><pre><code class="nohighlight hljs">  0.057841 seconds (432.54 k allocations: 7.645 MiB, 52.30% compilation time)
 
 
 
 
 
 7.26631983654383</code></pre><p>And gradients work.</p><pre><code class="language-julia hljs"># the gradients of the first ZZ layer is 
-@time gradient(lossfunction, thetas)</code></pre><pre><code class="nohighlight hljs">  6.278856 seconds (26.50 M allocations: 2.586 GiB, 13.94% gc time, 61.55% compilation time)
+@time gradient(lossfunction, thetas)</code></pre><pre><code class="nohighlight hljs">  5.197408 seconds (26.51 M allocations: 2.587 GiB, 15.30% gc time, 57.39% compilation time)
 
 
 
@@ -119,4 +119,4 @@ lossfunction = generate_lossfunction(circuit, H, min_abs_coeff, max_weight)</cod
   0.03797818611225978
   0.3563370395924771
  -0.21643500323976758
-  0.046996169676417704</code></pre><p>You are now ready to go! Plug this gradient function into your favorite optimizer and see what happens.</p><p>Remember: </p><ul><li>These gradients are approximate when using truncation.</li><li>Forward-mode differentiation scales linearly with the number of parameters in addition to the extra runtime of simulating a deeper circuit.</li><li>Reverse-mode differentiation can be faster, and drastically so when the gradient is compiled at the cost of large memory overheads.</li><li>You can also propagate each Pauli term in the Hamiltonian individually and add up their gradients. That can be easily multi-threaded. </li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../7-custom-pathproperties/">« 7. Record custom path properties</a><a class="docs-footer-nextpage" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 24 July 2026 15:10">Friday 24 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+  0.046996169676417704</code></pre><p>You are now ready to go! Plug this gradient function into your favorite optimizer and see what happens.</p><p>Remember: </p><ul><li>These gradients are approximate when using truncation.</li><li>Forward-mode differentiation scales linearly with the number of parameters in addition to the extra runtime of simulating a deeper circuit.</li><li>Reverse-mode differentiation can be faster, and drastically so when the gradient is compiled at the cost of large memory overheads.</li><li>You can also propagate each Pauli term in the Hamiltonian individually and add up their gradients. That can be easily multi-threaded. </li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../7-custom-pathproperties/">« 7. Record custom path properties</a><a class="docs-footer-nextpage" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 30 July 2026 08:01">Thursday 30 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
