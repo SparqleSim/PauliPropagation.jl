@@ -162,7 +162,7 @@ function _applyimaginarypaulirotation!(prop_cache::VectorPauliPropagationCache, 
             coeff = coeffs[ii]
 
             coeff1 = coeff * cosh_val
-            new_term, sign = imaginarypaulirotationproduct(gate_mask, term)
+            new_term, sign = paulirotationproduct(gate_mask, term)
             coeff2 = coeff * sinh_val * sign
 
             coeffs[ii] = coeff1

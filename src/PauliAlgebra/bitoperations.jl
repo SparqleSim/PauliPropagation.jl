@@ -236,7 +236,7 @@ end
     # define our super bit mask looking like ....1010101.
 
     # length is the number of bits in the integer
-    n_bits = min(bitsize(pstr), 2_048)  # for max 1024 qubits.
+    n_bits = min(bitsize(pstr), 8_300_000)  # same bit limit as in `getinttype`, i.e. 4.15 Million qubits.
     mask = zero(T)
     for ii in 0:(n_bits-1)
         if ii % 2 == 0

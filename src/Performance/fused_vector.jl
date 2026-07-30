@@ -73,7 +73,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
 
     truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
 
-    _fusedapplytruncaterotation!(prop_cache, gate_mask, cosh(tau), sinh(tau), PauliPropagation.imaginarypaulirotationproduct, truncfunc, Val(:ImaginaryPauliRotation); thread)
+    _fusedapplytruncaterotation!(prop_cache, gate_mask, cosh(tau), sinh(tau), PauliPropagation.paulirotationproduct, truncfunc, Val(:ImaginaryPauliRotation); thread)
 
     PauliPropagation.merge!(prop_cache; thread, truncfunc, kwargs...)
 

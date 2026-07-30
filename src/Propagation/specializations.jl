@@ -129,9 +129,9 @@ function PauliPropagation.applytoall!(gate::ImaginaryPauliRotation, prop_cache::
         end
 
         coeff1 = coeff * cosh_val
-        # because of the imaginary time, we have take a normal product here
-        # given the commutation, the sign is always real
-        new_pstr, sign = imaginarypaulirotationproduct(gate_mask, pstr)
+        # paulirotationproduct's sign formula also gives the correct minus sign here:
+        # e^{-τ/2 P} Q e^{-τ/2 P} = cosh(τ) Q - sinh(τ) PQ for commuting P, Q
+        new_pstr, sign = paulirotationproduct(gate_mask, pstr)
         coeff2 = coeff * sinh_val * sign
 
         # set the coefficient of the original Pauli string
@@ -143,19 +143,6 @@ function PauliPropagation.applytoall!(gate::ImaginaryPauliRotation, prop_cache::
     end
 
     return
-end
-
-function imaginarypaulirotationproduct(gate_mask::TT, pstr::TT) where TT
-    new_pstr = PauliPropagation._bitpaulimultiply(gate_mask, pstr)
-
-    # this counts the exponent of the imaginary unit in the new Pauli string
-    im_count = PauliPropagation._calculatesignexponent(gate_mask, pstr)
-
-    # now, instead of computing real(im^im_count),
-    # we do this in one step via a cheeky trick:
-    sign = 1 - (im_count & 2)
-    # this is equivalent to sign = real(im^im_count)
-    return new_pstr, sign
 end
 
 
