@@ -11,12 +11,12 @@ nparams = countparameters(circuit)</code></pre><p>We defined the usual setup, bu
 mcsamples = 100_000
 @time weight_errors = [estimatemse(circuit, pstr, mcsamples; max_weight=W) for W in Ws];
 # where errors are zero, replace with small number to avoid log(0) error
-weight_errors[weight_errors .&lt;= 1e-10] .= 1e-10</code></pre><pre><code class="nohighlight hljs"> 15.377872 seconds (12.14 M allocations: 335.969 MiB, 1.93% gc time, 4.34% compilation time)</code></pre><pre><code class="language-julia hljs">plot(Ws, weight_errors, yscale=:log10, xlabel=&quot;Max Pauli Weight&quot;, ylabel=&quot;MSE&quot;, ylim=(1e-5, 1e0), label=&quot;&quot;, linewidth=2, marker=:circle)</code></pre><p><img src="../6-numerical-certificate_files/6-numerical-certificate_6_0.svg" alt="svg"/></p><p>We see that the average error decause quite quickly with the maximum Pauli weight, in fact roughly exponentially. Keep in mind though, that the simulation time with <code>propagate</code> will also scale exponentially in this truncation.</p><h3 id="Testing-Frequency-Truncation"><a class="docs-heading-anchor" href="#Testing-Frequency-Truncation">Testing Frequency Truncation</a><a id="Testing-Frequency-Truncation-1"></a><a class="docs-heading-anchor-permalink" href="#Testing-Frequency-Truncation" title="Permalink"></a></h3><p>What we call <em>frequency</em> takes the place of the <code>min_abs_coeff</code> coefficient truncation in the average case. We define frequency as the number of splits/branchings at <code>PauliRotation</code> gates. If a path has split <span>$l$</span> times, then the average coefficient of that path will be <span>$(\frac12)^l$</span>. Note however that the error we measure here is an over-estimation! Because we <em>merge</em> paths in <code>propagate()</code>, we can effectively propagate higher frequency paths with a lower frequency path at no additional computational cost. We don&#39;t do merging in the numerical certificate, which is why the average error will be over-estimated.</p><pre><code class="language-julia hljs">freqs = 20:20:200
+weight_errors[weight_errors .&lt;= 1e-10] .= 1e-10</code></pre><pre><code class="nohighlight hljs"> 25.679415 seconds (12.14 M allocations: 335.981 MiB, 1.77% gc time, 6.82% compilation time)</code></pre><pre><code class="language-julia hljs">plot(Ws, weight_errors, yscale=:log10, xlabel=&quot;Max Pauli Weight&quot;, ylabel=&quot;MSE&quot;, ylim=(1e-5, 1e0), label=&quot;&quot;, linewidth=2, marker=:circle)</code></pre><p><img src="../6-numerical-certificate_files/6-numerical-certificate_6_0.svg" alt="svg"/></p><p>We see that the average error decause quite quickly with the maximum Pauli weight, in fact roughly exponentially. Keep in mind though, that the simulation time with <code>propagate</code> will also scale exponentially in this truncation.</p><h3 id="Testing-Frequency-Truncation"><a class="docs-heading-anchor" href="#Testing-Frequency-Truncation">Testing Frequency Truncation</a><a id="Testing-Frequency-Truncation-1"></a><a class="docs-heading-anchor-permalink" href="#Testing-Frequency-Truncation" title="Permalink"></a></h3><p>What we call <em>frequency</em> takes the place of the <code>min_abs_coeff</code> coefficient truncation in the average case. We define frequency as the number of splits/branchings at <code>PauliRotation</code> gates. If a path has split <span>$l$</span> times, then the average coefficient of that path will be <span>$(\frac12)^l$</span>. Note however that the error we measure here is an over-estimation! Because we <em>merge</em> paths in <code>propagate()</code>, we can effectively propagate higher frequency paths with a lower frequency path at no additional computational cost. We don&#39;t do merging in the numerical certificate, which is why the average error will be over-estimated.</p><pre><code class="language-julia hljs">freqs = 20:20:200
 mcsamples = 100000
 
 @time freq_errors = [estimatemse(circuit, pstr, mcsamples; max_freq=freq) for freq in freqs]
 # where errors are zero, replace with small number to avoid log(0) error
-freq_errors[freq_errors .&lt;= 1e-10] .= 1e-10</code></pre><pre><code class="nohighlight hljs"> 19.418678 seconds (10.45 M allocations: 320.344 MiB, 0.30% gc time, 1.16% compilation time)</code></pre><pre><code class="language-julia hljs">plot(freqs, freq_errors, yscale=:log10, xlabel=&quot;Max Frequency&quot;, ylabel=&quot;MSE&quot;, ylim=(1e-5, 1e0), label=&quot;&quot;, linewidth=2, marker=:circle)</code></pre><p><img src="../6-numerical-certificate_files/6-numerical-certificate_10_0.svg" alt="svg"/></p><p>Again, we have strongly decaying mean square error, but note that absolute value of the truncation are significantly higher that the values formaximum Pauli weight. We only reach around 1e-5 error with a frequency truncation around 180. This is a very large number and should be combined with other truncations.</p><p>More practically, if we know that the parameter range of the <code>PauliRotation</code> gates is small, we can employ the <code>max_sins</code> truncation. </p><h3 id="Test-Small-Angle-Truncation"><a class="docs-heading-anchor" href="#Test-Small-Angle-Truncation">Test Small-Angle Truncation</a><a id="Test-Small-Angle-Truncation-1"></a><a class="docs-heading-anchor-permalink" href="#Test-Small-Angle-Truncation" title="Permalink"></a></h3><p>Here is a loop that additionally passes the <em>radius</em> <code>r</code> for the parameters, i.e., the range around zero where they are uniformly sampled from. We thus compute the average error in a small angle range. For large radii, we expect to need significantly higher <code>max_sins</code> truncation values.</p><pre><code class="language-julia hljs">nsins = 0:3:30
+freq_errors[freq_errors .&lt;= 1e-10] .= 1e-10</code></pre><pre><code class="nohighlight hljs"> 38.282504 seconds (10.45 M allocations: 320.399 MiB, 0.12% gc time, 0.98% compilation time)</code></pre><pre><code class="language-julia hljs">plot(freqs, freq_errors, yscale=:log10, xlabel=&quot;Max Frequency&quot;, ylabel=&quot;MSE&quot;, ylim=(1e-5, 1e0), label=&quot;&quot;, linewidth=2, marker=:circle)</code></pre><p><img src="../6-numerical-certificate_files/6-numerical-certificate_10_0.svg" alt="svg"/></p><p>Again, we have strongly decaying mean square error, but note that absolute value of the truncation are significantly higher that the values formaximum Pauli weight. We only reach around 1e-5 error with a frequency truncation around 180. This is a very large number and should be combined with other truncations.</p><p>More practically, if we know that the parameter range of the <code>PauliRotation</code> gates is small, we can employ the <code>max_sins</code> truncation. </p><h3 id="Test-Small-Angle-Truncation"><a class="docs-heading-anchor" href="#Test-Small-Angle-Truncation">Test Small-Angle Truncation</a><a id="Test-Small-Angle-Truncation-1"></a><a class="docs-heading-anchor-permalink" href="#Test-Small-Angle-Truncation" title="Permalink"></a></h3><p>Here is a loop that additionally passes the <em>radius</em> <code>r</code> for the parameters, i.e., the range around zero where they are uniformly sampled from. We thus compute the average error in a small angle range. For large radii, we expect to need significantly higher <code>max_sins</code> truncation values.</p><pre><code class="language-julia hljs">nsins = 0:3:30
 rs = 0.1:0.1:1.0
 mcsamples = 100000
 
@@ -29,34 +29,34 @@ for r in rs
 
     plot!(nsins, sins_errors, label=&quot;r=$(round(r, sigdigits=2))&quot;, linewidth=2, marker=:circle)
 end
-pl</code></pre><pre><code class="nohighlight hljs"> 20.193543 seconds (12.52 M allocations: 365.217 MiB, 2.14% gc time, 1.42% compilation time)
+pl</code></pre><pre><code class="nohighlight hljs"> 42.096132 seconds (12.52 M allocations: 365.261 MiB, 0.95% gc time, 1.60% compilation time)
 
 
- 23.783362 seconds (12.12 M allocations: 345.075 MiB, 0.18% gc time)
+ 42.060943 seconds (12.12 M allocations: 345.123 MiB, 0.11% gc time)
 
 
- 23.950535 seconds (12.12 M allocations: 345.077 MiB, 0.13% gc time)
+ 37.071921 seconds (12.12 M allocations: 345.109 MiB, 1.07% gc time)
 
 
- 22.658236 seconds (12.12 M allocations: 345.071 MiB, 1.38% gc time)
+ 36.228471 seconds (12.12 M allocations: 345.109 MiB, 0.08% gc time)
 
 
- 18.537362 seconds (12.12 M allocations: 345.065 MiB, 0.18% gc time)
+ 28.080018 seconds (12.12 M allocations: 345.084 MiB, 0.11% gc time)
 
 
- 16.776664 seconds (12.12 M allocations: 345.064 MiB, 0.16% gc time)
+ 26.170715 seconds (12.12 M allocations: 345.086 MiB, 0.94% gc time)
 
 
- 15.733196 seconds (12.11 M allocations: 345.061 MiB, 1.43% gc time)
+ 26.120877 seconds (12.12 M allocations: 345.086 MiB, 0.10% gc time)
 
 
- 15.589010 seconds (12.11 M allocations: 345.061 MiB, 0.15% gc time)
+ 26.249880 seconds (12.12 M allocations: 345.086 MiB, 0.10% gc time)
 
 
- 15.859692 seconds (12.11 M allocations: 345.061 MiB, 1.39% gc time)
+ 26.596101 seconds (12.12 M allocations: 345.086 MiB, 0.90% gc time)
 
 
- 15.740078 seconds (12.11 M allocations: 345.061 MiB, 0.13% gc time)</code></pre><p><img src="../6-numerical-certificate_files/6-numerical-certificate_13_10.svg" alt="svg"/></p><h3 id="Combining-Truncations"><a class="docs-heading-anchor" href="#Combining-Truncations">Combining Truncations</a><a id="Combining-Truncations-1"></a><a class="docs-heading-anchor-permalink" href="#Combining-Truncations" title="Permalink"></a></h3><p>To get the most out of Pauli propagation, you probably want to combine truncations. Let us combine <code>max_sins</code> with <code>max_weight</code>.</p><pre><code class="language-julia hljs">nsins = 0:3:30
+ 26.407979 seconds (12.12 M allocations: 345.086 MiB, 0.10% gc time)</code></pre><p><img src="../6-numerical-certificate_files/6-numerical-certificate_13_10.svg" alt="svg"/></p><h3 id="Combining-Truncations"><a class="docs-heading-anchor" href="#Combining-Truncations">Combining Truncations</a><a id="Combining-Truncations-1"></a><a class="docs-heading-anchor-permalink" href="#Combining-Truncations" title="Permalink"></a></h3><p>To get the most out of Pauli propagation, you probably want to combine truncations. Let us combine <code>max_sins</code> with <code>max_weight</code>.</p><pre><code class="language-julia hljs">nsins = 0:3:30
 rs = 0.1:0.1:1.0
 
 pl = plot(yscale=:log10, xlabel=&quot;Max Sins&quot;, ylabel=&quot;MSE&quot;, ylim=(1e-5, 1e0))
@@ -68,41 +68,41 @@ for r in rs
 
     plot!(nsins, sins_errors, label=&quot;r=$(round(r, sigdigits=2))&quot;, linewidth=2, marker=:circle)
 end
-pl</code></pre><pre><code class="nohighlight hljs"> 15.797512 seconds (12.47 M allocations: 363.050 MiB, 0.16% gc time, 0.78% compilation time)
+pl</code></pre><pre><code class="nohighlight hljs"> 26.648635 seconds (12.47 M allocations: 363.078 MiB, 0.92% gc time, 0.70% compilation time)
 
 
- 15.902789 seconds (12.11 M allocations: 345.062 MiB, 1.32% gc time)
+ 26.759312 seconds (12.12 M allocations: 345.088 MiB, 0.10% gc time)
 
 
- 15.742035 seconds (12.11 M allocations: 345.062 MiB, 0.09% gc time)
+ 26.476397 seconds (12.12 M allocations: 345.087 MiB, 0.11% gc time)
 
 
- 15.783848 seconds (12.11 M allocations: 345.062 MiB, 0.09% gc time)
+ 26.908302 seconds (12.12 M allocations: 345.088 MiB, 0.91% gc time)
 
 
- 16.047612 seconds (12.11 M allocations: 345.063 MiB, 1.34% gc time)
+ 26.872822 seconds (12.12 M allocations: 345.088 MiB, 0.10% gc time)
 
 
- 15.896317 seconds (12.11 M allocations: 345.063 MiB, 0.09% gc time)
+ 27.180409 seconds (12.12 M allocations: 345.089 MiB, 0.89% gc time)
 
 
- 16.219817 seconds (12.12 M allocations: 345.063 MiB, 1.32% gc time)
+ 27.077973 seconds (12.12 M allocations: 345.089 MiB, 0.09% gc time)
 
 
- 16.053844 seconds (12.12 M allocations: 345.063 MiB, 0.08% gc time)
+ 27.158420 seconds (12.12 M allocations: 345.089 MiB, 0.10% gc time)
 
 
- 16.135611 seconds (12.12 M allocations: 345.063 MiB, 0.08% gc time)
+ 27.501584 seconds (12.12 M allocations: 345.089 MiB, 0.87% gc time)
 
 
- 16.424389 seconds (12.12 M allocations: 345.064 MiB, 1.28% gc time)</code></pre><p><img src="../6-numerical-certificate_files/6-numerical-certificate_15_10.svg" alt="svg"/></p><p>The error is pretty much identical. But we in the following we see that the runtime of <code>propagate()</code> is significantly faster with both truncations:</p><pre><code class="language-julia hljs">using Random
+ 27.323715 seconds (12.12 M allocations: 345.089 MiB, 0.09% gc time)</code></pre><p><img src="../6-numerical-certificate_files/6-numerical-certificate_15_10.svg" alt="svg"/></p><p>The error is pretty much identical. But we in the following we see that the runtime of <code>propagate()</code> is significantly faster with both truncations:</p><pre><code class="language-julia hljs">using Random
 Random.seed!(42)
 thetas = randn(countparameters(circuit))*0.5</code></pre><p>With both truncations:</p><pre><code class="language-julia hljs">@time psum_both = propagate(circuit, pstr, thetas; max_sins=20, max_weight=6);
-print(&quot;Number of Paulis: &quot;, length(psum_both))</code></pre><pre><code class="nohighlight hljs">  4.091738 seconds (2.30 M allocations: 171.580 MiB, 0.70% gc time, 23.35% compilation time)
+print(&quot;Number of Paulis: &quot;, length(psum_both))</code></pre><pre><code class="nohighlight hljs">  6.322823 seconds (2.30 M allocations: 171.637 MiB, 3.90% gc time, 23.11% compilation time)
 Number of Paulis: 
 
 170529</code></pre><p>With only <code>max_sins</code> truncation:</p><pre><code class="language-julia hljs">@time psum_sins = propagate(circuit, pstr, thetas; max_sins=20);
-print(&quot;Number of Paulis: &quot;, length(psum_sins))</code></pre><pre><code class="nohighlight hljs"> 36.916738 seconds (324.58 k allocations: 569.132 MiB, 1.09% gc time, 0.44% compilation time)
+print(&quot;Number of Paulis: &quot;, length(psum_sins))</code></pre><pre><code class="nohighlight hljs"> 47.771219 seconds (324.58 k allocations: 569.129 MiB, 0.90% gc time, 0.54% compilation time)
 Number of Paulis: 
 
-1474496</code></pre><p>Significantly slower for a potentially insignificant accuracy improvement.</p><pre><code class="language-julia hljs">overlapwithzero(psum_both), overlapwithzero(psum_sins)</code></pre><pre><code class="nohighlight hljs">(-0.4966755215241979, -0.49375542669796074)</code></pre><pre><code class="language-julia hljs">overlapwithzero(psum_both) - overlapwithzero(psum_sins)</code></pre><pre><code class="nohighlight hljs">-0.002920094826237174</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../5-custom-gates/">« 5. How to Define Custom Gates</a><a class="docs-footer-nextpage" href="../7-custom-pathproperties/">7. Record custom path properties »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Wednesday 29 July 2026 13:27">Wednesday 29 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+1474496</code></pre><p>Significantly slower for a potentially insignificant accuracy improvement.</p><pre><code class="language-julia hljs">overlapwithzero(psum_both), overlapwithzero(psum_sins)</code></pre><pre><code class="nohighlight hljs">(-0.4966755215241979, -0.49375542669796074)</code></pre><pre><code class="language-julia hljs">overlapwithzero(psum_both) - overlapwithzero(psum_sins)</code></pre><pre><code class="nohighlight hljs">-0.002920094826237174</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../5-custom-gates/">« 5. How to Define Custom Gates</a><a class="docs-footer-nextpage" href="../7-custom-pathproperties/">7. Record custom path properties »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 30 July 2026 14:19">Thursday 30 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
