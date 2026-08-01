@@ -39,19 +39,37 @@ function sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=tru
     tail_perm = view(indices(prop_cache), 1:n_tail)
     AK.sortperm!(tail_perm, unsorted_tail_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
-    task_partitioner, n_tasks = _preparetasks(n_old, thread)
-
-    # merge only ever writes into aux[1:merged_count] <= n_new, so capacity beyond n_new (leftover
-    # growth headroom) is free scratch space for the sorted tail -- else allocate fresh
-    if length(aux_terms) - n_new >= n_tail
-        tail_terms = view(aux_terms, n_new+1:n_new+n_tail)
-        tail_coeffs = view(aux_coeffs, n_new+1:n_new+n_tail)
-    else
-        tail_terms = similar(unsorted_tail_terms)
-        tail_coeffs = similar(unsorted_tail_coeffs)
-    end
-    
+    tail_terms, tail_coeffs = _tailscratch(aux_terms, aux_coeffs, n_new, n_tail, main_terms, main_coeffs)
     permuteviaindices!(tail_terms, tail_coeffs, unsorted_tail_terms, unsorted_tail_coeffs, tail_perm; thread)
+
+    return _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs, n_old,
+        tail_terms, tail_coeffs, n_tail, truncfunc, thread)
+end
+
+"""
+    _tailscratch(aux_terms, aux_coeffs, n_new, n_tail, main_terms, main_coeffs)
+
+Scratch space for a sorted copy of the tail. The merge only ever writes into `aux[1:n_new]`, so any
+capacity beyond that is free; otherwise allocate.
+"""
+function _tailscratch(aux_terms, aux_coeffs, n_new::Int, n_tail::Int, main_terms, main_coeffs)
+    if length(aux_terms) - n_new >= n_tail
+        return view(aux_terms, n_new+1:n_new+n_tail), view(aux_coeffs, n_new+1:n_new+n_tail)
+    end
+    return similar(main_terms, n_tail), similar(main_coeffs, n_tail)
+end
+
+"""
+    _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs, n_old,
+                      tail_terms, tail_coeffs, n_tail, truncfunc, thread)
+
+Merge the sorted head `main[1:n_old]` against an already sorted tail into `aux`, and commit. Shared
+by every tail merge; they differ only in how they sorted the tail.
+"""
+function _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs, n_old::Int,
+    tail_terms, tail_coeffs, n_tail::Int, truncfunc, thread::Bool)
+
+    task_partitioner, n_tasks = _preparetasks(n_old, thread)
 
     if n_tasks == 1
         merged_count = _tailmerge_write!(aux_terms, aux_coeffs, 1,

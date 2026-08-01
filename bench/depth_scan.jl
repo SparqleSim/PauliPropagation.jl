@@ -17,6 +17,10 @@ const MIN_ABS_COEFF = 1e-6
 # checked every layer so a blowup is reported rather than allocated
 const MAX_TERMS = 12_000_000
 
+# set PP_LOCAL / PP_RADIX to 0 to time without one of the two optimizations
+Performance.USE_LOCAL_GATES[] = get(ENV, "PP_LOCAL", "1") == "1"
+Performance.USE_RADIX_TAILSORT[] = get(ENV, "PP_RADIX", "1") == "1"
+
 label = ARGS[3]
 max_depth = length(ARGS) >= 4 ? parse(Int, ARGS[4]) : 18
 fullword = length(ARGS) >= 5 ? parse(Bool, ARGS[5]) : false

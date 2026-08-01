@@ -22,6 +22,10 @@ const MAX_BITS = 8192          # 4096 qubits
 # checked every layer, not at the end: an untruncated sum can multiply by a thousand in one layer
 const MAX_TERMS = 200_000
 
+# set PP_LOCAL / PP_RADIX to 0 to time without one of the two optimizations
+Performance.USE_LOCAL_GATES[] = get(ENV, "PP_LOCAL", "1") == "1"
+Performance.USE_RADIX_TAILSORT[] = get(ENV, "PP_RADIX", "1") == "1"
+
 label = ARGS[3]
 nlayers = length(ARGS) >= 4 ? parse(Int, ARGS[4]) : 4
 qubits = length(ARGS) >= 5 ? parse.(Int, split(ARGS[5], ",")) :

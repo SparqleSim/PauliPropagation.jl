@@ -2,20 +2,13 @@
 ##
 # Sorting the new terms a rotation gate appends, without comparing them.
 #
-# A rotation adds each new term as `pstr ⊻ gate_mask`, in the order of the (already sorted) terms they
-# came from. Flipping a fixed set of bits keeps two terms in the same relative order unless the highest
-# bit where they differ is one of the flipped ones. So the new terms can be put in order by one sweep
-# per group of neighbouring flipped bits, highest group first.
+# A rotation adds each new term as `pstr ⊻ gate_mask`, in the order of the terms they came from.
+# Flipping a fixed set of bits keeps two terms in the same relative order unless the highest bit where
+# they differ is one of the flipped ones. So one sweep per group of neighbouring flipped bits, highest
+# group first, puts them in order. Within a sweep the terms arrive exactly reversed, so a sweep only
+# copies blocks back to front.
 #
-# Within each such sweep the terms arrive in exactly the reverse of the order they want, so a sweep is
-# just a matter of copying blocks back to front. Nothing is compared and no bit pattern is ever read
-# out, which is why the cost does not depend on how many bits a group covers.
-#
-# An ordinary sort cannot replace this: a sweep is only correct inside a group of terms that already
-# agree on every bit above it, and bits the gate does not touch sit above and between those groups.
-#
-# Only valid if every term the gate saw was already sorted. The caller checks, and otherwise falls back
-# to the usual merge.
+# Only valid if every term the gate saw was already sorted; the caller checks.
 ##
 ###
 
@@ -23,17 +16,10 @@
 const USE_RADIX_TAILSORT = Ref(true)
 
 # a gate spread over more groups than this is cheaper to sort the usual way
-const _MAX_DIGITS = 4
+const _MAX_SWEEPS = 4
 
 # below this many new terms, setting up the sweeps costs more than it saves
 const _MIN_RADIX_TAIL = 64
-
-# each sweep copies every term once, so extra sweeps only pay for short terms or a small batch
-const _MAX_RADIX_TERMBYTES = 32
-const _MAX_RADIX_PASS_BYTES = 2 << 20
-
-_radixpays(plan, n_tail::Int, termbytes::Int) =
-    length(plan) == 1 || termbytes <= _MAX_RADIX_TERMBYTES || n_tail * termbytes <= _MAX_RADIX_PASS_BYTES
 
 
 ### Planning the passes
@@ -41,9 +27,9 @@ _radixpays(plan, n_tail::Int, termbytes::Int) =
 """
     _radixplan(gate_mask, bits)
 
-Collect the bits the gate flips, given ascending in `bits`, into groups of neighbouring bits -- one
-sweep each, lowest first. Each group is kept as two masks, the group itself and everything above it,
-so a sweep needs nothing but `⊻`, `&` and `iszero`. Returns `nothing` if there are none, or too many.
+Group the flipped bits, given ascending in `bits`, into runs of neighbours -- one sweep each, lowest
+first. Each is kept as the group mask and a mask of everything above it. Returns `nothing` if there
+are no bits, or too many groups.
 """
 function _radixplan(gate_mask::TT, bits) where {TT}
     isempty(bits) && return nothing
@@ -55,7 +41,7 @@ function _radixplan(gate_mask::TT, bits) where {TT}
         while hi < length(bits) && bits[hi+1] == bits[hi] + 1
             hi += 1
         end
-        length(plan) == _MAX_DIGITS && return nothing
+        length(plan) == _MAX_SWEEPS && return nothing
         above = _bitsfrom(TT, bits[hi] + 1)
         push!(plan, (gate_mask & ~above & _bitsfrom(TT, bits[lo]), above))
         lo = hi + 1
@@ -86,7 +72,7 @@ end
 
 # One sweep. Within each run of terms agreeing above the group, write its blocks out back to front.
 # Both the runs and the blocks are found by watching for a change, so no bit pattern is ever read out.
-function _radixpass!(digit, above, dst_terms, dst_coeffs, src_terms, src_coeffs, n::Int)
+function _radixpass!(group, above, dst_terms, dst_coeffs, src_terms, src_coeffs, n::Int)
     i = 1
     @inbounds while i <= n
         j = i + 1
@@ -98,7 +84,7 @@ function _radixpass!(digit, above, dst_terms, dst_coeffs, src_terms, src_coeffs,
         block_hi = j
         while block_hi > i
             block_lo = block_hi - 1
-            while block_lo > i && iszero((src_terms[block_lo-1] ⊻ src_terms[block_hi-1]) & digit)
+            while block_lo > i && iszero((src_terms[block_lo-1] ⊻ src_terms[block_hi-1]) & group)
                 block_lo -= 1
             end
             n_block = block_hi - block_lo
@@ -127,8 +113,8 @@ function _radixsorttail!(plan, main_terms, main_coeffs, n_old::Int, n_tail::Int,
 
     # highest group first; `_radixplan` lists them lowest first
     for jj in length(plan):-1:1
-        digit, above = plan[jj]
-        _radixpass!(digit, above, dst_terms, dst_coeffs, src_terms, src_coeffs, n_tail)
+        group, above = plan[jj]
+        _radixpass!(group, above, dst_terms, dst_coeffs, src_terms, src_coeffs, n_tail)
         src_terms, dst_terms = dst_terms, src_terms
         src_coeffs, dst_coeffs = dst_coeffs, src_coeffs
     end
@@ -154,66 +140,15 @@ function _radixtailmerge!(prop_cache, plan; thread::Bool=true, truncfunc=nothing
 
     main_terms, main_coeffs, aux_terms, aux_coeffs = PropagationBase._mainauxarrays(prop_cache)
 
-    # the merge writes at most n_new entries into aux, so anything past that is free scratch space
-    if length(aux_terms) - n_new >= n_tail
-        buf_terms = view(aux_terms, n_new+1:n_new+n_tail)
-        buf_coeffs = view(aux_coeffs, n_new+1:n_new+n_tail)
-    else
-        buf_terms = similar(main_terms, n_tail)
-        buf_coeffs = similar(main_coeffs, n_tail)
-    end
+    buf_terms, buf_coeffs = PropagationBase._tailscratch(aux_terms, aux_coeffs, n_new, n_tail, main_terms, main_coeffs)
 
     in_buffer = _radixsorttail!(plan, main_terms, main_coeffs, n_old, n_tail, buf_terms, buf_coeffs)
 
     tail_terms = in_buffer ? view(buf_terms, 1:n_tail) : view(main_terms, n_old+1:n_new)
     tail_coeffs = in_buffer ? view(buf_coeffs, 1:n_tail) : view(main_coeffs, n_old+1:n_new)
 
-    merged_count = _headtailmerge!(aux_terms, aux_coeffs, main_terms, main_coeffs, n_old,
-        tail_terms, tail_coeffs, n_tail, truncfunc, thread)
-
-    PropagationBase._commitwrite!(prop_cache, merged_count, merged_count)
-
-    return prop_cache
-end
-
-# Merge the old terms against the sorted new ones, into aux. Split the same way as
-# `sortedtailmerge!`: divide the old terms, cut the new ones at the same places, count, then write.
-function _headtailmerge!(aux_terms, aux_coeffs, main_terms, main_coeffs, n_old::Int,
-    tail_terms, tail_coeffs, n_tail::Int, truncfunc, thread::Bool)
-
-    task_partitioner, n_tasks = PropagationBase._preparetasks(n_old, thread)
-
-    if n_tasks == 1
-        return PropagationBase._tailmerge_write!(aux_terms, aux_coeffs, 1,
-            main_terms, main_coeffs, 1, n_old, tail_terms, tail_coeffs, 1, n_tail, truncfunc, Val(true))
-    end
-
-    tail_bounds = Vector{Int}(undef, n_tasks + 1)
-    tail_bounds[1] = 1
-    tail_bounds[n_tasks+1] = n_tail + 1
-    @inbounds for task_id in 1:(n_tasks-1)
-        boundary_term = main_terms[task_partitioner[task_id].stop]
-        tail_bounds[task_id+1] = searchsortedlast(tail_terms, boundary_term) + 1
-    end
-
-    counts = Vector{Int}(undef, n_tasks)
-    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
-        head_range = task_partitioner[task_id]
-        counts[task_id] = PropagationBase._tailmerge_write!(aux_terms, aux_coeffs, 1,
-            main_terms, main_coeffs, head_range.start, head_range.stop,
-            tail_terms, tail_coeffs, tail_bounds[task_id], tail_bounds[task_id+1] - 1, truncfunc, Val(false))
-    end
-
-    offsets = PropagationBase._offsetsfromcounts(counts)
-
-    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
-        head_range = task_partitioner[task_id]
-        PropagationBase._tailmerge_write!(aux_terms, aux_coeffs, offsets[task_id],
-            main_terms, main_coeffs, head_range.start, head_range.stop,
-            tail_terms, tail_coeffs, tail_bounds[task_id], tail_bounds[task_id+1] - 1, truncfunc, Val(true))
-    end
-
-    return offsets[end] - 1
+    return PropagationBase._mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs,
+        n_old, tail_terms, tail_coeffs, n_tail, truncfunc, thread)
 end
 
 """
@@ -227,9 +162,7 @@ function _mergeafterrotation!(prop_cache, gate_mask, mask_bits, was_sorted::Bool
     if USE_RADIX_TAILSORT[] && was_sorted && n_tail >= _MIN_RADIX_TAIL &&
        PropagationBase._iscpuarray(PauliPropagation.terms(mainsum(prop_cache)))
         plan = _radixplan(_plainmask(gate_mask), mask_bits)
-        if plan !== nothing && _radixpays(plan, n_tail, sizeof(eltype(PauliPropagation.terms(mainsum(prop_cache)))))
-            return _radixtailmerge!(prop_cache, plan; thread, truncfunc)
-        end
+        plan !== nothing && return _radixtailmerge!(prop_cache, plan; thread, truncfunc)
     end
     return PauliPropagation.merge!(prop_cache; thread, truncfunc, kwargs...)
 end

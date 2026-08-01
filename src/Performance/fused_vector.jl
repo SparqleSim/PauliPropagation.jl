@@ -1,3 +1,6 @@
+# set to false to write and merge even when the gate changed nothing, for timing comparisons
+const USE_EARLY_EXIT = Ref(true)
+
 ###
 ##
 # Variants of `applymergetruncate!` for VectorPauliSum that truncate during gate application.
@@ -126,7 +129,7 @@ function _fusedapplytruncaterotation!(prop_cache::PauliPropagation.VectorPauliPr
     end
 
     # nothing branched: the gate is the identity here, so there is nothing to write
-    if sum(branch_counts) == 0
+    if USE_EARLY_EXIT[] && sum(branch_counts) == 0
         return prop_cache
     end
 
