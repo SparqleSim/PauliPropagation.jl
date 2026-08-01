@@ -17,9 +17,10 @@ const _TAILMERGE_SORTEDPREFIX_FRACTION = 0.4
 Merges the sorted head against the unsorted tail (see file header) and updates
 `activesize`/`sortedprefix`. Set `thread=false` to force sequential execution.
 
-`truncfunc(term, merged_coeff)`, if given, is applied only to actual collisions and drops the term
-if it returns `true` -- this catches coefficients that cancel below threshold from merging, without
-a separate truncation pass. Non-colliding terms are assumed already truncated and pass through.
+`truncfunc(term, merged_coeff)`, if given, is applied to every merged coefficient and drops the term
+if it returns `true`, which truncates the sum without a separate pass over it. Judging a term on the
+coefficient it merged into, rather than on each contribution separately, is what keeps a
+contribution too small to stand alone from being lost when it would have cancelled a larger one.
 """
 function sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing)
     n_old = sortedprefix(mainsum(prop_cache))
@@ -126,8 +127,9 @@ end
 
 # Two-pointer merge of a sorted head against a sorted tail that may contain duplicate runs (against
 # the head or itself); collisions combined via mergefunc. Writes from out_start when DoWrite,
-# otherwise only counts. `truncfunc`, if given, applies only to actual collisions -- solo terms are
-# assumed already truncated and pass through. Returns the output element count.
+# otherwise only counts. `truncfunc`, if given, is applied to every merged coefficient, so that a
+# term is judged on the coefficient it ends up with rather than on the parts it was built from.
+# Returns the output element count.
 @inline function _tailmerge_write!(out_terms, out_coeffs, out_start,
     head_terms, head_coeffs, head_lo, head_hi,
     tail_terms, tail_coeffs, tail_lo, tail_hi,
@@ -142,32 +144,34 @@ end
         if head_term == tail_term
             # collision: merge the head term with the *entire run* of equal tail terms
             merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j, tail_hi, tail_term, head_coeffs[head_i])
-            if truncfunc === nothing || !truncfunc(head_term, merged_coeff)
-                write_pos = _writeandadvance!(out_terms, out_coeffs, write_pos, head_term, merged_coeff, Val(DoWrite))
-            end
+            write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, merged_coeff, truncfunc, Val(DoWrite))
             head_i += 1
         elseif head_term < tail_term
-            write_pos = _writeandadvance!(out_terms, out_coeffs, write_pos, head_term, head_coeffs[head_i], Val(DoWrite))
+            write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, head_coeffs[head_i], truncfunc, Val(DoWrite))
             head_i += 1
         else
             # tail term has no match in the head (yet): merge its own run of duplicates first
-            merged_coeff, run_length, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j])
-            if run_length == 0 || truncfunc === nothing || !truncfunc(tail_term, merged_coeff)
-                write_pos = _writeandadvance!(out_terms, out_coeffs, write_pos, tail_term, merged_coeff, Val(DoWrite))
-            end
+            merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j])
+            write_pos = _writekept!(out_terms, out_coeffs, write_pos, tail_term, merged_coeff, truncfunc, Val(DoWrite))
         end
     end
     @inbounds while head_i <= head_hi
-        write_pos = _writeandadvance!(out_terms, out_coeffs, write_pos, head_terms[head_i], head_coeffs[head_i], Val(DoWrite))
+        write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_terms[head_i], head_coeffs[head_i], truncfunc, Val(DoWrite))
         head_i += 1
     end
     @inbounds while tail_j <= tail_hi
         tail_term = tail_terms[tail_j]
-        merged_coeff, run_length, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j])
-        if run_length == 0 || truncfunc === nothing || !truncfunc(tail_term, merged_coeff)
-            write_pos = _writeandadvance!(out_terms, out_coeffs, write_pos, tail_term, merged_coeff, Val(DoWrite))
-        end
+        merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j])
+        write_pos = _writekept!(out_terms, out_coeffs, write_pos, tail_term, merged_coeff, truncfunc, Val(DoWrite))
     end
 
     return write_pos - out_start
+end
+
+# `_writeandadvance!` past `truncfunc`; with no truncfunc the test is compiled away
+@inline function _writekept!(out_terms, out_coeffs, write_pos, term, coeff, truncfunc::F, ::Val{DoWrite}) where {F,DoWrite}
+    if truncfunc !== nothing && truncfunc(term, coeff)
+        return write_pos
+    end
+    return _writeandadvance!(out_terms, out_coeffs, write_pos, term, coeff, Val(DoWrite))
 end

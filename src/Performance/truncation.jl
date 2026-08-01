@@ -5,8 +5,23 @@
 ###
 
 @inline function _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
-    PauliPropagation.truncatemincoeff(coeff, min_abs_coeff) && return true
     _truncateweight(pstr, max_weight) && return true
+    return _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
+end
+
+"""
+    _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
+
+The truncations that read the coefficient, for a gate that truncates after merging rather than as
+it produces terms.
+
+A product below the threshold on its own still shifts a term it collides with, so dropping it as it
+is produced leaves that term artificially large, and more terms then clear the threshold than
+should. Weight is not tested here: it reads the Pauli string alone, which merging cannot change, so
+it is settled where the product is made and does not have to be paid for again per merged term.
+"""
+@inline function _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
+    PauliPropagation.truncatemincoeff(coeff, min_abs_coeff) && return true
     PauliPropagation.truncatefrequency(coeff, max_freq) && return true
     PauliPropagation.truncatesins(coeff, max_sins) && return true
     !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff) && return true
