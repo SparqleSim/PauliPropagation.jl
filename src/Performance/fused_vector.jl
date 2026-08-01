@@ -87,12 +87,12 @@ function _fusedrotation!(gate, prop_cache, kept_val, new_val, gatetype::Val;
 
     truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
 
-    # the radix tail sort needs the new terms in parent order
-    was_sorted = sortedprefix(mainsum(prop_cache)) == activesize(prop_cache)
+    # the tail sort in the merge below needs the new terms in parent order
+    sorted_before = sortedprefix(mainsum(prop_cache)) == activesize(prop_cache)
 
     _fusedapplytruncaterotation!(prop_cache, gate_mask, kept_val, new_val, truncfunc, gatetype; thread)
 
-    _mergeafterrotation!(prop_cache, gate_mask, was_sorted; thread, truncfunc, kwargs...)
+    PropagationBase.xorsortedtailmerge!(prop_cache, _plainmask(gate_mask), sorted_before; thread, truncfunc, kwargs...)
 
     return prop_cache
 end

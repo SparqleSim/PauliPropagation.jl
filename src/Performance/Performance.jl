@@ -20,10 +20,6 @@ include("./truncation.jl")
 include("./bytemasks.jl")
 
 
-# Radix tail sort for the branching rotation gates
-include("./radix_tailmerge.jl")
-
-
 # PauliSum overload for PauliRotation
 include("./fused_dict.jl")
 

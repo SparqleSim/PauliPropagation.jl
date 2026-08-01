@@ -10,16 +10,6 @@
 # shorter than this, working on the whole string at once is cheaper
 const _MIN_LOCAL_BYTES = 24
 
-# the positions of the set bits of `mask`, ascending
-function _masksetbits(mask::TT) where {TT}
-    bits = Int[]
-    while !iszero(mask)
-        push!(bits, trailing_zeros(mask))
-        mask &= mask - one(TT)
-    end
-    return bits
-end
-
 """
     ByteMask{TT}
 
@@ -45,7 +35,7 @@ once per gate, never per Pauli string.
 function _bytemask(gate_mask::TT, terms) where {TT}
     (sizeof(TT) < _MIN_LOCAL_BYTES || !(terms isa Vector)) && return gate_mask
 
-    bits = _masksetbits(gate_mask)
+    bits = PropagationBase._masksetbits(gate_mask)
     isempty(bits) && return gate_mask
 
     # bits is ascending, so a third byte can only lie strictly between the outer two
