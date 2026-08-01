@@ -11,29 +11,25 @@ using PauliPropagation.PropagationBase
 using AcceleratedKernels
 const AK = AcceleratedKernels
 
-@inline function _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
-    PauliPropagation.truncatemincoeff(coeff, min_abs_coeff) && return true
-    PauliPropagation.truncateweight(pstr, max_weight) && return true
-    PauliPropagation.truncatefrequency(coeff, max_freq) && return true
-    PauliPropagation.truncatesins(coeff, max_sins) && return true
-    !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff) && return true
-    return false
-end
+
+# Truncation shared by the fused gate applications
+include("./truncation.jl")
+
+
+# Byte-local masks for one- and two-qubit gates on wide Pauli strings
+include("./bytemasks.jl")
+
+
+# Radix tail sort for the branching rotation gates
+include("./radix_tailmerge.jl")
+
 
 # PauliSum overload for PauliRotation
 include("./fused_dict.jl")
 
 
-# Byte-local masks for one- and two-qubit gates on wide Pauli strings
-include("./localgates.jl")
-
-
-# VectorPauliSum overload for PauliRotation
+# VectorPauliSum overloads for the rotation gates and PauliNoise
 include("./fused_vector.jl")
-
-
-# Radix tail sort for the branching rotation gates
-include("./radix_tailmerge.jl")
 
 
 """

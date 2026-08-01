@@ -1,6 +1,3 @@
-# set to false to write and merge even when the gate changed nothing, for timing comparisons
-const USE_EARLY_EXIT = Ref(true)
-
 ###
 ##
 # Variants of `applymergetruncate!` for VectorPauliSum that truncate during gate application.
@@ -28,27 +25,8 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotati
             min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
-    PauliPropagation._check_qind_range(PauliPropagation.nqubits(prop_cache), gate.qinds)
-
-    if PauliPropagation.activesize(prop_cache) == 0
-        return prop_cache
-    end
-
-    mask_bits = _masksetbits(gate.symbols, gate.qinds)
-    gate_mask = _bytemask(PauliPropagation.symboltoint(PauliPropagation.paulitype(prop_cache), gate.symbols, gate.qinds),
-        mask_bits, PauliPropagation.terms(mainsum(prop_cache)))
-
-    truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
-
-    # the radix tail sort needs the new terms in parent order
-    was_sorted = sortedprefix(mainsum(prop_cache)) == activesize(prop_cache)
-
-    # truncats during application of the gate to 1. make merge!() faster and 2. save on the extra truncation!() pass
-    _fusedapplytruncaterotation!(prop_cache, gate_mask, cos(theta), sin(theta), PauliPropagation.paulirotationproduct, truncfunc, Val(:PauliRotation); thread)
-
-    _mergeafterrotation!(prop_cache, gate_mask, mask_bits, was_sorted; thread, truncfunc, kwargs...)
-
-    return prop_cache
+    return _fusedrotation!(gate, prop_cache, cos(theta), sin(theta), Val(:PauliRotation);
+        min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
 end
 
 ### Imaginary Pauli Rotation
@@ -73,22 +51,13 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
 
     PauliPropagation._check_qind_range(PauliPropagation.nqubits(prop_cache), gate.qinds)
 
+    # an empty sum has no identity coefficient to normalize by, so return ahead of that too
     if PauliPropagation.activesize(prop_cache) == 0
         return prop_cache
     end
 
-    mask_bits = _masksetbits(gate.symbols, gate.qinds)
-    gate_mask = _bytemask(PauliPropagation.symboltoint(PauliPropagation.paulitype(prop_cache), gate.symbols, gate.qinds),
-        mask_bits, PauliPropagation.terms(mainsum(prop_cache)))
-
-    truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
-
-    # the radix tail sort needs the new terms in parent order
-    was_sorted = sortedprefix(mainsum(prop_cache)) == activesize(prop_cache)
-
-    _fusedapplytruncaterotation!(prop_cache, gate_mask, cosh(tau), sinh(tau), PauliPropagation.paulirotationproduct, truncfunc, Val(:ImaginaryPauliRotation); thread)
-
-    _mergeafterrotation!(prop_cache, gate_mask, mask_bits, was_sorted; thread, truncfunc, kwargs...)
+    _fusedrotation!(gate, prop_cache, cosh(tau), sinh(tau), Val(:ImaginaryPauliRotation);
+        min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
 
     # This gate assumes we are working in the Schrödinger picture evolving states
     # we normalize by the coefficient of the identity Pauli string for numerical stability
@@ -99,10 +68,38 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
     return prop_cache
 end
 
-# Shared backend for the two-branching rotation gates
-# does a first pass computing the number of new terms, and a second writing them 
-function _fusedapplytruncaterotation!(prop_cache::PauliPropagation.VectorPauliPropagationCache, gate_mask::TT, kept_val, new_val, productfunc::PF, truncfunc, ::Val{GateType};
-    thread::Bool=true) where {TT,PF,GateType}
+### Shared core for the two branching rotation gates
+
+# Truncates during application of the gate to 1. make merge!() faster and 2. save on the extra
+# truncation!() pass.
+function _fusedrotation!(gate, prop_cache, kept_val, new_val, gatetype::Val;
+    min_abs_coeff::Real, max_weight::Real, max_freq::Real, max_sins::Real, customtruncfunc,
+    thread::Bool, kwargs...)
+
+    PauliPropagation._check_qind_range(PauliPropagation.nqubits(prop_cache), gate.qinds)
+
+    if PauliPropagation.activesize(prop_cache) == 0
+        return prop_cache
+    end
+
+    gate_mask = _bytemask(PauliPropagation.symboltoint(PauliPropagation.paulitype(prop_cache), gate.symbols, gate.qinds),
+        PauliPropagation.terms(mainsum(prop_cache)))
+
+    truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
+
+    # the radix tail sort needs the new terms in parent order
+    was_sorted = sortedprefix(mainsum(prop_cache)) == activesize(prop_cache)
+
+    _fusedapplytruncaterotation!(prop_cache, gate_mask, kept_val, new_val, truncfunc, gatetype; thread)
+
+    _mergeafterrotation!(prop_cache, gate_mask, was_sorted; thread, truncfunc, kwargs...)
+
+    return prop_cache
+end
+
+# does a first pass computing the number of new terms, and a second writing them
+function _fusedapplytruncaterotation!(prop_cache::PauliPropagation.VectorPauliPropagationCache, gate_mask::TT, kept_val, new_val, truncfunc, ::Val{GateType};
+    thread::Bool=true) where {TT,GateType}
 
     n_old = activesize(prop_cache)
 
@@ -125,11 +122,11 @@ function _fusedapplytruncaterotation!(prop_cache::PauliPropagation.VectorPauliPr
     AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
         rng = task_partitioner[task_id]
         kept_counts[task_id], new_counts[task_id], sorted_kept_counts[task_id], branch_counts[task_id] = _fusedbranchwrite!(aux_terms, aux_coeffs, 1, aux_terms, aux_coeffs, 1,
-            main_terms, main_coeffs, rng.start, rng.stop, gate_mask, kept_val, new_val, productfunc, truncfunc, old_sortedprefix, Val(GateType), Val(false))
+            main_terms, main_coeffs, rng.start, rng.stop, gate_mask, kept_val, new_val, truncfunc, old_sortedprefix, Val(GateType), Val(false))
     end
 
-    # nothing branched: the gate is the identity here, so there is nothing to write
-    if USE_EARLY_EXIT[] && sum(branch_counts) == 0
+    # nothing branched, so every term passes through unchanged and there is nothing to write
+    if sum(branch_counts) == 0
         return prop_cache
     end
 
@@ -152,7 +149,7 @@ function _fusedapplytruncaterotation!(prop_cache::PauliPropagation.VectorPauliPr
     AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
         rng = task_partitioner[task_id]
         _fusedbranchwrite!(aux_terms, aux_coeffs, kept_offsets[task_id], aux_terms, aux_coeffs, n_kept + new_offsets[task_id],
-            main_terms, main_coeffs, rng.start, rng.stop, gate_mask, kept_val, new_val, productfunc, truncfunc, old_sortedprefix, Val(GateType), Val(true))
+            main_terms, main_coeffs, rng.start, rng.stop, gate_mask, kept_val, new_val, truncfunc, old_sortedprefix, Val(GateType), Val(true))
     end
 
     PropagationBase._commitwrite!(prop_cache, n_total, new_sortedprefix)
@@ -170,8 +167,8 @@ end
 # contiguous at the front of the kept head. Returns (n_kept, n_new, n_sorted_kept, n_branched).
 @inline function _fusedbranchwrite!(kept_out_terms, kept_out_coeffs, kept_start,
     new_out_terms, new_out_coeffs, new_start,
-    terms, coeffs, lo, hi, gate_mask::TT, kept_val, new_val, productfunc::PF, truncfunc::F, old_sortedprefix::Int,
-    ::Val{GateType}, ::Val{DoWrite}) where {TT,PF,F,GateType,DoWrite}
+    terms, coeffs, lo, hi, gate_mask::TT, kept_val, new_val, truncfunc::F, old_sortedprefix::Int,
+    ::Val{GateType}, ::Val{DoWrite}) where {TT,F,GateType,DoWrite}
 
     kept_pos = kept_start
     n_sorted_kept = 0
@@ -200,7 +197,7 @@ end
                     ii <= old_sortedprefix && (n_sorted_kept += 1)
                 end
 
-                new_pstr, sign = _gateproduct(productfunc, gate_mask, pstr, bytes, ii)
+                new_pstr, sign = _gateproduct(gate_mask, pstr, bytes, ii)
                 coeff2 = coeff * new_val * sign
                 if !truncfunc(new_pstr, coeff2)
                     new_pos = PropagationBase._writeandadvance!(new_out_terms, new_out_coeffs, new_pos, new_pstr, coeff2, Val(DoWrite))

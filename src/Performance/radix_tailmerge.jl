@@ -4,34 +4,35 @@
 #
 # A rotation adds each new term as `pstr ⊻ gate_mask`, in the order of the terms they came from.
 # Flipping a fixed set of bits keeps two terms in the same relative order unless the highest bit where
-# they differ is one of the flipped ones. So one sweep per group of neighbouring flipped bits, highest
-# group first, puts them in order. Within a sweep the terms arrive exactly reversed, so a sweep only
+# they differ is one of the flipped ones. So one pass per group of neighbouring flipped bits, highest
+# group first, puts them in order. Within a pass the terms arrive exactly reversed, so a pass only
 # copies blocks back to front.
 #
 # Only valid if every term the gate saw was already sorted; the caller checks.
 ##
 ###
 
-# set to false to send the fused rotations back through the usual `merge!`, for timing comparisons
-const USE_RADIX_TAILSORT = Ref(true)
-
 # a gate spread over more groups than this is cheaper to sort the usual way
-const _MAX_SWEEPS = 4
+const _MAX_PASSES = 4
 
-# below this many new terms, setting up the sweeps costs more than it saves
+# below this many new terms, setting up the passes costs more than it saves
 const _MIN_RADIX_TAIL = 64
 
 
 ### Planning the passes
 
-"""
-    _radixplan(gate_mask, bits)
+# every bit from `lo` up; past the top of the string this is empty, which is what the top group wants
+_bitsfrom(::Type{TT}, lo::Int) where {TT} = ~((one(TT) << lo) - one(TT))
 
-Group the flipped bits, given ascending in `bits`, into runs of neighbours -- one sweep each, lowest
-first. Each is kept as the group mask and a mask of everything above it. Returns `nothing` if there
-are no bits, or too many groups.
 """
-function _radixplan(gate_mask::TT, bits) where {TT}
+    _radixplan(gate_mask)
+
+Group the flipped bits into runs of neighbours -- one pass each, lowest first. Each is kept as the
+group mask and a mask of everything above it. Returns `nothing` if there are no bits, or too many
+groups.
+"""
+function _radixplan(gate_mask::TT) where {TT}
+    bits = _masksetbits(gate_mask)
     isempty(bits) && return nothing
 
     plan = Tuple{TT,TT}[]
@@ -41,7 +42,7 @@ function _radixplan(gate_mask::TT, bits) where {TT}
         while hi < length(bits) && bits[hi+1] == bits[hi] + 1
             hi += 1
         end
-        length(plan) == _MAX_SWEEPS && return nothing
+        length(plan) == _MAX_PASSES && return nothing
         above = _bitsfrom(TT, bits[hi] + 1)
         push!(plan, (gate_mask & ~above & _bitsfrom(TT, bits[lo]), above))
         lo = hi + 1
@@ -49,9 +50,6 @@ function _radixplan(gate_mask::TT, bits) where {TT}
 
     return plan
 end
-
-# every bit from `lo` up; past the top of the string this is empty, which is what the top group wants
-_bitsfrom(::Type{TT}, lo::Int) where {TT} = ~((one(TT) << lo) - one(TT))
 
 
 ### The passes
@@ -70,7 +68,7 @@ _bitsfrom(::Type{TT}, lo::Int) where {TT} = ~((one(TT) << lo) - one(TT))
     return nothing
 end
 
-# One sweep. Within each run of terms agreeing above the group, write its blocks out back to front.
+# One pass. Within each run of terms agreeing above the group, write its blocks out back to front.
 # Both the runs and the blocks are found by watching for a change, so no bit pattern is ever read out.
 function _radixpass!(group, above, dst_terms, dst_coeffs, src_terms, src_coeffs, n::Int)
     i = 1
@@ -101,7 +99,7 @@ end
 """
     _radixsorttail!(plan, main_terms, main_coeffs, n_old, n_tail, buf_terms, buf_coeffs)
 
-Sorts the new terms at `main_terms[n_old+1:end]` with one sweep per group, using
+Sorts the new terms at `main_terms[n_old+1:end]` with one pass per group, using
 `buf_terms`/`buf_coeffs` as scratch space. Returns `true` if they ended up in the scratch space.
 """
 function _radixsorttail!(plan, main_terms, main_coeffs, n_old::Int, n_tail::Int, buf_terms, buf_coeffs)
@@ -128,7 +126,7 @@ end
 """
     _radixtailmerge!(prop_cache, plan; thread=true, truncfunc=nothing)
 
-Like `sortedtailmerge!`, but sorts the new terms by sweeps instead of by comparison.
+Like `sortedtailmerge!`, but sorts the new terms by radix passes instead of by comparison.
 """
 function _radixtailmerge!(prop_cache, plan; thread::Bool=true, truncfunc=nothing)
     n_old = sortedprefix(mainsum(prop_cache))
@@ -152,16 +150,16 @@ function _radixtailmerge!(prop_cache, plan; thread::Bool=true, truncfunc=nothing
 end
 
 """
-    _mergeafterrotation!(prop_cache, gate_mask, mask_bits, was_sorted; kwargs...)
+    _mergeafterrotation!(prop_cache, gate_mask, was_sorted; kwargs...)
 
-`merge!` after a rotation that branched: sweeps when the new terms are still in the order they were
-added and the gate is confined enough, the usual `merge!` otherwise.
+`merge!` after a rotation that branched: radix passes when the new terms are still in the order they
+were added and the gate is confined enough, the usual `merge!` otherwise.
 """
-function _mergeafterrotation!(prop_cache, gate_mask, mask_bits, was_sorted::Bool; thread::Bool=true, truncfunc=nothing, kwargs...)
+function _mergeafterrotation!(prop_cache, gate_mask, was_sorted::Bool; thread::Bool=true, truncfunc=nothing, kwargs...)
     n_tail = activesize(prop_cache) - sortedprefix(mainsum(prop_cache))
-    if USE_RADIX_TAILSORT[] && was_sorted && n_tail >= _MIN_RADIX_TAIL &&
+    if was_sorted && n_tail >= _MIN_RADIX_TAIL &&
        PropagationBase._iscpuarray(PauliPropagation.terms(mainsum(prop_cache)))
-        plan = _radixplan(_plainmask(gate_mask), mask_bits)
+        plan = _radixplan(_plainmask(gate_mask))
         plan !== nothing && return _radixtailmerge!(prop_cache, plan; thread, truncfunc)
     end
     return PauliPropagation.merge!(prop_cache; thread, truncfunc, kwargs...)
