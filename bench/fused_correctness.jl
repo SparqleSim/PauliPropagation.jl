@@ -1,13 +1,8 @@
-# The fused vector path against the stock path, over the cases where the two differ structurally.
+# The fused vector path against the stock path, over qubit counts either side of the local-path
+# threshold, masks splitting into one, two and three runs, and the radix sort on and off.
 #
-# The byte-local mask only engages above `_MIN_LOCAL_BYTES`, so qubit counts on both sides of that
-# are covered; the radix tail sort only engages for a tail past `_MIN_RADIX_TAIL` whose gate mask
-# splits into few enough runs, so strides giving one, two and three runs are covered, with the tail
-# sort forced on and off.
-#
-# Comparison is exact: the fused path truncates during gate application rather than after it, so the
-# two agree term for term only when nothing is truncated by coefficient. Weight truncation is safe to
-# compare, since it depends on the Pauli string alone.
+# Exact comparison needs no coefficient truncation, since the fused path truncates during gate
+# application. Weight truncation is fine, depending only on the Pauli string.
 #
 # usage: julia bench/fused_correctness.jl <project_path>
 using Pkg
@@ -55,10 +50,7 @@ for nq in (8, 40, 200, 600, 1056),          # below and above the 24-byte local-
     end
 end
 
-# Imaginary rotations branch on the *commuting* condition, so nearly every term branches at every
-# gate and an untruncated sum doubles per gate. The circuit is therefore kept to a handful of gates
-# around the middle of the register, which is enough to exercise the shared gate loop, and the size is
-# asserted rather than assumed.
+# these branch on the *commuting* condition, so an untruncated sum doubles per gate; keep it short
 const IMAG_MAX_TERMS = 100_000
 
 for nq in (40, 600), k in (1, 2), radix in (true, false)

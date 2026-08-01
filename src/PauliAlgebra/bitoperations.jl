@@ -3,10 +3,16 @@
 
 Function to return the smallest integer type that can hold `nqubits`.
 This is the type that will be used internally for representing Pauli strings.
+Above the native integer types the width is rounded up to a whole number of 64-bit words.
 """
 function getinttype(nqubits::Integer)
     # we need 2 bits per qubit
     nbits = 2 * nqubits
+
+    # whole words are faster to compute with, and take no more memory
+    if nbits > 64
+        nbits = cld(nbits, 64) * 64
+    end
 
 
     # just over 8.3 Million is the largest integer type we can generate

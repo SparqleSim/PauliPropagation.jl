@@ -1,20 +1,12 @@
-# Propagation cost against qubit count for wide Pauli strings, at a workload whose size does not
-# depend on the qubit count.
+# Propagation cost against qubit count. The light cone keeps the sum the same size at every qubit
+# count, so the timings only reflect the width of the Pauli string.
 #
-# The observable is a single Z in the middle of the register and the circuit is shallow, so after
-# `nlayers` layers the support is confined to a light cone narrower than every register scanned here.
-# The surviving sum is then the same at every qubit count -- only the width of the Pauli string
-# integer changes -- and any qubit dependence in the timings is the cost of carrying wider strings.
-#
-# `stride` sets how far apart the two qubits of a ZZ rotation are. The connectivity is a chain either
-# way, so the workload is identical term for term; what changes is the layout of the gate's mask bits.
-# At stride 1 the four bits form one contiguous run; at stride 2 they form two runs. The radix tail
-# sort treats a run as one digit, so stride 2 is the multi-digit case, and comparing the two isolates
-# that from everything else.
+# `stride` is the distance between the two qubits of a ZZ rotation. The connectivity is a chain either
+# way, so the workload is identical; only the mask bits move. Stride 1 gives one contiguous run of
+# mask bits, stride 2 gives two, which is the multi-digit case for the radix tail sort.
 #
 # usage: julia -tN bench/wide_scan.jl <project_path> <out.csv> <label> [nlayers] [qubits] [strides]
-#
-# Run it through bench/capped.sh. See that script for why an in-process memory check is not enough.
+# Run through bench/capped.sh.
 using Pkg
 Pkg.activate(ARGS[1]; io=devnull)
 using PauliPropagation
@@ -24,15 +16,10 @@ using Base.Threads
 const THETA = 0.1
 const MIN_ABS_COEFF = 0.0
 
-# Each qubit count asks `getinttype` for a width it has not seen, which defines a new primitive integer
-# type and recompiles the whole propagation pipeline for it. That compile, not the Pauli sum, is the
-# allocation that grows dangerously: expanding operations on an integer hundreds of machine words wide
-# costs the compiler superlinear memory, and no term-count guard can see it coming.
+# each new width recompiles the pipeline, and that compile costs superlinear memory, not the sum
 const MAX_BITS = 8192          # 4096 qubits
 
-# Checked after every layer, not after the circuit: an untruncated sum on a topology with more than
-# nearest-neighbour connectivity can multiply by a thousand in a single layer, and a check that only
-# runs at the end has already let that happen.
+# checked every layer, not at the end: an untruncated sum can multiply by a thousand in one layer
 const MAX_TERMS = 200_000
 
 label = ARGS[3]
@@ -41,8 +28,7 @@ qubits = length(ARGS) >= 5 ? parse.(Int, split(ARGS[5], ",")) :
          [128, 256, 512, 768, 896, 1024, 1056, 1088, 1280, 1536, 2048]
 strides = length(ARGS) >= 6 ? parse.(Int, split(ARGS[6], ",")) : [1, 2]
 
-# A chain whose bonds join qubits `k` apart. Relabelling a chain does not change the propagation, so
-# every stride gives the same sum; only the gate masks move.
+# a chain whose bonds join qubits `k` apart; relabelling a chain leaves the sum unchanged
 stridedtopology(nq, k) = [(i, i + k) for i in 1:(nq-k)]
 
 function runpoint(nq, k, reps)

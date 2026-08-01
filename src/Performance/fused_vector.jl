@@ -37,7 +37,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotati
 
     truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
 
-    # whether the gate's new terms come out in parent order, which the radix tail sort needs
+    # the radix tail sort needs the new terms in parent order
     was_sorted = sortedprefix(mainsum(prop_cache)) == activesize(prop_cache)
 
     # truncats during application of the gate to 1. make merge!() faster and 2. save on the extra truncation!() pass
@@ -80,7 +80,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
 
     truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
 
-    # whether the gate's new terms come out in parent order, which the radix tail sort needs
+    # the radix tail sort needs the new terms in parent order
     was_sorted = sortedprefix(mainsum(prop_cache)) == activesize(prop_cache)
 
     _fusedapplytruncaterotation!(prop_cache, gate_mask, cosh(tau), sinh(tau), PauliPropagation.paulirotationproduct, truncfunc, Val(:ImaginaryPauliRotation); thread)
@@ -125,7 +125,7 @@ function _fusedapplytruncaterotation!(prop_cache::PauliPropagation.VectorPauliPr
             main_terms, main_coeffs, rng.start, rng.stop, gate_mask, kept_val, new_val, productfunc, truncfunc, old_sortedprefix, Val(GateType), Val(false))
     end
 
-    # nothing branched: the gate acts as the identity on this sum, so the write pass has nothing to do
+    # nothing branched: the gate is the identity here, so there is nothing to write
     if sum(branch_counts) == 0
         return prop_cache
     end
@@ -163,9 +163,8 @@ end
 
 # Walks terms[lo:hi], branching each term according to `_branchcondition(Val(GateType), ...)` and
 # truncating inline. Writes survivors from kept_start/new_start when DoWrite; otherwise only counts
-# (dry-run sizing pass). n_sorted_kept counts survivors that originated within the old sorted prefix,
-# which stay contiguous at the front of the kept head -- see caller. n_branched is what the caller's
-# identity-gate early exit tests. Returns (n_kept, n_new, n_sorted_kept, n_branched).
+# (dry-run sizing pass). n_sorted_kept counts survivors from the old sorted prefix, which stay
+# contiguous at the front of the kept head. Returns (n_kept, n_new, n_sorted_kept, n_branched).
 @inline function _fusedbranchwrite!(kept_out_terms, kept_out_coeffs, kept_start,
     new_out_terms, new_out_coeffs, new_start,
     terms, coeffs, lo, hi, gate_mask::TT, kept_val, new_val, productfunc::PF, truncfunc::F, old_sortedprefix::Int,
@@ -176,8 +175,7 @@ end
     new_pos = new_start
     n_branched = 0
 
-    # a local gate mask reads just the bytes it touches, through a pointer into `terms` that stays
-    # valid for as long as the preserve block; every other mask gets the array itself and ignores it
+    # the pointer a ByteMask reads through is valid only inside this block
     GC.@preserve terms begin
         bytes = _bytesof(terms, gate_mask)
 

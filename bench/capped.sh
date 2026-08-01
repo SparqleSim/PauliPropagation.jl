@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
-# Run a command under a kernel-enforced memory cap, so an overrun kills the command instead of the
-# machine. Every benchmark in this directory should be launched through this.
+# Run a command under a kernel-enforced memory cap. Launch every benchmark through this.
 #
-# An in-process check is not enough. The dangerous allocation when sweeping qubit counts is not the
-# Pauli sum, it is the compiler: each new qubit count makes `getinttype` define a fresh primitive
-# integer type and the whole propagation pipeline is recompiled for it, and expanding operations on an
-# integer hundreds of machine words wide costs LLVM superlinear memory. That is a malloc inside LLVM,
-# invisible to `Sys.maxrss()` polling and impossible to abort partway. Only a cgroup limit stops it.
-#
-# `MemorySwapMax=0` matters as much as the limit itself: without it an overrun thrashes swap and takes
-# the machine down slowly rather than failing fast.
+# An in-process check cannot help: the dangerous allocation is LLVM recompiling the pipeline for each
+# new integer width, which no Julia-side poll sees coming or can abort. MemorySwapMax=0 makes an
+# overrun fail fast instead of thrashing swap.
 #
 # usage: bench/capped.sh [limit] <command...>          (limit defaults to 4G, e.g. 2G, 512M)
 set -uo pipefail

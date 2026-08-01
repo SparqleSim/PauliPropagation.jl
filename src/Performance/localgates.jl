@@ -1,16 +1,11 @@
 ###
 ##
-# Local gate masks: make a one- or two-qubit Pauli rotation cost O(1) per term instead of O(nqubits).
+# A one- or two-qubit rotation only ever changes two bytes of a Pauli string, however long that
+# string is. Reading just those two bytes makes the commutation check and the rotation sign cost the
+# same at any number of qubits, instead of growing with it.
 #
-# A wide Pauli string is one `BitIntegers` integer hundreds of bytes long, but a one- or two-qubit gate
-# is nonzero in at most two of those bytes. The commutation check and the rotation sign therefore only
-# ever need those two bytes, and reading just them removes the whole-string work from the gate loop.
-#
-# This also sidesteps a compiler cliff. Operations that need the whole value -- notably shifting it,
-# which is what `commutes` and the weight counters are built on -- stop being expanded inline above a
-# width that depends on the LLVM the Julia build ships with (about 1216 bits on LLVM 15, about 2112 on
-# LLVM 18), and cost several times more from there on. Elementwise operations are unaffected. Working
-# a byte at a time never forms a whole-value shift, so the gate loop has no threshold to fall off.
+# It also avoids shifting the whole string, which gets several times slower above a certain length
+# (around 600 qubits on Julia 1.10, around 1050 on Julia 1.12).
 ##
 ###
 
@@ -18,10 +13,8 @@
     _masksetbits(symbols, qinds)
 
 The bit positions a gate's Pauli mask sets, ascending. Qubit `q` occupies bits `2(q-1)` and
-`2(q-1)+1`, holding its Pauli (I=0, X=1, Y=2, Z=3) low bit first. Reading these off the gate rather
-than scanning the mask keeps the cost independent of how wide a Pauli string is, and asks nothing of
-the Pauli string type -- which for the padded `BitIntegers` types cannot be reinterpreted to bytes
-at all.
+`2(q-1)+1`, low bit first. Read off the gate rather than by scanning the mask, so the cost is the
+same for any Pauli string.
 """
 function _masksetbits(symbols, qinds)
     bits = Int[]
@@ -39,16 +32,10 @@ _astuple(x) = x
 """
     ByteMask{TT}
 
-A gate mask paired with the (at most two, not necessarily adjacent) bytes of a Pauli string it is
-nonzero in. Used in place of the plain gate mask, it makes the commutation check and the rotation
-sign cost O(1) instead of O(nqubits).
-
-A qubit's two Pauli bits sit at an even bit position and the one above it, so they never straddle a
-byte boundary and two bytes cover any one- or two-qubit gate whatever qubits it acts on, adjacent or
-not. Byte indices are plain fields rather than type parameters, so all gates share one compiled
-specialization no matter which bytes they touch. A gate confined to a single byte repeats that byte
-with a zero mask, which contributes to neither the commutation flags nor the sign counts and so needs
-no branch.
+A gate mask together with the at most two bytes it touches. A qubit's two bits never straddle a byte
+boundary, so two bytes cover any one- or two-qubit gate, whether or not the qubits are neighbours.
+The byte positions are ordinary fields, so all gates share one compiled version. A gate inside a
+single byte repeats that byte with an empty mask, which changes nothing and saves a branch.
 """
 struct ByteMask{TT}
     mask::TT
@@ -56,22 +43,19 @@ struct ByteMask{TT}
     bytes::NTuple{2,UInt8}
 end
 
-# Reading two bytes only pays off once a Pauli string is wider than this; below it the string is a
-# register or two, whole-string operations vectorize, and the generic path is cheaper.
+# shorter than this, working on the whole string at once is cheaper
 const _MIN_LOCAL_BYTES = 24
 
 """
     _bytemask(gate_mask, bits, terms)
 
-Wrap `gate_mask` (whose set bits are at `bits`) for the local gate path, or hand it back unchanged
-when that path does not apply: too narrow a Pauli string, a gate spanning more than two bytes, or a
-terms array with no pointer to read the bytes through. Called once per gate, so the type instability
-of the result is paid per gate and never per Pauli string.
+Wrap `gate_mask` for the two-byte path, or return it unchanged when that path does not apply. Called
+once per gate, so the cost of the wrapping is paid per gate and never per Pauli string.
 """
 function _bytemask(gate_mask::TT, bits, terms) where {TT}
     (isempty(bits) || sizeof(TT) < _MIN_LOCAL_BYTES || !(terms isa Vector)) && return gate_mask
 
-    # `bits` is ascending, so a third byte can only show up strictly between the outer two
+    # bits is ascending, so a third byte can only lie strictly between the outer two
     i1 = bits[1] >> 3
     i2 = bits[end] >> 3
     any(b -> i1 < b >> 3 < i2, bits) && return gate_mask
@@ -83,15 +67,13 @@ function _bytemask(gate_mask::TT, bits, terms) where {TT}
     return ByteMask{TT}(gate_mask, (i1 + 1, i2 + 1), (b1, b2))
 end
 
-# The plain gate mask, whether or not it was wrapped for the local path.
 _plainmask(m::ByteMask) = m.mask
 _plainmask(gate_mask) = gate_mask
 
-# ...0101: the low bit of every Pauli pair.
+# ...0101: the low bit of every Pauli pair
 const _ALTBYTE = 0x55
 
-# Per-byte pieces of `_bitcommutes` and `_calculatesignexponent`. Bytes outside the mask's support
-# contribute nothing to either, because every term in them is gated by a zero mask bit.
+# per-byte pieces of `_bitcommutes` and `_calculatesignexponent`
 @inline function _byteflags(a::UInt8, b::UInt8)
     return ((a & _ALTBYTE) & ((b >> 1) & _ALTBYTE)) ⊻ (((a >> 1) & _ALTBYTE) & (b & _ALTBYTE))
 end
@@ -108,16 +90,10 @@ end
 
 ### Hooks used by the fused gate loop
 
-# The bytes a gate touches are read straight out of the terms array. Going through the Pauli string
-# itself would need a runtime index into it, which forces the whole thing onto the stack just to pick
-# out two bytes.
-#
-# Strings lie `aligned_sizeof` apart, which for a `BitIntegers` type whose width is not a multiple of
-# its alignment leaves a few bytes of padding between them (`UInt1800` is 225 bytes in a 240-byte
-# slot). `reinterpret` refuses those padded types altogether, so the bytes are read through a pointer
-# instead -- single-byte loads, so alignment never enters. The pointer is valid only while `terms` is
-# alive, which the `GC.@preserve` in the gate loop guarantees, and only for a CPU array, which
-# `_bytemask` checks before taking this path.
+# The bytes are read out of the terms array rather than out of the Pauli string, because picking a
+# byte out of the string itself would copy the whole string first. Strings sit `aligned_sizeof` apart,
+# and the wide integer types can carry unused padding, so this reads them by address. Only valid
+# inside the `GC.@preserve` in the gate loop, and only for a CPU array, which `_bytemask` checks.
 _bytesof(terms::Vector, ::ByteMask) = Ptr{UInt8}(pointer(terms))
 _bytesof(terms, gate_mask) = terms
 
@@ -129,8 +105,8 @@ _bytesof(terms, gate_mask) = terms
     _gateproduct(productfunc, gate_mask, pstr, bytes, ii)
 
 Commutation check and rotation product for the Pauli string at index `ii`, where `bytes` is
-`_bytesof(terms, gate_mask)`. Both fall back to the generic full-width implementations for any gate
-mask that is not a `ByteMask`.
+`_bytesof(terms, gate_mask)`. Any mask that is not a `ByteMask` falls back to the whole-string
+versions.
 """
 @inline _gatecommutes(gate_mask, pstr, bytes, ii) = PauliPropagation.commutes(gate_mask, pstr)
 @inline _gateproduct(productfunc::PF, gate_mask, pstr, bytes, ii) where {PF} = productfunc(gate_mask, pstr)
@@ -146,6 +122,6 @@ end
     n2, g2 = _bytesigncounts(m.bytes[2], _byteat(bytes, ii, m.inds[2], m))
     exponent = (2 * (g1 + g2) + n1 + n2) & 3
 
-    # same trick as `paulirotationproduct`: sign == real(im * im^exponent)
+    # as in `paulirotationproduct`: sign == real(im * im^exponent)
     return pstr ⊻ m.mask, (exponent & 2) - 1
 end
