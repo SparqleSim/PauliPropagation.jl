@@ -119,8 +119,14 @@ function _fusedapplytruncaterotation!(prop_cache::PauliPropagation.VectorPauliPr
     new_offsets = PropagationBase._offsetsfromcounts(new_counts)
     n_new = new_offsets[end] - 1
 
-    # No early return on n_new == 0: a term whose product is too heavy to keep still branched, and
-    # its own coefficient is scaled by the write pass below.
+    # A term that branched had its coefficient scaled, so no products does not on its own mean there
+    # is nothing to write. Without a weight limit, though, no product is ever dropped, and then no
+    # products does mean nothing branched -- worth taking, because a gate the sum has not spread to
+    # yet branches nothing at all and would otherwise be walked twice over.
+    if n_new == 0 && isinf(max_weight)
+        return prop_cache
+    end
+
     resize_factor = 1.5
     if PauliPropagation.capacity(prop_cache) < n_old + n_new
         resize!(prop_cache, round(Int, (n_old + n_new) * resize_factor))
