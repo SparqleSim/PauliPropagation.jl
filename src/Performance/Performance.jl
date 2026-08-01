@@ -24,8 +24,16 @@ end
 include("./fused_dict.jl")
 
 
+# Byte-local masks for one- and two-qubit gates on wide Pauli strings
+include("./localgates.jl")
+
+
 # VectorPauliSum overload for PauliRotation
 include("./fused_vector.jl")
+
+
+# Radix tail sort for the branching rotation gates
+include("./radix_tailmerge.jl")
 
 
 """
