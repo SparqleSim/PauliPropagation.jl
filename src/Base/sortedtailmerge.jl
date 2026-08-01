@@ -138,21 +138,32 @@ end
     head_i = head_lo
     tail_j = tail_lo
     write_pos = out_start
-    @inbounds while head_i <= head_hi && tail_j <= tail_hi
+    # Both terms are carried so that only the side that moved is re-read. The output aliases the
+    # array the tail views, so the loads cannot be hoisted without this.
+    @inbounds if head_i <= head_hi && tail_j <= tail_hi
         head_term = head_terms[head_i]
         tail_term = tail_terms[tail_j]
-        if head_term == tail_term
-            # collision: merge the head term with the *entire run* of equal tail terms
-            merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j, tail_hi, tail_term, head_coeffs[head_i])
-            write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, merged_coeff, truncfunc, Val(DoWrite))
-            head_i += 1
-        elseif head_term < tail_term
-            write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, head_coeffs[head_i], truncfunc, Val(DoWrite))
-            head_i += 1
-        else
-            # tail term has no match in the head (yet): merge its own run of duplicates first
-            merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j])
-            write_pos = _writekept!(out_terms, out_coeffs, write_pos, tail_term, merged_coeff, truncfunc, Val(DoWrite))
+        while true
+            if head_term == tail_term
+                # collision: merge the head term with the *entire run* of equal tail terms
+                merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j, tail_hi, tail_term, head_coeffs[head_i])
+                write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, merged_coeff, truncfunc, Val(DoWrite))
+                head_i += 1
+                (head_i > head_hi || tail_j > tail_hi) && break
+                head_term = head_terms[head_i]
+                tail_term = tail_terms[tail_j]
+            elseif head_term < tail_term
+                write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, head_coeffs[head_i], truncfunc, Val(DoWrite))
+                head_i += 1
+                head_i > head_hi && break
+                head_term = head_terms[head_i]
+            else
+                # tail term has no match in the head (yet): merge its own run of duplicates first
+                merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j])
+                write_pos = _writekept!(out_terms, out_coeffs, write_pos, tail_term, merged_coeff, truncfunc, Val(DoWrite))
+                tail_j > tail_hi && break
+                tail_term = tail_terms[tail_j]
+            end
         end
     end
     @inbounds while head_i <= head_hi
