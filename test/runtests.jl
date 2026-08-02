@@ -43,6 +43,8 @@ using Random
 
     include("test_gradient.jl")
 
+    include("test_xortailmerge.jl")
+
     include("test_montecarlo.jl")
 
     include("test_performance.jl")

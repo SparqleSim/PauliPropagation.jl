@@ -91,7 +91,11 @@ function VectorPauliPropagationCache(vpsum::PauliSum)
 end
 
 function PropagationBase.activesum(prop_cache::VectorPauliPropagationCache)
-    return VectorPauliSum(nqubits(prop_cache), activeterms(prop_cache), activecoeffs(prop_cache))
+    n_sorted = sortedprefix(mainsum(prop_cache))
+    active_size = activesize(prop_cache)
+    # we can only assume something went wront here. Reset to 0.
+    n_sorted = n_sorted > active_size ? 0 : n_sorted
+    return VectorPauliSum(nqubits(prop_cache), activeterms(prop_cache), activecoeffs(prop_cache), n_sorted)
 end
 
 # convert back

@@ -82,6 +82,10 @@ function permuteviaindices!(prop_cache::AbstractPropagationCache; thread::Bool=t
     # the destination arrays should be the main ones
     swapsums!(prop_cache)
 
+    # in general permuting will not sort
+    # merge! will set it to a non-zero value when it calls this function
+    setsortedprefix!(mainsum(prop_cache), 0)
+
     return prop_cache
 end
 
@@ -110,6 +114,10 @@ function filterviaflags!(prop_cache::AbstractPropagationCache; thread::Bool=true
 
     # capture before swapsums!() swaps which sum is "main"
     old_sorted = sortedprefix(mainsum(prop_cache))
+    if old_sorted > length(indices)
+        # stale sortedprefix left over from the last time this buffer was mainsum: ignore it
+        old_sorted = 0
+    end
 
     filterviaflags!(flags, indices, aux_terms, aux_coeffs, terms_view, coeffs; thread)
 

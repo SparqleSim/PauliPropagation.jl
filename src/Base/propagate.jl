@@ -137,6 +137,9 @@ function applytoall!(gate, prop_cache::AbstractPropagationCache, args...; kwargs
     # merge!(prop_cache) will then likely not do anything
     swapsums!(prop_cache)
 
+    # in general sortedness will not be preserved
+    setsortedprefix!(mainsum(prop_cache), 0)
+
     return
 end
 

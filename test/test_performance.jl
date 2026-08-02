@@ -73,6 +73,34 @@ end
     end
 end
 
+@testset "fused Vector on wide Pauli strings matches stock exactly" begin
+    # from 96 qubits on, a Pauli string is wider than a machine word and the fused rotations read
+    # only the bytes a gate touches. The long-range rotation is too spread out for that, so it also
+    # covers the fall-back to the whole string.
+    nq = 100
+    topo = bricklayertopology(nq; periodic=false)
+
+    for nl in (2, 3)
+        circuit = hardwareefficientcircuit(nq, nl; topology=topo)
+        push!(circuit, PauliRotation([:X, :Y, :Z], [1, 40, 90]))
+
+        Random.seed!(30 + nl)
+        thetas = randn(countparameters(circuit))
+        pstr = PauliString(nq, :Z, 50)
+
+        for max_weight in (3, 4)
+            stock = propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_weight)
+            fused = Performance.propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_weight, fused=true)
+            unthreaded = Performance.propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_weight, fused=true, thread=false)
+
+            stock_dict = Dict(zip(paulis(stock), coefficients(stock)))
+            fused_dict = Dict(zip(paulis(fused), coefficients(fused)))
+            @test stock_dict == fused_dict
+            @test fused == unthreaded
+        end
+    end
+end
+
 @testset "fused Dict and fused Vector agree with each other and with stock within a small tolerance under coefficient truncation" begin
     # min_abs_coeff makes propagation results differ, but it should not be by much.
     nq = 8
@@ -190,6 +218,21 @@ end
 
     @test length(d_thread) > 16384  # sanity check that this circuit actually exercises multiple tasks
     @test d_thread == d_nothread
+end
+
+@testset "fused Vector ImaginaryPauliRotation on wide Pauli strings matches stock exactly" begin
+    nq = 100
+    gates, taus = _localimaginarycircuit(nq, 1; seed=31)
+    pstr = PauliString(nq, :I, 1)
+    max_weight = 2
+
+    stock = propagate(gates, VectorPauliSum(pstr), taus; heisenberg=false, min_abs_coeff=0.0, max_weight)
+    fused = Performance.propagate(gates, VectorPauliSum(pstr), taus; heisenberg=false, min_abs_coeff=0.0, max_weight, fused=true)
+
+    stock_dict = Dict(zip(paulis(stock), coefficients(stock)))
+    fused_dict = Dict(zip(paulis(fused), coefficients(fused)))
+    @test length(stock_dict) > 1024  # sanity check that this reaches the radix-sorted tail
+    @test stock_dict == fused_dict
 end
 
 @testset "fused Dict PauliNoise matches stock exactly" begin

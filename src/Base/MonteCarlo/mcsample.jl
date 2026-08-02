@@ -32,7 +32,11 @@ In-place version of `mcsample`. See `mcsample` for details.
 """
 function mcsample!(circuit, prop_cache::AbstractPropagationCache, params=nothing; kwargs...)
     # manipulates the active view of the prop_cache in place
-    mcsample!(circuit, activesum(prop_cache), params; kwargs...)
+    active_sum = activesum(prop_cache)
+    mcsample!(circuit, active_sum, params; kwargs...)
+
+    setsortedprefix!(mainsum(prop_cache), sortedprefix(active_sum))
+
     return prop_cache
 end
 

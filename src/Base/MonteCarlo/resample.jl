@@ -36,9 +36,11 @@ end
 function resample!(prop_cache::AbstractPropagationCache, target_size, resample_args...; resample_func=nothing, squared=false, resample_kwargs...)
     @assert target_size > 0 "target_size must be positive"
 
-    if target_size > activesize(prop_cache)
-        throw(ArgumentError("target_size must be less than the current active size of the prop_cache."))
+    if target_size > activesize(prop_cache) && resample_func !== multinomial_resample!
+        throw(ArgumentError("target_size must be less than the current active size 
+        of the prop_cache for resample methods (like $(resample_func)) other than multinomial_resample!."))
     end
+    
     # resample_func is expected to take prop_cache and target_size as arguments
     # anything else needs to be wrapped into a closure
 
@@ -54,7 +56,7 @@ function resample!(prop_cache::AbstractPropagationCache, target_size, resample_a
         end
     end
 
-    resample_func(prop_cache, target_size, resample_args...; resample_kwargs...)
+    resample_func(prop_cache, target_size, resample_args...; squared, resample_kwargs...)
 
     return prop_cache
 end
@@ -76,6 +78,9 @@ end
 
 ## This the naive resampling where one draw's a random number per sample.
 function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread::Bool=true, kwargs...)
+    if target_size > capacity(prop_cache)
+        resize!(prop_cache, target_size)
+    end
 
     dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
 
@@ -83,6 +88,8 @@ function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size
 
     swapsums!(prop_cache)
     setactivesize!(prop_cache, target_size)
+    # draws are i.i.d. samples from the source distribution, so the result carries no sorted order
+    setsortedprefix!(mainsum(prop_cache), 0)
 
     return prop_cache
 end
@@ -127,6 +134,10 @@ function systematic_resample!(prop_cache::AbstractPropagationCache, target_size:
 
     swapsums!(prop_cache)
     # active size does not need to be changed.
+
+    # dst_terms[i] = src_terms[i] for every i (only coefficients change)
+    # old sorted prefix is still the new prefix
+    setsortedprefix!(mainsum(prop_cache), sortedprefix(auxsum(prop_cache)))
 
     # now filter out the exactly 0.0 and set active size
     truncate!(prop_cache; min_abs_coeff=eps(), thread)
@@ -279,6 +290,10 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
 
     swapsums!(prop_cache)
     # active size does not need to be changed.
+
+    # dst_terms[i] = src_terms[i] for every i (only coefficients change)
+    # old sorted prefix is still the new prefix
+    setsortedprefix!(mainsum(prop_cache), sortedprefix(auxsum(prop_cache)))
 
     # now filter out the exactly 0.0
     truncate!(prop_cache; min_abs_coeff=eps(), thread)
