@@ -2,14 +2,10 @@
 ##
 # Sorting the tail a gate appended as `term ⊻ mask`, without comparing terms.
 #
-# A gate that appends each new term as `term ⊻ mask`, in the order of the terms they came from,
-# leaves the tail nearly sorted: flipping a fixed set of bits keeps two terms in the same relative
-# order unless the highest bit where they differ is one of the flipped ones. So one pass per group of
-# neighbouring flipped bits, highest group first, puts the tail in order. Within a pass the terms of
-# a group arrive exactly reversed, so a pass only copies blocks back to front, and no bit pattern is
-# ever read out.
-#
-# Only valid if every term the gate saw was already sorted; the caller states that.
+# XORing a fixed mask into sorted terms keeps two terms in relative order unless their highest
+# differing bit was flipped; one pass per group of neighbouring flipped bits, highest group first, orders it.
+# Within a pass the affected blocks arrive exactly reversed, so a pass only copies blocks back to front.
+# Only valid if the gate's input was sorted; the caller states that.
 ##
 ###
 
@@ -19,8 +15,7 @@ const _MAX_XOR_PASSES = 4
 # below this many appended terms, setting up the passes costs more than it saves
 const _MIN_XOR_TAIL = 64
 
-# splitting a pass two ways is a wash: recovering the runs that straddle the one chunk boundary costs
-# about what the second task saves. Three ways up it pays, and keeps paying.
+# need at least three passes to pay it up
 const _MIN_XOR_PASS_TASKS = 3
 
 
@@ -29,15 +24,8 @@ const _MIN_XOR_PASS_TASKS = 3
 """
     xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sorted_before::Bool; thread=true, truncfunc=nothing, kwargs...)
 
-`sortedtailmerge!` for a tail that a gate appended as `term ⊻ xor_mask`, in the order of the terms
-they came from: the tail is sorted by one block-reversal pass per group of neighbouring set bits of
-`xor_mask` (see the file header) instead of by a comparison sort, and the two sorted runs are then
-combined by the same merge as `sortedtailmerge!`.
-
-`sorted_before` states whether the whole active range was sorted and deduplicated before the gate was
-applied, which is what makes the tail nearly sorted. Falls back to the generic `merge!` when it is
-not, when the storage or term type does not support the passes, or when `xor_mask` is spread over too
-many groups to pay off.
+`sortedtailmerge!` for a tail that a gate appended as `term ⊻ xor_mask` in parent order: the tail is
+sorted by XOR passes or by the generic `merge!`, depending on `sorted_before`.
 """
 function xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sorted_before::Bool;
     thread::Bool=true, truncfunc=nothing, kwargs...)
@@ -46,7 +34,6 @@ function xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sor
     n_new = activesize(prop_cache)
     n_tail = n_new - n_old
 
-    # nothing was appended; the active range is still sorted and deduplicated
     if n_tail == 0
         return prop_cache
     end
@@ -62,8 +49,7 @@ function xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sor
     a_terms = view(main_terms, n_old+1:n_new)
     a_coeffs = view(main_coeffs, n_old+1:n_new)
 
-    # ping-pong pair B: scratch, as views of the same kind so that swapping the two pairs stays
-    # type stable
+    # ping-pong pair B: scratch
     buf_terms, buf_coeffs = _tailscratch(aux_terms, aux_coeffs, n_new, n_tail, main_terms, main_coeffs)
     b_terms = view(buf_terms, 1:n_tail)
     b_coeffs = view(buf_coeffs, 1:n_tail)
@@ -77,13 +63,8 @@ end
 
 ### Sorting the tail
 
-"""
-    _xorsorttail!(groups, a_terms, a_coeffs, b_terms, b_coeffs; thread=true)
-
-Sort the tail held in pair A, given `a_terms[i] == sources[i] ⊻ mask` for a strictly ascending
-sequence of sources and the `_maskgroups(mask)` of that mask, moving coefficients along with their
-terms. Pair B is same-length scratch. Returns the pair holding the sorted tail.
-"""
+# sort the tail in pair A (a_terms[i] == sources[i] ⊻ mask, sources strictly ascending),
+# in a ping-pong fashion into pair B; returns the pair holding the result
 function _xorsorttail!(groups, a_terms, a_coeffs, b_terms, b_coeffs; thread::Bool=true)
     src_terms, src_coeffs = a_terms, a_coeffs
     dst_terms, dst_coeffs = b_terms, b_coeffs
@@ -115,8 +96,7 @@ function _xorpass!(dst_terms, dst_coeffs, src_terms, src_coeffs, group, above; t
 end
 
 # One pass over the whole tail: within each run of terms agreeing above the group, the blocks
-# agreeing in the group go out back to front, taken from the top so the writes run forward. Runs and
-# blocks are found by scanning for a change, so no bit pattern is ever read out.
+# agreeing in the group go out back to front, taken from the top so the writes run forward.
 function _xorpassall!(dst_terms, dst_coeffs, src_terms, src_coeffs, group::TT, above::TT) where {TT}
     n = length(src_terms)
 
@@ -146,23 +126,21 @@ function _xorpassall!(dst_terms, dst_coeffs, src_terms, src_coeffs, group::TT, a
     return nothing
 end
 
-# The same pass restricted to the source positions [c_lo, c_hi] of one task. Runs and blocks reaching
-# over a chunk boundary are recovered in full on both sides, which costs the searches and clipping
-# below -- hence the separate whole-tail version above. Block [bl, bh) of run [i, j) lands at
-# i + (j - bh), which depends on the run alone, so tasks agree on where each element goes without
-# communicating and no element is written twice.
+# The same pass restricted to one task's source positions [c_lo, c_hi]; runs and blocks reaching
+# over a chunk boundary are recovered in full on both sides. Block [bl, bh) of run [i, j) lands at
+# i + (j - bh), which depends on the run alone, so tasks agree on destinations without communicating.
 function _xorpasschunk!(dst_terms, dst_coeffs, src_terms, src_coeffs, group::TT, above::TT, c_lo::Int, c_hi::Int) where {TT}
     n = length(src_terms)
 
-    # the start of the run holding c_lo, even where that run reaches back into the previous chunk
+    # start of the run holding c_lo, possibly back in the previous chunk
     i = _agreefirst(src_terms, above, c_lo, 1)
 
-    # `x` trails the lowest source position of the current run that this task owns
+    # `x` trails the lowest position of the current run that this task owns
     x = c_lo
     @inbounds while x <= c_hi
         j = _stretchend(src_terms, above, x, c_hi, n)
 
-        # likewise for a block reaching on into the next chunk
+        # likewise for a block reaching into the next chunk
         y = min(j - 1, c_hi)
         bh = (y < j - 1 && iszero((src_terms[y+1] ⊻ src_terms[y]) & group)) ?
              _agreelast(src_terms, group, y, j - 1) + 1 : y + 1
@@ -184,20 +162,13 @@ end
 
 ### Planning the passes
 
-# The passes are scalar CPU code that only ever XORs the mask into a term, so they need unsigned
-# terms (bit order is value order), a matching mask, and a backing array that can be indexed cheaply.
 function _xorplan(xor_mask, terms::AbstractArray{TT}) where {TT}
     (TT <: Unsigned && xor_mask isa TT && _iscpuarray(terms)) || return nothing
     return _maskgroups(xor_mask)
 end
 
-"""
-    _maskgroups(mask)
-
-Group the set bits of `mask` into runs of neighbours -- one pass each, lowest first. Each is kept as
-the group mask and a mask of everything above it. Returns `nothing` if there are no bits, or too many
-groups.
-"""
+# group the set bits of `mask` into runs of neighbours, lowest first, each as (group mask, mask of
+# everything above it); `nothing` for no bits or more than _MAX_XOR_PASSES groups
 function _maskgroups(mask::TT) where {TT}
     bits = _masksetbits(mask)
     isempty(bits) && return nothing
@@ -218,17 +189,17 @@ function _maskgroups(mask::TT) where {TT}
     return groups
 end
 
-# every bit from `lo` up; past the top of the term type this is empty, which is what the top group wants
+# every bit from `lo` up (empty past the top of the type, as the top group needs)
 _bitsfrom(::Type{TT}, lo::Int) where {TT} = ~((one(TT) << lo) - one(TT))
 
 
 ### Finding and moving runs and blocks
 
-# Terms agreeing under `mask` are contiguous, because `terms .& mask` is monotone over the searched
-# range, so both ends of such a stretch are a plain first-true binary search.
+# `terms .& mask` is monotone over the searched range, so terms agreeing under `mask` are contiguous
+# and both ends of a stretch are binary-searchable.
 
-# one past the end of the stretch agreeing with terms[idx] under `mask`, scanned up to `scan_hi` and
-# binary searched up to `search_hi` beyond that -- a stretch is usually short, but may span the array
+# one past the end of the stretch agreeing with terms[idx] under `mask`: scan to `scan_hi`, then
+# binary search to `search_hi` (a stretch is usually short, but may span the array)
 @inline function _stretchend(terms, mask::TT, idx::Int, scan_hi::Int, search_hi::Int) where {TT}
     @inbounds begin
         key = terms[idx]

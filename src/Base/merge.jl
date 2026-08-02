@@ -95,8 +95,7 @@ function _deduplicate!(prop_cache::AbstractPropagationCache; thread::Bool=true, 
 
     _mergegroups!(prop_cache; thread)
 
-    # groups are written at positions fixed before their merged coefficients are known, so dropping
-    # any of them has to be a pass of its own
+    # group positions are fixed before their merged coefficients are known, so truncation needs its own pass
     if truncfunc !== nothing
         truncate!(truncfunc, prop_cache; thread)
     end

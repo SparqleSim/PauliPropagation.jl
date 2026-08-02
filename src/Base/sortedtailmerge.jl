@@ -17,10 +17,8 @@ const _TAILMERGE_SORTEDPREFIX_FRACTION = 0.4
 Merges the sorted head against the unsorted tail (see file header) and updates
 `activesize`/`sortedprefix`. Set `thread=false` to force sequential execution.
 
-`truncfunc(term, merged_coeff)`, if given, is applied to every merged coefficient and drops the term
-if it returns `true`, which truncates the sum without a separate pass over it. Judging a term on the
-coefficient it merged into, rather than on each contribution separately, is what keeps a
-contribution too small to stand alone from being lost when it would have cancelled a larger one.
+`truncfunc(term, merged_coeff)`, if given, drops a term when it returns `true`. It sees the merged
+coefficient, so contributions can still cancel before the term is judged.
 """
 function sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing)
     n_old = sortedprefix(mainsum(prop_cache))
@@ -47,12 +45,7 @@ function sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=tru
         tail_terms, tail_coeffs, n_tail, truncfunc, thread)
 end
 
-"""
-    _tailscratch(aux_terms, aux_coeffs, n_new, n_tail, main_terms, main_coeffs)
-
-Scratch space for a sorted copy of the tail. The merge only ever writes into `aux[1:n_new]`, so any
-capacity beyond that is free; otherwise allocate.
-"""
+# scratch for a sorted copy of the tail: aux capacity beyond n_new (the merge writes only aux[1:n_new]), else allocate
 function _tailscratch(aux_terms, aux_coeffs, n_new::Int, n_tail::Int, main_terms, main_coeffs)
     if length(aux_terms) - n_new >= n_tail
         return view(aux_terms, n_new+1:n_new+n_tail), view(aux_coeffs, n_new+1:n_new+n_tail)
@@ -60,13 +53,7 @@ function _tailscratch(aux_terms, aux_coeffs, n_new::Int, n_tail::Int, main_terms
     return similar(main_terms, n_tail), similar(main_coeffs, n_tail)
 end
 
-"""
-    _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs, n_old,
-                      tail_terms, tail_coeffs, n_tail, truncfunc, thread)
-
-Merge the sorted head `main[1:n_old]` against an already sorted tail into `aux`, and commit. Shared
-by every tail merge; they differ only in how they sorted the tail.
-"""
+# merge the sorted head main[1:n_old] against an already sorted tail into aux, and commit; shared by every tail merge
 function _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs, n_old::Int,
     tail_terms, tail_coeffs, n_tail::Int, truncfunc, thread::Bool)
 
@@ -126,10 +113,8 @@ end
 end
 
 # Two-pointer merge of a sorted head against a sorted tail that may contain duplicate runs (against
-# the head or itself); collisions combined via mergefunc. Writes from out_start when DoWrite,
-# otherwise only counts. `truncfunc`, if given, is applied to every merged coefficient, so that a
-# term is judged on the coefficient it ends up with rather than on the parts it was built from.
-# Returns the output element count.
+# the head or itself); collisions combined via mergefunc, `truncfunc` applied to every merged
+# coefficient. Writes from out_start when DoWrite, otherwise only counts. Returns the output count.
 @inline function _tailmerge_write!(out_terms, out_coeffs, out_start,
     head_terms, head_coeffs, head_lo, head_hi,
     tail_terms, tail_coeffs, tail_lo, tail_hi,
@@ -138,8 +123,8 @@ end
     head_i = head_lo
     tail_j = tail_lo
     write_pos = out_start
-    # Both terms are carried so that only the side that moved is re-read. The output aliases the
-    # array the tail views, so the loads cannot be hoisted without this.
+    # carry both terms so only the moved side is re-read: the output aliases the tail's array, so
+    # the loads cannot be hoisted otherwise
     @inbounds if head_i <= head_hi && tail_j <= tail_hi
         head_term = head_terms[head_i]
         tail_term = tail_terms[tail_j]
