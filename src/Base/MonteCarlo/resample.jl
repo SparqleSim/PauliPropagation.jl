@@ -78,6 +78,9 @@ end
 
 ## This the naive resampling where one draw's a random number per sample.
 function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread::Bool=true, kwargs...)
+    if target_size > capacity(prop_cache)
+        resize!(prop_cache, target_size)
+    end
 
     dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
 
