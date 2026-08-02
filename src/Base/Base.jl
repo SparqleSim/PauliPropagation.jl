@@ -91,6 +91,8 @@ export
 
 include("./sortedtailmerge.jl")
 
+include("./xortailmerge.jl")
+
 include("./MonteCarlo/MonteCarlo.jl")
 export
     mcpropagate,

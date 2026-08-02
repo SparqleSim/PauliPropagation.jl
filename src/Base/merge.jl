@@ -93,7 +93,12 @@ function _deduplicate!(prop_cache::AbstractPropagationCache; thread::Bool=true, 
 
     flagstoindices!(prop_cache; thread)
 
-    _mergegroups!(prop_cache; thread, truncfunc)
+    _mergegroups!(prop_cache; thread)
+
+    # group positions are fixed before their merged coefficients are known, so truncation needs its own pass
+    if truncfunc !== nothing
+        truncate!(truncfunc, prop_cache; thread)
+    end
 
     return prop_cache
 end
@@ -114,7 +119,7 @@ function _flaggroupbegin!(prop_cache::AbstractPropagationCache; thread::Bool=tru
 end
 
 # Given flagged group beginnings, merge the groups.
-function _mergegroups!(prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
+function _mergegroups!(prop_cache::AbstractPropagationCache; thread::Bool=true)
 
     term_view = activeterms(prop_cache)
     coeffs = activecoeffs(prop_cache)
