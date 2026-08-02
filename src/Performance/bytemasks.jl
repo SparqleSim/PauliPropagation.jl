@@ -52,11 +52,8 @@ end
 
 ### Hooks used by the fused gate loop
 
-# Read by address out of the terms array: picking a byte out of a Pauli string itself would copy the
-# whole string first. Strings sit `aligned_sizeof` apart, and byte k holds bits 8k and up, so this
-# wants a little-endian machine. Only valid inside the `GC.@preserve` in the gate loop.
-_bytesof(terms::Vector, ::ByteMask) = Ptr{UInt8}(pointer(terms))
-_bytesof(terms, gate_mask) = terms
+function _bytemask(gate_mask::TT, terms) where {TT}
+    (sizeof(TT) < _MIN_LOCAL_BYTES || !(terms isa Vector) || !Sys.islittleendian()) && return gate_mask
 
 @inline _byteat(bytes::Ptr{UInt8}, ii::Int, m::ByteMask{TT}, k::Int) where {TT} =
     unsafe_load(bytes + (ii - 1) * Base.aligned_sizeof(TT) + m.inds[k] - 1)
