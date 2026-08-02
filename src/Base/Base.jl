@@ -89,4 +89,6 @@ export
 
 include("./sortedtailmerge.jl")
 
+include("./xortailmerge.jl")
+
 end

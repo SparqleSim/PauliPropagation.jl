@@ -26,6 +26,16 @@ function _offsetsfromcounts(counts::AbstractVector{Int})
     return offsets
 end
 
+# the positions of the set bits of `mask`, ascending
+function _masksetbits(mask::TT) where {TT}
+    bits = Int[]
+    while !iszero(mask)
+        push!(bits, trailing_zeros(mask))
+        mask &= mask - one(TT)
+    end
+    return bits
+end
+
 # for CPU-only code using Threads.@spawn
 # GPU extensions override this for their array for fallback functionality
 _iscpuarray(::AbstractArray) = true
