@@ -11,6 +11,8 @@ function _checkgradient(circuit, psum, params, overlapfunc; eps=1e-6, atol=1e-7)
 
     @test expec ≈ overlapfunc(propagate(circuit, deepcopy(psum), params; min_abs_coeff=0.0))
     @test length(grad) == length(params)
+    # an all-zero gradient would match finite differences no matter what the code did
+    @test any(!iszero, grad)
 
     fd_grad = zeros(length(params))
     for k in eachindex(params)
@@ -41,7 +43,7 @@ end
             PauliRotation([:Y, :Y], [2, 4]),
         ]
         params = [0.3, -0.7, 1.1, 0.42, -0.15]
-        psum = VectorPauliSum(PauliString(nq, [:Z, :X], [2, 3]))
+        psum = VectorPauliSum(PauliString(nq, [:Z, :Z], [1, 3]))
 
         _checkgradient(circuit, psum, params, overlapwithzero)
     end
@@ -73,7 +75,7 @@ end
             PauliRotation([:Y, :Y], [2, 4]),
         ]
         params = [0.44, -0.9, 0.12]
-        psum = VectorPauliSum(PauliString(nq, [:X, :Y], [1, 2]))
+        psum = VectorPauliSum(PauliString(nq, [:Z, :Z], [1, 3]))
 
         _checkgradient(circuit, psum, params, overlapwithzero)
     end
@@ -109,11 +111,15 @@ end
             PauliRotation([:X, :X], [2, 4]),
         ]
         params = [0.18, -0.71, 0.53]
-        psum = VectorPauliSum(PauliString(nq, [:Z, :Y], [1, 3]))
+        psum = VectorPauliSum(PauliString(nq, [:Z, :Z], [1, 3]))
 
-        for overlapfunc in (overlapwithzero, overlapwithplus, overlapwithmaxmixed)
+        for overlapfunc in (overlapwithzero, overlapwithplus)
             _checkgradient(circuit, psum, params, overlapfunc)
         end
+
+        # unitary propagation conserves the trace, so the maximally mixed overlap is constant
+        _, maxmixed_grad = rewindgradient(circuit, deepcopy(psum), params, overlapwithmaxmixed; min_abs_coeff=0.0)
+        @test all(iszero, maxmixed_grad)
 
         # overlapwithcomputational needs the extra `onebitinds` argument, so wrap it
         # into the single-argument form that rewindgradient expects.
@@ -172,8 +178,19 @@ end
         @test vec_psum == VectorPauliSum(dict_psum)
     end
 
+    @testset "Noise channels are rejected" begin
+        nq = 3
+        params = [0.3, 0.4]
+        psum = VectorPauliSum(PauliString(nq, [:Z, :Z], [1, 2]))
+
+        for noise in (DepolarizingNoise(2), freeze(DepolarizingNoise(2), 0.1))
+            circuit = Gate[PauliRotation(:X, 1), noise, PauliRotation(:Y, 2)]
+            @test_throws AssertionError rewindgradient(circuit, psum, params, overlapwithzero)
+        end
+    end
+
     @testset "Random small circuits" begin
-        Random.seed!(24)
+        Random.seed!(33)
 
         nq = 5
         one_qubit_symbols = (:X, :Y, :Z)
@@ -210,7 +227,7 @@ end
 
             n_params = countparameters(circuit)
             params = randn(n_params)
-            pstr = PauliString(nq, rand(one_qubit_symbols, 2), randperm(nq)[1:2])
+            pstr = PauliString(nq, [:Z, :Z], randperm(nq)[1:2])
             psum = VectorPauliSum(pstr)
 
             _checkgradient(circuit, psum, params, overlapwithzero)

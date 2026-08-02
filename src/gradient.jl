@@ -12,6 +12,7 @@ Compute `overlapfunc(propagate(circuit, psum, params; kwargs...))` together with
 respect to `params`, in one paired forward and backward sweep costing O(length(circuit)) gate applications.
 The only parametrized gates can be `PauliRotation`s. 
 All other gates must not be parametrized or frozen via `freeze(gate, param)` before inputting to `rewindgradient`.
+Noise channels are not supported, frozen or not, because the backward sweep cannot undo them.
 `overlapfunc` must be linear in the coefficients of the `VectorPauliSum` it is handed, e.g. any of
 `overlapwithzero`, `overlapwithplus`, `overlapwithcomputational`, `overlapwithmaxmixed`, or
 `overlapwithpaulisum`.
@@ -39,6 +40,7 @@ end
 function rewindgradient!(circuit, forward_cache::VectorPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
     # check that the only parameterized gates are PauliRotations
     @assert all(gate -> isa(gate, StaticGate) || gate isa PauliRotation, circuit) "All parameterized gates must be PauliRotations."
+    @assert all(_isrewindable, circuit) "Noise channels are not supported because they cannot be undone."
 
     nq = nqubits(forward_cache)
 
@@ -68,6 +70,13 @@ function rewindgradient!(circuit, forward_cache::VectorPauliPropagationCache, pa
 
     return expec, state.grad
 end
+
+
+# The backward sweep undoes a gate by re-applying its Schrödinger-picture form,
+# which only recovers the operator if the gate is invertible.
+_isrewindable(gate) = true
+_isrewindable(gate::ParametrizedNoiseChannel) = false
+_isrewindable(gate::FrozenGate) = _isrewindable(gate.gate)
 
 
 # A length-1 VectorPauliSum for a single Pauli string, for feeding into `overlapfunc`.
@@ -155,20 +164,35 @@ function _generatorcommutatordot(gate_mask::TT, op_terms, op_coeffs, dual_terms_
     return AK.mapreduce(identity, +, partial; init=zero(ComplexF64), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 end
 
-# Caps dual_cache's support down to op_cache's (already truncated) support. 
-# Both sides are sorted and duplicate-free at this point 
-# so this is a single sequential merge-join of the two term arrays versus a per-term binary search (O(n log m) random access
+# Caps dual_cache's support down to op_cache's (already truncated) support.
+# Both sides are sorted and duplicate-free at this point, so this is a merge-join of the two term
+# arrays, sliced across tasks the same way `_mergesortedhead!` slices its own two-pointer merge
 function _intersectfilter!(dual_cache, op_cache; thread::Bool=true)
     dual_terms_sorted = activeterms(dual_cache)
     op_terms_sorted = activeterms(op_cache)
     flags = activeflags(dual_cache)
 
-    n_dual = length(dual_terms_sorted)
-    n_op = length(op_terms_sorted)
+    task_partitioner, n_tasks = PropagationBase._preparetasks(length(dual_terms_sorted), thread)
 
-    i = 1
-    j = 1
-    @inbounds while i <= n_dual && j <= n_op
+    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+        dual_range = task_partitioner[task_id]
+        _flagintersection!(flags, dual_terms_sorted, op_terms_sorted, dual_range.start, dual_range.stop)
+    end
+
+    filterviaflags!(dual_cache; thread)
+
+    return dual_cache
+end
+
+# flags the dual terms in [lo, hi] that also occur in op_terms_sorted
+function _flagintersection!(flags, dual_terms_sorted, op_terms_sorted, lo::Int, hi::Int)
+    lo > hi && return
+
+    n_op = length(op_terms_sorted)
+    i = lo
+    j = searchsortedfirst(op_terms_sorted, dual_terms_sorted[lo])
+
+    @inbounds while i <= hi && j <= n_op
         dual_term = dual_terms_sorted[i]
         op_term = op_terms_sorted[j]
         if dual_term == op_term
@@ -182,12 +206,10 @@ function _intersectfilter!(dual_cache, op_cache; thread::Bool=true)
             j += 1
         end
     end
-    @inbounds while i <= n_dual
+    @inbounds while i <= hi
         flags[i] = false
         i += 1
     end
 
-    filterviaflags!(dual_cache; thread)
-
-    return dual_cache
+    return
 end
