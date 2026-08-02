@@ -1,9 +1,9 @@
 """
     getinttype(nqubits::Integer)
 
-Function to return the smallest integer type that can hold `nqubits`.
+Function to return an integer type that can hold `nqubits`.
 This is the type that will be used internally for representing Pauli strings.
-Above the native integer types the width is rounded up to a whole number of 64-bit words.
+Above the native integer types the bit-width is rounded up to a whole number of 64-bit words for performance.
 """
 function getinttype(nqubits::Integer)
     # we need 2 bits per qubit
