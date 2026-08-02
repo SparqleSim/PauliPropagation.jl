@@ -33,7 +33,9 @@ Wrap `gate_mask` for the two-byte path, or return it unchanged when that path do
 once per gate, never per Pauli string.
 """
 function _bytemask(gate_mask::TT, terms) where {TT}
-    (sizeof(TT) < _MIN_LOCAL_BYTES || !(terms isa Vector)) && return gate_mask
+    # the byte reads assume little-endian layout; ENDIAN_BOM is a constant, so the test folds away
+    little_endian = Base.ENDIAN_BOM == 0x04030201
+    (!little_endian || sizeof(TT) < _MIN_LOCAL_BYTES || !(terms isa Vector)) && return gate_mask
 
     bits = PropagationBase._masksetbits(gate_mask)
     isempty(bits) && return gate_mask
@@ -52,8 +54,8 @@ end
 
 ### Hooks used by the fused gate loop
 
-function _bytemask(gate_mask::TT, terms) where {TT}
-    (sizeof(TT) < _MIN_LOCAL_BYTES || !(terms isa Vector) || !Sys.islittleendian()) && return gate_mask
+_bytesof(terms::Vector, ::ByteMask) = Ptr{UInt8}(pointer(terms))
+_bytesof(terms, gate_mask) = terms
 
 @inline _byteat(bytes::Ptr{UInt8}, ii::Int, m::ByteMask{TT}, k::Int) where {TT} =
     unsafe_load(bytes + (ii - 1) * Base.aligned_sizeof(TT) + m.inds[k] - 1)

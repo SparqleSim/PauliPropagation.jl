@@ -31,6 +31,9 @@ end
 # below this width the library's whole-string count is faster; measured, the two draw level here
 const _MIN_WORD_BYTES = 256
 
+# above this width (32768 qubits) the NTuple reinterpret in `_wordweight` gets expensive to compile
+const _MAX_WORD_BYTES = 8192
+
 """
     _truncateweight(pstr, max_weight)
 
@@ -38,13 +41,13 @@ const _MIN_WORD_BYTES = 256
 qubit's two bits never straddle a word boundary, so the words' weights just add, and nothing operates
 on the whole string, which is what gets slow at these widths.
 
-Narrower strings, and any width that is not a whole number of words, use the library version. The
-test is on a type, so it settles at compile time.
+Widths outside `[_MIN_WORD_BYTES, _MAX_WORD_BYTES]`, or not a whole number of words, use the
+library version. The test is on a type, so it settles at compile time.
 """
 @inline _truncateweight(pstr, max_weight::Real) = PauliPropagation.truncateweight(pstr, max_weight)
 
 @inline function _truncateweight(pstr::TT, max_weight::Real) where {TT<:Unsigned}
-    if sizeof(TT) < _MIN_WORD_BYTES || !iszero(sizeof(TT) % 8)
+    if sizeof(TT) < _MIN_WORD_BYTES || sizeof(TT) > _MAX_WORD_BYTES || !iszero(sizeof(TT) % 8)
         return PauliPropagation.truncateweight(pstr, max_weight)
     end
     isinf(max_weight) && return false
