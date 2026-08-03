@@ -4,6 +4,7 @@
 ##
 ###
 
+
 ## T gate
 
 struct TGate <: StaticGate
@@ -35,7 +36,6 @@ const _tgate_unitary = [[1 0]; [0 exp(1.0im * pi / 4)]]
 ## TransferMapGate
 """
     TransferMapGate(transfer_map, qinds::Vector{Int})
-    TransferMapGate(mat::AbstractMatrix, qinds)
 
 A non-parametrized `StaticGate` defined by a transfer map acting on the qubits `qinds`.
 Transfer maps can be constructed manually or generated via `totransfermap()`.
@@ -134,4 +134,5 @@ function TransferMapGate(mat::AbstractMatrix, qinds)
     ptmap = TransferMap(mat; ptm=true)
 
     return TransferMapGate(ptmap, qinds)
+
 end
