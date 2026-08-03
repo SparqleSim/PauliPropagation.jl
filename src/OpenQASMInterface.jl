@@ -1,9 +1,8 @@
 module OpenQASMInterface
 
 using OpenQASM
-using LinearAlgebra
 # Import necessary types from the main PauliPropagation module
-import ..PauliPropagation: Gate, CliffordGate, PauliRotation, TGate, TransferMapGate, calculateptm
+import ..PauliPropagation: Gate, CliffordGate, PauliRotation, TGate, TransferMapGate
 
 export readqasm
 

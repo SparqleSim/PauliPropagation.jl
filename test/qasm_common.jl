@@ -1,8 +1,22 @@
 # Shared helpers for QASM tests.
 
+using Test
 using PauliPropagation
 using PauliPropagation.OpenQASMInterface
-import PauliPropagation: TransferMapGate
+
+"""
+    _qasm_program_string(nq, gate_body) -> String
+
+Build a minimal OpenQASM 2.0 program with one `qreg` and the given gate body.
+"""
+function _qasm_program_string(nq::Int, gate_body::AbstractString)
+    return """
+    OPENQASM 2.0;
+    include "qelib1.inc";
+    qreg q[$nq];
+    $gate_body
+    """
+end
 
 function _readqasm_program(qasm_content::AbstractString)
     filepath = tempname() * ".qasm"
@@ -15,13 +29,7 @@ function _readqasm_program(qasm_content::AbstractString)
 end
 
 function _readqasm_single_gate(nq::Int, gate_line::AbstractString)
-    qasm_content = """
-    OPENQASM 2.0;
-    include "qelib1.inc";
-    qreg q[$nq];
-    $gate_line
-    """
-    return _readqasm_program(qasm_content)
+    return _readqasm_program(_qasm_program_string(nq, gate_line))
 end
 
 function _default_observables(nq::Int)
@@ -38,17 +46,6 @@ function _default_observables(nq::Int)
     return observables
 end
 
-function _assert_qasm_propagation_matches_transfermap(
-    nq::Int,
-    gate_line::AbstractString;
-    observables=_default_observables(nq),
-)
-    nq_parsed, circuit, thetas = _readqasm_single_gate(nq, gate_line)
-    @test nq_parsed == nq
-    ref_gate = TransferMapGate(totransfermap(nq_parsed, circuit, thetas), collect(1:nq_parsed))
-    for obs in observables
-        psum_qasm = propagate(circuit, obs, thetas; min_abs_coeff=0)
-        psum_ref = propagate([ref_gate], obs; min_abs_coeff=0)
-        @test psum_qasm == psum_ref
-    end
+function _pp_overlap_with_zero(circuit, thetas, obs; min_abs_coeff=0)
+    return overlapwithzero(propagate(circuit, obs, thetas; min_abs_coeff))
 end
