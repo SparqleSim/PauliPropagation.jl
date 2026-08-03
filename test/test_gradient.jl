@@ -178,6 +178,19 @@ end
         @test vec_psum == VectorPauliSum(dict_psum)
     end
 
+    @testset "Truncation to empty sum does not error" begin
+        # regression: min_abs_coeff truncating everything mid-sweep emptied the
+        # caches and lastactiveindex threw a BoundsError on the empty view
+        nq = 2
+        circuit = [PauliRotation(:X, 1), PauliRotation(:Z, 2), PauliRotation(:Y, 1)]
+        psum = VectorPauliSum(PauliSum(nq, PauliString(nq, :Z, 1)))
+        params = [0.3, 0.7, 0.2]
+
+        expec, grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=10.0)
+        @test iszero(expec)
+        @test all(iszero, grad)
+    end
+
     @testset "Noise channels are rejected" begin
         nq = 3
         params = [0.3, 0.4]
