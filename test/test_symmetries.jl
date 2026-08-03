@@ -57,3 +57,37 @@ end
     @test PauliSum(merged_vecpsum) == expected_psum
 
 end
+
+
+@testset "translationmerge does not mutate its input" begin
+    nq = 6
+    vpsum = VectorPauliSum(get_psum(nq))
+    original = deepcopy(vpsum)
+
+    translationmerge(vpsum)
+
+    @test PauliSum(vpsum) == PauliSum(original)
+end
+
+@testset "translationmerge thread=false matches thread=true" begin
+    nq = 6
+    vpsum = VectorPauliSum(get_psum(nq))
+
+    merged_thread = translationmerge(vpsum; thread=true)
+    merged_nothread = translationmerge(vpsum; thread=false)
+
+    @test PauliSum(merged_thread) == PauliSum(merged_nothread)
+end
+
+@testset "translationmerge grid dimension mismatch" begin
+    nq = 6
+    input_psum = get_psum(nq)
+
+    # nx * ny must equal nqubits(psum)
+    @test_throws ArgumentError translationmerge(input_psum, 2, 4)
+    @test_throws ArgumentError translationmerge(input_psum, 4, 1)
+    @test_throws ArgumentError translationmerge(VectorPauliSum(input_psum), 2, 4)
+
+    # sanity check: matching dimensions do not throw
+    @test translationmerge(input_psum, 2, 3) isa PauliSum
+end

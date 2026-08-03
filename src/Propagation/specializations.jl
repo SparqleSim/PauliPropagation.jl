@@ -101,8 +101,8 @@ function PropagationBase.applymergetruncate!(gate::ImaginaryPauliRotation, prop_
     # these can be avoided by setting `normalize_coeffs=false`
     if normalize_coeffs
         # "getmergedcoeff" because we know there are no duplictates.
-        # for array storage, the identity term will also be right at the beginning
-        mult!(prop_cache, 1 / getmergedcoeff(mainsum(prop_cache), 0))
+        # TODO: this should use sortedness of vectors
+        mult!(prop_cache, 1 / getmergedcoeff(activesum(prop_cache), 0))
     end
 
     # normal truncation
@@ -134,9 +134,9 @@ function PauliPropagation.applytoall!(gate::ImaginaryPauliRotation, prop_cache::
         end
 
         coeff1 = coeff * cosh_val
-        # because of the imaginary time, we have take a normal product here
-        # given the commutation, the sign is always real
-        new_pstr, sign = imaginarypaulirotationproduct(gate_mask, pstr)
+        # paulirotationproduct's sign formula also gives the correct minus sign here:
+        # e^{-τ/2 P} Q e^{-τ/2 P} = cosh(τ) Q - sinh(τ) PQ for commuting P, Q
+        new_pstr, sign = paulirotationproduct(gate_mask, pstr)
         coeff2 = coeff * sinh_val * sign
 
         # set the coefficient of the original Pauli string
@@ -148,19 +148,6 @@ function PauliPropagation.applytoall!(gate::ImaginaryPauliRotation, prop_cache::
     end
 
     return
-end
-
-function imaginarypaulirotationproduct(gate_mask::TT, pstr::TT) where TT
-    new_pstr = PauliPropagation._bitpaulimultiply(gate_mask, pstr)
-
-    # this counts the exponent of the imaginary unit in the new Pauli string
-    im_count = PauliPropagation._calculatesignexponent(gate_mask, pstr)
-
-    # now, instead of computing real(im^im_count),
-    # we do this in one step via a cheeky trick:
-    sign = 1 - (im_count & 2)
-    # this is equivalent to sign = real(im^im_count)
-    return new_pstr, sign
 end
 
 
@@ -236,6 +223,44 @@ function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::PauliPropagat
         new_coeff = coeff * (1 - lambda)
         # change the coefficient in psum, don't move anything to aux_psum
         set!(psum, pstr, new_coeff)
+    end
+
+    return prop_cache
+end
+
+"""
+    applymergetruncate!(gate::PauliNoise, prop_cache::PauliPropagationCache, lambda; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, kwargs...)
+
+Overload of `applymergetruncate!` for `PauliNoise` gates and a propagating `PauliSum`.
+`PauliNoise` never merges and never changes which Pauli string a term is (only its coefficient), so this
+rescales and truncates every term in a single pass, instead of the generic apply-then-truncate two-pass
+default.
+"""
+function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::PauliPropagationCache, lambda;
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing, kwargs...)
+
+    _check_qind_range(nqubits(prop_cache), gate.qind)
+    _check_noise_strength(PauliNoise, lambda)
+
+    psum = mainsum(prop_cache)
+    qind = gate.qind
+
+    for (pstr, coeff) in psum
+        isdamped(gate, getpauli(pstr, qind)) || continue
+
+        new_coeff = coeff * (1 - lambda)
+
+        is_truncated = truncateweight(pstr, max_weight) ||
+                       truncatemincoeff(new_coeff, min_abs_coeff) ||
+                       truncatefrequency(new_coeff, max_freq) ||
+                       truncatesins(new_coeff, max_sins) ||
+                       (!isnothing(customtruncfunc) && customtruncfunc(pstr, new_coeff))
+
+        if is_truncated
+            delete!(psum, pstr)
+        else
+            set!(psum, pstr, new_coeff)
+        end
     end
 
     return prop_cache
@@ -326,10 +351,10 @@ end
 
 ### Frozen Gates
 """
-    applytoall!(gate::FrozenGate, thetas, psum, aux_psum; kwargs...)
+    applymergetruncate!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
 
-Overload of `applytoall!` for `FrozenGate`s. Re-directs to `applytoall!` for the wrapped `FrozenGate.gate` with the frozen parameter.
+Overload of `applymergetruncate!` for `FrozenGate`s. Re-directs to `applymergetruncate!` for the wrapped `FrozenGate.gate` with the frozen parameter.
 """
-function PropagationBase.applytoall!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
-    return applytoall!(gate.gate, prop_cache, gate.parameter; kwargs...)
+function PropagationBase.applymergetruncate!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
+    return applymergetruncate!(gate.gate, prop_cache, gate.parameter; kwargs...)
 end

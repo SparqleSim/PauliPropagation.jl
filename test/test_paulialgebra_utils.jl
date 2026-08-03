@@ -149,6 +149,16 @@ end
         @test convertcoefftype(Float64, psum) == expected_psum
     end
 
+    @testset "VectorPauliSum" begin
+        vpsum = VectorPauliSum(ComplexF64, 2)
+        add!(vpsum, [:X, :Y], [1, 2], 2 + 0im)
+        add!(vpsum, :Z, 1, 1 + 0im)
+        expected_vpsum = VectorPauliSum(2)
+        add!(expected_vpsum, [:X, :Y], [1, 2], 2)
+        add!(expected_vpsum, :Z, 1, 1)
+        @test convertcoefftype(Float64, vpsum) == expected_vpsum
+    end
+
 end
 
 @testset "Set Pauli for `PauliString` type" begin

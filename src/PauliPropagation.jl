@@ -103,6 +103,7 @@ export
     bricklayertopology,
     staircasetopology,
     rectangletopology,
+    rectanglebricktopology,
     staircasetopology2d,
     ibmeagletopology,
     hardwareefficientcircuit,
@@ -232,7 +233,7 @@ export paulipropagation2yao
 
 include("OpenQASMInterface.jl")
 
-# # experimental vector propagation 
-# include("Propagation/VectorPropagate/VectorPropagate.jl")
+# experimental Performance module
+include("Performance/Performance.jl")
 
 end

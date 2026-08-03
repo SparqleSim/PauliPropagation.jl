@@ -40,6 +40,10 @@ using Random
 
     include("test_inplace.jl")
 
+    include("test_xortailmerge.jl")
+
+    include("test_performance.jl")
+
     include("test_numericalcertificates.jl")
 
     include("test_visualization.jl")
