@@ -35,17 +35,12 @@ end
 function resample!(prop_cache::AbstractPropagationCache, target_size, resample_args...; resample_func=nothing, squared=false, resample_kwargs...)
     @assert target_size > 0 "target_size must be positive"
 
-    if target_size > activesize(prop_cache) && resample_func !== multinomial_resample!
-        throw(ArgumentError("target_size must be less than the current active size 
-        of the prop_cache for resample methods (like $(resample_func)) other than multinomial_resample!."))
-    end
-    
     # resample_func is expected to take prop_cache and target_size as arguments
     # anything else needs to be wrapped into a closure
 
     if isnothing(resample_func)
         if !squared
-            # faster and almost as accurate as calibrated systematic_resample!, 
+            # faster and almost as accurate as calibrated systematic_resample!,
             # but not compatible with 2-norm sampling
             resample_func = semideterministic_systematic_resample!
         else
@@ -55,9 +50,20 @@ function resample!(prop_cache::AbstractPropagationCache, target_size, resample_a
         end
     end
 
+    _checktargetsize(resample_func, activesize(prop_cache), target_size)
+
     resample_func(prop_cache, target_size, resample_args...; squared, resample_kwargs...)
 
     return prop_cache
+end
+
+# Most resamplers fold each incoming term into its own slot, so they can only ever shrink the sum.
+# Resamplers that draw independently, like multinomial_resample!, overload this to accept any size.
+function _checktargetsize(resample_func, active_size, target_size)
+    if target_size > active_size
+        throw(ArgumentError("$resample_func cannot grow $active_size terms to target_size $target_size. Use multinomial_resample!."))
+    end
+    return
 end
 
 # the auxsum's raw arrays (write destination) and the cache's active terms/coeffs (read source)
@@ -92,6 +98,9 @@ function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size
 
     return prop_cache
 end
+
+# draws are independent of the incoming terms, so any target_size is reachable
+_checktargetsize(::typeof(multinomial_resample!), active_size, target_size) = nothing
 
 function _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool, thread::Bool)
     power = squared ? 2 : 1
