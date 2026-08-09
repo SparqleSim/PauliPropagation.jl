@@ -84,6 +84,7 @@ makedocs(
             "examples/7-custom-pathproperties.md",
             "examples/8-automatic-differentiation.md",
             "examples/9-advanced-custom-gates.md",
+            "examples/advanced_performance.md",
             "examples/mcpropagate.md",
             "examples/ex_ttfi_op_evolution.md",
             "examples/imaginary-time-evolution.md",
