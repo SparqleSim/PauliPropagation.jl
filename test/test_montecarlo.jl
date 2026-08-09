@@ -179,6 +179,31 @@ end
 end
 
 
+@testset "mcsample converts PauliString and PauliSum inputs" begin
+    nq = 3
+    circuit = efficientsu2circuit(nq, 1)
+    thetas = randn(countparameters(circuit))
+    pstr = PauliString(nq, :Z, 2)
+    psum = PauliSum(pstr)
+
+    # sampling keeps one branch per gate, so a single walker stays a single term
+    from_pstr = mcsample(circuit, pstr, thetas)
+    @test from_pstr isa PauliString
+    @test nqubits(from_pstr) == nq
+
+    from_psum = mcsample(circuit, psum, thetas)
+    @test from_psum isa PauliSum
+    @test length(from_psum) == 1
+
+    # the input is converted, not consumed
+    @test length(psum) == 1
+    @test getcoeff(psum, pstr.term) ≈ 1.0
+
+    @test_throws ArgumentError mcsample!(circuit, pstr, thetas)
+    @test_throws ArgumentError mcsample!(circuit, psum, thetas)
+end
+
+
 @testset "mcpropagate! matches propagate! exactly below max_size" begin
     nq = 4
     nl = 3
@@ -214,6 +239,45 @@ end
     result2 = mcpropagate(circuit, VectorPauliSum(pstr), thetas; max_size, squared=true)
     @test !isempty(result2)
     @test length(result2) <= max_size
+end
+
+
+@testset "mcpropagate converts PauliString and PauliSum inputs" begin
+    nq = 4
+    nl = 3
+    circuit = efficientsu2circuit(nq, nl)
+    thetas = randn(countparameters(circuit))
+    pstr = PauliString(nq, :Z, 2)
+    psum = PauliSum(pstr)
+
+    exact_psum = propagate(circuit, pstr, thetas; min_abs_coeff=0)
+
+    # max_size effectively infinite, so both conversions must reproduce propagate exactly
+    from_pstr = mcpropagate(circuit, pstr, thetas; max_size=10^9, min_abs_coeff=0)
+    @test from_pstr isa VectorPauliSum
+    @test length(from_pstr) == length(exact_psum)
+    for (term, coeff) in zip(paulis(from_pstr), coefficients(from_pstr))
+        @test coeff == getcoeff(exact_psum, term)
+    end
+
+    from_psum = mcpropagate(circuit, psum, thetas; max_size=10^9, min_abs_coeff=0)
+    @test from_psum isa PauliSum
+    @test length(from_psum) == length(exact_psum)
+    for (term, coeff) in zip(paulis(from_psum), coefficients(from_psum))
+        @test coeff == getcoeff(exact_psum, term)
+    end
+
+    # the input is converted, not consumed
+    @test length(psum) == 1
+    @test getcoeff(psum, pstr.term) ≈ 1.0
+
+    # resampling still bounds the ensemble when it runs through the conversions
+    max_size = 10
+    @test length(mcpropagate(circuit, pstr, thetas; max_size, min_abs_coeff=1e-8)) <= max_size
+    @test length(mcpropagate(circuit, psum, thetas; max_size, min_abs_coeff=1e-8)) <= max_size
+
+    @test_throws ArgumentError mcpropagate!(circuit, pstr, thetas; max_size=10^9)
+    @test_throws ArgumentError mcpropagate!(circuit, psum, thetas; max_size=10^9)
 end
 
 
@@ -310,6 +374,25 @@ end
         @test 1 <= activesize(cache) <= target_size + term_tol
     end
 end
+
+@testset "resample converts PauliSum inputs" begin
+    nq = 4
+    pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), rand() + 0.1) for _ in 1:30]
+    psum = PauliSum(pstrs)
+    n = length(psum)
+    target_size = max(1, n ÷ 2)
+
+    resampled = resample(psum, target_size)
+    @test resampled isa PauliSum
+    @test 1 <= length(resampled) <= target_size + 3
+    @test sum(abs, coefficients(resampled)) ≈ sum(abs, coefficients(psum)) rtol = 0.3
+
+    # the input is converted, not consumed
+    @test length(psum) == n
+
+    @test_throws ArgumentError resample!(psum, target_size)
+end
+
 
 @testset "resample! forwards squared to the resampler" begin
     nq = 4

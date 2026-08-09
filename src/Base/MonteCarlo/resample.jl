@@ -4,7 +4,6 @@
 ##
 ###
 # TODO: Resampling currently only works for array-based TermSums
-using StatsBase
 
 ## RE-SAMPLING
 """
@@ -94,7 +93,7 @@ function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size
     return prop_cache
 end
 
-function _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared=false, thread::Bool=true)
+function _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool, thread::Bool)
     power = squared ? 2 : 1
 
     # Compute the cumulative distribution
@@ -145,7 +144,7 @@ function systematic_resample!(prop_cache::AbstractPropagationCache, target_size:
     return prop_cache
 end
 
-function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool=false, calibrate=true, rtol=0.02, atol=1, thread::Bool=true)
+function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool, calibrate, rtol, atol, thread::Bool)
     power = squared ? 2 : 1
 
     # cumulative weights are always real; reuses dst_coeffs's memory when possible (see _realweightbuffer)
@@ -193,7 +192,7 @@ function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size
 end
 
 
-function _calibrate_prob_step(coeffs, total_weight, target_size; power=1, rtol::Real=0.02, atol::Real=0, thread::Bool=true)
+function _calibrate_prob_step(coeffs, total_weight, target_size; power, rtol::Real, atol::Real, thread::Bool)
     # coeffs may be complex, but the sums/tolerances computed here are always real
     RT = real(eltype(coeffs))
 
