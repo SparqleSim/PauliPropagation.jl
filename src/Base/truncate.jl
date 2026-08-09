@@ -33,15 +33,11 @@ function _truncate!(::DictStorage, truncfunc::F, prop_cache::AbstractPropagation
 end
 
 function _truncate!(::DictStorage, truncfunc::F, term_sum::AbstractTermSum; kwargs...) where F<:Function
-    for (pstr, coeff) in term_sum
-        if truncfunc(pstr, coeff)
-            delete!(term_sum, pstr)
-        end
-    end
+    filter!(_invertfunc(truncfunc), storage(term_sum))
     return term_sum
 end
 
-function _truncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPropagationCache; kwargs...) where F<:Function
+function _truncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...) where F<:Function
 
     if isempty(prop_cache)
         return prop_cache
@@ -49,9 +45,9 @@ function _truncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPropagatio
 
     # flag the indices that we keep
     keepfunc(pstr, coeff) = !truncfunc(pstr, coeff)
-    flag!(keepfunc, prop_cache)
+    flag!(keepfunc, prop_cache; thread)
 
-    filterviaflags!(prop_cache)
+    filterviaflags!(prop_cache; thread)
 
     return prop_cache
 end
@@ -64,6 +60,29 @@ function _truncate!(::ArrayStorage, truncfunc::F, term_sum::AbstractTermSum; kwa
 
     # extracts the original input term sum
     return extractsum!(prop_cache, term_sum)
+end
+
+
+"""
+    maxabscoeff(term_sum::AbstractTermSum)
+    maxabscoeff(prop_cache::AbstractPropagationCache)
+
+Returns the maximum absolute coefficient currently present in `term_sum`, or in the active
+view of `prop_cache`.
+"""
+function maxabscoeff(thing::Union{AbstractTermSum,AbstractPropagationCache})
+    return _maxabscoeff(StorageType(thing), thing)
+end
+
+function _maxabscoeff(::DictStorage, thing::Union{AbstractTermSum,AbstractPropagationCache})
+    return mapreduce(coeff -> abs(tonumber(coeff)), max, coefficients(thing); init=zero(real(numcoefftype(thing))))
+end
+
+function _maxabscoeff(::ArrayStorage, thing::Union{AbstractTermSum,AbstractPropagationCache})
+    RT = real(numcoefftype(thing))
+    # `neutral` must be given explicitly since AK's default (typemin) is undefined for RT here;
+    # zero is a valid neutral element for `max` since all mapped values (abs(...)) are >= 0
+    return AK.mapreduce(coeff -> abs(tonumber(coeff)), max, coefficients(thing); init=zero(RT), neutral=zero(RT))
 end
 
 

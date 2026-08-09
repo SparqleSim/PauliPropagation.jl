@@ -29,18 +29,30 @@ end
 
 
 @testset "truncate" begin
-    function random_pauli_sum(PS, nq, nterms)
-        pstrs = [PauliString(nq, rand([:I, :X, :Y, :Z], nq), 1:nq, randn()) for _ in 1:nterms]
-        return PS(pstrs)
-    end
+
+    nq = 4
+    pstrs = [
+        PauliString(nq, [:X, :Y], [1, 2], 0.5),   # survives
+        PauliString(nq, [:Z], [3], 0.05),         # truncated (below threshold)
+        PauliString(nq, [:X, :Z], [2, 4], -0.2),  # survives
+        PauliString(nq, [:Y], [1], 0.099),        # truncated (just below threshold)
+        PauliString(nq, [:Z, :Y], [1, 3], 0.1),   # survives (== threshold)
+    ]
 
     for PS in (PauliSum, VectorPauliSum)
-        psum = random_pauli_sum(PS, 4, 10)
+        psum = PS(pstrs)
         psum_truncated_outofplace = truncate(psum; min_abs_coeff=0.1)
         psum_truncated_inplace = truncate!(psum; min_abs_coeff=0.1)
 
         @test psum_truncated_inplace === psum
         @test psum_truncated_inplace == psum_truncated_outofplace
+
+        @test length(psum_truncated_inplace) == 3
+        @test getcoeff(psum_truncated_inplace, [:X, :Y], [1, 2]) ≈ 0.5
+        @test getcoeff(psum_truncated_inplace, [:X, :Z], [2, 4]) ≈ -0.2
+        @test getcoeff(psum_truncated_inplace, [:Z, :Y], [1, 3]) ≈ 0.1
+        @test getcoeff(psum_truncated_inplace, [:Z], [3]) == 0.0
+        @test getcoeff(psum_truncated_inplace, [:Y], [1]) == 0.0
     end
 
 end
@@ -57,6 +69,10 @@ end
 
         @test psum_merged_inplace === psum
         @test psum_merged_inplace == psum_merged_outofplace
+
+        @test length(psum_merged_inplace) == 2
+        @test getcoeff(psum_merged_inplace, :X, 1) ≈ 0.3
+        @test getcoeff(psum_merged_inplace, :Y, 1) ≈ 0.7
     end
 
 end

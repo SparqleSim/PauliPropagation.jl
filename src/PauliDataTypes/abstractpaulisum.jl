@@ -98,6 +98,7 @@ Provide the index or indices for those symbols as `qind` or `qinds`.
 The coefficient of the Pauli string in the Pauli sum defaults to 1.0.
 """
 function PropagationBase.add!(psum::AbstractPauliSum, paulis::Union{Symbol,Vector{Symbol}}, qinds, coeff=coefftype(psum)(1.0))
+    _check_qind_range(nqubits(psum), qinds)
     return add!(psum, PauliString(psum.nqubits, paulis, qinds, coeff))
 end
 
@@ -146,7 +147,7 @@ function Base.:+(pstr1::PauliString, pstr2::PauliString)
 
     # get a compatibel coefficient type
     CType = promote_type(coefftype(pstr1), coefftype(pstr2))
-    psum = PauliSum(CType, nq)
+    psum = PauliSum(nq, Dict{paulitype(pstr1), CType}())
     add!(psum, pstr1)
     add!(psum, pstr2)
     return psum
@@ -213,6 +214,21 @@ PropagationBase.set!
 # TODO: in-place pauliprod()
 
 
+function Base.conj(psum::AbstractPauliSum)
+    CT = coefftype(psum)
+    if CT <: Real
+        return deepcopy(psum)
+    end
+
+    return conj!(deepcopy(psum))
+end
+
+function Base.conj!(psum::AbstractPauliSum)
+    for (pstr, coeff) in psum
+        set!(psum, pstr, conj(coeff))
+    end
+    return psum
+end
 
 """
     filter!(filterfunc::Function, psum::AbstractPauliSum)
@@ -226,4 +242,4 @@ Base.filter(filterfunc::F, psum::AbstractPauliSum) where {F<:Function} = truncat
 
 Filter a `AbstractPauliSum` in-place by removing all Pauli strings for which `filterfunc(pstr, coeff)` returns `false`.
 """
-filter!(filterfunc::F, psum::AbstractPauliSum) where {F<:Function} = truncate!((pstr, coeff) -> !filterfunc(pstr, coeff), psum)
+Base.filter!(filterfunc::F, psum::AbstractPauliSum) where {F<:Function} = truncate!((pstr, coeff) -> !filterfunc(pstr, coeff), psum)

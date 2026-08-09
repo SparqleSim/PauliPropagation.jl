@@ -40,9 +40,8 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropa
     psum = mainsum(prop_cache)
     aux_psum = auxsum(prop_cache)
 
-    # turn the (potentially) PauliRotation gate into a MaskedPauliRotation gate
-    # this allows for faster operations
-    gate_mask = symboltoint(nqubits(psum), gate.symbols, gate.qinds)
+    # compute the bitmask of the gate generator for faster operations
+    gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
 
     # loop over all Pauli strings and their coefficients in the Pauli sum
     for (pstr, coeff) in psum
@@ -138,4 +137,122 @@ function _applycos(pth::PProp, theta, sign=1; kwargs...) where {PProp<:PathPrope
     end
 
     return PProp((updateval(getfield(pth, field), field) for field in fields)...)
+end
+
+
+## Specialization for Monte Carlo path sampling with PathProperties coefficients
+# can be used by all PathProperties types that have the necessary fields `ncos`, `nsins`, and `freq`
+
+# Increment the `ncos` and `freq` fields of a `PathProperties` object by 1, leaving `coeff` untouched.
+function _incrementcosandfreq(pth::PProp) where {PProp<:PathProperties}
+    fields = fieldnames(PProp)
+
+    function updateval(val, field)
+        if field == :ncos || field == :freq
+            return val + 1
+        else
+            return val
+        end
+    end
+
+    return PProp((updateval(getfield(pth, field), field) for field in fields)...)
+end
+
+# Increment the `nsins` and `freq` fields of a `PathProperties` object by 1, leaving `coeff` untouched.
+function _incrementsinandfreq(pth::PProp) where {PProp<:PathProperties}
+    fields = fieldnames(PProp)
+
+    function updateval(val, field)
+        if field == :nsins || field == :freq
+            return val + 1
+        else
+            return val
+        end
+    end
+
+    return PProp((updateval(getfield(pth, field), field) for field in fields)...)
+end
+
+# Overload of `mcapplytoall!` for `CliffordGate`s acting onto `VectorPauliSum`s with `PathProperties` coefficients.
+# The generic method in `vectormontecarlo.jl` isolates the raw ±1 sign via `apply(gate, term, one(coeff), ...)`,
+# but `one(coeff)` for a `PathProperties` coefficient returns another `PathProperties` object, not a plain
+# number, so the subsequent `sign^power` fails. Isolating the sign via `one(tonumber(coeff))` instead sidesteps
+# this: `apply` then returns a plain-number sign, which the generic `*` operator multiplies onto `coeff`,
+# leaving `nsins`/`ncos`/`freq` untouched, exactly as for Clifford gates in the deterministic pipeline.
+function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::VectorPauliSum{TV,CV}; squared=false, thread::Bool=true, kwargs...) where {TV,CT<:PathProperties,CV<:AbstractVector{CT}}
+    lookup_map = clifford_map[gate.symbol]
+
+    power = squared ? 2 : 1
+
+    term_vec = paulis(psum)
+    coeff_vec = coefficients(psum)
+    AK.foreachindex(term_vec; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
+        term = term_vec[ii]
+        coeff = coeff_vec[ii]
+
+        new_term, sign = only(apply(gate, term, one(tonumber(coeff)), lookup_map))
+
+        new_coeff = coeff * sign^power
+
+        term_vec[ii] = new_term
+        coeff_vec[ii] = new_coeff
+    end
+
+    # term values changed in place, order not preserved
+    setsortedprefix!(psum, 0)
+
+    return psum
+end
+
+
+# Overload of `mcapplytoall!` for `PauliRotation` gates acting onto `VectorPauliSum`s with `PathProperties`
+# coefficients. Identical branch-sampling logic to the generic method in `vectormontecarlo.jl`, but additionally
+# tracks the `nsins`/`ncos`/`freq` counters (without touching `coeff` itself) so that `max_freq`/`max_sins`
+# truncations remain usable under Monte Carlo path sampling.
+function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::VectorPauliSum{TV,CV}, theta; squared=false, thread::Bool=true, kwargs...) where {TV,CT<:PathProperties,CV<:AbstractVector{CT}}
+    power = squared ? 2 : 1
+
+    sin_val = sin(theta)
+    abs_sin = abs(sin_val)^power
+    sin_sign = sign(sin_val)^power
+
+    cos_val = cos(theta)
+    abs_cos = abs(cos_val)^power
+    cos_sign = sign(cos_val)^power
+
+    # >= 1 for power=1 and = 1 for power=2
+    normalization = abs_sin + abs_cos
+
+    # probability of branching off
+    p = abs_sin / normalization
+
+    gate_mask = symboltoint(paulitype(psum), gate.symbols, gate.qinds)
+
+    term_vec = paulis(psum)
+    coeff_vec = coefficients(psum)
+    AK.foreachindex(term_vec; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
+        term = term_vec[ii]
+        coeff = coeff_vec[ii]
+
+        if !commutes(gate_mask, term)
+            if rand() < p
+                # Apply sine branch
+                new_term, prod_sign = paulirotationproduct(gate_mask, term)
+                new_coeff = _incrementsinandfreq(coeff * normalization * sin_sign * prod_sign^power)
+                # Update in place
+                term_vec[ii] = new_term
+                coeff_vec[ii] = new_coeff
+            else
+                # Apply cos branch
+                new_coeff = _incrementcosandfreq(coeff * normalization * cos_sign)
+                # Update in place
+                coeff_vec[ii] = new_coeff
+            end
+        end
+    end
+
+    # term values changed in place, order not preserved
+    setsortedprefix!(psum, 0)
+
+    return psum
 end

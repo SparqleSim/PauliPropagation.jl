@@ -1,4 +1,5 @@
 using PauliPropagation
+using PauliPropagation.PropagationBase
 using Test
 using Random
 
@@ -40,10 +41,20 @@ using Random
 
     include("test_inplace.jl")
 
+    include("test_gradient.jl")
+
+    include("test_xortailmerge.jl")
+
+    include("test_montecarlo.jl")
+
+    include("test_performance.jl")
+
     include("test_numericalcertificates.jl")
 
     include("test_visualization.jl")
 
     include("test_gates_against_yao.jl")
+
+    include("test_yao_extension.jl")
 
 end

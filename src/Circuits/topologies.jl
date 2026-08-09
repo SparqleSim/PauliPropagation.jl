@@ -48,7 +48,6 @@ function bricklayertopology(qindices; periodic=false)
     end
 end
 
-# TODO: make a 2D bricklayertopology that is somewhat unbiased
 """
     staircasetopology(nqubits::Integer; periodic=false)
 
@@ -57,7 +56,7 @@ If `periodic` is set to `true`, the last qubit is connected to the first qubit.
 """
 function staircasetopology(nqubits::Integer; periodic=false)
     topology = [(ii, ii + 1) for ii in 1:nqubits-1]
-    if periodic
+    if periodic && nqubits > 2
         push!(topology, (nqubits, 1))
     end
     return topology
@@ -101,6 +100,46 @@ function rectangletopology(nx::Integer, ny::Integer; periodic=false)
 
     return topology
 
+end
+
+
+"""
+    rectanglebricktopology(nx::Integer, ny::Integer; periodic_x=false, periodic_y=false)
+
+Create a 2D brick-layer topology on a grid of `nx` by `ny` qubits, indexed column-major via `LinearIndices((nx, ny))`.
+The topology is split into four sequential layers of non-overlapping two-qubit connections:
+horizontal bonds starting at odd columns, horizontal bonds starting at even columns,
+vertical bonds starting at odd rows, and vertical bonds starting at even rows.
+If `periodic_x` (`periodic_y`) is set to `true`, the grid is connected periodically along the `x` (`y`) direction.
+"""
+function rectanglebricktopology(nx::Integer, ny::Integer; periodic_x::Bool=false, periodic_y::Bool=false)
+    LI = LinearIndices((nx, ny))
+
+    # Layer A: Horizontal edges starting at odd columns
+    layer_A = [(LI[x, y], LI[x+1, y]) for x in 1:2:(nx-1) for y in 1:ny]
+    if periodic_x && isodd(nx) && nx > 1
+        append!(layer_A, [(LI[nx, y], LI[1, y]) for y in 1:ny])
+    end
+
+    # Layer B: Horizontal edges starting at even columns
+    layer_B = [(LI[x, y], LI[x+1, y]) for x in 2:2:(nx-1) for y in 1:ny]
+    if periodic_x && iseven(nx) && nx > 2
+        append!(layer_B, [(LI[nx, y], LI[1, y]) for y in 1:ny])
+    end
+
+    # Layer C: Vertical edges starting at odd rows
+    layer_C = [(LI[x, y], LI[x, y+1]) for x in 1:nx for y in 1:2:(ny-1)]
+    if periodic_y && isodd(ny) && ny > 1
+        append!(layer_C, [(LI[x, ny], LI[x, 1]) for x in 1:nx])
+    end
+
+    # Layer D: Vertical edges starting at even rows
+    layer_D = [(LI[x, y], LI[x, y+1]) for x in 1:nx for y in 2:2:(ny-1)]
+    if periodic_y && iseven(ny) && ny > 2
+        append!(layer_D, [(LI[x, ny], LI[x, 1]) for x in 1:nx])
+    end
+
+    return vcat(layer_A, layer_B, layer_C, layer_D)
 end
 
 """

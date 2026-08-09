@@ -1,4 +1,5 @@
 using LinearAlgebra
+using PauliPropagation
 using Random
 using Test
 
@@ -53,7 +54,21 @@ end
     U = tomatrix(pauli_rotation, θ)
     ptm = calculateptm(U)
     transfer_map = totransfermap(ptm)
+    @test transfer_map isa TransferMap
+    @test length(transfer_map) == length(transfer_map.entries)
+    @test nqubits(transfer_map) == 1
+    @test occursin("4 columns", sprint(show, transfer_map))
+    @test occursin("max 2 mapped terms/column", sprint(show, transfer_map))
+    @test transfer_map[0][1][1] == 0
+    @test_throws BoundsError transfer_map[-1]
+    @test_throws BoundsError transfer_map[4]
+    @test length(collect(transfer_map)) == 4
     transfer_map_gate = TransferMapGate(transfer_map, 1)
+    @test transfer_map_gate.transfer_map isa TransferMap
+    @test_throws ArgumentError TransferMap([[(UInt8(0), 1.0)], [(UInt8(1), 1.0)]])
+    @test_throws ArgumentError TransferMap(ones(3, 3); ptm=false)
+    @test_throws ArgumentError TransferMap(ones(3, 3); ptm=true)
+    @test_throws ArgumentError TransferMapGate(transfer_map, [1, 2])
 
     for symb in [:I, :X, :Y, :Z]
         pstr = PauliString(1, symb, 1)
@@ -86,13 +101,36 @@ end
     # test the matrix constructors
     U = tomatrix(pauli_rotation, theta)
     ptm = calculateptm(U)
+    tmap = TransferMap(U; ptm=false)
     gU = TransferMapGate(U, 2)
     gptm = TransferMapGate(ptm, 2)
+    gtmap = TransferMapGate(tmap, [2])
+    glegacy = TransferMapGate([[item for item in column] for column in g.transfer_map], 2)
     # equality check
+    @test tmap isa TransferMap
     @test all((t1[1] == t2[1]) && (t1[2] ≈ t2[2]) for (v1, v2) in zip(g.transfer_map, gU.transfer_map) for (t1, t2) in zip(v1, v2))
     @test all((t1[1] == t2[1]) && (t1[2] ≈ t2[2]) for (v1, v2) in zip(g.transfer_map, gptm.transfer_map) for (t1, t2) in zip(v1, v2))
+    @test all((t1[1] == t2[1]) && (t1[2] ≈ t2[2]) for (v1, v2) in zip(g.transfer_map, gtmap.transfer_map) for (t1, t2) in zip(v1, v2))
+    @test length(glegacy.transfer_map) == length(g.transfer_map)
+    @test map(collect, glegacy.transfer_map) == map(collect, g.transfer_map)
     @test gU.qinds == g.qinds
     @test gptm.qinds == g.qinds
+    @test gtmap.qinds == g.qinds
+
+    # Issue #144 API example: construct from a computational-basis unitary,
+    # use non-contiguous qubits, and propagate through TransferMapGate.
+    issue_tmap = TransferMap(Matrix{ComplexF64}(I, 4, 4); ptm=false)
+    issue_gate = TransferMapGate(issue_tmap, [1, 3])
+    issue_pstr = PauliString(4, [:Z, :Y], [1, 3])
+    @test propagate(issue_gate, issue_pstr) == PauliSum(issue_pstr)
+
+    noncontiguous_gate = CliffordGate(:CNOT, [1, 3])
+    noncontiguous_tmap = totransfermap(2, [CliffordGate(:CNOT, [1, 2])])
+    noncontiguous_tmap_gate = TransferMapGate(noncontiguous_tmap, [1, 3])
+    noncontiguous_pstr = PauliString(4, [:X, :Y, :Z], [1, 3, 4])
+    noncontiguous_psum = propagate(noncontiguous_tmap_gate, noncontiguous_pstr)
+    expected_noncontiguous_psum = propagate(noncontiguous_gate, noncontiguous_pstr)
+    @test noncontiguous_psum == expected_noncontiguous_psum
 
 
 

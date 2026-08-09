@@ -24,7 +24,7 @@ end
     tomatrix(gate::TGate)
 
 Compute the unitary matrix for a `TGate`.
-The returned unitary is returned in Schrödinger picture form. 
+The returned unitary is returned in Schrödinger picture form.
 """
 function tomatrix(::TGate)
     return _tgate_unitary
@@ -34,26 +34,76 @@ const _tgate_unitary = [[1 0]; [0 exp(1.0im * pi / 4)]]
 
 
 ## TransferMapGate
-# TODO: this should all be made immutable for performance
 """
-    TransferMapGate(transfer_map::Vector{Vector{Tuple{PauliStringType,CoeffType}}}, qinds::Vector{Int})
+    TransferMapGate(transfer_map, qinds::Vector{Int})
 
 A non-parametrized `StaticGate` defined by a transfer map acting on the qubits `qinds`.
 Transfer maps can be constructed manually or generated via `totransfermap()`.
 """
-struct TransferMapGate{TT,CT} <: StaticGate
-    transfer_map::Vector{Vector{Tuple{TT,CT}}}
+struct TransferMapGate{TM<:TransferMap,STM<:TransferMap,TMask<:PauliStringType,Contiguous} <: StaticGate
+    transfer_map::TM
     qinds::Vector{Int}
+    qind_mask::TMask
+    shifted_transfer_map::STM
+    qind_start::Int
+    qind_stop::Int
 
-    function TransferMapGate(transfer_map::Vector{Vector{Tuple{TT,CT}}}, qinds) where {TT,CT}
+    function TransferMapGate(transfer_map::TM, qinds) where {TM<:TransferMap}
         # accept anything that can be converted to a vector of integers
         qinds = vec(collect(qinds))
         nq = length(qinds)
+        _qinds_check(qinds)
 
-        @assert nq == Int(log(4, length(transfer_map))) "The length of `qinds` `n=$nq` does not match the length of the transfer map `$(length(transfer_map)) ≠ 2^$nq`."
+        if _ncolumns(transfer_map) != 4^nq
+            throw(ArgumentError("The length of `qinds` `n=$nq` does not match the transfer map column count `$(_ncolumns(transfer_map)) != 4^$nq`."))
+        end
 
-        return new{TT,CT}(transfer_map, qinds)
+        mask_type = getinttype(maximum(qinds))
+        qind_mask = _pauliqindmask(mask_type, qinds)
+        shifted_transfer_map = _shifttransfermap(mask_type, transfer_map, qinds)
+        qind_start = first(qinds)
+        qind_stop = last(qinds)
+        contiguous_qinds = _qindsarecontiguous(qinds)
+
+        return new{TM,typeof(shifted_transfer_map),typeof(qind_mask),contiguous_qinds}(
+            transfer_map,
+            qinds,
+            qind_mask,
+            shifted_transfer_map,
+            qind_start,
+            qind_stop,
+        )
     end
+end
+
+TransferMapGate(transfer_map::AbstractVector{<:AbstractVector{<:Tuple}}, qinds) = TransferMapGate(TransferMap(transfer_map), qinds)
+
+function _qindsarecontiguous(qinds)
+    for ii in 2:length(qinds)
+        qinds[ii] == qinds[ii-1] + 1 || return false
+    end
+    return true
+end
+
+function _pauliqindmask(::Type{TT}, qinds) where {TT<:PauliStringType}
+    qind_mask = zero(TT)
+    for qind in qinds
+        qind_mask |= TT(3) << _bitshiftfromsiteindex(qind)
+    end
+    return qind_mask
+end
+
+function _shiftpartialpauli(::Type{TT}, target_paulis, qinds) where {TT<:PauliStringType}
+    shifted_pstr = zero(TT)
+    for (ii, qind) in enumerate(qinds)
+        shifted_pstr |= TT(getpauli(target_paulis, ii)) << _bitshiftfromsiteindex(qind)
+    end
+    return shifted_pstr
+end
+
+function _shifttransfermap(::Type{TT}, transfer_map::TransferMap, qinds) where {TT<:PauliStringType}
+    columns = [[(_shiftpartialpauli(TT, new_pstr, qinds), factor) for (new_pstr, factor) in column] for column in transfer_map]
+    return TransferMap(columns)
 end
 
 
@@ -61,7 +111,7 @@ end
 A constructor for `TransferMapGate` that accepts matrix representations in the 0/1 basis or the Pauli basis (a PTM).
 """
 function TransferMapGate(mat::AbstractMatrix, qinds)
-    # turns number or tuple of numbers into vector of numbers 
+    # turns number or tuple of numbers into vector of numbers
     qinds = vec(collect(qinds))
     # number of qubits acted on
     nq = length(qinds)
@@ -81,7 +131,7 @@ function TransferMapGate(mat::AbstractMatrix, qinds)
     end
 
     # here mat is already a PTM
-    ptmap = totransfermap(mat)
+    ptmap = TransferMap(mat; ptm=true)
 
     return TransferMapGate(ptmap, qinds)
 

@@ -99,7 +99,8 @@ max_weight = 6 # maximum Pauli weight
 min_abs_coeff = 1e-4 # minimal coefficient magnitude
 
 ## propagate through the circuit
-pauli_sum = propagate(circuit, observable, parameters; max_weight, min_abs_coeff)
+init_pauli_sum = PauliSum(pstr)  # you can also propagate `pstr` or VectorPauliSum(pstr)
+pauli_sum = propagate(circuit, init_pauli_sum, parameters; max_weight, min_abs_coeff)
 ```
 The output `pauli_sum` gives us an approximation of propagated Pauli strings
 
@@ -126,6 +127,17 @@ Therefore, the trace is equivalent to the sum over the coefficients of Pauli str
 \mathrm{Tr}[U^\dagger O U \rho] \approx \sum_{\alpha \in \{\mathbb{I}, Z\}\, \text{strings}} c_{\alpha}.
 ```
 
+## Performance Considerations
+A few tips to get the most performance out of PauliPropagation.jl, in particular in the `propagate(...)` function:
+- Pretty much always use at least coefficient truncation via `propagate(...; min_abs_coeff)`. Start high (e.g., `1e-3`) and gradually decrease until expectation values stabilize.
+- For common gates, the `VectorPauliSum` is currently more performant.
+- If you can, start Julia with more threads, for example via `Julia -t 8` if you have 8 fast threads. `VectorPauliSum` is inherently multithreaded, which you can toggle off via `propagation(...; thread=false)` if you are multithreading outside `propagate()`. For small Pauli sums, single-threaded propagation can be faster, but at scale with many threads, multithreading can be an order of magnitude faster. 
+- When propagating gate by gate or layer by layer, consider using the in-place `propagate!(...)` function that mutates the incoming `PauliSum`/`VectorPauliSum`.
+- For maximal performance that may yield slightly different results to default behavior, you can import our `PauliPropagation.Performance` module and run `Performance.propagate!(...)`.
+
+Take a look at the `examples/advanced_performance.ipynb` notebook for more details.
+ 
+
 ## Important Notes and Caveats
 - Circuits are specified in the _Schrödinger_ picture, as if operated upon states. Behind the scenes, `propagate()` will (by default) apply the _adjoint_ circuit upon the passed `PauliSum` which is treated as the observable operator. The default can be changed by passing `heisenberg=false` to `propagate()`, though it will not make simulating dense quantum states efficient. 
 - Schrödinger propagation via `heisenberg=false` is supported since version `0.7`, but not for all gates. So far, we natively support `PauliRotation`, `CliffordGate`, and `<:PauliNoise` gates. `ImaginaryPauliRotation` is _only_ supported with `heisenberg=false`.
@@ -135,11 +147,39 @@ Therefore, the trace is equivalent to the sum over the coefficients of Pauli str
 
 All of the above can be addressed by writing the additional missing code due to the nice extensibility of Julia.
 
+## Automatic Gradients
+`PauliPropagation.jl` has always been automatically differentiable via standard Julia libraries such as `ForwardDiff.jl` and `ReverseDiff.jl`. Starting version `0.8`, we provide a custom `rewindgradient(...)`  that only requires two propagation through the circuit and at most double the memory to compute an entire gradient vector. It is compatible with all truncations that are supported by `propagate()`. See the `8-automatic-differentiation.ipynb` notebook in the example folder.
+
+## Randomized Evolution
+Starting with version `0.8`, we provide an `mcpropagate(...; max_size)` function. It propagates as usual, truncates if you pass truncation parameters, and when the number of terms exceeds `max_size`, it resamples down to a `resampling_size` (default `max_size / 2`) via an unbiased procedure. This in principle allows one to arbitrarily trade memory for averaging time, but note that all coefficients become increasingly large and inaccurate the more often it must resample. See the `mcpropagate.ipynb` notebook in the examples folder.
+
+
+## Yao.jl integration
+
+Load `Yao` or `YaoBlocks` together with `PauliPropagation` to convert observables to Yao blocks:
+
+```julia
+using PauliPropagation, Yao
+
+pstr = PauliString(10, :Z, 5)
+yao_obs = paulipropagation2yao(pstr)   # e.g. put(10, 5 => Z)
+psum = PauliSum([PauliString(10, :X, 1), PauliString(10, :Z, 2, 0.5)])
+yao_ham = paulipropagation2yao(psum)
+```
+
+Circuits convert the same way:
+
+```julia
+thetas = randn(countparameters(circuit))
+yao_circ = paulipropagation2yao(nqubits, circuit, thetas)
+```
+
+The inverse (`yao2paulipropagation`) remains in [YaoBlocks](https://github.com/QuantumBFS/Yao.jl) when its PauliPropagation extension is loaded.
+
 ## Upcoming Features
 This package is still work-in-progress. You will probably find certain features that you would like to have and that are currently missing.\
 Here are some features that we want to implement in the future. Feel free to contribute!
-- **GPU acceleration**. Since version `0.7`, we provide a PauliPropagationCUDA extension in `ext/`. So far, it only works with `PauliRotation` gates and is not yet maximally performant. 
-- **Stochastic evolution**. Propagation methods are mainly memory-limited. We aim to change this and introduce time vs memory trade-offs.
+- **GPU acceleration**. Since version `0.7`, we provide a PauliPropagationCUDA extension in `ext/`. So far, it only works with `PauliRotation` gates and is not yet performant. 
 
 ## How to contribute
 We have a Slack channel `#pauli-propagation` in the [Julia Slack](https://join.slack.com/t/julialang/shared_invite/zt-2zljxdwnl-kSXbwuwFHeERyxSD3iFJdQ).

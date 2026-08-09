@@ -63,6 +63,7 @@ export
 include("PauliTransferMatrix/PauliTransferMatrix.jl")
 export
     calculateptm,
+    TransferMap,
     totransfermap
 
 include("Gates/Gates.jl")
@@ -71,7 +72,6 @@ export
     ParametrizedGate,
     StaticGate,
     PauliRotation,
-    MaskedPauliRotation,
     ImaginaryPauliRotation,
     CliffordGate,
     clifford_map,
@@ -102,6 +102,7 @@ export
     bricklayertopology,
     staircasetopology,
     rectangletopology,
+    rectanglebricktopology,
     staircasetopology2d,
     ibmeagletopology,
     hardwareefficientcircuit,
@@ -136,9 +137,22 @@ export
     apply,
     truncate,
     truncate!,
+    maxabscoeff,
     merge,
     merge!,
     mergefunc
+
+
+# most exported function is from PropagationBase
+export
+    mcpropagate,
+    mcpropagate!,
+    applymergetruncateresample!,
+    mcsample,
+    mcsample!,
+    mcapplytoall!,
+    resample,
+    resample!
 
 
 include("PathProperties/PathProperties.jl")
@@ -171,6 +185,9 @@ export
     plusfilter!,
     evaluateagainstdict,
     tonumber
+
+include("gradient.jl")
+export rewindgradient, rewindgradient!
 
 include("numericalcertificates.jl")
 export
@@ -206,7 +223,30 @@ export
     visualize_tree,
     propagate_with_tree_tracking
 
-# # experimental vector propagation 
-# include("Propagation/VectorPropagate/VectorPropagate.jl")
+"""
+    paulipropagation2yao(args...)
+
+Convert PauliPropagation observables or circuits to Yao blocks.
+
+Supported call patterns (when Yao/YaoBlocks is loaded):
+
+- `paulipropagation2yao(pstr::PauliString)`
+- `paulipropagation2yao(psum::AbstractPauliSum)`
+- `paulipropagation2yao(n::Integer, circ, thetas)`
+
+Load Yao or YaoBlocks first (`using Yao`).
+"""
+function paulipropagation2yao(args...)
+    ext = Base.get_extension(PauliPropagation, :PauliPropagationYao)
+    if ext === nothing
+        error("Load Yao or YaoBlocks (`using Yao`) to use `paulipropagation2yao`.")
+    end
+    return ext.paulipropagation2yao(args...)
+end
+
+export paulipropagation2yao
+
+# experimental Performance module
+include("Performance/Performance.jl")
 
 end
