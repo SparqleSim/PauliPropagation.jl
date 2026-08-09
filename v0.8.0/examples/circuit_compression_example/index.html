@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Circuit compression · PauliPropagation.jl</title><meta name="title" content="Circuit compression · PauliPropagation.jl"/><meta property="og:title" content="Circuit compression · PauliPropagation.jl"/><meta property="twitter:title" content="Circuit compression · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../advanced_performance/">Advanced Performance</a></li><li><a class="tocitem" href="../mcpropagate/">Monte Carlo Propagation</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li class="is-active"><a class="tocitem" href>Circuit compression</a><ul class="internal"><li><a class="tocitem" href="#Statevector-simulator"><span>Statevector simulator</span></a></li></ul></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/MonteCarlo/">Monte Carlo</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/Gradients/">Gradients</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Circuit compression</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Circuit compression</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/circuit_compression_example.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Circuit-compression"><a class="docs-heading-anchor" href="#Circuit-compression">Circuit compression</a><a id="Circuit-compression-1"></a><a class="docs-heading-anchor-permalink" href="#Circuit-compression" title="Permalink"></a></h1><p>Simulating the dynamics of quantum systems is a prime candidate for quantum advantage, yet accurate Trotterizations are typically very deep, making them out of reach in the NISQ era and very expensive to run even for fully fault-tolerant devices.</p><p>On the other hand, variational circuits are a promising alternative: by performing some optimization, it&#39;s possible to approximate to high accuracy a deep (and accurate) Trotterization with a much shallower variational circuit. This is an example notebook for the compression algorithm introduced in <a href="https://arxiv.org/abs/2507.01883">[1]</a>. In general, this task of unitary compression involves the Hilbert-Schmidt cost between a target unitary <span>$U$</span> and a parametrized ansatz <span>$V(\vec\theta)$</span> </p><p class="math-container">\[C_\mathrm{HST}(U, V(\vec\theta)) = 1 - \frac{|\mathrm{Tr(U^\dagger V(\vec\theta))}|^2}{4^n},\]</p><p>which is <span>$0$</span> iff. <span>$U=V(\vec\theta)$</span> and <span>$&gt;0$</span> otherwise. </p><p>Concretely, the goal of this notebook is to compress the dynamics <span>$U$</span> of <span>$L_U$</span> layers of a Heisenberg-like Hamiltonian into an ansatz <span>$V(\vec\theta)$</span> with <span>$L_V$</span> layers (<span>$L_V &lt; L_U$</span>) by minimizing a local cost function</p><p class="math-container">\[ R_{\mathcal{Q}_{LS}}^{\mathrm{loc}}(\vec \theta)= \frac{1}{2} - \frac{1}{6n} \sum_{j=1}^{n_q}\sum_{P = X, Y, Z} \langle\langle P_j \vert \boldsymbol{V(\vec\theta)U^\dagger}\vert P_j\rangle \rangle, \]</p><p>using Pauli propagation. The local cost function provides an upper bound on the HST cost </p><p class="math-container">\[C_\mathrm{HST}(U, V(\vec\theta)) \leq 2n R_{\mathcal{Q}_{LS}}^{\mathrm{loc}}(\vec \theta)\]</p><p>Once the compression is performed, we show using a statevector simulator (since we are implementing this for a small system) that applying the compressed ansatz <span>$V(\vec\theta^\star)$</span> multiple times yields accurate dynamics, surpassing the accuracy of Trotterizations at both the same and larger depths.</p><pre><code class="language-julia hljs">using PauliPropagation
+using ForwardDiff
+using Base.Threads
+using Optim</code></pre><h3 id="Setup"><a class="docs-heading-anchor" href="#Setup">Setup</a><a id="Setup-1"></a><a class="docs-heading-anchor-permalink" href="#Setup" title="Permalink"></a></h3><p>Create the 1D topology on <code>nq</code> qubits</p><pre><code class="language-julia hljs">nq = 10
+topology = bricklayertopology(nq)</code></pre><p>Specify the number of layers in the target <span>$L_U$</span>, of the ansatz <span>$L_V$</span> and set the total evolution time that we want to compress.</p><pre><code class="language-julia hljs">LU = 8
+LV = 2
+
+t = 0.3</code></pre><p>Implement a single layer of a second order trotterization for the Heisenberg model Hamiltonian </p><p class="math-container">\[ e^{-i \Delta t H} \approx e^{-i \Delta t H_{YY}/2} e^{-i \Delta t H_{XX}/2} e^{-i \Delta t H_{ZZ}} e^{-i \Delta t H_{YY}/2} e^{-i \Delta t H_{XX}/2}\]</p><p>Note that <code>PauliRotation(theta)</code> gates implement rotations <code>exp(theta/2 P)</code>, so we need to multiply all our angles by a factor two.</p><pre><code class="language-julia hljs">function second_order_trotter(topology, n_layers, Jx, Jy, Jz, dt)
+    circ = PauliRotation[]
+    thetas = Float64[]
+
+    for k = 1:n_layers
+        if k == 1
+            rxxlayer!(circ, topology)
+            append!(thetas, ones(length(topology)) .* (dt * Jx))
+            ryylayer!(circ, topology)
+            append!(thetas, ones(length(topology)) .* (dt * Jy))
+        end
+
+        rzzlayer!(circ, topology)
+        append!(thetas, ones(length(topology)) .* (2 * dt * Jz))
+
+        if k &lt; n_layers
+            rxxlayer!(circ, topology)
+            append!(thetas, ones(length(topology)) .* (2 * dt * Jx))
+            ryylayer!(circ, topology)
+            append!(thetas, ones(length(topology)) .* (2 * dt * Jy))
+        else
+            rxxlayer!(circ, topology)
+            append!(thetas, ones(length(topology)) .* (dt * Jx))
+            ryylayer!(circ, topology)
+            append!(thetas, ones(length(topology)) .* (dt * Jy))
+        end
+    end
+
+    return circ, thetas
+end</code></pre><pre><code class="nohighlight hljs">second_order_trotter (generic function with 1 method)</code></pre><p>Build the target and ansatz circuits</p><pre><code class="language-julia hljs">Jz = 1.
+Jx = 0.5
+Jy = 0.1
+
+dt_U = t / LU 
+dt_V = t /LV 
+
+target_circuit, target_parameters = second_order_trotter(topology, LU, Jx, Jy, Jz, dt_U)
+ansatz_circuit, ansatz_parameters_trotter = second_order_trotter(topology, LV, Jx, Jy, Jz, dt_V)
+
+# needed later for the statevector simulator
+comparison_deeper, thetas_deeper = second_order_trotter(topology, 2 * LV, Jx, Jy, Jz, dt_V / 2)</code></pre><p>Specify PP truncations.</p><pre><code class="language-julia hljs">min_abs_coeff_target = 1.e-8
+min_abs_coeff_ansatz = 1.e-9
+W = 8</code></pre><p>Create a list <code>single_site_strings</code> containing all <span>$3n_q$</span> Pauli strings that we need to compute the cost function</p><pre><code class="language-julia hljs">single_site_strings = [(PauliString(nq, :X, ii) for ii in 1:nq)..., (PauliString(nq, :Y, ii) for ii in 1:nq)..., (PauliString(nq, :Z, ii) for ii in 1:nq)...]</code></pre><h3 id="Precompute-targets"><a class="docs-heading-anchor" href="#Precompute-targets">Precompute targets</a><a id="Precompute-targets-1"></a><a class="docs-heading-anchor-permalink" href="#Precompute-targets" title="Permalink"></a></h3><p>Compute <span>$\bm{U^\dagger}\vert P_j\rangle\rangle = U^\dagger P_j U$</span> for all strings in <code>single_site_strings</code></p><pre><code class="language-julia hljs">evolved_target_strings = Vector{PauliSum}(undef, length(single_site_strings))
+@threads for i in eachindex(single_site_strings)
+    s = single_site_strings[i]
+    evolved_target_strings[i] = propagate(target_circuit, s, target_parameters; min_abs_coeff=min_abs_coeff_target, max_weight = W)
+end</code></pre><h3 id="Build-local-cost-function"><a class="docs-heading-anchor" href="#Build-local-cost-function">Build local cost function</a><a id="Build-local-cost-function-1"></a><a class="docs-heading-anchor-permalink" href="#Build-local-cost-function" title="Permalink"></a></h3><p>Compute <span>$\langle \langle P_j\vert \boldsymbol{V(\vec\theta)}$</span> and then evaluate the inner product <span>$\langle \langle P_j\vert \boldsymbol{V(\vec\theta)} \cdot \boldsymbol{U^\dagger}\vert P_j\rangle\rangle$</span>. Since we are interested in optimizing over <span>$\vec\theta$</span>, we need to extract the gradient as well. To this end we emply the <code>ForwardDiff</code> AD library.</p><pre><code class="language-julia hljs">function wrap_pauli_string(pstr, CT)
+    return PauliString(pstr.nqubits, pstr.term, CT(1))
+end
+
+function Cloc(ansatz_params::Vector{CT}, ansatz_circ, single_site_strings, evolved_target_strings, min_abs_coeff, max_weight) where {CT}
+    contribs = Vector{CT}(undef, length(single_site_strings))
+    @threads for i in eachindex(single_site_strings)
+        evolved = propagate(ansatz_circ, wrap_pauli_string(single_site_strings[i], CT),
+                            ansatz_params; min_abs_coeff, max_weight)
+        contribs[i] = scalarproduct(evolved_target_strings[i], evolved)
+    end
+    return 0.5 - sum(contribs) / (6 * nq)
+end
+
+
+lossfunction = θ -&gt; Cloc(θ, ansatz_circuit, single_site_strings, evolved_target_strings, min_abs_coeff_ansatz, W)
+g! = (g, θ) -&gt; ForwardDiff.gradient!(g, lossfunction, θ)</code></pre><p>Perform the optimization starting from the initial guess <code>ansatz_parameters_trotter</code> corresponding to the Trotter angles for <span>$L_V$</span> layers.</p><pre><code class="language-julia hljs">gradtol = 1.e-5
+maxiter = 20
+optimizer = Optim.LBFGS()
+
+res = Optim.optimize(lossfunction, g!, ansatz_parameters_trotter, optimizer,
+    Optim.Options(show_trace=true, show_every=2, store_trace=true,
+        g_tol=gradtol, iterations=maxiter))
+
+thetas_optimized = res.minimizer</code></pre><pre><code class="nohighlight hljs">Iter     Function value   Gradient norm 
+     0     1.603985e-05     2.843205e-04
+
+
+ * time: 0.0977480411529541
+
+
+     2     1.165579e-05     5.394587e-05
+ * time: 74.39350008964539
+
+
+     4     8.504315e-06     2.046829e-04
+ * time: 124.60561990737915
+
+
+     6     5.170889e-06     4.151421e-05
+ * time: 153.20665907859802
+
+
+     8     5.032348e-06     6.685522e-06
+ * time: 175.68281197547913</code></pre><h2 id="Statevector-simulator"><a class="docs-heading-anchor" href="#Statevector-simulator">Statevector simulator</a><a id="Statevector-simulator-1"></a><a class="docs-heading-anchor-permalink" href="#Statevector-simulator" title="Permalink"></a></h2><p>We use the Yao library to simulate the dynamics of an initial state <span>$\ket{\psi_0}$</span> under the differernt circuits. Note that the following results showing that the expectation value is much more accurate with the compressed ansatz can be strongly problem dependent, and must be taken as illustrative examples only.</p><pre><code class="language-julia hljs">using Yao
+using LinearAlgebra
+
+function heisenberg_1d(n, topology; J=1.0)
+    terms = map(1:length(topology)) do k
+    (i, j) = topology[k]
+        Jx * (kron(n, i=&gt;X, j=&gt;X)) +
+        Jy * (kron(n, i=&gt;Y, j=&gt;Y)) +
+        Jz * (kron(n, i=&gt;Z, j=&gt;Z))
+    end
+    sum(terms)
+end</code></pre><pre><code class="nohighlight hljs">heisenberg_1d (generic function with 1 method)</code></pre><p>Create Hamiltonian as matrix, take matrix exponential</p><pre><code class="language-julia hljs">H = heisenberg_1d(nq, topology; J=1.0)
+
+# 10 qubits
+reg = product_state(bit&quot;0101010101&quot;)
+
+exact_finer_by = 10
+
+psi = statevec(reg)
+
+Hmat = Matrix(mat(H))
+U_exact = exp(-im * (t/exact_finer_by) * Hmat)</code></pre><p>Specify timesteps, and compute exact magnetization at those instants</p><pre><code class="language-julia hljs">n_reps = 20
+
+magnetizations = zeros(nq, (n_reps*exact_finer_by)+1)
+for j =1:nq
+    Zstring = put(nq, j=&gt;Z)
+    magnetizations[j, 1] = real(expect(Zstring, arrayreg(psi)))
+end
+
+for k=1:(exact_finer_by * n_reps)
+    psi = U_exact * psi
+    reg_t = arrayreg(psi)  
+    for j =1:nq
+        Zstring = put(nq, j=&gt;Z)
+        magnetizations[j, k+1] = real(expect(Zstring, reg_t))
+    end
+end</code></pre><pre><code class="language-julia hljs"># helpers for make PauliRotations into Yao
+
+function elem_to_yao!(circuit, gate, theta)
+    if gate.symbols == [:X, :X]
+        push!(circuit, cnot(gate.qinds[2], gate.qinds[1]))
+        push!(circuit, Yao.put(gate.qinds[2] =&gt; Yao.Rx(theta)))
+        push!(circuit, cnot(gate.qinds[2], gate.qinds[1]))
+    elseif gate.symbols == [:Y, :Y]
+        push!(circuit, Yao.put(gate.qinds[1] =&gt; Yao.Rz(-pi / 2)))
+        push!(circuit, Yao.put(gate.qinds[2] =&gt; Yao.Rz(-pi / 2)))
+        push!(circuit, cnot(gate.qinds[2], gate.qinds[1]))
+        push!(circuit, Yao.put(gate.qinds[2] =&gt; Yao.Rx(theta)))
+        push!(circuit, cnot(gate.qinds[2], gate.qinds[1]))
+        push!(circuit, Yao.put(gate.qinds[1] =&gt; Yao.Rz(pi / 2)))
+        push!(circuit, Yao.put(gate.qinds[2] =&gt; Yao.Rz(pi / 2)))
+    elseif gate.symbols == [:Z, :Z]
+        push!(circuit, cnot(gate.qinds[1], gate.qinds[2]))
+        push!(circuit, Yao.put(gate.qinds[2] =&gt; Yao.Rz(theta)))
+        push!(circuit, cnot(gate.qinds[1], gate.qinds[2]))
+    end
+end
+
+function make_yao_circ(pp_circ, pp_thetas, nq)
+    yao_circ = chain(nq)
+
+    for (gate, theta) in zip(pp_circ, pp_thetas)
+        elem_to_yao!(yao_circ, gate, theta)
+    end
+    return yao_circ
+end</code></pre><pre><code class="nohighlight hljs">make_yao_circ (generic function with 1 method)</code></pre><p>Create Yao circuits</p><pre><code class="language-julia hljs">ansatz_trotter = make_yao_circ(ansatz_circuit, ansatz_parameters_trotter, nq)
+ansatz_optimized = make_yao_circ(ansatz_circuit, thetas_optimized, nq)
+deeper_trotter = make_yao_circ(comparison_deeper, thetas_deeper, nq)</code></pre><p>Run statevector simulations for different trotterizations</p><pre><code class="language-julia hljs">state_prep = chain(nq)
+for i=1:2:nq
+    push!(state_prep, put(nq, i=&gt;X))
+end
+
+psi_AT  = Yao.apply!(Yao.zero_state(nq), state_prep)
+psi_opt  = Yao.apply!(Yao.zero_state(nq), state_prep)
+psi_deeper = Yao.apply!(Yao.zero_state(nq), state_prep)
+
+magnetizations_AT = zeros(nq, n_reps+1)
+magnetizations_opt = zeros(nq, n_reps+1)
+magnetizations_deeper = zeros(nq, n_reps+1)
+for j =1:nq
+    Zstring = put(nq, j=&gt;Z)
+    magnetizations_AT[j, 1] = real(expect(Zstring, psi_AT))
+    magnetizations_opt[j, 1] = real(expect(Zstring, psi_opt))
+    magnetizations_deeper[j, 1] = real(expect(Zstring, psi_deeper))
+end
+
+for k=1:n_reps
+    psi_AT = Yao.apply!(psi_AT, ansatz_trotter) 
+    psi_opt = Yao.apply!(psi_opt, ansatz_optimized) 
+    psi_deeper = Yao.apply!(psi_deeper, deeper_trotter) 
+    for j =1:nq
+        Zstring = put(nq, j=&gt;Z)
+        magnetizations_AT[j, k+1] = real(expect(Zstring, psi_AT))
+        magnetizations_opt[j, k+1] = real(expect(Zstring, psi_opt))
+        magnetizations_deeper[j, k+1] = real(expect(Zstring, psi_deeper))
+    end
+end</code></pre><p>Plot example magnetization at site 3 and plot mean error over all magnetizations at different times</p><pre><code class="language-julia hljs">using Plots 
+using Statistics
+
+p = Plots.plot(xlabel=&quot;time&quot;, ylabel=&quot;⟨Zⱼ⟩&quot;, leg=:bottomright)
+p_err = Plots.plot(xlabel=&quot;time&quot;, ylabel=&quot;mean(⟨Zⱼ⟩-⟨Zⱼ exact⟩)&quot;, yscale=:log10)
+
+timestamps = collect(range(0., n_reps * t, length=n_reps+1))
+timestamps_exact = collect(range(0., n_reps * t, length=((n_reps * exact_finer_by)+1)))
+
+for j in [3]
+    Plots.plot!(p, timestamps_exact, magnetizations[j, :], label = &quot;exact Z$j&quot;)
+    Plots.plot!(p, timestamps, magnetizations_AT[j, :], label = &quot;Trotter $(LV) layers Z$j&quot;, markershape=:circle, linestyle=:dot)
+    Plots.plot!(p, timestamps, magnetizations_deeper[j, :], label = &quot;Trotter $(2*LV) layers Z$j&quot;, markershape=:circle, linestyle=:dot)
+    Plots.plot!(p, timestamps, magnetizations_opt[j, :], label = &quot;Optimized $(LV) layers Z$j&quot;, markershape=:circle, linestyle=:dot)
+    println(&quot;$j, mean AT = $(mean(abs.(magnetizations[j, (1+exact_finer_by):exact_finer_by:end] .- magnetizations_AT[j, 2:end]))), mean deeper = $(mean(abs.(magnetizations[j, (1+exact_finer_by):exact_finer_by:end] .- magnetizations_deeper[j, 2:end]))), mean OPT = $(mean(abs.(magnetizations[j, (1+exact_finer_by):exact_finer_by:end] .- magnetizations_opt[j, 2:end])))&quot;)
+end
+
+Plots.plot!(p_err, timestamps[2:end], transpose(mean(abs.(magnetizations[:, (1+exact_finer_by):exact_finer_by:end] .- magnetizations_AT[:, 2:end]), dims=1)), label = &quot;Trotter $(LV) layers&quot;, markershape=:circle, linestyle=:dot)
+Plots.plot!(p_err, timestamps[2:end], transpose(mean(abs.(magnetizations[:, (1+exact_finer_by):exact_finer_by:end] .- magnetizations_deeper[:, 2:end]), dims=1)), label = &quot;Trotter $(2*LV) layers&quot;, markershape=:circle, linestyle=:dot)
+Plots.plot!(p_err, timestamps[2:end], transpose(mean(abs.(magnetizations[:, (1+exact_finer_by):exact_finer_by:end] .- magnetizations_opt[:, 2:end]), dims=1)), label = &quot;Optimized $(LV) layers&quot;, markershape=:circle, linestyle=:dot)
+
+
+display(p)
+display(p_err)</code></pre><pre><code class="nohighlight hljs">3, mean AT = 0.011479990614483218, mean deeper = 0.002928244974399666, mean OPT = 0.0022456849070792593</code></pre><p><img src="../circuit_compression_example_files/circuit_compression_example_32_1.svg" alt="svg"/></p><p><img src="../circuit_compression_example_files/circuit_compression_example_32_2.svg" alt="svg"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../introduction-example-error-mitigation/">« Error Mitigation using Pauli Propagation</a><a class="docs-footer-nextpage" href="../PP-from-Python/">Using PauliPropagation.jl from Python »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 9 August 2026 21:51">Sunday 9 August 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
