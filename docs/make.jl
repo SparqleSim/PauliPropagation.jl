@@ -15,7 +15,7 @@
 # HTML files will then be committed to the 'gh-pages'
 # branch, which Github Pages can be configured to
 # display at SparqleSim.github.io/PauliPropagation.jl/
-#
+# 
 # Note documentation generated from non-main branches
 # will be uploaded to subdomain /dev/, even when not
 # from the 'dev' branch, and doc generated from pull
