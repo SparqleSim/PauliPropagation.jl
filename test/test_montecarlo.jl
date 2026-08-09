@@ -188,8 +188,8 @@ end
 
     # sampling keeps one branch per gate, so a single walker stays a single term
     from_pstr = mcsample(circuit, pstr, thetas)
-    @test from_pstr isa VectorPauliSum
-    @test length(from_pstr) == 1
+    @test from_pstr isa PauliString
+    @test nqubits(from_pstr) == nq
 
     from_psum = mcsample(circuit, psum, thetas)
     @test from_psum isa PauliSum
