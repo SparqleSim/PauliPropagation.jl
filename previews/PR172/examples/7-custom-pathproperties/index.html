@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>7. Record custom path properties · PauliPropagation.jl</title><meta name="title" content="7. Record custom path properties · PauliPropagation.jl"/><meta property="og:title" content="7. Record custom path properties · PauliPropagation.jl"/><meta property="twitter:title" content="7. Record custom path properties · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li class="is-active"><a class="tocitem" href>7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../mcpropagate/">Monte Carlo Propagation</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/MonteCarlo/">Monte Carlo</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/Gradients/">Gradients</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>7. Record custom path properties</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>7. Record custom path properties</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/7-custom-pathproperties.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="7.-Record-custom-path-properties"><a class="docs-heading-anchor" href="#7.-Record-custom-path-properties">7. Record custom path properties</a><a id="7.-Record-custom-path-properties-1"></a><a class="docs-heading-anchor-permalink" href="#7.-Record-custom-path-properties" title="Permalink"></a></h1><p>A <em>path</em> is what we call the entire past of a propagating Pauli through a quantum circuit. By default we don&#39;t record anything about the past, but only store the current Pauli string and its current coefficient. The <code>PathProperties</code> types gives us a wrapper around the coefficients that you can use to record some of the history of your Pauli string. This allows one to learn more about the propagation through the circuit or even truncate on different properties. For example, we use the <code>PauliFreqTracker</code> under the hood to track how often we branch on Pauli rotations, allowing you to truncate via <code>max_freq</code> or <code>max_sins</code>.</p><pre><code class="language-julia hljs">using PauliPropagation</code></pre><p>One implemented example is the <code>PauliFreqTracker</code>, which tracks how often a Pauli string split at a <code>PauliRotation</code> gate, we call that <em>frequency</em>, and whether it received a <em>cos</em> or <em>sin</em> coefficient.</p><h4 id="The-PauliFreqTracker"><a class="docs-heading-anchor" href="#The-PauliFreqTracker">The PauliFreqTracker</a><a id="The-PauliFreqTracker-1"></a><a class="docs-heading-anchor-permalink" href="#The-PauliFreqTracker" title="Permalink"></a></h4><pre><code class="language-julia hljs">coeff = 1.3
+PauliFreqTracker(coeff)</code></pre><pre><code class="nohighlight hljs">PauliFreqTracker{Float64}(coeff=1.3, nsins=0, ncos=0, freq=0)</code></pre><pre><code class="language-julia hljs">nq = 32
+PauliString(nq, :X, 16, PauliFreqTracker(coeff))</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 32, PauliFreqTracker(1.3) * IIIIIIIIIIIIIIIXIIII...)</code></pre><p>We can either wrap all of our coefficients in this type, or we use the <code>wrapcoefficients()</code> function.</p><pre><code class="language-julia hljs">pstr = PauliString(nq, :X, 16, coeff)
+wrapped_pstr = wrapcoefficients(pstr, PauliFreqTracker)</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 32, PauliFreqTracker(1.3) * IIIIIIIIIIIIIIIXIIII...)</code></pre><p>This wrapping also works for a <code>PauliSum</code>:</p><pre><code class="language-julia hljs">psum = PauliSum(nq)
+add!(psum, :X, 16, coeff)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 32, 1 Pauli term: 
+ 1.3 * IIIIIIIIIIIIIIIXIIII...
+)</code></pre><pre><code class="language-julia hljs">wrapped_psum = wrapcoefficients(psum, PauliFreqTracker)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 32, 1 Pauli term: 
+ PauliFreqTracker(1.3) * IIIIIIIIIIIIIIIXIIII...
+)</code></pre><p>Let&#39;s apply a <code>PauliRotation</code> to it.</p><pre><code class="language-julia hljs">pauli_rot = PauliRotation(:Y, 16)
+
+propagate!(pauli_rot, wrapped_psum, 0.4)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 32, 2 Pauli terms:
+ PauliFreqTracker(1.1974) * IIIIIIIIIIIIIIIXIIII...
+ PauliFreqTracker(0.50624) * IIIIIIIIIIIIIIIZIIII...
+)</code></pre><pre><code class="language-julia hljs">coefficients(wrapped_psum)</code></pre><pre><code class="nohighlight hljs">ValueIterator for a Dict{UInt64, PauliFreqTracker{Float64}} with 2 entries. Values:
+  PauliFreqTracker{Float64}(coeff=1.1973792922037507, nsins=0, ncos=1, freq=1)
+  PauliFreqTracker{Float64}(coeff=0.5062438450012458, nsins=1, ncos=0, freq=1)</code></pre><p>We see that the term belonging to the <code>IIIIIIIIIIIIIIIXIIII...</code> Pauli string received <code>ncos=1</code> cosine prefactors, and split a total of <code>freq=1</code> times. Similarly the other time with <code>nsins=1</code> sine prefactors. Note that the <code>coeff</code> field of <code>PauliFreqTracker</code> carries the coefficient as in the normal propagation. In fact, this <code>coeff</code> field is very important and we recommend that you have it on your <code>PathProperties</code> type. If you just want to use <code>max_freq</code> and <code>max_sin</code> truncation, then you don&#39;t have to manually wrap the coefficients. We will do that automatically and then unwrap the coefficients again:</p><pre><code class="language-julia hljs"># this truncates any Pauli with any sine coefficient
+propagate(pauli_rot, psum, 0.4; max_sins=0)
+
+
+## but the in-place propagate!() function will not automatically convert
+# propagate!(pauli_rot, psum, 0.4; max_sins=0)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 32, 1 Pauli term: 
+ 1.1974 * IIIIIIIIIIIIIIIXIIII...
+)</code></pre><h4 id="A-custom-PathProperties-type"><a class="docs-heading-anchor" href="#A-custom-PathProperties-type">A custom PathProperties type</a><a id="A-custom-PathProperties-type-1"></a><a class="docs-heading-anchor-permalink" href="#A-custom-PathProperties-type" title="Permalink"></a></h4><p>Now let us define a custom <code>PathProperties</code> type. For example, we can define a type that records how often a Clifford gate reduced the weight (number of non-Identity Paulis) of a propagating Pauli String, how often it left it unchanged, and how often it increased it.</p><pre><code class="language-julia hljs">struct CliffordWeightTracker &lt;: PathProperties
+    coeff::Float64  # for simplicity use Float64, but in general you might want a parametrized number type
+    reduced::Int
+    unchanged::Int
+    increased::Int
+end</code></pre><p>Now let&#39;s try to wrap the coefficient of a <code>PauliString</code> in this type.</p><pre><code class="language-julia hljs">## this will throw an error if you run it
+# wrapcoefficients(pstr, CliffordWeightTracker)</code></pre><p>This did not work, because if you want <code>wrapcoefficients()</code> to do the job, you need to define a constructor for your type expecting only the coefficient. You can still manually construct the wrapped Pauli string by filling in the fields that aren&#39;t <code>coeff</code> with zeros, or you defined the default constructor.</p><pre><code class="language-julia hljs">CliffordWeightTracker(coeff) = CliffordWeightTracker(coeff, 0, 0, 0)</code></pre><pre><code class="nohighlight hljs">CliffordWeightTracker</code></pre><pre><code class="language-julia hljs">cwt_pstr = wrapcoefficients(pstr, CliffordWeightTracker)</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 32, CliffordWeightTracker(1.3) * IIIIIIIIIIIIIIIXIIII...)</code></pre><p>And propagation already works!</p><pre><code class="language-julia hljs">cliff_gate = CliffordGate(:H, 16)
+
+result_psum = propagate(cliff_gate, cwt_pstr)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 32, 1 Pauli term: 
+ CliffordWeightTracker(1.3) * IIIIIIIIIIIIIIIZIIII...
+)</code></pre><pre><code class="language-julia hljs">coefficients(result_psum)</code></pre><pre><code class="nohighlight hljs">ValueIterator for a Dict{UInt64, CliffordWeightTracker} with 1 entry. Values:
+  CliffordWeightTracker(coeff=1.3, reduced=0, unchanged=0, increased=0)</code></pre><p>The propagation natively worked because we have a <code>coeff</code> field on our custom type (you can restart the notebook and change the name of the <code>coeff</code> field to see where it fails). But now we need to define how <code>CliffordWeightTracker</code> increments its fields, i.e., how it knows what a Clifford gate does to it.</p><p>The way that <code>CliffordGate</code>s are defined is via the <code>applytoall!()</code> and <code>apply()</code> functions. <code>applytoall!()</code> loads the corresponding look-up map for the gate and passes it to the specific <code>apply()</code>. See our example notebook on custom gates for more information. We now need to define a version of <code>apply()</code> that is slightly more specifically typed so that when propagating with the <code>CliffordWeightTracker</code>, the propagation will dispatch to that code. For reference, the following is how the default code looks like:</p><pre><code class="language-julia hljs">function PauliPropagation.apply(gate::CliffordGate, pstr, coeff, lookup_map; kwargs...)
+    # the lookup array carries the new Paulis + sign for every occuring old Pauli combination
+
+    qinds = gate.qinds
+
+    # this integer carries the active Paulis on its bits
+    lookup_int = getpauli(pstr, qinds)
+
+    # this integer can be used to index into the array returning the new Paulis
+    # +1 because Julia is 1-indexed and lookup_int is 0-indexed
+    partial_pstr, sign = lookup_map[lookup_int+1]
+
+    # insert the bits of the new Pauli into the old Pauli
+    pstr = setpauli(pstr, partial_pstr, qinds)
+
+    coeff *= sign
+
+    # always a length-1 tuple, which will be compiled away
+    return ((pstr, coeff),)
+end</code></pre><p>We will still use this <code>apply()</code> function, but wrap it with specific logic for <code>CliffordWeightTracker</code>.</p><pre><code class="language-julia hljs">@inline function PauliPropagation.apply(gate::CliffordGate, pstr, wrappedcoeff::CliffordWeightTracker, lookup_map; kwargs...)
+    
+    # normal Clifford logic here
+    new_pstr, new_coeff = only(apply(gate, pstr, wrappedcoeff.coeff, lookup_map; kwargs...))
+    
+    old_weight = countweight(pstr)
+    new_weight = countweight(new_pstr)
+    
+    if new_weight &lt; old_weight
+        new_wrappedcoeff = CliffordWeightTracker(new_coeff, wrappedcoeff.reduced+1, wrappedcoeff.unchanged, wrappedcoeff.increased)
+    elseif new_weight == old_weight
+        new_wrappedcoeff = CliffordWeightTracker(new_coeff, wrappedcoeff.reduced, wrappedcoeff.unchanged+1, wrappedcoeff.increased)
+    else
+        new_wrappedcoeff = CliffordWeightTracker(new_coeff, wrappedcoeff.reduced, wrappedcoeff.unchanged, wrappedcoeff.increased+1)
+    end
+    
+    # same return format as the Clifford apply() function
+    return ((new_pstr, new_wrappedcoeff),)
+end</code></pre><pre><code class="language-julia hljs">cliff_gate = CliffordGate(:H, 16)
+
+print(&quot;Before: &quot;, cwt_pstr)
+
+result_psum = propagate(cliff_gate, cwt_pstr)</code></pre><pre><code class="nohighlight hljs">Before: PauliString(nqubits: 32, CliffordWeightTracker(1.3) * IIIIIIIIIIIIIIIXIIII...)
+
+
+
+
+PauliSum(nqubits: 32, 1 Pauli term: 
+ CliffordWeightTracker(1.3) * IIIIIIIIIIIIIIIZIIII...
+)</code></pre><pre><code class="language-julia hljs">coefficients(result_psum)</code></pre><pre><code class="nohighlight hljs">ValueIterator for a Dict{UInt64, CliffordWeightTracker} with 1 entry. Values:
+  CliffordWeightTracker(coeff=1.3, reduced=0, unchanged=1, increased=0)</code></pre><p>And now increasing weight,</p><pre><code class="language-julia hljs">cliff_gate = CliffordGate(:CNOT, [16, 17])
+
+print(&quot;Before: &quot;, cwt_pstr)
+
+result_psum2 = propagate(cliff_gate, cwt_pstr)</code></pre><pre><code class="nohighlight hljs">Before: PauliString(nqubits: 32, CliffordWeightTracker(1.3) * IIIIIIIIIIIIIIIXIIII...)
+
+
+
+
+PauliSum(nqubits: 32, 1 Pauli term: 
+ CliffordWeightTracker(1.3) * IIIIIIIIIIIIIIIXXIII...
+)</code></pre><pre><code class="language-julia hljs">coefficients(result_psum2)</code></pre><pre><code class="nohighlight hljs">ValueIterator for a Dict{UInt64, CliffordWeightTracker} with 1 entry. Values:
+  CliffordWeightTracker(coeff=1.3, reduced=0, unchanged=0, increased=1)</code></pre><p>It seems to work! </p><p>Let&#39;s run an actual circuit.</p><pre><code class="language-julia hljs"># 3 layers of the `efficientsu2` circuit, which contains CNOT gates
+circuit = efficientsu2circuit(nq, 3);
+thetas = randn(countparameters(circuit))</code></pre><pre><code class="language-julia hljs">@time result_psum = propagate(circuit, cwt_pstr, thetas)</code></pre><pre><code class="nohighlight hljs">  1.469655 seconds (4.27 M allocations: 231.527 MiB, 30.13% gc time, 41.50% compilation time)
+
+
+
+
+
+PauliSum(nqubits: 32, 122375 Pauli terms:
+ CliffordWeightTracker(1.0795e-5) * IIIIIIIIIIIIIIYXIYIY...
+ CliffordWeightTracker(1.1226e-8) * IIIIIIIIIIIIXZIXXYIZ...
+ CliffordWeightTracker(0.00073719) * IIIIIIIIIIIIIIZYIIXY...
+ CliffordWeightTracker(-0.00019968) * IIIIIIIIIIIIZZXZXXXX...
+ CliffordWeightTracker(4.6747e-7) * IIIIIIIIIIIIZXZYIXXY...
+ CliffordWeightTracker(6.9638e-8) * IIIIIIIIIIIIZZXIYXYX...
+ CliffordWeightTracker(3.6147e-5) * IIIIIIIIIIIIXZXYIXXZ...
+ CliffordWeightTracker(-1.0518e-9) * IIIIIIIIIIIIXZZZYXZX...
+ CliffordWeightTracker(4.1741e-6) * IIIIIIIIIIIIZZIZIYXY...
+ CliffordWeightTracker(1.6583e-5) * IIIIIIIIIIIIXXXZYZZZ...
+ CliffordWeightTracker(2.6428e-7) * IIIIIIIIIIIIZXZIYYZI...
+ CliffordWeightTracker(2.8389e-7) * IIIIIIIIIIIIIIZZXZXX...
+ CliffordWeightTracker(-8.1262e-10) * IIIIIIIIIIIIZXXXXIXX...
+ CliffordWeightTracker(-4.2932e-7) * IIIIIIIIIIIIZZXIXZXI...
+ CliffordWeightTracker(9.0221e-7) * IIIIIIIIIIIIZZZIIZXY...
+ CliffordWeightTracker(3.0324e-8) * IIIIIIIIIIIIXXZXXIYZ...
+ CliffordWeightTracker(-1.7468e-8) * IIIIIIIIIIIIIIXYYIXX...
+ CliffordWeightTracker(-4.422e-9) * IIIIIIIIIIIIIIXIXYXZ...
+ CliffordWeightTracker(-1.109e-6) * IIIIIIIIIIIIZXZZIXYI...
+ CliffordWeightTracker(-0.0010025) * IIIIIIIIIIIIIIYYZZZX...
+  ⋮)</code></pre><p>Make a nice plot from it:</p><pre><code class="language-julia hljs">reduced = 0
+unchanged = 0
+increased = 0
+for cliff_weight_tracker in coefficients(result_psum)
+    reduced += cliff_weight_tracker.reduced
+    unchanged += cliff_weight_tracker.unchanged
+    increased += cliff_weight_tracker.increased
+end
+
+# calculate the average
+n_terms = length(result_psum)
+reduced /= n_terms
+unchanged /= n_terms
+increased /= n_terms</code></pre><pre><code class="language-julia hljs">using Plots</code></pre><pre><code class="language-julia hljs">bar([reduced, unchanged, increased], label=&quot;&quot;, xticks=([1, 2, 3], [&quot;reduced&quot;, &quot;unchanged&quot;, &quot;increased&quot;]), ylabel=&quot;Count&quot;)</code></pre><p><img src="../7-custom-pathproperties_files/7-custom-pathproperties_43_0.svg" alt="svg"/></p><p>I worked! But a few notes on the result:</p><p>First, why is &quot;unchanged&quot; dominating? Because we start with a local Z Pauli with Identity on all but one site. This means that the behavior is dominated by commutations, i.e., CNOT gates that don&#39;t contribute at all. We can quickly fix this:</p><pre><code class="language-julia hljs">@inline function PauliPropagation.apply(gate::CliffordGate, pstr, path_prop::CliffordWeightTracker, lookup_map; kwargs...)
+
+    # normal Clifford logic here
+    new_pstr, new_coeff = only(apply(gate, pstr, path_prop.coeff, lookup_map; kwargs...))
+
+    if !(new_pstr==pstr &amp;&amp; new_coeff==path_prop.coeff)  # only track when it didn&#39;t fully commute
+        old_weight = countweight(pstr)
+        new_weight = countweight(new_pstr)
+
+        if new_weight &lt; old_weight
+            path_prop = CliffordWeightTracker(new_coeff, path_prop.reduced+1, path_prop.unchanged, path_prop.increased)
+        elseif new_weight == old_weight
+            path_prop = CliffordWeightTracker(new_coeff, path_prop.reduced, path_prop.unchanged+1, path_prop.increased)
+        else
+            path_prop = CliffordWeightTracker(new_coeff, path_prop.reduced, path_prop.unchanged, path_prop.increased+1)
+        end
+    end
+
+    # same return format as the Clifford apply() function
+    return ((new_pstr, path_prop),)
+end</code></pre><pre><code class="language-julia hljs">@time result_psum = propagate(circuit, cwt_pstr, thetas)</code></pre><pre><code class="nohighlight hljs">  1.038323 seconds (3.82 M allocations: 209.170 MiB, 50.83% gc time, 10.78% compilation time: 100% of which was recompilation)</code></pre><p>Plot it up:</p><pre><code class="language-julia hljs">reduced = 0
+unchanged = 0
+increased = 0
+for cliff_weight_tracker in coefficients(result_psum)
+    reduced += cliff_weight_tracker.reduced
+    unchanged += cliff_weight_tracker.unchanged
+    increased += cliff_weight_tracker.increased
+end
+
+# calculate the average
+n_terms = length(result_psum)
+reduced /= n_terms
+unchanged /= n_terms
+increased /= n_terms</code></pre><pre><code class="language-julia hljs">bar([reduced, unchanged, increased], label=&quot;&quot;, xticks=([1, 2, 3], [&quot;reduced&quot;, &quot;unchanged&quot;, &quot;increased&quot;]), ylabel=&quot;Count&quot;, title=&quot;Removing commutation&quot;)</code></pre><p><img src="../7-custom-pathproperties_files/7-custom-pathproperties_49_0.svg" alt="svg"/></p><p>Great, this is fixed. But now, why are the counts so low? This brings us to the second point:</p><p>-&gt; By default, merging paths calls <code>+</code> between two <code>PathProperties</code> objects. We have defined <code>+</code> so that it adds the <code>coeff</code> fields together, but takes the minimum of the other fields over the two summands. This current behavior makes sense if you want to truncate based on your recorded properties, and higher values are associated with higher computational resources. This is the case, for example, for the <code>PauliFreqTracker</code> with the <code>max_freq</code> and <code>max_sins</code> truncations. After merging, both objects propagate at the cost of one, so we choose the one that is furthest from being truncated. The huge caveat is that this assumes that <strong>incrementing the fields brings them closer to being truncated</strong>.</p><p>Let&#39;s for example define a <code>+</code> operation for <code>CliffordWeightTracker</code> that takes the maximum, just to show how it would work.</p><pre><code class="language-julia hljs">function PauliPropagation.:+(path_prop1::CliffordWeightTracker, path_prop2::CliffordWeightTracker)
+    return CliffordWeightTracker(
+        path_prop1.coeff + path_prop2.coeff,
+        max(path_prop1.reduced, path_prop2.reduced),
+        max(path_prop1.unchanged, path_prop2.unchanged),
+        max(path_prop1.increased, path_prop2.increased)
+    )
+end</code></pre><pre><code class="language-julia hljs">@time result_psum = propagate(circuit, cwt_pstr, thetas)</code></pre><pre><code class="nohighlight hljs">  0.954574 seconds (3.92 M allocations: 213.923 MiB, 6.34% gc time, 41.54% compilation time: 100% of which was recompilation)</code></pre><p>Plot it up:</p><pre><code class="language-julia hljs">reduced = 0
+unchanged = 0
+increased = 0
+for cliff_weight_tracker in coefficients(result_psum)
+    reduced += cliff_weight_tracker.reduced
+    unchanged += cliff_weight_tracker.unchanged
+    increased += cliff_weight_tracker.increased
+end
+
+# calculate the average
+n_terms = length(result_psum)
+reduced /= n_terms
+unchanged /= n_terms
+increased /= n_terms</code></pre><pre><code class="language-julia hljs">bar([reduced, unchanged, increased], label=&quot;&quot;, xticks=([1, 2, 3], [&quot;reduced&quot;, &quot;unchanged&quot;, &quot;increased&quot;]), ylabel=&quot;Count&quot;, title=&quot;Custom `+` function&quot;)</code></pre><p><img src="../7-custom-pathproperties_files/7-custom-pathproperties_55_0.svg" alt="svg"/></p><p>This now tells you that there exist Pauli strings that had their weight increased 10 times, but none that had their weight reduced 10 times (or even 4 times). Enjoy recording custom path properties!</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../6-numerical-certificate/">« 6. Numerical Certificates</a><a class="docs-footer-nextpage" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 9 August 2026 14:39">Sunday 9 August 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
