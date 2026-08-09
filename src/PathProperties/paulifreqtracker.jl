@@ -179,14 +179,14 @@ end
 # number, so the subsequent `sign^power` fails. Isolating the sign via `one(tonumber(coeff))` instead sidesteps
 # this: `apply` then returns a plain-number sign, which the generic `*` operator multiplies onto `coeff`,
 # leaving `nsins`/`ncos`/`freq` untouched, exactly as for Clifford gates in the deterministic pipeline.
-function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::VectorPauliSum{TV,CV}; squared=false, kwargs...) where {TV,CT<:PathProperties,CV<:AbstractVector{CT}}
+function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::VectorPauliSum{TV,CV}; squared=false, thread::Bool=true, kwargs...) where {TV,CT<:PathProperties,CV<:AbstractVector{CT}}
     lookup_map = clifford_map[gate.symbol]
 
     power = squared ? 2 : 1
 
     term_vec = paulis(psum)
     coeff_vec = coefficients(psum)
-    AK.foreachindex(term_vec) do ii
+    AK.foreachindex(term_vec; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         term = term_vec[ii]
         coeff = coeff_vec[ii]
 
@@ -198,6 +198,9 @@ function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::VectorPauliSum{
         coeff_vec[ii] = new_coeff
     end
 
+    # term values changed in place, order not preserved
+    setsortedprefix!(psum, 0)
+
     return psum
 end
 
@@ -206,7 +209,7 @@ end
 # coefficients. Identical branch-sampling logic to the generic method in `vectormontecarlo.jl`, but additionally
 # tracks the `nsins`/`ncos`/`freq` counters (without touching `coeff` itself) so that `max_freq`/`max_sins`
 # truncations remain usable under Monte Carlo path sampling.
-function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::VectorPauliSum{TV,CV}, theta; squared=false, kwargs...) where {TV,CT<:PathProperties,CV<:AbstractVector{CT}}
+function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::VectorPauliSum{TV,CV}, theta; squared=false, thread::Bool=true, kwargs...) where {TV,CT<:PathProperties,CV<:AbstractVector{CT}}
     power = squared ? 2 : 1
 
     sin_val = sin(theta)
@@ -227,7 +230,7 @@ function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::VectorPauliSum
 
     term_vec = paulis(psum)
     coeff_vec = coefficients(psum)
-    AK.foreachindex(term_vec) do ii
+    AK.foreachindex(term_vec; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         term = term_vec[ii]
         coeff = coeff_vec[ii]
 
@@ -247,6 +250,9 @@ function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::VectorPauliSum
             end
         end
     end
+
+    # term values changed in place, order not preserved
+    setsortedprefix!(psum, 0)
 
     return psum
 end
