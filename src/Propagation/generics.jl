@@ -131,7 +131,7 @@ end
     mcsample(circuit, pstr::PauliString, params=nothing; squared=false, heisenberg=true, thread=true, kwargs...)
 
 Monte Carlo path sampling of a `PauliString` (see `mcsample`).
-`pstr` is converted into a `VectorPauliSum` and converted back on return, since sampling keeps one branch per gate and thus leaves the number of terms unchanged.
+`pstr` is converted into a `VectorPauliSum` and converted back on return, since sampling leaves the number of terms unchanged.
 """
 function PropagationBase.mcsample(circuit, pstr::PauliString, params=nothing; kwargs...)
     vpsum = mcsample!(circuit, VectorPauliSum(pstr), params; kwargs...)
