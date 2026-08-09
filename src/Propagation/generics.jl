@@ -86,10 +86,40 @@ end
 ### MONTE CARLO
 
 """
+    mcpropagate(circuit, pstr::PauliString, thetas=nothing; max_size, heisenberg=true, thread=true, kwargs...)
+
+Monte Carlo propagation of a `PauliString` (see `mcpropagate`).
+`pstr` is converted into a `VectorPauliSum`, which is also the returned type.
+"""
+function PropagationBase.mcpropagate(circuit, pstr::PauliString, thetas=nothing; kwargs...)
+    return mcpropagate!(circuit, VectorPauliSum(pstr), thetas; kwargs...)
+end
+
+
+function PropagationBase.mcpropagate!(circuit, pstr::PauliString, thetas=nothing; kwargs...)
+    throw(ArgumentError("`mcpropagate!` is not defined for `PauliString`. Use the out-of-place `mcpropagate`, or convert via `VectorPauliSum(pstr)`."))
+end
+
+"""
+    mcpropagate(circuit, psum::PauliSum, thetas=nothing; max_size, heisenberg=true, thread=true, kwargs...)
+
+Monte Carlo propagation of a `PauliSum` (see `mcpropagate`).
+`psum` is converted into a `VectorPauliSum` and converted back on return, leaving `psum` unchanged.
+"""
+function PropagationBase.mcpropagate(circuit, psum::PauliSum, thetas=nothing; kwargs...)
+    vpsum = mcpropagate!(circuit, VectorPauliSum(psum), thetas; kwargs...)
+    return PauliSum(vpsum)
+end
+
+
+function PropagationBase.mcpropagate!(circuit, psum::PauliSum, thetas=nothing; kwargs...)
+    throw(ArgumentError("`mcpropagate!` is not defined for `PauliSum`. Use the out-of-place `mcpropagate`, or convert via `VectorPauliSum(psum)`."))
+end
+
+"""
     mcpropagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; heisenberg=true, thread=true, kwargs...)
 
-Pauli-specific `mcpropagate!` method that additionally converts the circuit to the Heisenberg or
-Schrödinger picture (see `propagate!`) before delegating to the generic Monte Carlo propagation loop.
+Pauli-specific `mcpropagate!` method that additionally converts the circuit to the Heisenberg or Schrödinger picture (see `propagate!`) before delegating to the generic Monte Carlo propagation loop.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function PropagationBase.mcpropagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; heisenberg=true, kwargs...)
@@ -98,10 +128,40 @@ function PropagationBase.mcpropagate!(circuit, prop_cache::AbstractPauliPropagat
 end
 
 """
+    mcsample(circuit, pstr::PauliString, params=nothing; squared=false, heisenberg=true, thread=true, kwargs...)
+
+Monte Carlo path sampling of a `PauliString` (see `mcsample`).
+`pstr` is converted into a `VectorPauliSum`, which is also the returned type.
+"""
+function PropagationBase.mcsample(circuit, pstr::PauliString, params=nothing; kwargs...)
+    return mcsample!(circuit, VectorPauliSum(pstr), params; kwargs...)
+end
+
+
+function PropagationBase.mcsample!(circuit, pstr::PauliString, params=nothing; kwargs...)
+    throw(ArgumentError("`mcsample!` is not defined for `PauliString`. Use the out-of-place `mcsample`, or convert via `VectorPauliSum(pstr)`."))
+end
+
+"""
+    mcsample(circuit, psum::PauliSum, params=nothing; squared=false, heisenberg=true, thread=true, kwargs...)
+
+Monte Carlo path sampling of a `PauliSum` (see `mcsample`).
+`psum` is converted into a `VectorPauliSum` and converted back on return, leaving `psum` unchanged.
+"""
+function PropagationBase.mcsample(circuit, psum::PauliSum, params=nothing; kwargs...)
+    vpsum = mcsample!(circuit, VectorPauliSum(psum), params; kwargs...)
+    return PauliSum(vpsum)
+end
+
+
+function PropagationBase.mcsample!(circuit, psum::PauliSum, params=nothing; kwargs...)
+    throw(ArgumentError("`mcsample!` is not defined for `PauliSum`. Use the out-of-place `mcsample`, or convert via `VectorPauliSum(psum)`."))
+end
+
+"""
     mcsample!(circuit, tsum::AbstractPauliSum, params=nothing; heisenberg=true, thread=true, kwargs...)
 
-Pauli-specific `mcsample!` method that additionally converts the circuit to the Heisenberg or
-Schrödinger picture (see `propagate!`) before delegating to the generic Monte Carlo sampling loop.
+Pauli-specific `mcsample!` method that additionally converts the circuit to the Heisenberg or Schrödinger picture (see `propagate!`) before delegating to the generic Monte Carlo sampling loop.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function PropagationBase.mcsample!(circuit, tsum::AbstractPauliSum, params=nothing; heisenberg=true, kwargs...)

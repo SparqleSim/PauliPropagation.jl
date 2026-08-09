@@ -10,7 +10,7 @@ Pages = ["src/Base/MonteCarlo/mcpropagate.jl"]
 ```@autodocs
 Modules = [PauliPropagation]
 Pages = ["src/Propagation/generics.jl"]
-Filter = t -> t === PauliPropagation.mcpropagate!
+Filter = t -> t in (PauliPropagation.mcpropagate, PauliPropagation.mcpropagate!)
 ```
 
 ## Resampling
@@ -30,7 +30,7 @@ Pages = ["src/Base/MonteCarlo/mcsample.jl"]
 ```@autodocs
 Modules = [PauliPropagation]
 Pages = ["src/Propagation/generics.jl"]
-Filter = t -> t === PauliPropagation.mcsample!
+Filter = t -> t in (PauliPropagation.mcsample, PauliPropagation.mcsample!)
 ```
 
 ### VectorPauliSum Specialization
