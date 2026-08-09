@@ -94,7 +94,8 @@ end
 
 function _insert_pp_gate!(::Val{:PauliRotation}, nqubits, rng, custom_gates, θs)
     k = rand(rng, 1:min(3, nqubits))
-    qs = sort(unique(rand(rng, 1:nqubits, k)))
+    # deliberately unsorted, because the qubit order of a rotation must be respected
+    qs = randperm(rng, nqubits)[1:k]
     paulis = rand(rng, [:X, :Y, :Z], length(qs))
     push!(custom_gates, PauliRotation(paulis, qs))
     push!(θs, _rand_angle(rng))
@@ -110,18 +111,26 @@ const two_obs = [Tuple(inttosymbol(p, 2)) for p in 0:15]
 
 # Test Clifford Gates on All Observables
 
+# |0> is an eigenstate of every basis-diagonal gate, so it is rotated away from the
+# computational basis first. Otherwise a wrong rotation sense stays invisible.
+function _offbasis_prep(n)
+    gates = [PauliRotation(sym, q) for q in 1:n for sym in (:Y, :X)]
+    return gates, [0.3 + 0.17 * i for i in eachindex(gates)]
+end
+
 @testset "Clifford Gate Propagation" begin
     for gate in all_clifford_gates
         n = gate in (:CNOT, :CZ, :SWAP, :ZZpihalf) ? 2 : 1
         qubits = 1:n
+        prep, θs = _offbasis_prep(n)
+        circ = vcat(prep, [CliffordGate(gate, qubits)])
         @testset "$gate on Single Qubit Observables" begin
-            yao_gate = paulipropagation2yao(n, [CliffordGate(gate, qubits)], Float64[])
+            yao_gate = paulipropagation2yao(n, circ, θs)
             for obs in single_obs
-                circ = [CliffordGate(gate, qubits)]
                 pauli_obs = PauliSum(n)
                 add!(pauli_obs, [obs], [1], 1)
-                propagated = propagate(circ, pauli_obs)
-                vector_propagated = propagate(circ, VectorPauliSum(pauli_obs))
+                propagated = propagate(circ, pauli_obs, θs)
+                vector_propagated = propagate(circ, VectorPauliSum(pauli_obs), θs)
                 test_val = overlapwithzero(propagated)
                 vector_test_val = overlapwithzero(vector_propagated)
                 @test isapprox(test_val, vector_test_val, atol=1e-10)
@@ -135,13 +144,12 @@ const two_obs = [Tuple(inttosymbol(p, 2)) for p in 0:15]
         end
 
         n == 2 && @testset "$gate on Two Qubit Observables" begin
-            yao_gate = paulipropagation2yao(n, [CliffordGate(gate, qubits)], Float64[])
+            yao_gate = paulipropagation2yao(n, circ, θs)
             for (obs1, obs2) in two_obs
-                circ = [CliffordGate(gate, qubits)]
                 pauli_obs = PauliSum(2)
                 add!(pauli_obs, [obs1, obs2], [1, 2], 1)
-                propagated = propagate(circ, pauli_obs)
-                vector_propagated = propagate(circ, VectorPauliSum(pauli_obs))
+                propagated = propagate(circ, pauli_obs, θs)
+                vector_propagated = propagate(circ, VectorPauliSum(pauli_obs), θs)
                 test_val = overlapwithzero(propagated)
                 vector_test_val = overlapwithzero(vector_propagated)
                 @test isapprox(test_val, vector_test_val, atol=1e-10)

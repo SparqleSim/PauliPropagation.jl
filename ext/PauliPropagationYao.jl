@@ -42,7 +42,7 @@ end
 function _clifford_to_yao!(c::ChainBlock, ::Val{:ZZpihalf}, qinds)
     length(qinds) == 2 ||
         throw(ArgumentError("ZZpihalf gate should have exactly 2 qubits"))
-    push!(c, put(c.n, (qinds...,) => rot(kron(Z, Z), π / 2)))
+    push!(c, put(c.n, (qinds...,) => rot(kron(Z, Z), -π / 2)))
     return c
 end
 
@@ -69,8 +69,10 @@ function _pauli_to_yao_gate!(c::ChainBlock, g::PP.CliffordGate)
 end
 
 function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliRotation, θ::Number)
-    ops = [_symbol_to_yao(s) for s in g.symbols]
-    push!(c, put(c.n, (g.qinds...,) => rot(kron(ops...), θ)))
+    # Yao's `apply!` disagrees with `mat` for `put` on unsorted locations, so sort them here
+    perm = sortperm(g.qinds)
+    ops = [_symbol_to_yao(g.symbols[i]) for i in perm]
+    push!(c, put(c.n, (g.qinds[perm]...,) => rot(kron(ops...), θ)))
     return c
 end
 
@@ -97,7 +99,7 @@ function _pauli_to_yao_gate!(c::ChainBlock, g::PP.PauliZNoise, p::Number)
 end
 
 function _pauli_to_yao_gate!(c::ChainBlock, g::PP.AmplitudeDampingNoise, γ::Number)
-    push!(c, quantum_channel(AmplitudeDampingError(γ)))
+    push!(c, put(c.n, (g.qind...,) => quantum_channel(AmplitudeDampingError(γ))))
     return c
 end
 

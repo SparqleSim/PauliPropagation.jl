@@ -69,17 +69,35 @@ end
             nq = 4
             nl = 2
             topo = bricklayertopology(nq; periodic=false)
-            circuit = hardwareefficientcircuit(nq, nl; topology=topo)
-            m = countparameters(circuit)
-            circuit = deepcopy(circuit)
-            insert!(circuit, 1, DepolarizingNoise(2))
-            thetas = rand(m)
-            insert!(thetas, 1, 0.05)
+            base = hardwareefficientcircuit(nq, nl; topology=topo)
+            m = countparameters(base)
             pstr = PauliString(nq, :Z, 2)
+            noises = (DepolarizingNoise, PauliXNoise, PauliYNoise, PauliZNoise, AmplitudeDampingNoise)
+            for noise in noises
+                @testset "$noise" begin
+                    circuit = deepcopy(base)
+                    insert!(circuit, 1, noise(2))
+                    thetas = rand(m)
+                    insert!(thetas, 1, 0.3)
+                    yao_circ = paulipropagation2yao(nq, circuit, thetas)
+                    reg = apply!(copy(zero_state(nq) |> density_matrix), yao_circ)
+                    pp_val, yao_val = _pp_yao_overlap(circuit, pstr, thetas, reg)
+                    @test isapprox(pp_val, yao_val; atol=1e-6)
+                end
+            end
+        end
+
+        @testset "multi-qubit rotation with unsorted qubit indices" begin
+            nq = 3
+            circuit = PauliPropagation.Gate[PauliRotation(:Y, q) for q in 1:nq]
+            push!(circuit, PauliRotation([:X, :Y, :Z], [3, 1, 2]))
+            thetas = [0.31, 0.52, 0.73, 0.63]
             yao_circ = paulipropagation2yao(nq, circuit, thetas)
-            reg = apply!(copy(zero_state(nq) |> density_matrix), yao_circ)
-            pp_val, yao_val = _pp_yao_overlap(circuit, pstr, thetas, reg)
-            @test isapprox(pp_val, yao_val; atol=1e-6)
+            reg = apply!(copy(zero_state(nq)), yao_circ)
+            for pstr in (PauliString(nq, :X, 1), PauliString(nq, :Z, 1), PauliString(nq, [:Z, :Z], [1, 2]))
+                pp_val, yao_val = _pp_yao_overlap(circuit, pstr, thetas, reg)
+                @test isapprox(pp_val, yao_val; atol=1e-10)
+            end
         end
 
         @testset "parameter count" begin
