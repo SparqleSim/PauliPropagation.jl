@@ -4,13 +4,13 @@ using LinearAlgebra</code></pre><p>Let us generate a random 1-qubit unitary matr
 using PauliPropagation: Xmat, Ymat, Zmat 
 
 U = exp(-im * (randn() * Xmat + randn() * Ymat + randn() * Zmat))</code></pre><pre><code class="nohighlight hljs">2×2 Matrix{ComplexF64}:
-  -0.28982+0.327387im  0.857792-0.270213im
- -0.857792-0.270213im  -0.28982-0.327387im</code></pre><p>Verify that <span>$U$</span> is unitary via <span>$U \cdot U^\dagger = U^\dagger \cdot U = \mathbb{1}$</span>,</p><pre><code class="language-julia hljs">U * U&#39; ≈ U&#39; * U ≈ I(2)</code></pre><pre><code class="nohighlight hljs">true</code></pre><p>This unitary is in the very common 0/1 basis, also called the computational basis. Here is how you can transform it into the Pauli basis:</p><pre><code class="language-julia hljs"># note the default `heisenberg=true` kwarg
+ 0.695946+0.171631im  -0.306431-0.62634im
+ 0.306431-0.62634im    0.695946-0.171631im</code></pre><p>Verify that <span>$U$</span> is unitary via <span>$U \cdot U^\dagger = U^\dagger \cdot U = \mathbb{1}$</span>,</p><pre><code class="language-julia hljs">U * U&#39; ≈ U&#39; * U ≈ I(2)</code></pre><pre><code class="nohighlight hljs">true</code></pre><p>This unitary is in the very common 0/1 basis, also called the computational basis. Here is how you can transform it into the Pauli basis:</p><pre><code class="language-julia hljs"># note the default `heisenberg=true` kwarg
 Uptm = calculateptm(U)</code></pre><pre><code class="nohighlight hljs">4×4 transpose(::Matrix{Float64}) with eltype Float64:
- 1.0   0.0        0.0        0.0
- 0.0  -0.685979  -0.273807  -0.674138
- 0.0  -0.65334    0.639606   0.405034
- 0.0   0.320282   0.718286  -0.617645</code></pre><p>This by default returns the PTM of <code>U</code> in the <strong>Heisenberg</strong> picture, i.e., how it acts in the backpropagation of Pauli strings - the default in this package. To get the Schrödinger version, you can take the transpose of this matrix or call <code>calculateptm(U, heisenberg=false)</code>. To convince ourselves that <code>Uptm</code> is also a unitary in this basis, check <span>$U_{ptm} \cdot U_{ptm}^T = U_{ptm}^T \cdot U_{ptm} = \mathbb{1}$</span> due to unitaries being real-valued in this basis.</p><pre><code class="language-julia hljs">Uptm * transpose(Uptm) ≈ transpose(Uptm) * Uptm ≈ I(4)</code></pre><pre><code class="nohighlight hljs">true</code></pre><p>Great, but what does this unitary even represent? We mentioned that it represents the action of <code>U</code> on Pauli strings. A 1-qubit gate can act on 4 Paulis, <code>I</code>, <code>X</code>, <code>Y</code>, and <code>Z</code>, each being represented as <span>$(1, 0, 0, 0)^T$</span>, <span>$(0, 1, 0, 0)^T$</span>, <span>$(0, 0, 1, 0)^T$</span>, and <span>$(0, 0, 0, 1)^T$</span>, respectively. <code>Uptm</code> thus describes how each of those column vectors or an arbitrary sum thereof is transformed.</p><h3 id="Defining-Gates"><a class="docs-heading-anchor" href="#Defining-Gates">Defining Gates</a><a id="Defining-Gates-1"></a><a class="docs-heading-anchor-permalink" href="#Defining-Gates" title="Permalink"></a></h3><p>These matrices can also be turned into gates via the <code>TransferMapGate</code>. It accepts either the matrix representation of the gate in the 0/1 basis or the Pauli basis.</p><pre><code class="language-julia hljs"># on qubit 1
+ 1.0  0.0        0.0        0.0
+ 0.0  0.753286   0.144968  -0.641517
+ 0.0  0.622751   0.156483   0.766612
+ 0.0  0.211521  -0.976984   0.027597</code></pre><p>This by default returns the PTM of <code>U</code> in the <strong>Heisenberg</strong> picture, i.e., how it acts in the backpropagation of Pauli strings - the default in this package. To get the Schrödinger version, you can take the transpose of this matrix or call <code>calculateptm(U, heisenberg=false)</code>. To convince ourselves that <code>Uptm</code> is also a unitary in this basis, check <span>$U_{ptm} \cdot U_{ptm}^T = U_{ptm}^T \cdot U_{ptm} = \mathbb{1}$</span> due to unitaries being real-valued in this basis.</p><pre><code class="language-julia hljs">Uptm * transpose(Uptm) ≈ transpose(Uptm) * Uptm ≈ I(4)</code></pre><pre><code class="nohighlight hljs">true</code></pre><p>Great, but what does this unitary even represent? We mentioned that it represents the action of <code>U</code> on Pauli strings. A 1-qubit gate can act on 4 Paulis, <code>I</code>, <code>X</code>, <code>Y</code>, and <code>Z</code>, each being represented as <span>$(1, 0, 0, 0)^T$</span>, <span>$(0, 1, 0, 0)^T$</span>, <span>$(0, 0, 1, 0)^T$</span>, and <span>$(0, 0, 0, 1)^T$</span>, respectively. <code>Uptm</code> thus describes how each of those column vectors or an arbitrary sum thereof is transformed.</p><h3 id="Defining-Gates"><a class="docs-heading-anchor" href="#Defining-Gates">Defining Gates</a><a id="Defining-Gates-1"></a><a class="docs-heading-anchor-permalink" href="#Defining-Gates" title="Permalink"></a></h3><p>These matrices can also be turned into gates via the <code>TransferMapGate</code>. It accepts either the matrix representation of the gate in the 0/1 basis or the Pauli basis.</p><pre><code class="language-julia hljs"># on qubit 1
 qind = 1
 
 # for the unitary in 0/1 basis
@@ -22,27 +22,27 @@ nq = 6
 circuit = [TransferMapGate(ptmap, qind) for qind in 1:nq];
 
 # make the observable a random global Pauli string because the gate acts trivially on identities `I`
-pstr = PauliString(nq, [rand((:X, :Y, :Z)) for _ in 1:nq], 1:nq)</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 6, 1.0 * ZYZZYX)</code></pre><pre><code class="language-julia hljs">psum = propagate(circuit, pstr)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 6, 729 Pauli terms:
- -0.012173 * ZXYYYX
- 0.02167 * XZZYXY
- -0.014921 * YZXYXX
- -0.036778 * XYZXYZ
- 0.091019 * ZZXZZX
- -0.053149 * YZZXYX
- 0.024834 * XZXYXX
- 0.022113 * YYXXXX
- 0.034155 * YZZYZY
- 0.027085 * YYXXZZ
- 0.081049 * ZZZXYX
- -0.014921 * XXYYZX
- -0.010325 * XYYXXZ
- 0.023652 * YZXXXY
- -0.016744 * YZZYZZ
- 0.034854 * YZYXYX
- -0.041333 * XZXXXX
- -0.014909 * ZYYYZZ
- 0.079424 * ZZZZZY
- -0.0082605 * ZXXYXY
+pstr = PauliString(nq, [rand((:X, :Y, :Z)) for _ in 1:nq], 1:nq)</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 6, 1.0 * YZYYXX)</code></pre><pre><code class="language-julia hljs">psum = propagate(circuit, pstr)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 6, 729 Pauli terms:
+ 0.0071995 * ZXYYYX
+ -0.00028692 * XZZYXY
+ 5.5589e-5 * YZXYXX
+ -0.0020734 * XYZXYZ
+ 0.00060845 * ZZXZZX
+ 5.1499e-5 * XZXYXX
+ -0.00028692 * YZZXYX
+ 0.0014306 * YYXXXX
+ -8.6966e-5 * YZZYZY
+ 0.0001128 * YYXXZZ
+ 0.0017914 * ZZZXYX
+ -0.00036285 * XXYYZX
+ 0.0004017 * XYYXXZ
+ 4.2575e-5 * YZXXXY
+ -2.9539e-5 * YZZYZZ
+ 4.5956e-5 * YZYXYX
+ 4.7709e-5 * XZXXXX
+ -0.00082055 * ZYYYZZ
+ -0.0033899 * ZZZZZY
+ 0.0066698 * ZXXYXY
   ⋮)</code></pre><p>And there you go, you can now easily define gates from their matrix representations, both in 0/1 basis or Pauli basis.</p><h3 id="Parametrized-PTMs"><a class="docs-heading-anchor" href="#Parametrized-PTMs">Parametrized PTMs</a><a id="Parametrized-PTMs-1"></a><a class="docs-heading-anchor-permalink" href="#Parametrized-PTMs" title="Permalink"></a></h3><p>Remember when we use <code>TransferMapGate</code>, we need a fixed matrix representation which is then transformed into the PTM. We can also compute that matrix for parametrized gates if <code>tomatrix()</code> is defined for them. Here is how to do that for a <code>PauliRotation</code>:</p><pre><code class="language-julia hljs"># the matrix in the 0/1 basis
 U = tomatrix(PauliRotation(:X, 1), π/4)
 
@@ -103,10 +103,12 @@ println(&quot;Compiled circuit via transfer map:&quot;)
 @btime propagate($circuit_map, $pstr);
 println(&quot;Original circuit:&quot;)
 @btime propagate($circuit, $pstr, $thetas)</code></pre><pre><code class="nohighlight hljs">Compiled circuit via transfer map:
-  2.841 μs
+
+
+  3.464 μs
 
  (68 allocations: 4.22 KiB)
 Original circuit:
-  24.837 μs
+  32.579 μs
 
- (456 allocations: 11.55 KiB)</code></pre><p>There are quite a few nuances to discuss here. First, the size of the circuit in terms of the number of qubits <span>$n$</span> that can be compressed is limited. This is due to the <span>$4^n$</span> best-case and <span>$8^n$</span> worst-case memory and time scaling (depending on the branching behavior). It may still be possible and beneficial to compress common gate sequences, for example few-qubit entangling blocks occuring often throughout the circuit. However, it is not guaranteed that this type of PT map compression yields faster gates, especially when compressing few and otherwise highly optimized gates. The <code>TransferMapGate</code> is generic, but its application is not type stable and will induce a lot of memory movement. That being said - try it out for your use-case!</p><p>For an example of more low-level definition of of high-performance gates, check out the <code>custom-gates</code> notebook.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../3-utility-example/">« 3. Utility Example</a><a class="docs-footer-nextpage" href="../5-custom-gates/">5. How to Define Custom Gates »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 9 August 2026 15:13">Sunday 9 August 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ (456 allocations: 11.55 KiB)</code></pre><p>There are quite a few nuances to discuss here. First, the size of the circuit in terms of the number of qubits <span>$n$</span> that can be compressed is limited. This is due to the <span>$4^n$</span> best-case and <span>$8^n$</span> worst-case memory and time scaling (depending on the branching behavior). It may still be possible and beneficial to compress common gate sequences, for example few-qubit entangling blocks occuring often throughout the circuit. However, it is not guaranteed that this type of PT map compression yields faster gates, especially when compressing few and otherwise highly optimized gates. The <code>TransferMapGate</code> is generic, but its application is not type stable and will induce a lot of memory movement. That being said - try it out for your use-case!</p><p>For an example of more low-level definition of of high-performance gates, check out the <code>custom-gates</code> notebook.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../3-utility-example/">« 3. Utility Example</a><a class="docs-footer-nextpage" href="../5-custom-gates/">5. How to Define Custom Gates »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 9 August 2026 19:51">Sunday 9 August 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
