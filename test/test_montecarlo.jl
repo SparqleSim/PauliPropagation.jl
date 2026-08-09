@@ -375,6 +375,25 @@ end
     end
 end
 
+@testset "resample converts PauliSum inputs" begin
+    nq = 4
+    pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), rand() + 0.1) for _ in 1:30]
+    psum = PauliSum(pstrs)
+    n = length(psum)
+    target_size = max(1, n ÷ 2)
+
+    resampled = resample(psum, target_size)
+    @test resampled isa PauliSum
+    @test 1 <= length(resampled) <= target_size + 3
+    @test sum(abs, coefficients(resampled)) ≈ sum(abs, coefficients(psum)) rtol = 0.3
+
+    # the input is converted, not consumed
+    @test length(psum) == n
+
+    @test_throws ArgumentError resample!(psum, target_size)
+end
+
+
 @testset "resample! forwards squared to the resampler" begin
     nq = 4
     pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), rand() + 0.1) for _ in 1:30]

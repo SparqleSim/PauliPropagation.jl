@@ -169,6 +169,22 @@ function PropagationBase.mcsample!(circuit, tsum::AbstractPauliSum, params=nothi
     return PropagationBase._propagate!(PropagationBase.mcapplytoall!, circuit, tsum, params; kwargs...)
 end
 
+"""
+    resample(psum::PauliSum, target_size::Integer; resample_func=nothing, squared=false, thread=true, kwargs...)
+
+Resampling of a `PauliSum` (see `resample`).
+`psum` is converted into a `VectorPauliSum` and converted back on return, leaving `psum` unchanged.
+"""
+function PropagationBase.resample(psum::PauliSum, target_size::Integer, resample_args...; kwargs...)
+    vpsum = resample!(VectorPauliSum(psum), target_size, resample_args...; kwargs...)
+    return PauliSum(vpsum)
+end
+
+
+function PropagationBase.resample!(psum::PauliSum, target_size::Integer, resample_args...; kwargs...)
+    throw(ArgumentError("`resample!` is not defined for `PauliSum`. Use the out-of-place `resample`, or convert via `VectorPauliSum(psum)`."))
+end
+
 
 # Shared prelude for the Pauli-specific `propagate!`/`mcpropagate!`/`mcsample!` methods
 # promote a single gate/param into a list, 

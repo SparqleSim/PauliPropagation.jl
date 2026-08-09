@@ -20,6 +20,12 @@ Modules = [PauliPropagation.PropagationBase]
 Pages = ["src/Base/MonteCarlo/resample.jl"]
 ```
 
+```@autodocs
+Modules = [PauliPropagation]
+Pages = ["src/Propagation/generics.jl"]
+Filter = t -> t === PauliPropagation.resample
+```
+
 ## Path Sampling
 
 ```@autodocs

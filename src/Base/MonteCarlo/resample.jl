@@ -4,7 +4,6 @@
 ##
 ###
 # TODO: Resampling currently only works for array-based TermSums
-using StatsBase
 
 ## RE-SAMPLING
 """
