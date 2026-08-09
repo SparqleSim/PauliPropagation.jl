@@ -82,6 +82,10 @@ function permuteviaindices!(prop_cache::AbstractPropagationCache; thread::Bool=t
     # the destination arrays should be the main ones
     swapsums!(prop_cache)
 
+    # in general permuting will not sort
+    # merge! will set it to a non-zero value when it calls this function
+    setsortedprefix!(mainsum(prop_cache), 0)
+
     return prop_cache
 end
 
@@ -108,12 +112,23 @@ function filterviaflags!(prop_cache::AbstractPropagationCache; thread::Bool=true
     flags = activeflags(prop_cache)
     indices = activeindices(prop_cache)
 
+    # capture before swapsums!() swaps which sum is "main"
+    old_sorted = sortedprefix(mainsum(prop_cache))
+    if old_sorted > length(indices)
+        # stale sortedprefix left over from the last time this buffer was mainsum: ignore it
+        old_sorted = 0
+    end
+
     filterviaflags!(flags, indices, aux_terms, aux_coeffs, terms_view, coeffs; thread)
 
     swapsums!(prop_cache)
 
     n_new = lastactiveindex(prop_cache)
     setactivesize!(prop_cache, n_new)
+
+    # filtering keeps relative order (if it had any)
+    new_sorted = old_sorted == 0 ? 0 : indices[old_sorted]
+    setsortedprefix!(mainsum(prop_cache), new_sorted)
 
     return prop_cache
 end
@@ -143,4 +158,18 @@ function _copy!(dst_terms, dst_coeffs, src_terms, src_coeffs; thread::Bool=true)
         dst_coeffs[ii] = src_coeffs[ii]
     end
     return dst_terms, dst_coeffs
+end
+
+## Cumulative sums are often used in resampling
+coeffcumsum!(coeffs; thread::Bool=true) = AK.accumulate!((x1, x2) -> x1 + abs(x2), coeffs; init=zero(eltype(coeffs)), neutral=zero(eltype(coeffs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+
+coeffcumsum(coeffs; thread::Bool=true) = coeffcumsum(coeffs, 1; thread)
+
+function coeffcumsum(coeffs, power::Real; thread::Bool=true)
+    # `abs(c)^power` is always real, but AK.map's output eltype follows `coeffs`, not `f`, so a
+    # complex `coeffs` needs an explicitly real destination rather than the allocating AK.map
+    mapped_coeffs = similar(coeffs, real(eltype(coeffs)))
+    AK.map!(c -> abs(c)^power, mapped_coeffs, coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    coeffcumsum!(mapped_coeffs; thread)
+    return mapped_coeffs
 end

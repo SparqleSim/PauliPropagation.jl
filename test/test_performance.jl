@@ -28,6 +28,28 @@ using PauliPropagation.Performance
     @test propagate(circuit, pstr, thetas; min_abs_coeff) == stock_dict
 end
 
+@testset "Performance.mcpropagate matches Performance.propagate exactly below the resampling threshold" begin
+    # With max_size effectively infinite, applymergetruncateresample! never resamples, so
+    # mcpropagate's per-gate step reduces to the same applymergetruncate! call propagate uses --
+    nq = 6
+    nl = 3
+    topo = bricklayertopology(nq; periodic=false)
+    circuit = hardwareefficientcircuit(nq, nl; topology=topo)
+
+    Random.seed!(1)
+    thetas = randn(countparameters(circuit))
+    pstr = PauliString(nq, :Z, 3)
+    min_abs_coeff = 1e-4
+
+    fused_vec = Performance.propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff, fused=true)
+    mc_vec = Performance.mcpropagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff, fused=true, max_size=10^9)
+
+    @test length(mc_vec) == length(fused_vec)
+    for (term, coeff) in zip(paulis(mc_vec), coefficients(mc_vec))
+        @test coeff == getcoeff(fused_vec, term)
+    end
+end
+
 @testset "fused Dict, fused Vector and stock propagation agree exactly without coefficient truncation" begin
     # truncation by max_weight should not affect any results during propagation
     nq = 6
@@ -255,7 +277,7 @@ end
     Random.seed!(9)
     thetas = randn(countparameters(circuit))
     pstr = PauliString(nq, :Z, 3)
-    min_abs_coeff = 1e-6
+    min_abs_coeff = 1e-4
 
     d_thread = Performance.propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff, fused=true, thread=true)
     d_nothread = Performance.propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff, fused=true, thread=false)

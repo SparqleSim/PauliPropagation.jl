@@ -32,7 +32,7 @@ include("./fused_vector.jl")
     propagate(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
 
 Like `PauliPropagation.propagate`, but defaults `fused=true` to use this module's fused
-`applymergetruncate!` overloads. Pass `fused=false` for byte-identical stock results.
+`applymergetruncate!` overloads. Pass `fused=false` for byte-identical default results.
 """
 function propagate(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
     return PauliPropagation.propagate(circuit, thing, thetas; fused, kwargs...)
@@ -45,6 +45,25 @@ In-place counterpart of `propagate`. See `propagate` for details.
 """
 function propagate!(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
     return PauliPropagation.propagate!(circuit, thing, thetas; fused, kwargs...)
+end
+
+"""
+    mcpropagate(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
+
+Like `PauliPropagation.mcpropagate`, but defaults `fused=true` to use this module's fused
+`applymergetruncate!` overloads. Pass `fused=false` for byte-identical default results.
+"""
+function mcpropagate(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
+    return PauliPropagation.mcpropagate(circuit, thing, thetas; fused, kwargs...)
+end
+
+"""
+    mcpropagate!(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
+
+In-place counterpart of `mcpropagate`. See `mcpropagate` for details.
+"""
+function mcpropagate!(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
+    return PauliPropagation.mcpropagate!(circuit, thing, thetas; fused, kwargs...)
 end
 
 end

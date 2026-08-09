@@ -1,0 +1,47 @@
+# Monte Carlo
+
+## Propagation
+
+```@autodocs
+Modules = [PauliPropagation.PropagationBase]
+Pages = ["src/Base/MonteCarlo/mcpropagate.jl"]
+```
+
+```@autodocs
+Modules = [PauliPropagation]
+Pages = ["src/Propagation/generics.jl"]
+Filter = t -> t in (PauliPropagation.mcpropagate, PauliPropagation.mcpropagate!)
+```
+
+## Resampling
+
+```@autodocs
+Modules = [PauliPropagation.PropagationBase]
+Pages = ["src/Base/MonteCarlo/resample.jl"]
+```
+
+```@autodocs
+Modules = [PauliPropagation]
+Pages = ["src/Propagation/generics.jl"]
+Filter = t -> t === PauliPropagation.resample
+```
+
+## Path Sampling
+
+```@autodocs
+Modules = [PauliPropagation.PropagationBase]
+Pages = ["src/Base/MonteCarlo/mcsample.jl"]
+```
+
+```@autodocs
+Modules = [PauliPropagation]
+Pages = ["src/Propagation/generics.jl"]
+Filter = t -> t in (PauliPropagation.mcsample, PauliPropagation.mcsample!)
+```
+
+### VectorPauliSum Specialization
+
+```@autodocs
+Modules = [PauliPropagation]
+Pages = ["src/Propagation/vectormontecarlo.jl"]
+```

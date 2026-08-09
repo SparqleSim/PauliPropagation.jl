@@ -21,6 +21,10 @@ abstract type PathProperties end
 
 Base.zero(::Type{PProp}) where {PProp<:PathProperties} = PProp(0.0)
 
+# Needed by mcapplytoall!(gate::CliffordGate, psum::VectorPauliSum, ...), which isolates the raw
+# ±1 sign of a Clifford conjugation by calling `apply` with `one(coeff)` instead of `coeff` itself.
+Base.one(::PProp) where {PProp<:PathProperties} = PProp(1.0)
+
 # Pretty print for PathProperties
 function Base.show(io::IO, pth::PProp) where {PProp<:PathProperties}
     print(io, "$PProp(")

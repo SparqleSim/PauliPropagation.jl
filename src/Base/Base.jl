@@ -74,7 +74,7 @@ include("./merge.jl")
 export merge, merge!, mergefunc
 
 include("./truncate.jl")
-export truncate, truncate!
+export truncate, truncate!, maxabscoeff
 
 
 include("./vectorbackend.jl")
@@ -85,10 +85,26 @@ export
     flagcoeffs!,
     flagstoindices!,
     permuteviaindices!,
-    filterviaflags!
+    filterviaflags!,
+    coeffcumsum,
+    coeffcumsum!
 
 include("./sortedtailmerge.jl")
 
 include("./xortailmerge.jl")
+
+include("./MonteCarlo/MonteCarlo.jl")
+export
+    mcpropagate,
+    mcpropagate!,
+    applymergetruncateresample!,
+    mcsample,
+    mcsample!,
+    mcapplytoall!,
+    resample,
+    resample!,
+    multinomial_resample!,
+    systematic_resample!,
+    semideterministic_systematic_resample!
 
 end

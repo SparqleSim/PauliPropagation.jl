@@ -160,6 +160,34 @@ end
 
 end
 
+@testset "Test propagate with complex coefficients" begin
+    nq = 4
+    nl = 2
+
+    topo = bricklayertopology(nq; periodic=false)
+    circ = hardwareefficientcircuit(nq, nl; topology=topo)
+    thetas = randn(countparameters(circ))
+
+    z = 1.0 + 0.5im
+    pstr = PauliString(nq, :Z, 2, z)
+
+    # Heisenberg propagation is linear in the initial coefficient, so scaling it by a complex
+    # number must scale the result by the same factor (with no truncation to break linearity)
+    real_pstr = PauliString(nq, :Z, 2, 1.0)
+    dreal = propagate(circ, real_pstr, thetas; min_abs_coeff=0)
+
+    dnum = propagate(circ, pstr, thetas; min_abs_coeff=0)
+    @test overlapwithzero(dnum) ≈ z * overlapwithzero(dreal)
+
+    dvec = propagate(circ, VectorPauliSum(pstr), thetas; min_abs_coeff=0)
+    @test overlapwithzero(dvec) ≈ z * overlapwithzero(dreal)
+
+    # min_rel_coeff exercises maxabscoeff() on complex coefficients
+    dtrunc = propagate(circ, pstr, thetas; min_rel_coeff=0.01)
+    @test !isempty(dtrunc)
+end
+
+
 @testset "Test improper truncations" begin
 
     pstr = PauliString(4, :Z, 2)

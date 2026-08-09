@@ -61,8 +61,10 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
 
     # This gate assumes we are working in the Schrödinger picture evolving states
     # we normalize by the coefficient of the identity Pauli string for numerical stability
+    # getcoeff sums over any duplicates and binary-searches the sorted prefix, so it is both
+    # correct and fast here without relying on merge!() having fully deduplicated everything
     if normalize_coeffs
-        PauliPropagation.mult!(prop_cache, 1 / PauliPropagation.getmergedcoeff(PauliPropagation.activesum(prop_cache), 0))
+        PauliPropagation.mult!(prop_cache, 1 / PauliPropagation.getcoeff(PauliPropagation.activesum(prop_cache), 0))
     end
 
     return prop_cache

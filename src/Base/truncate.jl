@@ -43,19 +43,11 @@ function _truncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPropagatio
         return prop_cache
     end
 
-    # capture before filterviaflags!() swaps which sum is "main"
-    old_sorted = sortedprefix(mainsum(prop_cache))
-
     # flag the indices that we keep
     keepfunc(pstr, coeff) = !truncfunc(pstr, coeff)
     flag!(keepfunc, prop_cache; thread)
 
     filterviaflags!(prop_cache; thread)
-
-    # filtering keeps relative order, so however many of the old sorted terms survived is exactly
-    # how many new leading terms are still sorted -- that count is already sitting in indices(...)
-    new_sorted = old_sorted == 0 ? 0 : indices(prop_cache)[old_sorted]
-    setsortedprefix!(mainsum(prop_cache), new_sorted)
 
     return prop_cache
 end
@@ -68,6 +60,29 @@ function _truncate!(::ArrayStorage, truncfunc::F, term_sum::AbstractTermSum; kwa
 
     # extracts the original input term sum
     return extractsum!(prop_cache, term_sum)
+end
+
+
+"""
+    maxabscoeff(term_sum::AbstractTermSum)
+    maxabscoeff(prop_cache::AbstractPropagationCache)
+
+Returns the maximum absolute coefficient currently present in `term_sum`, or in the active
+view of `prop_cache`.
+"""
+function maxabscoeff(thing::Union{AbstractTermSum,AbstractPropagationCache})
+    return _maxabscoeff(StorageType(thing), thing)
+end
+
+function _maxabscoeff(::DictStorage, thing::Union{AbstractTermSum,AbstractPropagationCache})
+    return mapreduce(coeff -> abs(tonumber(coeff)), max, coefficients(thing); init=zero(real(numcoefftype(thing))))
+end
+
+function _maxabscoeff(::ArrayStorage, thing::Union{AbstractTermSum,AbstractPropagationCache})
+    RT = real(numcoefftype(thing))
+    # `neutral` must be given explicitly since AK's default (typemin) is undefined for RT here;
+    # zero is a valid neutral element for `max` since all mapped values (abs(...)) are >= 0
+    return AK.mapreduce(coeff -> abs(tonumber(coeff)), max, coefficients(thing); init=zero(RT), neutral=zero(RT))
 end
 
 

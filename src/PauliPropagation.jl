@@ -72,7 +72,6 @@ export
     ParametrizedGate,
     StaticGate,
     PauliRotation,
-    MaskedPauliRotation,
     ImaginaryPauliRotation,
     CliffordGate,
     clifford_map,
@@ -138,9 +137,22 @@ export
     apply,
     truncate,
     truncate!,
+    maxabscoeff,
     merge,
     merge!,
     mergefunc
+
+
+# most exported function is from PropagationBase
+export
+    mcpropagate,
+    mcpropagate!,
+    applymergetruncateresample!,
+    mcsample,
+    mcsample!,
+    mcapplytoall!,
+    resample,
+    resample!
 
 
 include("PathProperties/PathProperties.jl")

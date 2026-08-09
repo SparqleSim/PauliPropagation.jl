@@ -55,20 +55,15 @@ end
 
 
 function paulirotationproduct(gate::PauliRotation, pstr::TT) where TT
-    masked_gate = _tomaskedpaulirotation(gate, TT)
-    return paulirotationproduct(masked_gate, pstr)
-end
-
-# TODO: completely remove MaskedPauliRotation
-function paulirotationproduct(gate::MaskedPauliRotation, pstr::TT) where TT
-    return paulirotationproduct(gate.generator_mask, pstr)
+    gate_mask = symboltoint(TT, gate.symbols, gate.qinds)
+    return paulirotationproduct(gate_mask, pstr)
 end
 
 function paulirotationproduct(gate_mask::TT, pstr::TT) where TT
-    new_pstr = PauliPropagation._bitpaulimultiply(gate_mask, pstr)
+    new_pstr = _bitpaulimultiply(gate_mask, pstr)
 
     # this counts the exponent of the imaginary unit in the new Pauli string
-    im_count = PauliPropagation._calculatesignexponent(gate_mask, pstr)
+    im_count = _calculatesignexponent(gate_mask, pstr)
 
     # now, instead of computing im^im_count followed by another im factor from the gate rules,
     # we do this in one step via a cheeky trick:
@@ -100,9 +95,9 @@ function PropagationBase.applymergetruncate!(gate::ImaginaryPauliRotation, prop_
     # example failure modes are if the coefficient is zero, of if it is supposed to be a number other than 1
     # these can be avoided by setting `normalize_coeffs=false`
     if normalize_coeffs
-        # "getmergedcoeff" because we know there are no duplictates.
-        # TODO: this should use sortedness of vectors
-        mult!(prop_cache, 1 / getmergedcoeff(activesum(prop_cache), 0))
+        # getcoeff is fast here even for VectorPauliSum
+        # because we just merged and can do sorted search.
+        mult!(prop_cache, 1 / getcoeff(activesum(prop_cache), 0))
     end
 
     # normal truncation

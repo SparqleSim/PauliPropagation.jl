@@ -47,7 +47,8 @@ If thetas are not passed, the circuit must contain only non-parametrized `Static
 Default truncations are `min_abs_coeff`, `max_weight`, `max_freq`, and `max_sins`.
 `max_freq`, and `max_sins` will lead to automatic conversion if the coefficients are not already wrapped in suitable `PathProperties` objects.
 A custom truncation function can be passed as `customtruncfunc` with the signature customtruncfunc(pstr::PauliStringType, coefficient)::Bool.
-`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread. It's safe to call from inside your own threaded loop (e.g. `Threads.@threads for _ in 1:10; propagate(...; thread=false); end`), since it won't spawn extra threads competing with yours.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread,
+allowing efficient multi-threading on a higher level (e.g. `Threads.@threads for _ in 1:10; propagate(...; thread=false); end`).
 Further `kwargs` are passed to the lower-level functions `applymergetruncate!`, `applytoall!`, and `apply`.
 """
 function PropagationBase.propagate(circuit, psum::AbstractPauliSum, thetas=nothing; max_weight=Inf, min_abs_coeff=1e-10, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, heisenberg=true, thread::Bool=true, kwargs...)
@@ -76,23 +77,129 @@ In-place propagation of an `AbstractPauliPropagationCache` through the circuit `
 """
 function PropagationBase.propagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; max_weight=Inf, min_abs_coeff=1e-10, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, heisenberg=true, thread::Bool=true, kwargs...)
 
-    # if circuit is actually a single gate, promote it to a list [gate]
-    # similarly the thetas if it is a single number
-    circuit, thetas = PropagationBase._promotecircandparams(circuit, thetas)
-
-    # if thetas is nothing, the circuit must contain only StaticGates
-    # also check if the length of thetas equals the number of parametrized gates
-    PropagationBase._checknumberofparams(circuit, thetas)
-
-    if heisenberg
-        # this usually just reverses circuit and parameter order
-        circuit, thetas = toheisenberg(circuit, thetas)
-    else
-        # this usually entails a conversion of how gates act
-        circuit, thetas = toschrodinger(circuit, thetas)
-    end
+    circuit, thetas = _preparecircuit(circuit, thetas, heisenberg)
 
     return PropagationBase._propagate!(circuit, prop_cache, thetas; max_weight, min_abs_coeff, max_freq, max_sins, customtruncfunc, thread, kwargs...)
+end
+
+
+### MONTE CARLO
+
+"""
+    mcpropagate(circuit, pstr::PauliString, thetas=nothing; max_size, heisenberg=true, thread=true, kwargs...)
+
+Monte Carlo propagation of a `PauliString` (see `mcpropagate`).
+`pstr` is converted into a `VectorPauliSum`, which is also the returned type.
+"""
+function PropagationBase.mcpropagate(circuit, pstr::PauliString, thetas=nothing; kwargs...)
+    return mcpropagate!(circuit, VectorPauliSum(pstr), thetas; kwargs...)
+end
+
+
+function PropagationBase.mcpropagate!(circuit, pstr::PauliString, thetas=nothing; kwargs...)
+    throw(ArgumentError("`mcpropagate!` is not defined for `PauliString`. Use the out-of-place `mcpropagate`, or convert via `VectorPauliSum(pstr)`."))
+end
+
+"""
+    mcpropagate(circuit, psum::PauliSum, thetas=nothing; max_size, heisenberg=true, thread=true, kwargs...)
+
+Monte Carlo propagation of a `PauliSum` (see `mcpropagate`).
+`psum` is converted into a `VectorPauliSum` and converted back on return, leaving `psum` unchanged.
+"""
+function PropagationBase.mcpropagate(circuit, psum::PauliSum, thetas=nothing; kwargs...)
+    vpsum = mcpropagate!(circuit, VectorPauliSum(psum), thetas; kwargs...)
+    return PauliSum(vpsum)
+end
+
+
+function PropagationBase.mcpropagate!(circuit, psum::PauliSum, thetas=nothing; kwargs...)
+    throw(ArgumentError("`mcpropagate!` is not defined for `PauliSum`. Use the out-of-place `mcpropagate`, or convert via `VectorPauliSum(psum)`."))
+end
+
+"""
+    mcpropagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; heisenberg=true, thread=true, kwargs...)
+
+Pauli-specific `mcpropagate!` method that additionally converts the circuit to the Heisenberg or Schrödinger picture (see `propagate!`) before delegating to the generic Monte Carlo propagation loop.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
+"""
+function PropagationBase.mcpropagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; heisenberg=true, kwargs...)
+    circuit, thetas = _preparecircuit(circuit, thetas, heisenberg)
+    return PropagationBase._propagate!(PropagationBase.applymergetruncateresample!, circuit, prop_cache, thetas; kwargs...)
+end
+
+"""
+    mcsample(circuit, pstr::PauliString, params=nothing; squared=false, heisenberg=true, thread=true, kwargs...)
+
+Monte Carlo path sampling of a `PauliString` (see `mcsample`).
+`pstr` is converted into a `VectorPauliSum` and converted back on return, since sampling leaves the number of terms unchanged.
+"""
+function PropagationBase.mcsample(circuit, pstr::PauliString, params=nothing; kwargs...)
+    vpsum = mcsample!(circuit, VectorPauliSum(pstr), params; kwargs...)
+    return only(topaulistrings(vpsum))
+end
+
+
+function PropagationBase.mcsample!(circuit, pstr::PauliString, params=nothing; kwargs...)
+    throw(ArgumentError("`mcsample!` is not defined for `PauliString`. Use the out-of-place `mcsample`, or convert via `VectorPauliSum(pstr)`."))
+end
+
+"""
+    mcsample(circuit, psum::PauliSum, params=nothing; squared=false, heisenberg=true, thread=true, kwargs...)
+
+Monte Carlo path sampling of a `PauliSum` (see `mcsample`).
+`psum` is converted into a `VectorPauliSum` and converted back on return, leaving `psum` unchanged.
+"""
+function PropagationBase.mcsample(circuit, psum::PauliSum, params=nothing; kwargs...)
+    vpsum = mcsample!(circuit, VectorPauliSum(psum), params; kwargs...)
+    return PauliSum(vpsum)
+end
+
+
+function PropagationBase.mcsample!(circuit, psum::PauliSum, params=nothing; kwargs...)
+    throw(ArgumentError("`mcsample!` is not defined for `PauliSum`. Use the out-of-place `mcsample`, or convert via `VectorPauliSum(psum)`."))
+end
+
+"""
+    mcsample!(circuit, tsum::AbstractPauliSum, params=nothing; heisenberg=true, thread=true, kwargs...)
+
+Pauli-specific `mcsample!` method that additionally converts the circuit to the Heisenberg or Schrödinger picture (see `propagate!`) before delegating to the generic Monte Carlo sampling loop.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
+"""
+function PropagationBase.mcsample!(circuit, tsum::AbstractPauliSum, params=nothing; heisenberg=true, kwargs...)
+    circuit, params = _preparecircuit(circuit, params, heisenberg)
+    return PropagationBase._propagate!(PropagationBase.mcapplytoall!, circuit, tsum, params; kwargs...)
+end
+
+"""
+    resample(psum::PauliSum, target_size::Integer; resample_func=nothing, squared=false, thread=true, kwargs...)
+
+Resampling of a `PauliSum` (see `resample`).
+`psum` is converted into a `VectorPauliSum` and converted back on return, leaving `psum` unchanged.
+"""
+function PropagationBase.resample(psum::PauliSum, target_size::Integer, resample_args...; kwargs...)
+    vpsum = resample!(VectorPauliSum(psum), target_size, resample_args...; kwargs...)
+    return PauliSum(vpsum)
+end
+
+
+function PropagationBase.resample!(psum::PauliSum, target_size::Integer, resample_args...; kwargs...)
+    throw(ArgumentError("`resample!` is not defined for `PauliSum`. Use the out-of-place `resample`, or convert via `VectorPauliSum(psum)`."))
+end
+
+
+# Shared prelude for the Pauli-specific `propagate!`/`mcpropagate!`/`mcsample!` methods
+# promote a single gate/param into a list, 
+# validate the parameter count, 
+# then convert to the Heisenberg or Schrödinger picture.
+function _preparecircuit(circuit, params, heisenberg::Bool)
+    circuit, params = PropagationBase._promotecircandparams(circuit, params)
+    PropagationBase._checknumberofparams(circuit, params)
+
+    if heisenberg
+        return toheisenberg(circuit, params)
+    else
+        return toschrodinger(circuit, params)
+    end
 end
 
 
@@ -112,7 +219,17 @@ A custom truncation function can be passed as `customtruncfunc` with the signatu
 
 This function combines all truncation criteria into a single truncation function `truncfunc()` calls PropagationBase.truncate!(truncfunc, prop_cache).
 """
-function PropagationBase.truncate!(prop_cache::AbstractPauliPropagationCache; min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing, kwargs...)
+function PropagationBase.truncate!(
+    prop_cache::AbstractPauliPropagationCache; 
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing,
+    customtruncfunc=nothing, kwargs...
+    )
+
+    if !isnothing(min_rel_coeff)
+        # compute the maximum absolute coefficient in the active view of the prop_cache
+        max_abs_coeff = maxabscoeff(prop_cache)
+        min_abs_coeff = max(min_rel_coeff * max_abs_coeff, min_abs_coeff)
+    end
 
     function truncfunc(pstr, coeff)
         is_truncated = false
@@ -136,7 +253,17 @@ function PropagationBase.truncate!(prop_cache::AbstractPauliPropagationCache; mi
     return prop_cache
 end
 
-function PropagationBase.truncate!(psum::AbstractPauliSum; min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing, kwargs...)
+function PropagationBase.truncate!(
+    psum::AbstractPauliSum; 
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing, 
+    customtruncfunc=nothing, kwargs...
+    )
+    
+    if !isnothing(min_rel_coeff)
+        # compute the maximum absolute coefficient in the active view of the prop_cache
+        max_abs_coeff = maxabscoeff(psum)
+        min_abs_coeff = max(min_rel_coeff * max_abs_coeff, min_abs_coeff)
+    end
 
     function truncfunc(pstr, coeff)
         is_truncated = false
