@@ -86,7 +86,7 @@ function _fusedrotation!(gate, prop_cache, kept_val, new_val, gatetype::Val;
         return prop_cache
     end
 
-    gate_mask = _bytemask(PauliPropagation.symboltoint(PauliPropagation.paulitype(prop_cache), gate.symbols, gate.qinds),
+    gate_mask = _gatemask(PauliPropagation.symboltoint(PauliPropagation.paulitype(prop_cache), gate.symbols, gate.qinds),
         PauliPropagation.terms(mainsum(prop_cache)))
 
     truncfunc(pstr, coeff) = _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
@@ -201,11 +201,10 @@ end
         bytes = _bytesof(terms, gate_mask)
 
         @inbounds for ii in lo:hi
-            pstr = terms[ii]
-
-            does_commute = _gatecommutes(gate_mask, pstr, bytes, ii)
+            does_commute = _gatecommutesat(gate_mask, terms, bytes, ii)
             _branchcondition(Val(GateType), does_commute) || continue
 
+            pstr = terms[ii]
             coeff = coeffs[ii]
             DoWrite && (coeffs[ii] = coeff * kept_val)
 
