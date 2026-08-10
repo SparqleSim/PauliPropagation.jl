@@ -63,8 +63,9 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
     # we normalize by the coefficient of the identity Pauli string for numerical stability
     # getcoeff sums over any duplicates and binary-searches the sorted prefix, so it is both
     # correct and fast here without relying on merge!() having fully deduplicated everything
+    # scaling the active range rather than the whole cache leaves the trash past it alone
     if normalize_coeffs
-        PauliPropagation.mult!(prop_cache, 1 / PauliPropagation.getcoeff(PauliPropagation.activesum(prop_cache), 0))
+        PauliPropagation.activecoeffs(prop_cache) .*= 1 / PauliPropagation.getcoeff(PauliPropagation.activesum(prop_cache), 0)
     end
 
     return prop_cache
@@ -265,6 +266,16 @@ function _fusedapplytruncatenoise!(prop_cache::PauliPropagation.VectorPauliPropa
 
     task_partitioner, n_tasks = PropagationBase._preparetasks(n_old, thread)
     main_terms, main_coeffs, aux_terms, aux_coeffs = PropagationBase._mainauxarrays(prop_cache)
+
+    # One task can filter in place: the walk writes at or behind the term it just read, so source
+    # and destination may be the same arrays, and nothing has to be counted first.
+    if n_tasks == 1
+        n_kept, new_sortedprefix = _noisewrite!(main_terms, main_coeffs, 1,
+            main_terms, main_coeffs, 1, n_old, gate, qind, lambda, truncfunc, old_sortedprefix, Val(true))
+        setactivesize!(prop_cache, n_kept)
+        setsortedprefix!(mainsum(prop_cache), new_sortedprefix)
+        return prop_cache
+    end
 
     kept_counts = Vector{Int}(undef, n_tasks)
     sorted_kept_counts = Vector{Int}(undef, n_tasks)
