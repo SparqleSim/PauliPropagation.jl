@@ -286,3 +286,27 @@ end
     @test d_thread == d_nothread
     @test overlapwithzero(d_thread) == overlapwithzero(d_nothread)
 end
+
+@testset "fused Vector: a cache with no room to spare matches one with room to spare" begin
+    # A cache that starts exactly full makes nearly every gate split its walk and grow.
+    # It has to land where a cache that never grows does.
+    nq = 14
+    topo = bricklayertopology(nq; periodic=false)
+    circuit = hardwareefficientcircuit(nq, 6; topology=topo)
+
+    Random.seed!(9)
+    thetas = randn(countparameters(circuit))
+    pstr = PauliString(nq, :Z, 3)
+    min_abs_coeff = 1e-4
+
+    tight = PropagationCache(VectorPauliSum(pstr))
+    roomy = PropagationCache(VectorPauliSum(pstr))
+    resize!(roomy, 10^6)
+
+    Performance.propagate!(circuit, tight, thetas; min_abs_coeff, fused=true, thread=false)
+    Performance.propagate!(circuit, roomy, thetas; min_abs_coeff, fused=true, thread=false)
+
+    @test length(tight) > 1024  # sanity check that the walks really do run out of room
+    @test capacity(roomy) == 10^6  # sanity check that the other one never grew
+    @test PauliSum(tight) == PauliSum(roomy)
+end
