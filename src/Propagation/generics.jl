@@ -220,22 +220,20 @@ A custom truncation function can be passed as `customtruncfunc` with the signatu
 This function combines all truncation criteria into a single truncation function `truncfunc()` calls PropagationBase.truncate!(truncfunc, prop_cache).
 """
 function PropagationBase.truncate!(
-    prop_cache::AbstractPauliPropagationCache; 
+    pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing,
     customtruncfunc=nothing, kwargs...
     )
 
-    if !isnothing(min_rel_coeff)
-        # compute the maximum absolute coefficient in the active view of the prop_cache
-        max_abs_coeff = maxabscoeff(prop_cache)
-        min_abs_coeff = max(min_rel_coeff * max_abs_coeff, min_abs_coeff)
-    end
+    # if we use min_rel_coeff, compute the maximum absolute coefficient
+    # this must be written in a single line to avoid Julia closure problems and boxing (wow)
+    min_coeff = isnothing(min_rel_coeff) ? min_abs_coeff : max(min_rel_coeff * maxabscoeff(pobj), min_abs_coeff)
 
     function truncfunc(pstr, coeff)
         is_truncated = false
         if truncateweight(pstr, max_weight)
             is_truncated = true
-        elseif truncatemincoeff(coeff, min_abs_coeff)
+        elseif truncatemincoeff(coeff, min_coeff)
             is_truncated = true
         elseif truncatefrequency(coeff, max_freq)
             is_truncated = true
@@ -248,41 +246,5 @@ function PropagationBase.truncate!(
         return is_truncated
     end
 
-    prop_cache = truncate!(truncfunc, prop_cache; kwargs...)
-
-    return prop_cache
-end
-
-function PropagationBase.truncate!(
-    psum::AbstractPauliSum; 
-    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing, 
-    customtruncfunc=nothing, kwargs...
-    )
-    
-    if !isnothing(min_rel_coeff)
-        # compute the maximum absolute coefficient in the active view of the prop_cache
-        max_abs_coeff = maxabscoeff(psum)
-        min_abs_coeff = max(min_rel_coeff * max_abs_coeff, min_abs_coeff)
-    end
-
-    function truncfunc(pstr, coeff)
-        is_truncated = false
-        if truncatemincoeff(coeff, min_abs_coeff)
-            is_truncated = true
-        elseif truncateweight(pstr, max_weight)
-            is_truncated = true
-        elseif truncatefrequency(coeff, max_freq)
-            is_truncated = true
-        elseif truncatesins(coeff, max_sins)
-            is_truncated = true
-        elseif !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff)
-            is_truncated = true
-        end
-
-        return is_truncated
-    end
-
-    psum = truncate!(truncfunc, psum; kwargs...)
-
-    return psum
+    return truncate!(truncfunc, pobj; kwargs...)
 end
