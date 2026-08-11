@@ -75,59 +75,61 @@ t = @timed @threads for ii in eachindex(x_angles)
     @time expectations[ii] = onesimulation(circuit, pstr, thetas; min_abs_coeff, max_weight)
 end
 
-print(&quot;Total simulation time: &quot;, t.time, &quot; seconds&quot;)</code></pre><pre><code class="nohighlight hljs">  2.537252 seconds (2.21 M allocations: 107.149 MiB, 12.25% gc time, 99.90% compilation time)
-  0.014728 seconds (254.01 k allocations: 4.375 MiB)
+print(&quot;Total simulation time: &quot;, t.time, &quot; seconds&quot;)</code></pre><pre><code class="nohighlight hljs">  3.398542 seconds (2.19 M allocations: 106.594 MiB, 9.24% gc time, 99.73% compilation time)
+  0.009016 seconds (21.07 k allocations: 839.883 KiB)
+  0.055232 seconds (21.09 k allocations: 1014.234 KiB)
 
 
-  0.073270 seconds (1.21 M allocations: 19.185 MiB)
+  0.215541 seconds (21.23 k allocations: 1.640 MiB)
 
 
-  0.444399 seconds (3.86 M allocations: 60.259 MiB, 7.89% gc time)
+  0.571321 seconds (21.26 k allocations: 2.100 MiB)
 
 
-  0.954848 seconds (8.86 M allocations: 136.957 MiB, 1.94% gc time)
+  1.115432 seconds (21.29 k allocations: 3.263 MiB)
 
 
-  1.994588 seconds (17.78 M allocations: 274.253 MiB, 1.61% gc time)
+  2.128961 seconds (21.37 k allocations: 6.152 MiB)
 
 
-  3.412878 seconds (31.70 M allocations: 489.473 MiB, 1.76% gc time)
+  3.034900 seconds (21.42 k allocations: 5.513 MiB)
 
 
-  5.886400 seconds (51.74 M allocations: 794.634 MiB, 1.27% gc time)
+  7.025264 seconds (21.67 k allocations: 18.347 MiB)
 
 
- 11.362725 seconds (70.37 M allocations: 1.066 GiB, 4.36% gc time)
+  5.567826 seconds (21.59 k allocations: 13.203 MiB, 0.39% gc time)
 
 
-  8.156837 seconds (80.52 M allocations: 1.212 GiB, 1.45% gc time)
+  7.965560 seconds (21.73 k allocations: 18.334 MiB)
 
 
-  9.537734 seconds (79.86 M allocations: 1.208 GiB, 4.80% gc time)
+  6.739464 seconds (21.66 k allocations: 18.331 MiB, 0.17% gc time)
 
 
- 10.060163 seconds (65.94 M allocations: 1.000 GiB, 1.09% gc time)
+  5.795916 seconds (21.60 k allocations: 18.329 MiB)
 
 
-  8.896725 seconds (42.03 M allocations: 659.314 MiB, 4.77% gc time)
+  1.653750 seconds (21.35 k allocations: 5.507 MiB)
 
 
-  2.066520 seconds (21.01 M allocations: 325.809 MiB, 1.40% gc time)
+  0.944713 seconds (21.29 k allocations: 5.504 MiB)
 
 
-  1.120003 seconds (8.99 M allocations: 142.288 MiB, 1.01% gc time)
-  0.402055 seconds (3.16 M allocations: 50.865 MiB, 1.30% gc time)
+  0.362913 seconds (21.25 k allocations: 2.941 MiB)
 
 
-  0.159485 seconds (1.15 M allocations: 19.139 MiB, 0.82% gc time)
-  0.038165 seconds (294.96 k allocations: 5.310 MiB, 3.59% gc time)
+  0.146211 seconds (21.23 k allocations: 1.979 MiB)
 
 
-  0.009012 seconds (76.82 k allocations: 1.697 MiB)
-  0.002467 seconds (32.77 k allocations: 1003.070 KiB)
-Total simulation time: 68.083958043 seconds</code></pre><pre><code class="language-julia hljs">pl = plot(xlabel=&quot;θ_x Angle&quot;, ylabel=&quot;⟨Z62⟩&quot;)
+  0.034345 seconds (21.10 k allocations: 1.131 MiB)
+  0.006775 seconds (21.08 k allocations: 860.289 KiB)
+  0.002424 seconds (21.05 k allocations: 819.680 KiB)
+Total simulation time: 47.747419289
+
+ seconds</code></pre><pre><code class="language-julia hljs">pl = plot(xlabel=&quot;θ_x Angle&quot;, ylabel=&quot;⟨Z62⟩&quot;)
 plot!(tn_angles, tn_vals, label=&quot;Flatiron Tensor Network&quot;, color=&quot;black&quot;, linewidth=3)
 plot!(google_angles, google_vals, label=&quot;Google Lightcone Statevector&quot;, color=&quot;grey&quot;, linewidth=3)
 plot!(x_angles, expectations, marker=:circle, label=&quot;Pauli Propagation&quot;, linewidth=3, color=&quot;royalblue&quot;)
 scatter!(IBM_angles, IBM_mitigated_vals, label=&quot;IBM Quantum Computer&quot;, color=&quot;Red&quot;, ms=4)
-</code></pre><p><img src="../3-utility-example_files/3-utility-example_7_0.svg" alt="svg"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../2-datatypes/">« 2. Explaining our Data Types</a><a class="docs-footer-nextpage" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 9 August 2026 21:00">Sunday 9 August 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+</code></pre><p><img src="../3-utility-example_files/3-utility-example_7_0.svg" alt="svg"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../2-datatypes/">« 2. Explaining our Data Types</a><a class="docs-footer-nextpage" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 11 August 2026 11:01">Tuesday 11 August 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
