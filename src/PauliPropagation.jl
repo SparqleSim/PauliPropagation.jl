@@ -194,6 +194,9 @@ export
     estimatemse,
     estimatemse!
 
+include("MultiSum/MultiSum.jl")
+export MultiSum
+
 include("Symmetry/Symmetry.jl")
 export
     symmetrymerge,

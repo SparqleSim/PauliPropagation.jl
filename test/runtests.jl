@@ -45,6 +45,8 @@ using Random
 
     include("test_xortailmerge.jl")
 
+    include("test_multisum.jl")
+
     include("test_montecarlo.jl")
 
     include("test_performance.jl")
