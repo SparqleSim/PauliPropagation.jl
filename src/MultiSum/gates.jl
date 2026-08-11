@@ -151,7 +151,7 @@ end
 # The term it branches off goes to the outbox.
 function _branchzone!(prop_cache::MultiSumPropagationCache, source::Int, gate_mask, kept_val, new_val, gatetype::Val)
     storage_type = StorageType(prop_cache)
-    outbox = empty!(prop_cache.outboxes[source])
+    box = _xorbox!(prop_cache, source, gate_mask)
     zonecache = prop_cache.zonecaches[source]
     zone_coeffs = coefficients(zonecache)
 
@@ -160,7 +160,7 @@ function _branchzone!(prop_cache::MultiSumPropagationCache, source::Int, gate_ma
 
         new_term, sign = paulirotationproduct(gate_mask, term)
         _setcoeff!(storage_type, mainsum(zonecache), zone_coeffs, ii, term, coeff * kept_val)
-        _park!(outbox, new_term, coeff * new_val * sign)
+        _park!(storage_type, box, new_term, coeff * new_val * sign)
     end
 
     return
@@ -171,7 +171,8 @@ end
 
 function _dampzone!(prop_cache::MultiSumPropagationCache, source::Int, qind::Integer, gamma)
     storage_type = StorageType(prop_cache)
-    outbox = empty!(prop_cache.outboxes[source])
+    z_mask = symboltoint(termtype(prop_cache), :Z, qind)
+    box = _xorbox!(prop_cache, source, z_mask)
     zonecache = prop_cache.zonecaches[source]
     zone_coeffs = coefficients(zonecache)
 
@@ -180,9 +181,9 @@ function _dampzone!(prop_cache::MultiSumPropagationCache, source::Int, qind::Int
         pauli == 0 && continue
 
         if pauli == 3
-            # Z damps into the identity on that site, which some other zone may own
+            # Z damps into the identity on that site, which is this term ⊻ z_mask
             _setcoeff!(storage_type, mainsum(zonecache), zone_coeffs, ii, term, coeff * (1 - gamma))
-            _park!(outbox, setpauli(term, 0, qind), coeff * gamma)
+            _park!(storage_type, box, term ⊻ z_mask, coeff * gamma)
         else
             _setcoeff!(storage_type, mainsum(zonecache), zone_coeffs, ii, term, coeff * sqrt(1 - gamma))
         end
@@ -218,6 +219,13 @@ end
 
 
 ### Zone-local storage handling
+
+# A fixed ⊻ mask moves every term of a zone into one and the same zone, so a gate that branches by
+# that mask has a single box to park in and never routes a term.
+@inline function _xorbox!(prop_cache::MultiSumPropagationCache, source::Int, mask)
+    outbox = empty!(prop_cache.outboxes[source])
+    return @inbounds outbox.zones[((source - 1) ⊻ _zonebits(mask, outbox.zonemasks))+1]
+end
 
 _deliver!(::DictStorage, zonecache, boxes) = foreach(box -> add!(mainsum(zonecache), box), boxes)
 

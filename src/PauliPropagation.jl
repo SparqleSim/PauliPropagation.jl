@@ -195,7 +195,13 @@ export
     estimatemse!
 
 include("MultiSum/MultiSum.jl")
-export MultiSum
+export
+    MultiSum,
+    MultiSumPropagationCache,
+    nzones,
+    zonesizes,
+    zoneof,
+    staysinzone
 
 include("Symmetry/Symmetry.jl")
 export

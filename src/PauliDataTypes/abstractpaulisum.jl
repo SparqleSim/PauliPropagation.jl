@@ -231,15 +231,15 @@ function Base.conj!(psum::AbstractPauliSum)
 end
 
 """
-    filter!(filterfunc::Function, psum::AbstractPauliSum)
+    filter!(filterfunc::Function, psum::AbstractTermSum)
 
-Filter a `AbstractPauliSum` by copying and removing all Pauli strings for which `filterfunc(pstr, coeff)` returns `false`.
+Filter a `AbstractTermSum` by copying and removing all Pauli strings for which `filterfunc(pstr, coeff)` returns `false`.
 """
-Base.filter(filterfunc::F, psum::AbstractPauliSum) where {F<:Function} = truncate!((pstr, coeff) -> !filterfunc(pstr, coeff), deepcopy(psum))
+Base.filter(filterfunc::F, psum::AbstractTermSum) where {F<:Function} = truncate!((pstr, coeff) -> !filterfunc(pstr, coeff), deepcopy(psum))
 
 """
-    filter!(filterfunc::Function, psum::AbstractPauliSum)
+    filter!(filterfunc::Function, psum::AbstractTermSum)
 
-Filter a `AbstractPauliSum` in-place by removing all Pauli strings for which `filterfunc(pstr, coeff)` returns `false`.
+Filter a `AbstractTermSum` in-place by removing all Pauli strings for which `filterfunc(pstr, coeff)` returns `false`.
 """
-Base.filter!(filterfunc::F, psum::AbstractPauliSum) where {F<:Function} = truncate!((pstr, coeff) -> !filterfunc(pstr, coeff), psum)
+Base.filter!(filterfunc::F, psum::AbstractTermSum) where {F<:Function} = truncate!((pstr, coeff) -> !filterfunc(pstr, coeff), psum)

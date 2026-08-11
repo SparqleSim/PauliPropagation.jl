@@ -115,8 +115,13 @@ PropagationBase.maxabscoeff(msum::MultiSum) = maximum(maxabscoeff, msum.zones)
 # a p-norm over the zones' p-norms is the p-norm over all coefficients
 LinearAlgebra.norm(msum::MultiSum, L::Real=2) = norm([norm(zone, L) for zone in msum.zones], L)
 
-function PropagationBase.truncate!(msum::MultiSum; kwargs...)
-    foreach(zone -> truncate!(zone; kwargs...), msum.zones)
+# `min_rel_coeff` is relative to the largest coefficient anywhere, so it is resolved before the zones
+# are truncated against it
+function PropagationBase.truncate!(msum::MultiSum; min_abs_coeff::Real=1e-10, min_rel_coeff=nothing, kwargs...)
+    min_coeff = isnothing(min_rel_coeff) ? min_abs_coeff : max(min_rel_coeff * maxabscoeff(msum), min_abs_coeff)
+
+    foreach(zone -> truncate!(zone; min_abs_coeff=min_coeff, kwargs...), msum.zones)
+
     return msum
 end
 
@@ -149,6 +154,12 @@ PropagationBase.getcoeff(msum::MultiSum, pstr::PauliString) = getcoeff(msum, pst
 PropagationBase.getcoeff(msum::MultiSum, pauli::Symbol, qind::Integer) = getcoeff(msum, symboltoint(nqubits(msum), pauli, qind))
 PropagationBase.getcoeff(msum::MultiSum, pstr::Vector{Symbol}) = getcoeff(msum, symboltoint(pstr))
 PropagationBase.getcoeff(msum::MultiSum, pstr, qinds) = getcoeff(msum, symboltoint(nqubits(msum), pstr, qinds))
+
+Base.conj!(msum::MultiSum) = (foreach(conj!, msum.zones); msum)
+Base.conj(msum::MultiSum) = coefftype(msum) <: Real ? deepcopy(msum) : conj!(deepcopy(msum))
+
+convertcoefftype(::Type{CT}, msum::MultiSum) where {CT} =
+    MultiSum(map(zone -> convertcoefftype(CT, zone), msum.zones), msum.zonemasks)
 
 
 ### Conversions
@@ -187,7 +198,7 @@ function _zonemasks(::Type{TT}, n_bits::Int) where {TT}
 
     for _ in 1:n_bits
         mask = zero(TT)
-        for word in 0:max(sizeof(TT), 8)÷8-1
+        for word in 0:cld(sizeof(TT), 8)-1
             state += _ZONEMASK_SEED
             mask |= (_mix64(state) % TT) << (64 * word)
         end
@@ -203,4 +214,8 @@ end
     return z ⊻ (z >> 31)
 end
 
-_emptylike(term_sum::TS) where {TS<:AbstractTermSum} = Base.typename(TS).wrapper(coefftype(term_sum), nsites(term_sum))
+# a zone must carry the very type it was seeded from, term type included, so it is rebuilt from the
+# empty storage rather than from the coefficient type and the number of sites
+_emptylike(term_sum::AbstractTermSum) = _emptylike(StorageType(term_sum), term_sum)
+_emptylike(::DictStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(storage(term_sum)))
+_emptylike(::ArrayStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(terms(term_sum)), empty(coefficients(term_sum)))

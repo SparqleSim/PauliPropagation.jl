@@ -225,17 +225,15 @@ function PropagationBase.truncate!(
     customtruncfunc=nothing, kwargs...
     )
 
-    if !isnothing(min_rel_coeff)
-        # compute the maximum absolute coefficient in the active view of the prop_cache
-        max_abs_coeff = maxabscoeff(prop_cache)
-        min_abs_coeff = max(min_rel_coeff * max_abs_coeff, min_abs_coeff)
-    end
+    # the threshold gets its own name: a `truncfunc` that captured a reassigned `min_abs_coeff` would
+    # box it, and every term would then pay a dynamic lookup
+    min_coeff = isnothing(min_rel_coeff) ? min_abs_coeff : max(min_rel_coeff * maxabscoeff(prop_cache), min_abs_coeff)
 
     function truncfunc(pstr, coeff)
         is_truncated = false
         if truncateweight(pstr, max_weight)
             is_truncated = true
-        elseif truncatemincoeff(coeff, min_abs_coeff)
+        elseif truncatemincoeff(coeff, min_coeff)
             is_truncated = true
         elseif truncatefrequency(coeff, max_freq)
             is_truncated = true
@@ -259,15 +257,12 @@ function PropagationBase.truncate!(
     customtruncfunc=nothing, kwargs...
     )
     
-    if !isnothing(min_rel_coeff)
-        # compute the maximum absolute coefficient in the active view of the prop_cache
-        max_abs_coeff = maxabscoeff(psum)
-        min_abs_coeff = max(min_rel_coeff * max_abs_coeff, min_abs_coeff)
-    end
+    # as above, the resolved threshold gets its own name so that `truncfunc` captures no reassigned variable
+    min_coeff = isnothing(min_rel_coeff) ? min_abs_coeff : max(min_rel_coeff * maxabscoeff(psum), min_abs_coeff)
 
     function truncfunc(pstr, coeff)
         is_truncated = false
-        if truncatemincoeff(coeff, min_abs_coeff)
+        if truncatemincoeff(coeff, min_coeff)
             is_truncated = true
         elseif truncateweight(pstr, max_weight)
             is_truncated = true

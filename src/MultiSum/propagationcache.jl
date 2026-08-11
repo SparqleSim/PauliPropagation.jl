@@ -48,6 +48,7 @@ PropagationBase.StorageType(prop_cache::MultiSumPropagationCache) = StorageType(
 PropagationBase.nsites(prop_cache::MultiSumPropagationCache) = nsites(prop_cache.msum)
 PropagationBase.termtype(prop_cache::MultiSumPropagationCache) = termtype(prop_cache.msum)
 PropagationBase.coefftype(prop_cache::MultiSumPropagationCache) = coefftype(prop_cache.msum)
+PropagationBase.numcoefftype(prop_cache::MultiSumPropagationCache) = numcoefftype(prop_cache.msum)
 
 Base.length(prop_cache::MultiSumPropagationCache) = sum(length, prop_cache.zonecaches)
 Base.isempty(prop_cache::MultiSumPropagationCache) = all(isempty, prop_cache.zonecaches)
@@ -101,12 +102,10 @@ end
 function PropagationBase.truncate!(prop_cache::MultiSumPropagationCache;
     min_abs_coeff::Real=1e-10, min_rel_coeff=nothing, thread::Bool=true, kwargs...)
 
-    if !isnothing(min_rel_coeff)
-        min_abs_coeff = max(min_rel_coeff * maxabscoeff(prop_cache), min_abs_coeff)
-    end
+    min_coeff = isnothing(min_rel_coeff) ? min_abs_coeff : max(min_rel_coeff * maxabscoeff(prop_cache), min_abs_coeff)
 
     _eachzone(prop_cache, thread) do zone_id
-        truncate!(prop_cache.zonecaches[zone_id]; min_abs_coeff, thread=false, kwargs...)
+        truncate!(prop_cache.zonecaches[zone_id]; min_abs_coeff=min_coeff, thread=false, kwargs...)
     end
 
     return _syncsums!(prop_cache)

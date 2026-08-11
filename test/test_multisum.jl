@@ -98,6 +98,21 @@ end
     end
 end
 
+@testset "MultiSum truncation" begin
+    Random.seed!(42)
+    psum = propagate(rotations, PauliSum(pstr), randn(countparameters(rotations)); min_abs_coeff=1e-8)
+
+    # min_rel_coeff is relative to the largest coefficient anywhere, not to each zone's own largest
+    expected = truncate!(deepcopy(psum); min_rel_coeff=0.05, min_abs_coeff=0.0)
+    for n_zones in (2, 4, 8), seed in (psum, VectorPauliSum(psum))
+        msum = truncate!(MultiSum(seed, n_zones); min_rel_coeff=0.05, min_abs_coeff=0.0)
+        @test PauliSum(msum) == expected
+    end
+
+    @test PauliSum(truncate!(MultiSum(psum, 4); max_weight=3)) == truncate!(deepcopy(psum); max_weight=3)
+    @test PauliSum(filter((pauli, coeff) -> coeff > 0, MultiSum(psum, 4))) == filter((pauli, coeff) -> coeff > 0, psum)
+end
+
 @testset "MultiSum interface" begin
     vpsum = VectorPauliSum(nq)
     add!(vpsum, [:X, :Y], [1, 2], 0.5)
@@ -125,17 +140,20 @@ end
 
     @test overlapwithzero(msum) == overlapwithzero(vpsum)
     @test overlapwithmaxmixed(msum) == 0.0
+    @test scalarproduct(msum, vpsum) == scalarproduct(vpsum, vpsum)
+    @test overlapwithpaulisum(msum, msum) == overlapwithpaulisum(vpsum, vpsum)
 
     @test PauliSum(msum) == PauliSum(vpsum)
     @test VectorPauliSum(msum) == vpsum
     @test msum == MultiSum(vpsum, 4)
     @test msum == MultiSum(PauliSum(vpsum), 8)
 
-    # a term is always in the zone that owns it, whatever the sum is split into
-    for other_zones in (1, 2, 8)
-        other = MultiSum(vpsum, other_zones)
-        @test all(length(zone) == length(unique(terms(zone))) for zone in other.zones)
-    end
+    @test coefftype(convertcoefftype(ComplexF64, msum)) == ComplexF64
+    @test conj(mult!(convertcoefftype(ComplexF64, msum), im)) == mult!(convertcoefftype(ComplexF64, msum), -im)
+
+    # a zone carries the very type it was seeded from, term type included
+    @test paulitype(MultiSum(VectorPauliSum(nq, UInt64[], Float64[]), 4)) == UInt64
+    @test paulitype(MultiSum(PauliSum(nq, Dict{UInt64,Float64}()), 4)) == UInt64
 
     add!(msum, [:X, :Y], [1, 2], 0.5)
     @test getcoeff(msum, [:X, :Y], [1, 2]) == 1.0
@@ -165,6 +183,8 @@ end
     @test mainsum(prop_cache) === msum
     @test length(activesum(prop_cache)) == 1
     @test maxabscoeff(prop_cache) == 1.0
+    @test numcoefftype(prop_cache) == Float64
+    @test overlapwithzero(prop_cache) == overlapwithzero(vpsum)
 
     resize!(prop_cache, 400)
     @test capacity(prop_cache) >= 400
@@ -180,4 +200,26 @@ end
     propagated = propagate(rotations, untouched, randn(countparameters(rotations)); min_abs_coeff=1e-8)
     @test length(untouched) == 1
     @test length(propagated) > 1
+end
+
+@testset "MultiSum zone assignment" begin
+    Random.seed!(42)
+    psum = propagate(rotations, PauliSum(pstr), randn(countparameters(rotations)); min_abs_coeff=1e-10)
+
+    for n_zones in (2, 4, 8), seed in (psum, VectorPauliSum(psum))
+        msum = propagate(mixed, MultiSum(seed, n_zones), [gate isa ParametrizedNoiseChannel ? 0.05 : 0.3 for gate in mixed if gate isa ParametrizedGate]; min_abs_coeff=1e-8)
+
+        # every term sits in the zone that owns it, and no zone holds a term twice
+        @test all(all(zoneof(msum, term) == zone_id for term in terms(zone)) for (zone_id, zone) in enumerate(msum.zones))
+        @test all(length(zone) == length(unique(terms(zone))) for zone in msum.zones)
+
+        # parities of fixed masks spread the terms evenly, whatever the sum looks like
+        @test maximum(zonesizes(msum)) < 1.5 * length(msum) / nzones(msum)
+    end
+
+    # the assignment is linear over GF(2), which is what lets a gate that branches by a fixed mask
+    # send a whole zone to a single other zone
+    msum = MultiSum(psum, 8)
+    terms_and_masks = zip(rand(paulitype(msum), 100), rand(paulitype(msum), 100))
+    @test all(zoneof(msum, term ⊻ mask) - 1 == (zoneof(msum, term) - 1) ⊻ (zoneof(msum, mask) - 1) for (term, mask) in terms_and_masks)
 end

@@ -31,8 +31,8 @@ of 8 zones differ by 2% over 19k terms, and by less as the sum grows.
 Two zone-parallel passes, separated by a barrier:
 
 1. Every zone applies the gate to its own terms. A gate that branches rescales the terms it branches
-   and parks the terms they make in the zone's own outbox; any other gate parks everything it makes
-   and empties the zone.
+   and parks the terms they make in its outbox -- in a single box of it, since they all move by the
+   same `⊻ m`; any other gate routes what it makes term by term and empties the zone.
 2. Every zone appends what the outboxes hold for it. `merge!` and `truncate!` then run zone by zone,
    which is the library's own `applytoall!`-`merge!`-`truncate!` order.
 
@@ -50,7 +50,16 @@ survive is not enough: a zone holds the terms addressed to it next to the terms 
 its share has to cover that peak, and a hint that only covers the result still reallocates near the
 end of a run.
 
+## What it buys
+
+A 36-qubit tilted-field Ising circuit run out to 6.7M terms on 8 threads, against the same sum
+propagated single-threaded: 4.4x over a `PauliSum`, 2.6x over a `VectorPauliSum`, and 1.5x over a
+`VectorPauliSum` propagated with the library's own threading.
+
 ## Not here yet
 
 The fused single-pass gate applications, which branch straight into the outbox and merge it with the
 XOR tail sort, belong in the `Performance` module and are reached through `Performance.propagate`.
+
+Monte Carlo propagation (`mcpropagate`, `mcsample`, `resample`) and `rewindgradient` do not take a
+`MultiSum`: resampling weighs the whole sum at once, and neither has a zone-parallel form yet.

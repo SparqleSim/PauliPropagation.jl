@@ -121,9 +121,9 @@ end
 
 
 """
-    scalarproduct(psum1::AbstractPauliSum, psum2::AbstractPauliSum)
-    scalarproduct(pstr::PauliString, psum::AbstractPauliSum)
-    scalarproduct(psum::AbstractPauliSum, pstr::PauliString)
+    scalarproduct(psum1::AbstractTermSum, psum2::AbstractTermSum)
+    scalarproduct(pstr::PauliString, psum::AbstractTermSum)
+    scalarproduct(psum::AbstractTermSum, pstr::PauliString)
     scalarproduct(pstr1::PauliString, pstr2::PauliString)
 
 Calculates the scalar product between any combination of `PauliSum` and `PauliString`.
@@ -131,7 +131,7 @@ This  calculates the sum of the products of their coefficients for all Pauli str
 Important: This is not equivalent to the trace `Tr[psum1 * psum2]` but instead  `Tr[psum1 * psum2]/2^n`,
 and equivalently for Pauli strings.
 """
-function scalarproduct(psum1::AbstractPauliSum, psum2::AbstractPauliSum)
+function scalarproduct(psum1::AbstractTermSum, psum2::AbstractTermSum)
 
     longer_psum = psum1
     shorter_psum = psum2
@@ -167,13 +167,13 @@ function _scalarproduct(lookup_psum, loop_psum)
 end
 
 
-function scalarproduct(pstr::PauliString, psum::AbstractPauliSum)
+function scalarproduct(pstr::PauliString, psum::AbstractTermSum)
     _checknumberofqubits(pstr, psum)
     return tonumber(getcoeff(psum, pstr)) * tonumber(pstr.coeff)
 
 end
 
-scalarproduct(psum::AbstractPauliSum, pstr::PauliString) = scalarproduct(pstr, psum)
+scalarproduct(psum::AbstractTermSum, pstr::PauliString) = scalarproduct(pstr, psum)
 
 
 
