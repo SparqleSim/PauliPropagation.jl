@@ -93,6 +93,27 @@ include("./sortedtailmerge.jl")
 
 include("./xortailmerge.jl")
 
+include("./MultiSum/MultiSum.jl")
+export
+    MultiSumStorage,
+    ZoneMap,
+    XorZoneMap,
+    FoldedZoneMap,
+    isxorlinear,
+    zones,
+    zonemap,
+    zonestorage,
+    emptylike,
+    defaultnzones,
+    zonecaches,
+    outboxes,
+    nzones,
+    zonesizes,
+    zoneof,
+    staysinzone,
+    applytoallzones!,
+    applyxorbranch!
+
 include("./MonteCarlo/MonteCarlo.jl")
 export
     mcpropagate,

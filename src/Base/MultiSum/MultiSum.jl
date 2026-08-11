@@ -1,4 +1,4 @@
-# multisum.jl defines the MultiSum type: a term sum split over one work zone per thread,
+# multisum.jl defines the MultiSumStorage trait: a term sum split over one work zone per thread,
 # with an owning zone per term.
 include("multisum.jl")
 
