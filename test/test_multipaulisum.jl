@@ -71,12 +71,48 @@ end
 @testset "MultiPauliSum through the Performance module" begin
     Random.seed!(42)
     thetas = randn(countparameters(rotations))
+    # PauliNoise stays in its zone, so it fuses zone by zone rather than through an outbox
+    paulinoises = Gate[DepolarizingNoise(qind) for qind in 1:nq]
+    append!(paulinoises, [DephasingNoise(qind) for qind in 1:nq])
+    noisy = vcat(Gate[], rotations, paulinoises)
+    noisy_params = vcat(thetas, fill(0.05, length(paulinoises)))
 
-    expected = propagate(rotations, PauliSum(pstr), thetas; min_abs_coeff=1e-8)
-    got = PauliPropagation.Performance.propagate(rotations, MultiPauliSum(VectorPauliSum(pstr), 4), thetas; min_abs_coeff=1e-8)
+    fused(circuit, thing, params; kwargs...) =
+        PauliSum(PauliPropagation.Performance.propagate(circuit, thing, params; kwargs...))
 
-    @test length(PauliSum(got)) == length(expected)
-    @test maxdeviation(expected, PauliSum(got)) < 1e-12
+    # zones fuse the very application the sum they split would have fused
+    for (circuit, params) in ((rotations, thetas), (noisy, noisy_params)), min_abs_coeff in (0.0, 1e-8)
+        expected = fused(circuit, VectorPauliSum(pstr), params; min_abs_coeff)
+
+        for n_zones in (1, 2, 4, 8)
+            got = fused(circuit, MultiPauliSum(VectorPauliSum(pstr), n_zones), params; min_abs_coeff)
+            @test length(got) == length(expected)
+            @test maxdeviation(expected, got) < 1e-12
+        end
+    end
+
+    # imaginary time evolution normalizes by an identity coefficient that lives in one zone alone
+    imaginary = [ImaginaryPauliRotation([:X], [qind]) for qind in 1:nq]
+    append!(imaginary, [ImaginaryPauliRotation([:Z, :Z], pair) for pair in topology])
+    taus = fill(0.1, length(imaginary))
+    identity_pstr = PauliString(nq, :I, 1)
+
+    expected = fused(imaginary, VectorPauliSum(identity_pstr), taus; heisenberg=false, min_abs_coeff=1e-10)
+    for n_zones in (1, 4)
+        got = fused(imaginary, MultiPauliSum(VectorPauliSum(identity_pstr), n_zones), taus; heisenberg=false, min_abs_coeff=1e-10)
+        @test length(got) == length(expected)
+        @test maxdeviation(expected, got) < 1e-12
+    end
+
+    # dict zones and a zone count that is not a power of two have nothing to fuse, and fall through
+    default = PauliSum(propagate(rotations, VectorPauliSum(pstr), thetas; min_abs_coeff=1e-8))
+    for seed in (PauliSum(pstr), VectorPauliSum(pstr)), n_zones in (4, 6)
+        seed isa VectorPauliSum && ispow2(n_zones) && continue
+
+        got = fused(rotations, MultiPauliSum(seed, n_zones), thetas; min_abs_coeff=1e-8)
+        @test length(got) == length(default)
+        @test maxdeviation(default, got) < 1e-12
+    end
 end
 
 @testset "MultiPauliSum imaginary time evolution" begin

@@ -78,16 +78,30 @@ A 24-qubit circuit of six Rx-Rz-CNOT-Rzz layers, run out to 9.1M terms over 8 zo
 against the same sum over a single zone: 5.1x for `PauliSum` zones and 2.9x for `VectorPauliSum`
 zones, the latter 2.0x over a `VectorPauliSum` propagated with the library's own threading.
 
+A 36-qubit tilted-field Ising circuit run out to 6.9M terms on 8 threads, against a `PauliSum`
+propagated single-threaded: 9.6x over 8 `VectorPauliSum` zones, and 18.8x with the fused application
+inside the zones. The fused zones are 1.4x the fused `VectorPauliSum` the library threads itself,
+which is otherwise the fastest way to run that circuit.
+
 Zone count and thread count are separate choices, and a power of two is worth giving up threads for.
 Over the same 8 zones on the same 8 threads, folding the zone assignment instead of keeping it linear
 costs 3-6% for `PauliSum` zones, which route every term they make in any case, and 29-34% for
 `VectorPauliSum` zones, which lose the XOR tail sort with it. Both maps balance the zones equally
 well.
 
-## Not here yet
+## Fused application
 
-The fused single-pass gate applications, which branch straight into the outbox, belong in the
-`Performance` module and are reached through `Performance.propagate`.
+`Performance.propagate` runs the fused single-pass application inside every zone: a zone writes what
+it branches straight into its box, and the truncations that read the coefficient are paid in the merge
+that takes delivery, rather than in a pass of their own. `applyxorbranchzones!` is
+`applyxorbranch!` with the first pass handed to the caller, so both share the delivery and the merge.
+
+Fusing asks more of the zones than the default does. The rotations need array-backed zones and a
+power-of-two zone count, since a zone writes its products contiguously into the one box it owns;
+`PauliNoise` only needs the former, staying where it is. Anything else falls back to the default
+application.
+
+## Not here yet
 
 A gate that routes its terms leaves every zone holding a concatenation of runs, each of them a sorted
 zone under a fixed `⊻`: one run per zone that sent to it, and for a Clifford gate one more per Pauli

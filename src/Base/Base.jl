@@ -112,7 +112,8 @@ export
     zoneof,
     staysinzone,
     applytoallzones!,
-    applyxorbranch!
+    applyxorbranch!,
+    applyxorbranchzones!
 
 include("./MonteCarlo/MonteCarlo.jl")
 export

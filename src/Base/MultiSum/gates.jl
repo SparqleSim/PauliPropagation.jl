@@ -55,10 +55,40 @@ function applyxorbranch!(branchfunc::F, prop_cache::AbstractPropagationCache, ma
     thread::Bool=true, kwargs...) where {F<:Function}
 
     zone_map = zonemap(prop_cache)
+
+    return _branchpasses!(prop_cache, zone_map, mask; thread, kwargs...) do source
+        _branchzone!(branchfunc, zone_map, prop_cache, source, mask)
+    end
+end
+
+"""
+    applyxorbranchzones!(zonefunc, prop_cache, mask; thread=true, kwargs...)
+
+[`applyxorbranch!`](@ref) with the first pass left to the caller: `zonefunc(zonecache, box)` applies
+the gate to one zone and writes what it branches into `box`, rather than being handed one term at a
+time. The zone that owns those terms then takes delivery of the box and merges it in.
+
+The single box only exists over a power-of-two number of zones, so this needs an [`XorZoneMap`](@ref).
+`kwargs` reach the merge, `truncfunc` included.
+"""
+function applyxorbranchzones!(zonefunc::F, prop_cache::AbstractPropagationCache, mask;
+    thread::Bool=true, kwargs...) where {F<:Function}
+
+    zone_map = zonemap(prop_cache)::XorZoneMap
+
+    return _branchpasses!(prop_cache, zone_map, mask; thread, kwargs...) do source
+        zonefunc(zonecaches(prop_cache)[source], _branchbox(prop_cache, source))
+    end
+end
+
+# every zone makes its terms and parks them, then every zone takes delivery and merges
+function _branchpasses!(passfunc::F, prop_cache::AbstractPropagationCache, zone_map::ZoneMap, mask;
+    thread::Bool=true, kwargs...) where {F<:Function}
+
     sorted_zones = _sortedzones(zonestorage(prop_cache), zone_map, prop_cache)
 
     _eachzone(prop_cache, thread) do source
-        _branchzone!(branchfunc, zone_map, prop_cache, source, mask)
+        passfunc(source)
     end
 
     _collectbranch!(zone_map, prop_cache, mask; thread)

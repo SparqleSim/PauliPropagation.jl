@@ -131,7 +131,7 @@ function _serialbranchwrite!(prop_cache, n_old::Int, gate_mask, kept_val, new_va
         terms, coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
 
         hi = min(n_old, lo + PauliPropagation.capacity(prop_cache) - pos)
-        pos += _fusedbranchwrite!(terms, coeffs, pos, lo, hi, gate_mask, kept_val, new_val, max_weight, gatetype, Val(true))
+        pos += _fusedbranchwrite!(terms, coeffs, pos, terms, coeffs, lo, hi, gate_mask, kept_val, new_val, max_weight, gatetype, Val(true))
         lo = hi + 1
     end
 
@@ -147,7 +147,7 @@ function _taskedbranchwrite!(prop_cache, n_old::Int, task_partitioner, n_tasks::
     # dry run: each task counts the products it will append, without writing
     AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
         rng = task_partitioner[task_id]
-        new_counts[task_id] = _fusedbranchwrite!(main_terms, main_coeffs, 1, rng.start, rng.stop,
+        new_counts[task_id] = _fusedbranchwrite!(main_terms, main_coeffs, 1, main_terms, main_coeffs, rng.start, rng.stop,
             gate_mask, kept_val, new_val, max_weight, gatetype, Val(false))
     end
 
@@ -167,7 +167,7 @@ function _taskedbranchwrite!(prop_cache, n_old::Int, task_partitioner, n_tasks::
     # real pass: scale the branching coefficients in place, append each task's products at its offset
     AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
         rng = task_partitioner[task_id]
-        _fusedbranchwrite!(main_terms, main_coeffs, n_old + new_offsets[task_id], rng.start, rng.stop,
+        _fusedbranchwrite!(main_terms, main_coeffs, n_old + new_offsets[task_id], main_terms, main_coeffs, rng.start, rng.stop,
             gate_mask, kept_val, new_val, max_weight, gatetype, Val(true))
     end
 
@@ -188,10 +188,11 @@ end
 
 # Walks terms[lo:hi], branching each term according to `_branchcondition(Val(GateType), ...)`. A
 # branching term keeps its Pauli string and only has its coefficient scaled, so it stays where it is
-# and needs no test -- its weight already passed. Its product is appended from new_start, unless it
-# is too heavy, which merging cannot undo. When DoWrite is false nothing is written and the products
-# are only counted. Returns the number of products.
-@inline function _fusedbranchwrite!(terms, coeffs, new_start, lo, hi,
+# and needs no test -- its weight already passed. Its product is written to out_terms/out_coeffs from
+# new_start, unless it is too heavy, which merging cannot undo. The output may be the very arrays
+# being walked, which is how a product lands past the end of the active range. When DoWrite is false
+# nothing is written and the products are only counted. Returns the number of products.
+@inline function _fusedbranchwrite!(out_terms, out_coeffs, new_start, terms, coeffs, lo, hi,
     gate_mask::TT, kept_val, new_val, max_weight, ::Val{GateType}, ::Val{DoWrite}) where {TT,GateType,DoWrite}
 
     new_pos = new_start
@@ -210,7 +211,7 @@ end
 
             new_pstr, sign = _gateproduct(gate_mask, pstr, bytes, ii)
             if !_truncateweight(new_pstr, max_weight)
-                new_pos = PropagationBase._writeandadvance!(terms, coeffs, new_pos, new_pstr, coeff * new_val * sign, Val(DoWrite))
+                new_pos = PropagationBase._writeandadvance!(out_terms, out_coeffs, new_pos, new_pstr, coeff * new_val * sign, Val(DoWrite))
             end
         end
     end
