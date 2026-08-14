@@ -246,6 +246,8 @@ end
 
 export paulipropagation2yao
 
+include("OpenQASMInterface.jl")
+
 # experimental Performance module
 include("Performance/Performance.jl")
 

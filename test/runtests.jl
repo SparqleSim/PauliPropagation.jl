@@ -57,4 +57,10 @@ using Random
 
     include("test_yao_extension.jl")
 
+    include("test_qasm_interface.jl")
+
+    include("test_qasm_against_yao.jl")
+
+    include("test_qasm_propagation.jl")
+
 end
