@@ -192,8 +192,52 @@ end
             @test only(circuit).qinds == [1]
         end
 
-        @testset "rzz(pi/2) maps to ZZpihalf" begin
-            _assert_clifford_mapping(2, "rzz($(pi / 2)) q[0], q[1];", :ZZpihalf, [1, 2])
+        @testset "rzz(pi/2) stays a PauliRotation" begin
+            _assert_pauli_rotation_mapping(2, "rzz($(pi / 2)) q[0], q[1];", [:Z, :Z], [1, 2], pi / 2)
+        end
+
+        @testset "qubit count ignores creg" begin
+            nq, _, _ = _readqasm_program("""
+            OPENQASM 2.0;
+            include "qelib1.inc";
+            creg c[7];
+            qreg q[2];
+            h q[0];
+            """)
+            @test nq == 2
+        end
+
+        @testset "several qregs get disjoint indices" begin
+            nq, circuit, _ = _readqasm_program("""
+            OPENQASM 2.0;
+            include "qelib1.inc";
+            qreg a[2];
+            qreg b[2];
+            h a[0];
+            x b[0];
+            cx a[1], b[1];
+            """)
+            @test nq == 4
+            @test circuit[1].qinds == [1]
+            @test circuit[2].qinds == [3]
+            @test circuit[3].qinds == [2, 4]
+        end
+
+        @testset "unhandled statements are rejected, not skipped" begin
+            @test_throws ErrorException _readqasm_program("""
+            OPENQASM 2.0;
+            include "qelib1.inc";
+            qreg q[2];
+            creg c[2];
+            if(c==1) x q[1];
+            """)
+            @test_throws ErrorException _readqasm_single_gate(2, "h q;")
+        end
+
+        @testset "concrete element types" begin
+            _, circuit, thetas = _readqasm_single_gate(2, "rx(0.3) q[0];\ncx q[0], q[1];")
+            @test circuit isa Vector{<:PauliPropagation.Gate}
+            @test thetas isa Vector{Float64}
         end
     end
 

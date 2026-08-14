@@ -24,6 +24,16 @@ function _state_prep_probes(nq::Int)
     ]
     if nq >= 1
         push!(probes, ("H on q1", Any[CliffordGate(:H, 1)], Float64[], put(nq, 1 => H)))
+        # Complex amplitudes, so that <Y> != 0 and the imaginary sector is probed too.
+        push!(
+            probes,
+            (
+                "H then S on q1",
+                Any[CliffordGate(:H, 1), CliffordGate(:S, 1)],
+                Float64[],
+                chain(nq, put(nq, 1 => H), put(nq, 1 => ConstGate.S)),
+            ),
+        )
     end
     if nq >= 2
         push!(probes, ("X on q2", Any[CliffordGate(:X, 2)], Float64[], put(nq, 2 => X)))
@@ -152,9 +162,29 @@ end
         end
 
         @testset "sxdg" begin
-            # Match PP's sxdg translation: S then H then S.
-            yao = chain(1, put(1, 1 => ConstGate.S), put(1, 1 => H), put(1, 1 => ConstGate.S))
+            U_sx = 0.5 * [1+im  1-im; 1-im  1+im]
+            yao = put(1, 1 => matblock(collect(U_sx')))
             _assert_qasm_vs_yao_with_preps(1, "sxdg q[0];", yao)
+        end
+
+        @testset "rzz" begin
+            zz = kron(Matrix(Z), Matrix(Z))
+            for theta in (0.7, pi / 2, -pi / 2)
+                @testset "theta=$theta" begin
+                    yao = matblock(exp(-im * theta / 2 * zz))
+                    _assert_qasm_vs_yao_with_preps(2, "rzz($theta) q[0], q[1];", yao)
+                end
+            end
+        end
+
+        @testset "rxx" begin
+            xx = kron(Matrix(X), Matrix(X))
+            for theta in (0.7, pi / 2)
+                @testset "theta=$theta" begin
+                    yao = matblock(exp(-im * theta / 2 * xx))
+                    _assert_qasm_vs_yao_with_preps(2, "rxx($theta) q[0], q[1];", yao)
+                end
+            end
         end
 
         @testset "cswap" begin
