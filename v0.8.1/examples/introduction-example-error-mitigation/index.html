@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Error Mitigation using Pauli Propagation · PauliPropagation.jl</title><meta name="title" content="Error Mitigation using Pauli Propagation · PauliPropagation.jl"/><meta property="og:title" content="Error Mitigation using Pauli Propagation · PauliPropagation.jl"/><meta property="twitter:title" content="Error Mitigation using Pauli Propagation · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../advanced_performance/">Advanced Performance</a></li><li><a class="tocitem" href="../mcpropagate/">Monte Carlo Propagation</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li class="is-active"><a class="tocitem" href>Error Mitigation using Pauli Propagation</a><ul class="internal"><li class="toplevel"><a class="tocitem" href="#Target-circuit"><span>Target circuit</span></a></li><li class="toplevel"><a class="tocitem" href="#ZNE"><span>ZNE</span></a></li><li class="toplevel"><a class="tocitem" href="#Clifford-Data-Regression-(CDR)"><span>Clifford Data Regression (CDR)</span></a></li><li class="toplevel"><a class="tocitem" href="#vnCDR"><span>vnCDR</span></a></li><li class="toplevel"><a class="tocitem" href="#Correcting-the-Utility-Experiment"><span>Correcting the Utility Experiment</span></a></li><li><a class="tocitem" href="#Error-mitigating-the-utility-experiment"><span>Error mitigating the utility experiment</span></a></li></ul></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/MonteCarlo/">Monte Carlo</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/Gradients/">Gradients</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Error Mitigation using Pauli Propagation</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Error Mitigation using Pauli Propagation</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/introduction-example-error-mitigation.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Error-Mitigation-using-Pauli-Propagation"><a class="docs-heading-anchor" href="#Error-Mitigation-using-Pauli-Propagation">Error Mitigation using Pauli Propagation</a><a id="Error-Mitigation-using-Pauli-Propagation-1"></a><a class="docs-heading-anchor-permalink" href="#Error-Mitigation-using-Pauli-Propagation" title="Permalink"></a></h1><p>Since hardware-related errors on quantum computers cannot be fully error-corrected yet, many classical techniques have been developed to account for these errors. This is known as <strong>Quantum Error Mitigation</strong>, a classical post-processing step for calculations on NISQ quantum computers.</p><p>Currently, error mitigation is a crucial step to make data from a quantum computer usable. From another view point, error mitigation can also benefit purely classical simulations by pushing the boundaries of executable computations within the PP framework. This idea will become clearer throughout the notebook.</p><p>For the correction of expectation values of observables, the leading error mitigation techniques are zero-noise extrapolation (ZNE) and probabilistic error cancellation (PEC). To get an overview of common methods, the <a href="https://mitiq.readthedocs.io/en/stable/guide/guide.html">mitiq documentation</a> is very useful, especially the &quot;What is the theory behind ...?&quot; subheaders. </p><p>However, these techniques come with a cost: they imply an overhead in terms of quantum resources. In the case of the IBM utility experiment, ZNE required running over half a million quantum circuits! In this notebook, we achieve similar levels of error mitigation using Pauli Propagation (PP). It requires no overhead in quantum resources and it can (in certain cases) be run in only a few minutes of computation on a laptop (though, it could take much longer depending on the truncation coefficients chosen). This notebook should run in roughly 5 minutes, as long as you do not change the currently set truncation coefficients ; ).</p><p>Here is an overview of what we will cover in this notebook:</p><ul><li><p>We will start with the most intuitive and widely used error mitigation method, Zero Noise Extrapolation (ZNE).</p></li><li><p>Then we will focus on an error mitigation technique called Clifford Data Regression (CDR) [<a href="https://quantum-journal.org/papers/q-2021-11-26-592/">Czarnik et al., Quantum 2021</a>], and an extension to this method, Clifford Perturbation Approximation (CPA) [<a href="https://pubs.aip.org/aip/jcp/article-abstract/162/15/154110/3344130/Simulating-quantum-circuit-expectation-values-by?redirectedFrom=fulltext">Begusic et al., J. Chem. Phys. 2025</a>].</p></li><li><p>Next, we can combine these two approaches to create a generalised error mitigation scheme. This technique is called variable noise CDR (CDR + ZNE = vnCDR) [<a href="https://journals.aps.org/prresearch/abstract/10.1103/PhysRevResearch.3.033098">Lowe et al., Phys. Rev. Res. 2021</a>]. We are in fact combining CPA and ZNE to Clifford Perturbation Data Regression - ZNE (CPDR - ZNE), but the main principle stays the same [<a href="http://arxiv.org/abs/2412.09518">Zhang et al., arXiv 2024</a>]. </p></li><li><p>Finally, we apply these methods on IBM&#39;s utility experiment [<a href="https://www.nature.com/articles/s41586-023-06096-3">Kim et al., Nature 2023</a>].</p></li></ul><p>DISCLAIMERS:</p><p>We know the notebook is quite long. All error mitigation methods are independent of each other, so you could for example only look at ZNE and the final overview plot of the utility experiment.</p><p>If you plan to perform error mitigation using PP and to use some of our code, we advise you to have a look at our &#39;advanced&#39; notebook as well. There, we present additional methods we have developed and use a code base instead of this self-contained approach (https://github.com/JuliaGerecke/PP-EM).</p><pre><code class="language-julia hljs"># necessary imports
+using PauliPropagation
+using Plots
+using DataFrames
+using Logging
+using Distributions
+using LaTeXStrings
+using MLJLinearModels
+using MLJBase
+using LsqFit</code></pre><h1 id="Target-circuit"><a class="docs-heading-anchor" href="#Target-circuit">Target circuit</a><a id="Target-circuit-1"></a><a class="docs-heading-anchor-permalink" href="#Target-circuit" title="Permalink"></a></h1><p>The system we are interested in simulating is the transverse-field Ising model (TFIM) on a heavy-hex lattice, where the Hamiltonian is</p><p class="math-container">\[
+ H = -J\sum_{&lt;i,j&gt;}Z_iZ_j+h\sum_i X_i .
+ \]</p><p>The first-order Trotterization of the time-dependent Schrödinger equation is</p><p class="math-container">\[
+\begin{aligned}
+ |\psi(T)\rangle &amp;= \prod_{k=1}^N e^{-i\frac{T}{N}H} |\psi(0)\rangle \\
+    &amp;\approx \prod_{k=1}^N \left(\prod_{&lt;i,j&gt;} e^{i \frac{JT}{N}Z_i Z_j } \prod_i e^{-i \frac{hT}{N}X_i} \right) |\psi(0)\rangle \\
+    &amp;= \prod_{k=1}^N \left[ \prod_{&lt;i,j&gt;} R_{Z_i Z_j} \left(\theta_J\right) \prod_i R_{X_i}\left(\theta_h\right) \right] |\psi(0)\rangle
+\end{aligned}
+\]</p><p>where <span>$T$</span> is the final time, <span>$N$</span> is the number of time steps, <span>$\displaystyle\theta_J= -\frac{2TJ}{N}$</span> and <span>$\displaystyle\theta_h = \frac{2Th}{N}$</span>. We start by defining our target circuit within PP and visualizing the time evolution we want to correct. This is done for visualization purposes only in this notebook. Here, we use moderate truncations, with <code>min_abs_coeff=1e-6</code> and <code>max_weight=15</code>. The simulations can be done exactly only for small and shallow circuits if we do not use any truncations. By default, PP truncates below <code>min_abs_coeff=1e-10</code> if we don&#39;t set a truncation order.  Recall that in practice, the &#39;ground truth&#39; comparison may well not be available for interesting problem sizes.</p><pre><code class="language-julia hljs">## CIRCUIT PARAMETERS
+## number of qubits
+nq = 31 
+
+## number of steps (layers)
+steps = 20 
+
+## time step
+dt = 0.05
+
+## final time
+T = steps*dt
+
+## physical parameters of the model
+J =  2.0 # J &gt; 0 in ferromagnetic phase, J &lt; 0 in antiferromagnetic phase
+h = 1.0  # in ordered phase: abs(h) &lt; abs(J)
+
+## truncations coefficients
+min_abs_coeff=1e-6
+max_weight=15
+
+## TOPOLOGY
+## 3 loops of heavy hex: works only with 31 qubits
+topology = [(1, 2), (1, 15), (2, 3), (3, 4), (4, 5), (5, 6), (5, 16), (6, 7), (7, 8), (8, 9), (9, 10), (9, 17),
+           (10, 11), (11, 12), (12, 13), (13, 14), (13, 18), (15, 19), (16, 23), (17, 27), (18, 31), (19, 20),
+           (20, 21), (21, 22), (22, 23), (23, 24), (24, 25), (25, 26), (26, 27), (27, 28),
+            (28, 29), (29, 30), (30, 31)];
+
+#topology=bricklayertopology(nq)  
+
+## OBSERVABLE
+## ⟨ZZ⟩
+observable = PauliSum(nq);    
+for i in 1:length(topology)
+    q1 = topology[i][1]
+    q2 = topology[i][2]
+    add!(observable, [:Z, :Z], [q1, q2]);
+end
+observable = observable/length(topology);
+
+## magnetization ⟨Z⟩
+# observable = PauliSum(nq)
+# for i in 1:nq
+#     add!(observable,:Z, i)
+# end
+# observable = observable/nq;
+
+## &lt;Z_15&gt;
+# observable = PauliSum(nq)
+# add!(observable, :Z, 15)</code></pre><p>If we choose the <span>$\langle ZZ \rangle$</span> observable, the PauliSum has as many terms as edges in the graph of the topology. In this case, for 31 qubits (nodes) in the heavy-hex topology, there are 33 terms connecting the nodes (edges). To save memory, we could also propagate each Pauli string of the observable individually. While this slows down the computation, it reduces the peak memory usage. We will create a circuit made out of parameterized gates. To perform the simulation, we need to provide the parameters of the gates to the <code>propagate</code> function. In the present case, our parameterized gates are Pauli rotations and the parameters are the angles <span>$\theta_h$</span> and <span>$\theta_J$</span>. We define the function <code>define_thetas</code> that will set up our vector of angles.</p><pre><code class="language-julia hljs">function define_thetas(circuit::Vector{Gate}, dt::Float64, J::Float64=2.0, h::Float64=1.0)
+    # get indices indicating which angle corresponds to which gate 
+    rzz_indices = getparameterindices(circuit, PauliRotation, [:Z, :Z])
+    rx_indices = getparameterindices(circuit, PauliRotation, [:X])
+    
+    nparams = countparameters(circuit)
+    thetas = zeros(nparams)
+    
+    # following eq. (3)
+    thetas[rzz_indices] .= - J * dt * 2
+    thetas[rx_indices] .= h * dt * 2
+
+    return thetas
+end</code></pre><p>Let&#39;s compute the approximate noiseless expectation and noisy expecation value for our circuit. For both, we need one <code>layer</code> of the circuit, which we can then propagate for the number of <code>steps</code> of duration <code>dt</code> each.</p><pre><code class="language-julia hljs"># define 1 layer of the trotterized TFIM circuit
+layer = tfitrottercircuit(nq, 1, topology=topology)
+thetas = define_thetas(layer, dt, J, h)</code></pre><p>For the noisy circuits, we&#39;ll define a function <code>applynoiselayer</code>, which adds depolarizing and dephasing noise in the <strong>Pauli Transfer Matrix (PTM)</strong> formalism.</p><pre><code class="language-julia hljs">function applynoiselayer(psum::PauliSum;depol_strength=0.02, dephase_strength=0.02, noise_level=1.0)
+    for (pstr, coeff) in psum
+        set!(psum, pstr, 
+            coeff*(1-noise_level*depol_strength)^countweight(pstr)*(1-noise_level*dephase_strength)^countxy(pstr))
+    end 
+end</code></pre><pre><code class="nohighlight hljs">applynoiselayer (generic function with 1 method)</code></pre><p>In Pauli Propagation, there is also a higher level noise implementation, which looks for example like this: <code>depol_noise_layer = [DepolarizingNoise(qind, depol_strength) for qind in 1:nq];</code>. This gives the same results as our code, but requires to loop over the number of qubits for both noise kinds, so we instead opt for the <code>applynoiselayer</code> implementation above, equivalent to the one in Pauli Propagation under the hood. Note that the <code>depol_strength</code> (and <code>dephase_strength</code>) arguments in the <code>applynoiselayer</code> function are not simply the single gate error probabilites as one might assume, rather they are related to those via a multiplicative factor which depends on the noise kind. You can safely skip this section for now, but it will be useful if you are trying to implement a circuit with certain gate error probabilities.</p><p>&lt;details&gt; &lt;summary&gt; Explanation of the noise layer implementation in PTM formalism &lt;/summary&gt;</p><p>The PP algorithm works in the Heisenberg picture. This can be conveniently implemented using the PTM formalism. A PTM represents a quantum channel <span>$\mathcal{E}$</span> as a linear map on the vector space spanned by Pauli operators.</p><p>Let <span>$\{P_i\}$</span> be the normalized Pauli basis (e.g., <span>$I, X, Y, Z$</span> for one qubit). The action of <span>$\mathcal{E}$</span> on this basis is</p><p class="math-container">\[
+\mathcal{E}(P_j) = \sum_i R_{ij} P_i,
+\]</p><p>where <span>$R$</span> is the PTM and its elements are given by</p><p class="math-container">\[
+R_{ij} = \frac{1}{2^n} \operatorname{Tr}\left[P_i \, \mathcal{E}(P_j)\right].
+\]</p><p>Let&#39;s apply this to our noise model:</p><p>The depolarizing channel with probability <span>$q$</span> in the Schrödinger picture is</p><p class="math-container">\[
+\mathcal{E}(\rho) = (1 - q)\rho + \frac{q}{3}(X\rho X + Y\rho Y + Z\rho Z).
+\]</p><p>We can then compute the Pauli Transfer Matrix (PTM) to be</p><p class="math-container">\[
+R_{\text{dep}} =
+\begin{bmatrix}
+1 &amp; 0 &amp; 0 &amp; 0 \\
+0 &amp; 1 - \tfrac{4p}{3} &amp; 0 &amp; 0 \\
+0 &amp; 0 &amp; 1 - \tfrac{4p}{3} &amp; 0 \\
+0 &amp; 0 &amp; 0 &amp; 1 - \tfrac{4p}{3}
+\end{bmatrix}.
+\]</p><p>(You can check this by calculating for example <span>$\mathcal{E}(X)$</span> by hand.)</p><p>The dephasing channel with probability <span>$q$</span> is</p><p class="math-container">\[
+\mathcal{E}(\rho) = (1 - p)\rho + p Z\rho Z.
+\]</p><p>We find its PTM to be</p><p class="math-container">\[
+R_{\text{deph}} =
+\begin{bmatrix}
+1 &amp; 0 &amp; 0 &amp; 0 \\
+0 &amp; 1 - 2p &amp; 0 &amp; 0 \\
+0 &amp; 0 &amp; 1 - 2p &amp; 0 \\
+0 &amp; 0 &amp; 0 &amp; 1
+\end{bmatrix}.
+\]</p><p>In our noise model, we assume the noise to act <strong>independently on each qubit</strong>. If a single-qubit Pauli operator <span>$P$</span> is transformed under noise as:</p><p class="math-container">\[
+P \to \lambda P,
+\]</p><p>then for a multi-qubit Pauli string <span>$P^{\otimes n} = P_1 \otimes P_2 \otimes \dots \otimes P_n$</span>, the full transformation is</p><p class="math-container">\[
+P_1 \otimes P_2 \otimes \dots \otimes P_n \to \lambda_1 P_1 \otimes \lambda_2 P_2 \otimes \dots \otimes \lambda_n P_n = \left( \prod_i \lambda_i \right)(P_1 \otimes \dots \otimes P_n).
+\]</p><p>If the shrinkage factor per qubit is <span>$\lambda$</span>, and <span>$k$</span> qubits are affected, then the total multiplicative factor is <span>$\lambda^k$</span>.</p><p>Let&#39;s look at the formula for the depolarizing noise:</p><p>The shrinkage factor is <code>(1-noise_level*\frac{4}{3}*q)</code>. Only the non-identity Paulis are affected (check the PTM!), of which there are <code>countweight(pstr)</code>.  We now see that <code>depol_noise = \frac{4}{3}*q</code> to get the formula as in the <code>applynoiselayer</code> function.  </p><p>The same is done for the dephasing noise, but now, the <span>$k$</span> qubits affected are found by <code>countxy(pstr)</code> as you can see from the PTM. The shrinkage factor <span>$\lambda$</span> is <code>(1-noise_level*2*q)</code>, so <code>dephase_noise = 2*q</code>.</p><p>Even though we are in the PTM formalism, the PP algorithm does not use matrix-multiplication in its implementation under the hood as it would become computationally unfeasible very quickly! Since explaining this brings us too far down the rabbit hole, check out the Pauli Propagation paper if you are interested [<a href="https://arxiv.org/abs/2505.21606">Rudolph et al., arXiv 2025</a>].</p><p>&lt;/details&gt;</p><p>For later convenience, it is best to define a <code>trotter_time_evolution</code> function, which we can use for all our error mitigation methods. We give it a few extra arguments not used yet that will be useful later.</p><pre><code class="language-julia hljs">function trotter_time_evolution(
+    steps::Int, layer::Vector{Gate}, observable::PauliSum, thetas::Vector{Float64};
+    noise=false, min_abs_coeff=1e-10, max_weight=Inf,
+    depol_strength=0.02, dephase_strength=0.02, noise_level=1.0,
+    output_psum=false
+)
+    obs = deepcopy(observable)
+    expvals = [overlapwithzero(obs)]
+    psum = obs  # initialize to have it in scope
+
+    for _ in 1:steps
+        psum = propagate!(layer, obs, thetas; min_abs_coeff, max_weight)
+        
+        if noise
+            applynoiselayer(psum; depol_strength, dephase_strength, noise_level)
+        end
+
+        push!(expvals, overlapwithzero(psum))
+    end
+
+    return output_psum ? (expvals, psum) : expvals
+end</code></pre><pre><code class="nohighlight hljs">trotter_time_evolution (generic function with 1 method)</code></pre><p>We can now compute the noiseless time evolution of our circuit, by using the keyword argument <code>noise = false</code> (default setting).</p><pre><code class="language-julia hljs"> elapsed_noiseless = @elapsed exact_expval_target, psum_target = trotter_time_evolution(
+  steps, layer, observable, thetas;
+  noise=false,
+  min_abs_coeff, max_weight, output_psum=true)</code></pre><p>Now, we compute the corresponding noisy evolution. We add depolarizing and dephasing noise after each layer. The strength was tuned manually to roughly approximate the noise level of experimental data from IBM utility experiment, to make sure we are correcting realistic noise. This data would normally be real hardware data, but for small systems, we can simulate the noisy data.</p><pre><code class="language-julia hljs">depol_strength = 4/3*0.018 # 0.018 is error probability of depolarizing channel
+dephase_strength = 2*0.012; # 0.012 is error probability of dephasing channel</code></pre><pre><code class="language-julia hljs"> noisy_expval_target = trotter_time_evolution(
+  steps, layer, observable, thetas;
+  noise=true,
+  min_abs_coeff, max_weight,
+  depol_strength, dephase_strength)</code></pre><pre><code class="language-julia hljs">plot(0:steps, exact_expval_target, xlabel=&quot;Steps&quot;, label=&quot;Noise-free evolution&quot;, marker=:o)
+plot!(0:steps, noisy_expval_target, label=&quot;Noisy evolution&quot;, marker=:o)
+
+plot!(ylabel=&quot;Observable&quot;, title =&quot;Time evolution of obs. with $(nq) qubits at dt = $(round((T/steps), digits = 2))&quot;)
+</code></pre><p><img src="../introduction-example-error-mitigation_files/introduction-example-error-mitigation_23_0.svg" alt="svg"/></p><p>As we can see from the plot above, the noise affects the expectation value. Instead of following the exact evolution in blue, the noise model causes the expectation value to evolve according to the orange line.</p><p>How can we recover the exact expectation value, given only the noisy data? </p><h1 id="ZNE"><a class="docs-heading-anchor" href="#ZNE">ZNE</a><a id="ZNE-1"></a><a class="docs-heading-anchor-permalink" href="#ZNE" title="Permalink"></a></h1><p>The most intuitive error mitigation strategy is zero-noise extrapolation, where noise in a quantum circuit is artificially scaled to a set of noise levels, and then extrapolated to the zero-noise limit.</p><p>On a quantum computer, this can be done by inserting identity gates (mapping a gate <span>$G$</span> to <span>$\mathbb{I} G$</span>) or with unitary folding (mapping a gate <span>$G$</span> to <span>$GG^\dagger G$</span>). Instead of using a quantum computer for noisy data, we simulate the noisy circuits within Pauli Propagation by building a generic noise model. Here, we can directly set the noise levels to the desired values.</p><p>Performing ZNE using PP offers two main advantages:</p><ul><li>You don&#39;t need to adjust or add noise on your quantum hardware, thus avoiding potentially cumbersome circuit modifications.</li><li>Noisy simulations are actually easier than the noiseless ones with PP: depolarizing noise shrinks the accessible Bloch sphere, thus reducing the coefficient of terms different from the maximally mixed state. If the coefficients are small enough (which occurs at high enough noise levels), they can be truncated.</li></ul><p>From a perspective of purely classical simulations, using ZNE means we can calculate expectation values for systems that are no longer simulatable without noise. Pauli Propagation is often memory-limited, so there will be a range of systems where the noiseless computations are not executable, but ZNE will still work with a sufficiently high base noise level on the circuit. Note that increasing the base noise level will deteriorate the extrapolation, so this approach also has its limitations. To showcase this idea, we will keep track of the number of Pauli strings and the execution time at each noise level.</p><p>First, we calculate the noisy expectation values for a set of <code>noise_levels</code>.</p><pre><code class="language-julia hljs">noise_levels = [1.0,1.3,1.5,1.8,2.0,2.2]
+num_pauli_terms = Int[]
+execution_times = Float64[]
+
+# performing the trotter time evolution for each noise level
+noisy_expval_target_levels = Array{Float64,2}(undef, length(noise_levels), steps+1)
+for (idx, level) in enumerate(noise_levels)
+    elapsed = @elapsed expval_target, psum = trotter_time_evolution(
+        steps, layer, observable, thetas;
+        noise=true, noise_level=level,
+        min_abs_coeff, max_weight,
+        depol_strength, dephase_strength, output_psum=true)
+    noisy_expval_target_levels[idx, :] .= expval_target
+    push!(execution_times, elapsed)
+    push!(num_pauli_terms, length(psum.terms))
+end</code></pre><pre><code class="language-julia hljs">println(&quot;Number of terms in the noiseless propagated observable: $(length(psum_target.terms)), execution time: $(round(elapsed_noiseless,digits = 2)) seconds.&quot;)
+println(&quot;Noise levels: $noise_levels&quot;)
+println(&quot;Respective number of terms in propagated observable: $num_pauli_terms&quot;)
+println(&quot;Execution times for each noise level in seconds: $execution_times&quot;)
+</code></pre><pre><code class="nohighlight hljs">Number of terms in the noiseless propagated observable: 434456, execution time: 9.03 seconds.
+Noise levels: [1.0, 1.3, 1.5, 1.8, 2.0, 2.2]
+
+
+Respective number of terms in propagated observable: [23018, 10848, 6810, 3661, 2574, 1810]
+Execution times for each noise level in seconds: [0.660038402, 0.38551864, 0.305686485, 0.190778031, 0.173741156, 0.118867506]</code></pre><p>This shows us that indeed, the Pauli noise &quot;helps&quot; us by making the simulations easier. We can also see this directly from the <code>applynoiselayer</code> function. For depolarizing noise, we exponentiate a number smaller than 1 by the number of non identities, so the coefficients of each Pauli string are reduced with each application of noise. Combined with the <code>min_abs_coeff</code> truncation, we drop a large portion of the terms in the Pauli sum.</p><p>Now that we have our noisy evolutions, let&#39;s mitigate the errors of our base line noisy simulation. We have the freedom to choose an ansatz which best matches our noise model. For that, we plot only the last step of the time evolution in semi-log scale.</p><pre><code class="language-julia hljs">noisy_exp_last = noisy_expval_target_levels[:,end];
+scatter(noise_levels, noisy_exp_last,
+     xlabel=&quot;Noise level&quot;,
+     ylabel=&quot;Observable&quot;,
+     label=&quot;Noisy target&quot;,
+     marker=:o,
+     legend=:topright, yaxis=:log)</code></pre><p><img src="../introduction-example-error-mitigation_files/introduction-example-error-mitigation_29_0.svg" alt="svg"/></p><p>We see that an exponential fit is a good choice (the points are nearly on a line on a logarithmic scale), so we can define an ansatz, <code>exp_model</code>, to describe the dependence between the noise level and the expectation value.</p><pre><code class="language-julia hljs"># exponential model
+exp_model(x, p) = p[1] .+ p[2] .* exp.(-p[3] .* x)</code></pre><p>We can fit functions in <code>Julia</code> using the <code>curve_fit</code> function from the package <code>LsqFit</code>. We need to set initial parameters so the underlying algorithm can optimize them. We then evaluate the corrected value at zero noise.</p><pre><code class="language-julia hljs"># initial guess of the coefficient
+p0 = [noisy_exp_last[end], noisy_exp_last[1] - noisy_exp_last[end], 1.0]
+
+fit_ = curve_fit(exp_model, noise_levels, noisy_exp_last, p0)
+
+# extrapolate to 0-noise using the fitted model
+corrected_ZNE_last = exp_model(0.0, fit_.param)</code></pre><pre><code class="nohighlight hljs">0.8728654919708574</code></pre><p>We can compare this to the absolute error before correction.</p><pre><code class="language-julia hljs"># absolute errors before and after correction 
+abs_error_before_ZNE_last = abs(exact_expval_target[end] - noisy_exp_last[1]) 
+abs_error_after_ZNE_last = abs(exact_expval_target[end] - corrected_ZNE_last) 
+
+println(&quot;Noisy value: &quot;, round(noisy_exp_last[1], digits = 2))
+println(&quot;Corrected value: &quot;, round(corrected_ZNE_last, digits = 2))
+println(&quot;Absolute error before correction: &quot;, round(abs_error_before_ZNE_last, digits = 2))
+println(&quot;Absolute error after correction: &quot;,round(abs_error_after_ZNE_last, digits = 5))</code></pre><pre><code class="nohighlight hljs">Noisy value: 0.32
+
+
+Corrected value: 0.87
+Absolute error before correction: 0.57
+Absolute error after correction: 0.01491</code></pre><p>Let&#39;s encapsulate this fitting procedure for a single time step in a function to simplify the next steps.</p><pre><code class="language-julia hljs">function zne(noisy_exp::Vector{Float64}, noise_levels::Vector{Float64}; exact_exp::Union{Nothing, Float64}=nothing)
+    model(x, p) = p[1] .+ p[2] .* exp.(-p[3] .* x)
+    p0 = [noisy_exp[end], noisy_exp[1] - noisy_exp[end], 1.0]
+    fit_ = curve_fit(model, noise_levels, noisy_exp, p0)
+    corrected = model(0.0, fit_.param)
+
+    if exact_exp === nothing
+        return corrected, nothing, nothing
+    end
+
+    abs_error_after = abs(exact_exp - corrected)
+    abs_error_before = abs(exact_exp - noisy_exp[1])
+    return corrected, abs_error_after, abs_error_before
+end;
+
+
+## example of a function call to compute the corrected value at the last time step:
+# corr_ZNE_last,
+# abs_error_after_ZNE_last,
+# abs_error_before_ZNE_last = zne(noisy_exp_last, noise_levels, exact_expval_target[end])</code></pre><p>Now, we perform ZNE for each time step and visualize how good the correction over time is.</p><pre><code class="language-julia hljs">corrected_ZNE = Array{Float64, 1}(undef, steps+1)
+abs_error_after_ZNE = Array{Float64, 1}(undef, steps+1)
+abs_error_before_ZNE = Array{Float64, 1}(undef, steps+1)
+for i in 1:steps+1
+    corrected_ZNE[i],
+    abs_error_after_ZNE[i],
+    abs_error_before_ZNE[i] = zne(noisy_expval_target_levels[:,i], noise_levels; exact_exp = exact_expval_target[i])
+end</code></pre><pre><code class="language-julia hljs">plot(0:steps, exact_expval_target, xlabel=&quot;Steps&quot;, label=&quot;Noise-free evo.&quot;, marker=:o, legend=:bottomleft)
+plot!(0:steps, corrected_ZNE, label=&quot;ZNE correction&quot;, marker=:x, color =&quot;red&quot;)
+
+for i in 1:length(noise_levels)
+    plot!(0:steps, noisy_expval_target_levels[i,:], label=&quot;Noisy evo. (level = $(noise_levels[i]))&quot;, marker=:o, alpha = 0.5)
+end
+plot!(ylabel=&quot;Observable&quot;, title =&quot;Time evolution of obs. with $(nq) qubits at dt = $(round((T/steps), digits = 2))&quot;)</code></pre><p><img src="../introduction-example-error-mitigation_files/introduction-example-error-mitigation_40_0.svg" alt="svg"/></p><p>ZNE works well for this noise model. However, one must ensure that the noise is not too dominant. If so, the system thermalizes and the noisy values all converge to the same value regardless of the noise strength. In this case, one cannot extrapolate anymore. </p><h1 id="Clifford-Data-Regression-(CDR)"><a class="docs-heading-anchor" href="#Clifford-Data-Regression-(CDR)">Clifford Data Regression (CDR)</a><a id="Clifford-Data-Regression-(CDR)-1"></a><a class="docs-heading-anchor-permalink" href="#Clifford-Data-Regression-(CDR)" title="Permalink"></a></h1><p>Instead of using variable-noise data (ZNE), the CDR approach performs error mitigation using variable near-Clifford circuit data. According to the Gottesman-Knill theorem, fully Clifford circuits can be simulated efficiently classically. Since only using Clifford circuits as a training set does not provide sufficient expressibility to generate circuits close in expectation value to the target circuit representing the state of interest, one expands this selection to near-Clifford circuits. Near-Clifford circuits are circuits that have a small number of non-Clifford gates.</p><p>CDR consists of the following steps:</p><ol><li>Choose circuits <span>$\ket{\phi_i}$</span> that are efficiently simulable and &quot;close&quot; to the target circuit (i.e. we replace some or all gates). This gives a set of close circuits <span>$S_\psi  = \{\ket{\phi_i}\}$</span>.</li><li>Generate a training set </li></ol><p><span>$\mathcal{T}_\psi  = \{ X_{\phi_i}^{\text{noisy}} , X_{\phi_i}^{\text{exact}} \}$</span>  by calculating the exact and noisy expectation values of all circuits in <span>$S_\psi$</span>.</p><ol><li>Choose an ansatz to define the relation between the noisy and exact data: <span>$X_\psi^{\text{exact}} = f( X_\psi^{\text{noisy}},\underline{a})$</span>. Learn the parameters <span>$\underline{a}$</span> and then predict the noiseless expectation value of the target.</li></ol><h3 id="1)-Training-data"><a class="docs-heading-anchor" href="#1)-Training-data">1) Training data</a><a id="1)-Training-data-1"></a><a class="docs-heading-anchor-permalink" href="#1)-Training-data" title="Permalink"></a></h3><p>There are multiple ways to generate the training set for CDR. Since we are interested in the small angle regime (we want a good time resolution of the trotterized evolution), the Clifford Perturbation Approximation approach (CPA) is suitable. </p><p>Instead of only allowing for Clifford gate replacements (standard CDR), the replaced gates can be within a small interval around Clifford gates (<code>angle_range</code>). This allows us to more closely approximate the target circuit, while leveraging the fact that PP is efficient for small angles.</p><p>In the CPA paper, they create a deterministic training set with 144 circuits, where:</p><p class="math-container">\[ \mathcal{T} = \{(\theta_h, \theta_J) \vert \theta_h = i\pi/120, \theta_h = j\pi/120; \,\,\,i,j=0,1,2,3,4,5,54,55,56,57,58,59\}.\]</p><p>This means that the training set is the same independent of the <span>$J$</span> and <span>$h$</span> parameters.</p><p>We decided to adapt our training set to our specific problem and to avoid creating a training set this large while still maintaining as much accuracy as possible. Following the spirit of the CPA paper, we can for example define a &quot;strict&quot; approach (&quot;strict&quot; in the sense that it is close to the original implementation), where we sample two random angles from the intervals <span>$[0,\theta^*] \cup [\pi/2-\theta^*, \pi/2]$</span> or <span>$[- \pi/2, -\pi/2+\theta^*] \cup [-\theta^*, 0]$</span> for <span>$\theta_h$</span> and <span>$\theta_j$</span> respectively (<span>$\theta^*$</span> is the <code>angle_range</code>). For many samples, we approach the original implementation. The advantage of our approach is that we get similar accuracies with much less samples (here <code>num_samples = 10</code>).</p><p>To enhance the expressiveness of the training circuits, we opted for a slightly different approach, that we call &quot;augmented&quot; approach. Instead of drawing random values within the <code>angle_range</code> around Cliffords, we keep the angles that are already smaller than the angle range. This approach has a drawback: if both <span>$\theta_h$</span> and <span>$\theta_J$</span> are smaller than the angle range, we do not create a training set but are instead directly solving the evolution of the target circuit. Thus, we can&#39;t use this &quot;augmented&quot; approach if both angles are in the angle range. In that case we can either make the angle range smaller, or choose one or both angles randomly (&quot;strict&quot; method in our advanced notebook), so that we always have a training set with distinct circuits.</p><p>In the present case, we have <span>$\theta_h=0.1$</span> and <span>$\theta_J=-0.2$</span>. The <code>angle_range</code> is <span>$\pi/20\approx0.16$</span>, meaning that we can keep <span>$\theta_h$</span> fixed but choose a random <span>$\theta_J$</span> in the interval <span>$[-\pi/20, 0]$</span>.</p><p><strong>Remark on the original CDR approach:</strong></p><p>In the original CDR approach, a fixed number of gates are replaced by Clifford gates. In order to guarantee similar expectation values of the training set, one needs to assume further information on the system (such as prior information of the groundstate when observing the energy). Since we do not want to use any prior information for the time evolution, we have to opt for a more expressive approach. We do so by keeping intact the dynamics of the system, i.e. just changing the parameters of our Hamiltonian.</p><pre><code class="language-julia hljs">angle_range = pi/20
+
+# number of training circuits
+num_samples = 10
+
+list_training_thetas = Vector{Vector{Float64}}()
+training_thetas = deepcopy(thetas)
+
+# get where the theta_J are in the vector of angles
+theta_J_indices = getparameterindices(layer, PauliRotation, [:Z, :Z])
+
+for _ in 1:num_samples
+    new_tht_J = rand(Uniform(-angle_range, 0.0))
+    training_thetas[theta_J_indices] .= new_tht_J
+    push!(list_training_thetas, deepcopy(training_thetas))
+end</code></pre><h3 id="2)-Training-set-generation"><a class="docs-heading-anchor" href="#2)-Training-set-generation">2) Training set generation</a><a id="2)-Training-set-generation-1"></a><a class="docs-heading-anchor-permalink" href="#2)-Training-set-generation" title="Permalink"></a></h3><p>We evolve all the training circuits (with and without noise) using the previously defined <code>trotter_time_evolution</code> function. In practice, the scaled noisy circuits are run on real hardware. We get the data from the PP simulations to demonstrate the method.</p><pre><code class="language-julia hljs">exact_expvals_training = Array{Float64,2}(undef, length(list_training_thetas), steps+1)
+num_pauli_terms_exact = Int[]
+execution_times_exact = Float64[]
+# evolve each training circuit without noise
+for (i, thetas) in enumerate(list_training_thetas)
+    elapsed_exact = @elapsed exact_expvals_training[i, :], psum = trotter_time_evolution(
+        steps, layer, observable, thetas;
+        noise=false,
+        min_abs_coeff, max_weight,
+        depol_strength, dephase_strength, output_psum=true)
+    push!(num_pauli_terms_exact, length(psum.terms))
+    push!(execution_times_exact, elapsed_exact)
+end</code></pre><pre><code class="language-julia hljs">noisy_expvals_training = Array{Float64,2}(undef, length(list_training_thetas), steps+1)
+num_pauli_terms_noisy = Int[]
+execution_times_noisy = Float64[]   
+# evolve each training circuit with noise
+for (i, thetas) in enumerate(list_training_thetas)
+    elapsed_noisy = @elapsed noisy_expvals_training[i, :], psum = trotter_time_evolution(
+        steps, layer, observable, thetas;
+        noise=true,
+        min_abs_coeff, max_weight,
+        depol_strength, dephase_strength,output_psum=true)
+    push!(num_pauli_terms_noisy, length(psum.terms))
+    push!(execution_times_noisy, elapsed_noisy)
+end</code></pre><p>Let&#39;s again showcase the efficiency of the algorithm, by comparing run times of the training and the target circuit.</p><pre><code class="language-julia hljs">println(&quot;Number of terms in the noiseless propagated observable: $(length(psum_target.terms)), execution time: $(round(elapsed_noiseless,digits = 2)) seconds.&quot;)
+println(&quot;Average number of Pauli terms in noiseless propagated observable: $(round.(mean(num_pauli_terms_exact),digits = 0))&quot;)
+println(&quot;Average number of Pauli terms in noisy propagated observable: $(round.(mean(num_pauli_terms_noisy),digits = 0))&quot;)
+println(&quot;Average execution times for noiseless evolution in seconds: $(round.(mean(execution_times_exact), digits = 2))&quot;)
+println(&quot;Average execution times for noisy evolution in seconds: $(round.(mean(execution_times_noisy), digits = 2))&quot;)</code></pre><pre><code class="nohighlight hljs">Number of terms in the noiseless propagated observable: 434456, execution time: 9.03 seconds.
+Average number of Pauli terms in noiseless propagated observable: 92469.0
+Average number of Pauli terms in noisy propagated observable: 12565.0
+Average execution times for noiseless evolution in seconds: 0.94
+Average execution times for noisy evolution in seconds: 0.18</code></pre><p>Again, we can see that the average training circuit&#39;s (both noiseless and noisy) propagated observable has significantly less terms than the noiseless target circuit. This also reflects in the execution times. We now visualize the evolutions of some of the training circuits. The solid lines represent the noisy and noiseless evolutions of the target circuit. The transparent lines represent the evolution of the training circuits, with a plus marker for noiseless values and a cross marker for the noisy ones.</p><pre><code class="language-julia hljs">colors = palette(:tab10)
+plot(0:steps, exact_expval_target; xlabel=&quot;Steps&quot;, label=&quot;Noise-free evolution&quot;, marker=:o, legend=:bottomleft)
+plot!(0:steps, noisy_expval_target; label=&quot;Noisy evolution&quot;, marker=:o)
+
+for i in 2:2:size(exact_expvals_training)[1]
+    plot!(0:steps, exact_expvals_training[i, :]; label=&quot;Noise-free train. $i&quot;, c=colors[i], marker=:+, markersize = 5, alpha=0.6)
+end
+
+for i in 2:2:size(noisy_expvals_training)[1]
+    plot!(0:steps, noisy_expvals_training[i, :]; label=&quot;Noisy train. $i&quot;, color=colors[i], marker=:x, markersize = 5, alpha=0.6)
+end
+
+plot!(ylabel=&quot;Observable&quot;, title =&quot;Time evolution of obs. with $(nq) qubits at dt = $(round((T/steps), digits = 2))&quot;)</code></pre><p><img src="../introduction-example-error-mitigation_files/introduction-example-error-mitigation_53_0.svg" alt="svg"/></p><p>We observe that the training circuits look like they behave very differently from the target circuit. Well, yes. But importantly, the trotterized evolution is not modified during the evolution itself, i.e. we keep the two same angles during the whole evolution. This means our training circuits are physically relevant circuits in the sense that they all represent a physical evolution. We cannot get closer to the target evolution while still respecting the physics of our problem, as we are varying only <span>$\theta_J$</span>.</p><h3 id="3)-CDR"><a class="docs-heading-anchor" href="#3)-CDR">3) CDR</a><a id="3)-CDR-1"></a><a class="docs-heading-anchor-permalink" href="#3)-CDR" title="Permalink"></a></h3><p>Just as in the original CDR paper, we start by correcting the noisy expectation value with a linear ansatz. The motivation is that this ansatz is the exact solution for a general quantum erasure noise channel, which takes the input state <span>$\rho$</span> to</p><p class="math-container">\[
+  \rho \rightarrow (1-p_\text{error}) \rho  + p_\text{error}\ \rho_0 .
+\]</p><p>Thus, we can perform least squares regression (which assumes Gaussian noise) to find the optimal parameters <span>$a_1,a_2$</span> in the following relationship for the noiseless expectation value</p><p class="math-container">\[
+X_\psi^{\text{exact}} = f( X_\psi^{\text{noisy}},\mathbf{a} )  = a_1 + a_2 X_\psi^{\text{noisy}}.
+\]</p><p>Let&#39;s define this ansatz, mapping the noisy value to the noise-corrected value.</p><pre><code class="language-julia hljs">lin_model(x, a) = a[1] .+ a[2] .* x</code></pre><p>We first correct only the last step of the time evolution.</p><pre><code class="language-julia hljs">noisy_expvals_training_last = noisy_expvals_training[:, end]
+exact_expvals_training_last = exact_expvals_training[:, end]
+noisy_expval_target_last = noisy_expval_target[end]
+exact_expval_target_last = exact_expval_target[end]</code></pre><p>Again, we need to make an initial guess of the parameters in the linear model. Using the optimized function, we can extrapolate to the noiseless value, i.e the target circuit&#39;s behavior.</p><pre><code class="language-julia hljs"># initial guess of the coefficient
+p0 = [exact_expvals_training_last[1], (exact_expvals_training_last[end]-exact_expvals_training_last[1])/(noisy_expvals_training_last[end] - noisy_expvals_training_last[1]), 1.0]
+fit_ = curve_fit(lin_model, noisy_expvals_training_last, exact_expvals_training_last, p0)
+# extrapolate to 0-noise using the fitted model
+corrected_CDR_last = lin_model(noisy_expval_target_last, fit_.param)</code></pre><pre><code class="nohighlight hljs">0.8157268165834342</code></pre><pre><code class="language-julia hljs">abs_error_after_CDR_last = abs(exact_expval_target_last - corrected_CDR_last) 
+abs_error_before_CDR_last = abs(exact_expval_target_last - noisy_expval_target_last) 
+
+println(&quot;Noisy value at the last timestep: &quot;, round(noisy_expval_target_last, digits = 2))
+println(&quot;Corrected value at the last timestep: &quot;, round(corrected_CDR_last, digits = 2))
+println(&quot;Absolute error before correction: &quot;, round(abs_error_before_CDR_last,digits =2))
+println(&quot;Absolute error after correction: &quot;, round(abs_error_after_CDR_last, digits = 4))</code></pre><pre><code class="nohighlight hljs">Noisy value at the last timestep: 0.32
+Corrected value at the last timestep: 0.82
+Absolute error before correction: 0.57
+Absolute error after correction: 0.0721</code></pre><p>Let&#39;s see what the fit looks like.</p><pre><code class="language-julia hljs">x = LinRange(min(minimum(noisy_expvals_training_last)*0.9, noisy_expval_target_last), max(maximum(noisy_expvals_training_last), noisy_expval_target_last)*1.05, 100)
+plot(x, lin_model.(x, fill(fit_.param, length(x))), label=&quot;Linear fit&quot;)
+scatter!(noisy_expvals_training_last, exact_expvals_training_last, marker=:o, label=&quot;Training expectation value&quot;)
+scatter!([noisy_expval_target_last], [corrected_CDR_last], label=&quot;Target expectation\n (obtain with the fit)&quot;)
+scatter!([noisy_expval_target_last], [exact_expval_target_last], label=&quot;Target expectation\n (noisy)&quot;, marker=:x, color=:red)
+plot!(xlabel=L&quot;$X_{\textrm{noisy}}$&quot;, ylabel=L&quot;$X_{\textrm{exact}}$&quot;)</code></pre><p><img src="../introduction-example-error-mitigation_files/introduction-example-error-mitigation_63_0.svg" alt="svg"/></p><p>Again, we wrap this up in a nice function.</p><pre><code class="language-julia hljs">function cdr(noisy_exp_values::Array{Float64, 1},
+            exact_exp_values::Array{Float64, 1},
+            noisy_target_exp_value::Float64;
+            exact_target_exp_value::Union{Nothing, Float64}=nothing)
+    &quot;&quot;&quot;
+    Function that computes the CDR correction for a single noisy expectation value.
+    &quot;&quot;&quot;
+
+    lin_model(x, p) = p[1] .+ p[2] .* x
+    # initial guess of the coefficient
+    p0 = [exact_exp_values[1], 0.01]
+    fit_ = curve_fit(lin_model, noisy_exp_values, exact_exp_values, p0)
+    # extrapolate to 0-noise using the fitted model
+    corrected = lin_model(noisy_target_exp_value, fit_.param)
+    
+    if exact_target_exp_value === nothing
+        return corrected, nothing, nothing
+    end
+    
+    abs_error_after = abs(exact_target_exp_value - corrected) 
+    abs_error_before = abs(exact_target_exp_value - noisy_target_exp_value) 
+    return corrected, abs_error_after, abs_error_before
+end;
+
+## example of a function call to compute the corrected value at the last time step:
+# corr_CDR_last, abs_error_after_CDR_last, abs_error_before_CDR_last = cdr(
+#     noisy_expvals_training_last,
+#     exact_expvals_training_last,
+#     noisy_expval_target_last,
+#     exact_expval_target_last
+# )</code></pre><p>We now do CDR for all time steps to visualize the evolution of the correction. As before for ZNE, we are only considering the current time step for our correction. It is important to note that we cannot continuously correct the time evolution because we have cannot correct the state itself. Instead, we are only correcting the expectation values.</p><pre><code class="language-julia hljs">corrected_CDR = Array{Float64, 1}(undef, steps+1)
+abs_error_after_CDR = Array{Float64, 1}(undef, steps+1)
+abs_error_before_CDR = Array{Float64, 1}(undef, steps+1)
+for i in 1:steps+1
+    corrected_CDR[i], 
+    abs_error_after_CDR[i],
+    abs_error_before_CDR[i] = cdr(
+        noisy_expvals_training[:, i],
+        exact_expvals_training[:, i],
+        noisy_expval_target[i];
+        exact_target_exp_value=exact_expval_target[i])
+end</code></pre><pre><code class="language-julia hljs">#plot time evolution
+plot(0:steps, exact_expval_target; xlabel=&quot;Steps&quot;, label=&quot;Noise-free target&quot;, marker=:o, legend=:bottomleft)
+plot!(0:steps, noisy_expval_target; label=&quot;Noisy target&quot;, marker=:o)
+plot!(0:steps, corrected_CDR; label=&quot;CDR correction&quot;, marker=:x, color = &quot;purple&quot;)
+
+plot!(ylabel=&quot;Observable&quot;, title =&quot;Time evolution of obs. with $(nq) qubits at dt = $(round((T/steps), digits = 2))&quot;)</code></pre><p><img src="../introduction-example-error-mitigation_files/introduction-example-error-mitigation_68_0.svg" alt="svg"/></p><p>CDR is quite performant until step 8 before visibly deviating from the exact evolution. This can be explained by the fact that noise does not follow the exact evolution trend anymore: it keeps decreasing even though the noiseless expectation value increases again from step 7. Thus, it becomes impossible to find a meaningful relationship between noiseless and noisy expectation values.</p><p>This hypothesis can be easily verified by changing the noise strength! For <code>depol_strength</code> and <code>dephase_strength</code> equal to 0.1, CDR performs well until step 14.</p><h1 id="vnCDR"><a class="docs-heading-anchor" href="#vnCDR">vnCDR</a><a id="vnCDR-1"></a><a class="docs-heading-anchor-permalink" href="#vnCDR" title="Permalink"></a></h1><p>The CDR and ZNE methods can be combined to form a new error correction method. In the original paper, the vnCDR outperforms both its constituents on a Variational Quantum Algorithms setup. For quantum dynamics, as in our case, there is no clearly better method. </p><p>For each circuit from the training set, one calculates the expectation value at multiple noise levels, as well as the corresponding noiseless expectation value. Note here that vnCDR works with the varied noise levels of the <em>training</em> circuits, while ZNE works with the varied noise levels of the <em>target</em> circuit.</p><p>More precisely, we will be implementing CPDR-ZNE as described in the CPA paper. This is based on the same idea as vnCDR, but allows for a small angle perturbation from Cliffords in the training circuit generation. We first compute the noiseless expectation values for our training circuits.</p><pre><code class="language-julia hljs">exact_expvals_training_levels = Array{Float64,2}(undef, length(list_training_thetas), steps+1)
+# iterate over training circuits (i.e. different thetas)
+for (i, thetas) in enumerate(list_training_thetas)
+    exact_expvals_training_levels[i, :] = trotter_time_evolution(
+        steps, layer, observable, thetas;
+        noise=false,
+        min_abs_coeff, max_weight,
+        depol_strength, dephase_strength)
+end</code></pre><p>We now compute the noisy expectation values with different noise levels for each training circuit.</p><pre><code class="language-julia hljs">noisy_expvals_training_levels = Array{Float64,3}(undef, length(noise_levels), length(list_training_thetas), steps+1) # 3D array: (noise_levels, circuits, steps+1)
+# iterate over noise levels
+for (idx, level) in enumerate(noise_levels)
+    # iterate over training circuits (i.e. different thetas)
+    for (i, thetas) in enumerate(list_training_thetas)
+        noisy_expvals_training_levels[idx, i, :] = trotter_time_evolution(
+            steps, layer, observable, thetas;
+            noise=true, noise_level=level,
+            min_abs_coeff, max_weight,
+            depol_strength, dephase_strength)
+    end
+end</code></pre><pre><code class="language-julia hljs">noisy_expvals_training_levels_last = noisy_expvals_training_levels[:,:,end]</code></pre><pre><code class="language-julia hljs">exact_expvals_training_last = exact_expvals_training[:,end]</code></pre><p>We use vnCDR to correct the last step of the time evolution:</p><pre><code class="language-julia hljs"># linear regression
+model = LinearRegressor(fit_intercept = false);
+
+# Convert input matrix to DataFrame
+X = DataFrame(noisy_expvals_training_levels_last&#39;, :auto);
+mach = machine(model, X, exact_expvals_training_last);
+fit!(mach);
+params = fitted_params(mach);
+
+# Manually compute prediction
+coefs = [v for (_, v) in params.coefs]
+corrected_vnCDR_last = coefs&#39;* noisy_exp_last
+abs_error_after_vnCDR_last = abs(exact_expval_target[end] - corrected_vnCDR_last)
+abs_error_before_vnCDR_last = abs(exact_expval_target[end] - noisy_exp_last[1]) 
+
+println(&quot;Noisy value at the last timestep: &quot;, round(noisy_expval_target_last, digits = 2))
+println(&quot;Corrected value at the last timestep: &quot;, round(corrected_vnCDR_last, digits = 2))
+println(&quot;Absolute error before correction: &quot;, round(abs_error_before_vnCDR_last, digits = 2))
+println(&quot;Absolute error after correction: &quot;, round(abs_error_after_vnCDR_last, digits = 8))
+     
+</code></pre><pre><code class="nohighlight hljs">[36m[1m[ [22m[39m[36m[1mInfo: [22m[39mTraining machine(LinearRegressor(fit_intercept = false, …), …).
+[36m[1m┌ [22m[39m[36m[1mInfo: [22m[39mSolver: Analytical
+[36m[1m│ [22m[39m  iterative: Bool false
+[36m[1m└ [22m[39m  max_inner: Int64 200
+
+
+Noisy value at the last timestep: 0.32
+
+
+Corrected value at the last timestep: 0.89
+Absolute error before correction: 0.57
+Absolute error after correction: 0.00265747</code></pre><p>Again, we wrap this up in a function to make things easier.</p><pre><code class="language-julia hljs">function vnCDR(
+    noisy_exp_values::Array{Float64,2},         # size (m circuits, n+1 noise levels)
+    exact_exp_values::Array{Float64,1},         # size m
+    noisy_target_exp_value::Array{Float64, 1};  # size n+1
+    exact_target_exp_value::Union{Nothing, Float64}=nothing)
+    # linear regression
+    model = LinearRegressor(fit_intercept = false);
+
+    # Convert input matrix to DataFrame
+    params = 0
+    # we add the following line to avoid invasing logging information 
+    with_logger(Logging.SimpleLogger(stderr, Logging.Warn)) do
+        X = DataFrame(noisy_exp_values&#39;, :auto)
+        mach = machine(model, X, exact_exp_values)
+        fit!(mach)
+        params = fitted_params(mach)
+    end
+
+    # Manually compute prediction
+    coefs = [v for (_, v) in params.coefs]
+    corrected = coefs&#39;* noisy_target_exp_value
+    
+    if exact_target_exp_value === nothing
+        return corrected, nothing, nothing
+    end
+    # absolute errors before and after correction
+    abs_error_before = abs(exact_target_exp_value - noisy_target_exp_value[1]) 
+    abs_error_after = abs(exact_target_exp_value - corrected)
+    
+    return corrected, abs_error_after, abs_error_before
+end;
+
+
+## example of a function call to compute the corrected value at the last time step
+# corrected, abs_error_after, abs_error_before = vnCDR(noisy_expvals_training_levels_last, 
+#                                                     exact_expvals_training_last,         
+#                                                     noisy_exp_last,
+#                                                     exact_expval_target[end])
+</code></pre><p>We now correct the values for each time step.</p><pre><code class="language-julia hljs">corrected_vnCDR = Array{Float64, 1}(undef, steps+1)
+abs_error_after_vnCDR = Array{Float64, 1}(undef, steps+1) 
+abs_error_before_vnCDR = Array{Float64, 1}(undef, steps+1)
+# perform vnCDR on every time step 
+for i in 1:steps+1
+    corrected_vnCDR[i], abs_error_after_vnCDR[i], abs_error_before_vnCDR[i] = vnCDR(
+        noisy_expvals_training_levels[:, :, i],
+        exact_expvals_training[:, i],
+        noisy_expval_target_levels[:,i];
+        exact_target_exp_value=
+        exact_expval_target[i])
+end</code></pre><h3 id="Comparison-plot-of-all-methods"><a class="docs-heading-anchor" href="#Comparison-plot-of-all-methods">Comparison plot of all methods</a><a id="Comparison-plot-of-all-methods-1"></a><a class="docs-heading-anchor-permalink" href="#Comparison-plot-of-all-methods" title="Permalink"></a></h3><p>We now plot the final results from vnCDR and compare these to the results from its components, ZNE and CDR.</p><pre><code class="language-julia hljs">plot(0:steps, exact_expval_target; xlabel=&quot;Steps&quot;, label=&quot;Noise-free evolution&quot;, marker=:o, legend=:topright, guidefontsize=16,
+            tickfontsize=12,
+            legendfontsize=12)
+# plot!(0:steps, noisy_expval_target; label=&quot;Noisy evolution&quot;, marker=:o, legend=:bottomleft)
+plot!(0:steps, corrected_ZNE, label=&quot;ZNE correction&quot;, marker=:x, color =&quot;green&quot;)
+plot!(0:steps, corrected_CDR; label=&quot;CDR correction&quot;, marker=:x, color=&quot;purple&quot;)
+plot!(0:steps, corrected_vnCDR; label=&quot;vnCDR correction&quot;, marker=:x, color=&quot;red&quot;)
+plot!(ylabel=&quot;Observable&quot;, title =&quot;Time evolution of ⟨ZZ⟩ with $(nq) qubits at dt = $(round((T/steps), digits = 2))&quot;)</code></pre><p><img src="../introduction-example-error-mitigation_files/introduction-example-error-mitigation_84_0.svg" alt="svg"/></p><p>vnCDR overcomes the difficulty CDR has correcting the noisy evolution once the exact and noisy evolution do not follow the same trend. For this specific system, vnCDR has a higher accuracy than ZNE. This is not generalizable, if we look at other Hamiltonians and hyper parameters this may change. Also, vnCDR is generally faster than CDR (as we show later). On the other hand, vnCDR is not as reliable as ZNE. It seldom produces unexplained behavior for individual time steps.</p><p>Let us compare these different methods by looking it at the absolute error. We cannot start from the first time steps, because we have an absolute error of 0 for some methods which cannot be plotted in log-scale.</p><pre><code class="language-julia hljs">start = 3
+
+# we plot the absolute error before cdr here but obviously the 
+# absolute error at the beginning is the same for every method
+plot(start:steps+1, abs_error_before_CDR[start:end], xlabel=&quot;Steps&quot;, ylabel = &quot;Absolute error&quot;, label=&quot;abs. error before correction&quot;, marker=:o, legend=:outerbottom, yscale=:log10, ms = 6)
+
+plot!(start:steps+1, abs_error_after_CDR[start:end], label=&quot;CDR&quot;, marker=:o, ms = 6)
+plot!(start:steps+1, abs_error_after_ZNE[start:end], label=&quot;ZNE correction&quot;, marker=:o, ms = 6)
+plot!(start:steps+1, abs_error_after_vnCDR[start:end], label=&quot;vnCDR correction&quot;, marker=:o, yscale=:log10, ms = 6)
+
+plot!(yticks=10.0 .^ (-1:-1:-8), size=(800, 600), guidefontsize=16,
+            tickfontsize=12,
+            legendfontsize=12)</code></pre><p><img src="../introduction-example-error-mitigation_files/introduction-example-error-mitigation_86_0.svg" alt="svg"/></p><p>We can see here that even though ZNE performs more consistently than vnCDR, the absolute error is often slightly larger for ZNE. However, the important thing to note is that the computational effort for vnCDR is much lower than for ZNE when using PP, due to the small angle regime leverage in vnCDR. This may not be apparent for small systems but becomes important for larger systems and/or lower truncations, as we will see in the utility experiment calculations.</p><p>CDR is very good as long as the noisy values follows the same trend as the noiseless ones. This method will become increasingly interesting as the quantum computers will achieve low noise.</p><p>In conclusion, vnCDR presents a good efficiency-accuracy tradeoff while ZNE seems more regular. CDR should be kept for expectation values with a low noise.</p><h1 id="Correcting-the-Utility-Experiment"><a class="docs-heading-anchor" href="#Correcting-the-Utility-Experiment">Correcting the Utility Experiment</a><a id="Correcting-the-Utility-Experiment-1"></a><a class="docs-heading-anchor-permalink" href="#Correcting-the-Utility-Experiment" title="Permalink"></a></h1><h3 id="Defining-the-system-and-functions"><a class="docs-heading-anchor" href="#Defining-the-system-and-functions">Defining the system and functions</a><a id="Defining-the-system-and-functions-1"></a><a class="docs-heading-anchor-permalink" href="#Defining-the-system-and-functions" title="Permalink"></a></h3><p>We now apply all our techniques to the utility experiment from IBM. We use 127 qubits and the heavy hex topology from the eagle QPU. The system simulated is slightly different, as <span>$\theta_J$</span> is fixed at <span>$\pi/2$</span>: this is the kicked transverse Ising field model. The simulations are simplified as the ZZ Pauli rotation gates become Clifford gates with <span>$\theta_J=\pi/2$</span>. <span>$\theta_h$</span> varies, and the local observable is <span>$\langle Z_{62} \rangle$</span>.</p><pre><code class="language-julia hljs">nq = 127
+nl= 20
+dt = 0.05
+T = nl*dt
+J = pi/2
+topology = ibmeagletopology;
+observable = PauliSum(nq); add!(observable, :Z, 62)</code></pre><p>Let&#39;s define the <code>kickedisingcircuit</code>, which only has parameterized gates for the h values.</p><pre><code class="language-julia hljs">function kickedisingcircuit(nq, nl; topology=nothing)
+
+    &quot;&quot;&quot;
+    generates a circuit with nq qubits and nl layers where the RX angle is a variable and the RZZ angle is fixed to -π/2
+    &quot;&quot;&quot;
+    
+    xlayer(circuit) = append!(circuit, (PauliRotation([:X], [qind]) for qind in 1:nq))
+    zzlayer(circuit) = append!(circuit, (PauliRotation([:Z, :Z], pair, -π/2) for pair in topology))
+
+    circuit = Gate[]
+
+    for _ in 1:nl
+        zzlayer(circuit)
+        xlayer(circuit)
+    end
+
+    return circuit
+end</code></pre><pre><code class="nohighlight hljs">kickedisingcircuit (generic function with 1 method)</code></pre><p>Then, we can again define one layer of our circuit.</p><pre><code class="language-julia hljs">layer = kickedisingcircuit(nq, 1, topology=topology)</code></pre><p>As previously mentioned, we cannot use our &quot;augmented&quot; approach for vnCDR in some cases: here, <span>$\theta_h$</span> will take 2 values smaller than the angle range <span>$\pi/20$</span> (namely 0 and 0.1) and <span>$\theta_J$</span> is fixed. We do not want to reduce further our angle range so that <span>$\theta_h$</span> would be greater than it, because our training circuits would be too similar to each other. Thus, we use a &quot;strict&quot; approach (strict in the sense that it is closer to the original CPA approach): we change <span>$\theta_h$</span> even though it is smaller than the angle range. </p><p>The difference with the procedure presented in the CPA paper is that we choose the angles of the training circuits at random, instead of taking the ones predefined in <span>$\mathcal{T}$</span>. This allows to reach similar results with much less training circuits (here we will use <code>num_samples=10</code> instead of the 144 used in the paper).</p><pre><code class="language-julia hljs">function strict_training_set_generation(layer, dt,J,h,angle_range,num_samples)
+    training_thetas_list = Vector{Vector{Float64}}()
+    thetas = define_thetas(layer, dt, J, h)
+    training_thetas = deepcopy(thetas)
+    theta_h_indices = getparameterindices(layer, PauliRotation, [:X])
+    for _ in 1:num_samples
+        new_tht_h = rand(Uniform(0.0, angle_range))
+        training_thetas[theta_h_indices] .= new_tht_h
+        push!(training_thetas_list, copy(training_thetas))
+    end
+    return training_thetas_list
+end</code></pre><pre><code class="nohighlight hljs">strict_training_set_generation (generic function with 1 method)</code></pre><p>In order to make the code more readable, we define a loop over the <code>trotter_time_evolution</code> function, which we use when we want to time evolve a whole training set.</p><pre><code class="language-julia hljs">function training_trotter_time_evolution(
+    steps::Int,
+    layer::Vector{Gate},
+    observable::PauliSum,
+    training_thetas::Vector{Vector{Float64}};
+    noise=false,
+    min_abs_coeff=0.0,
+    max_weight=Inf,
+    depol_strength=0.02,
+    dephase_strength=0.02,
+    noise_level=1.0
+)
+    n_circuits = length(training_thetas)
+    trajectories = Array{Float64,2}(undef, n_circuits, steps+1)
+    for (i, θ) in enumerate(training_thetas)
+        trajectories[i, :] = trotter_time_evolution(
+            steps, layer, observable, θ;
+            noise=noise,
+            min_abs_coeff,
+            max_weight,
+            depol_strength,
+            dephase_strength,
+            noise_level
+        )
+    end
+    return trajectories
+end
+</code></pre><pre><code class="nohighlight hljs">training_trotter_time_evolution (generic function with 1 method)</code></pre><p>The data set containing the unmitigated expectation values can be found in the supplements of the utility paper. IBM further provides results of their ZNE error mitigation (<code>IBM_mitigated_vals</code>). We further use data from a tensor network from Flatiron for comparison.</p><pre><code class="language-julia hljs"># unmitigated data (which we will feed into our error mitigation methods)
+mixed_angles = [0.3, 1.0, 0.7, 0.0, 0.2, 0.8, 0.5, 0.1, 0.4, 1.5707, 0.6];
+IBM_unmitigated_vals = [ 0.4188991191900761,
+0.004107759335343423,
+0.11944580478416555,
+0.49038646460776864,
+0.4552471452020139,
+0.055064655494323766,
+0.3061535376123831,
+0.4889782663914668,
+0.3622122171682965,
+-0.001980699802309258,
+0.20175539633925924]
+
+# data for comparison from IBM
+IBM_angles = [0.    , 0.1   , 0.2   , 0.3   , 0.4   , 0.5   , 0.6   , 0.7   , 0.8   , 1.    , 1.5707]
+IBM_mitigated_vals = [1.01688859, 1.00387483, 0.95615886, 0.95966435, 0.83946763,
+    0.81185907, 0.54640995, 0.45518584, 0.19469377, 0.01301832,0.01016334]
+
+# data for comparison from Flatiron tensor network
+tn_vals = [9.99999254e-01,  9.99593653e-01,  9.95720077e-01,  9.88301532e-01,
+        9.78553511e-01,  9.58023054e-01,  9.21986059e-01,  8.81726079e-01,
+        8.49816779e-01,  8.24900527e-01,  7.91257641e-01,  7.37435202e-01,
+        6.68573798e-01,  5.88096040e-01,  4.81874079e-01,  3.50316579e-01,
+        2.26709331e-01,  1.39724659e-01,  7.86639143e-02,  4.24124371e-02,
+        1.90595136e-02,  6.18879050e-03, -8.27168956e-04, -4.63372099e-03,
+       -7.05202121e-03, -7.68387421e-03, -6.33121142e-03, -4.32594440e-03,
+        6.52050191e-04,  1.72598340e-04,  5.64696020e-05, -7.70582375e-07]
+tn_angles = LinRange(0, π/2, length(tn_vals))</code></pre><p>We set the truncation coefficients so that this section can be run within 2 minutes on a laptop, and requires around 1.5 GB of memory in total (<code>min_abs_coeff = 1e-4</code>, <code>max_weight = 10</code>). Keep in mind that you should not choose too low truncation coefficients, otherwise the calculations become untractable! For truncation order of <code>1e-5</code>and max weight <code>10</code>, the code runs 25 minutes and the total allocated memory is 7 GB for example. We stick to 6 noise levels and keep the <code>angle_range</code> at <span>$\pi/20$</span>. The noise strength for both depolarizing and dephasing noise was chosen so that it approximately matches the unmitigated IBM values at strength <code>1.0</code>, as we will show and discuss in the final plot (ZNE base noise level). </p><pre><code class="language-julia hljs">angle_range = pi/20
+min_abs_coeff = 1e-4
+max_weight = 10
+depol_strength = 4/3*0.018 # same as in the previous example
+dephase_strength = 2*0.012
+noise_levels = [1.0, 1.3, 1.5, 1.8, 2.0, 2.2];
+num_samples = 10</code></pre><pre><code class="nohighlight hljs">10</code></pre><h2 id="Error-mitigating-the-utility-experiment"><a class="docs-heading-anchor" href="#Error-mitigating-the-utility-experiment">Error mitigating the utility experiment</a><a id="Error-mitigating-the-utility-experiment-1"></a><a class="docs-heading-anchor-permalink" href="#Error-mitigating-the-utility-experiment" title="Permalink"></a></h2><p>Now that we have all functions prepared, we can execute all error mitigation methods for the varying <span>$\theta_h$</span> values. </p><pre><code class="language-julia hljs"># initialize arrays to collect results
+collect_zne = Float64[]; collect_cdr = Float64[]; collect_vncd = Float64[]
+base_noise_zne = Float64[] # we use this to calibrate the ZNE method
+h_values = mixed_angles .* nl/(2*T)
+
+# time ZNE vs vnCDR
+execution_times_ZNE = Float64[]
+execution_times_vnCDR = Float64[]
+
+# we loop over the h values
+@time for (i,h) in enumerate(h_values)
+
+    # CDR and vnCDR use the same &quot;strict&quot; training set
+    training_thetas = strict_training_set_generation(layer, dt, J, h, angle_range, num_samples) #we do not need J here (there are no ZZ parametrized gates in the circuit) but we need to set it to a value for define_thetas to work.
+    
+    # CDR: evolve the noiseless training circuits
+    exact_train = training_trotter_time_evolution(
+        nl, layer, observable, training_thetas; noise = false,
+        min_abs_coeff, max_weight,
+        noise_level=0.0, depol_strength, dephase_strength)
+    
+    # we only need the last time step of CDR
+    exact_train = exact_train[:, end] 
+
+    # vnCDR: evolve the noise-scaled training circuits
+    vnCDR_levels = Array{Float64,3}(undef, length(noise_levels), length(training_thetas), nl+1)
+    time_vnCDR = @elapsed for (idx, i) in enumerate(noise_levels)
+        noisy_training = training_trotter_time_evolution(
+            nl, layer, observable, training_thetas; noise = true, noise_level=i,
+            min_abs_coeff, max_weight,
+            depol_strength, dephase_strength)
+        for j in 1:length(training_thetas)
+            vnCDR_levels[idx, j, :] .= noisy_training[j, :]
+        end
+    end
+
+    # note that the first noise level of vnCDR is exactly what we need for CDR
+    noisy_train = vnCDR_levels[1,:,end]
+
+    # ZNE: we need the thetas of the original circuit, not the training thetas
+    thetas = define_thetas(layer, dt, J, h)
+
+    zne_levels = Array{Float64,2}(undef, length(noise_levels), nl+1)
+    time_zne = @elapsed for (idx,i) in enumerate(noise_levels)
+        expval_target = trotter_time_evolution(
+            nl, layer, observable, thetas;noise = true, noise_level=i,
+            min_abs_coeff, max_weight,
+            depol_strength, dephase_strength)
+        zne_levels[idx,:] .= expval_target
+    end
+
+    # we only need the last time step of ZNE
+    zne_levels = zne_levels[:, end]
+    # we store the base noise level for ZNE (noise_level = 1.0)
+    push!(base_noise_zne, zne_levels[1])
+
+    # we store the execution times for ZNE and vnCDR
+    push!(execution_times_ZNE, time_zne)
+    push!(execution_times_vnCDR, time_vnCDR)
+    ### evaluation of the error mitigation methods
+    
+    # CDR results
+    result_cdr,_,_ = cdr(
+        noisy_train, exact_train,
+        IBM_unmitigated_vals[i])
+
+    # vnCDR results
+    result_vnCDR,_,_ = vnCDR(
+        vnCDR_levels[:, :, end],
+        exact_train,
+     zne_levels)
+
+    # ZNE results
+    result_zne,_,_ = zne(zne_levels,
+    noise_levels)
+    
+    # add our results for each h value
+     push!(collect_cdr, result_cdr)
+     push!(collect_zne, result_zne)
+     push!(collect_vncd, result_vnCDR)
+end</code></pre><pre><code class="nohighlight hljs"> 70.723179 seconds (19.31 M allocations: 1.460 GiB, 1.25% gc time, 1.41% compilation time)</code></pre><pre><code class="language-julia hljs">println(&quot;ZNE execution time in s: &quot;, round.(sum(execution_times_ZNE), digits = 2))
+println(&quot;vnCDR execution time in s: &quot;, round.(sum(execution_times_vnCDR), digits = 2))</code></pre><pre><code class="nohighlight hljs">ZNE execution time in s: 63.78
+vnCDR execution time in s: 4.36</code></pre><p>Here we see clearly, that vnCDR is much faster than ZNE. Consequently, CPA is fast as well. Now that we have generated all our data, let&#39;s plot the results! If the truncation order is chosen to too high, some point (especially for ZNE) might lie outside the plausible interval of <span>$[0,1]$</span>. Then we can filter those values and report they are missing in the plot. You can run this simulation with lower truncations to get stable results.</p><pre><code class="language-julia hljs"># Toggle to enable or disable filtering of y values
+filter_data = false
+
+# Use filtering if enabled, else use original data
+if filter_data
+    zne_xs = [x for (x, y) in zip(mixed_angles, collect_zne) if 0 &lt;= y &lt;= 1]
+    zne_ys = [y for (x, y) in zip(mixed_angles, collect_zne) if 0 &lt;= y &lt;= 1]
+
+    cdr_xs = [x for (x, y) in zip(mixed_angles, collect_cdr) if 0 &lt;= y &lt;= 1]
+    cdr_ys = [y for (x, y) in zip(mixed_angles, collect_cdr) if 0 &lt;= y &lt;= 1]
+
+    vncd_xs = [x for (x, y) in zip(mixed_angles, collect_vncd) if 0 &lt;= y &lt;= 1]
+    vncd_ys = [y for (x, y) in zip(mixed_angles, collect_vncd) if 0 &lt;= y &lt;= 1]
+else
+    zne_xs, zne_ys = mixed_angles, collect_zne
+    cdr_xs, cdr_ys = mixed_angles, collect_cdr
+    vncd_xs, vncd_ys = mixed_angles, collect_vncd
+end
+
+# Plot
+scatter(mixed_angles, IBM_unmitigated_vals, label=L&quot;\textrm{IBM\ QC\ Unmitigated}&quot;, marker=:diamond, 
+        color=:blue, lw=2, guidefontsize=16, tickfontsize=12, legendfontsize=12, ms=6, dpi = 400)
+scatter!(IBM_angles, IBM_mitigated_vals, label=L&quot;\textrm{IBM\ QC\ ZNE\ Mitigated}&quot;, color=&quot;Red&quot;, ms=6, marker=:diamond)
+plot!(tn_angles, tn_vals, label=L&quot;\textrm{Flatiron\ Tensor\ Network}&quot;, color=&quot;grey&quot;, alpha=0.8, linewidth=3, ms=6)
+scatter!(mixed_angles, base_noise_zne, label=L&quot;\textrm{ZNE\ base\ noise\ level}&quot;, color=&quot;black&quot;, marker=:cross , ms=6, alpha = 0.6)
+# Correction results
+scatter!(cdr_xs, cdr_ys, label=L&quot;\textrm{CDR\ correction}&quot;, color=&quot;lightgreen&quot;, linewidth=3, ms=6, marker=:o, alpha=0.7)
+scatter!(vncd_xs, vncd_ys, label=L&quot;\textrm{vnCDR\ correction}&quot;, color=&quot;orange&quot;, ms=6, marker=:o, alpha=0.7, legend_position=(0.6, 0.8))
+scatter!(zne_xs, zne_ys, label=L&quot;\textrm{ZNE\ correction}&quot;, color=&quot;lightblue&quot;, ms=6, marker=:o, alpha=0.7)
+plot!(legend_position=(0.6, 0.8), xlabel=L&quot;\theta_h&quot;,
+      ylabel=L&quot;\langle Z_{62} \rangle&quot;, size=(610,450), dpi=400)</code></pre><p><img src="../introduction-example-error-mitigation_files/introduction-example-error-mitigation_107_0.svg" alt="svg"/></p><p>Unsurprisingly, CDR fails beyond the small-angle regime. This is explained by the fact that near-Clifford circuits are not close enough to the target circuit angle. Thus, the pattern learned is not meaningful for our target circuit. However for quantum dynamics, the small angle regime is more relevant, as we want a good time resolution. Thus, CDR (more precisely CPA) still has potential for this application.</p><p>vnCDR and ZNE give similar results as IBM mitigated values. This is a satisfying result, given the fact that our noise model is very simple here, and is not adapted to the specifications of IBM&#39;s hardware. As mentioned above, we adjusted the noise strength for ZNE so that the base noise level lies approximately on or below the noisy hardware expectation values. This is done because, if we were to run the scaled noisy circuits on the quantum computer, we cannot go below the base noise level. For <span>$\theta_h = 0$</span>, the expectation value stays above the hardware data. This is because, for this angle, all <span>$R_{X_i}\left(\theta_h\right)$</span> gates are identity. As we can see in the <code>applynoiselayer</code> function, the resulting depolarizing noise is determined by the weight (number of non-identity terms) of each Pauli string, while the resulting dephasing noise is determined by the number of X or Y Paulis. So, this data point stays above the hardware data, even for larger noise. We can accept this, because we can efficiently simulate fully Clifford circuits.</p><p>If we want to perform purely classical simulations, we can also opt not to calibrate the base noise level, which gives similar results and works well for this system size. Then vnCDR is the better choice because it requires less computational ressources and we can push the boundaries of classical simulations further.</p><p>To improve the correction, making the noise model more realistic is likely the main opportunity for improvement. As we have seen, the utility experiment is sufficiently easy to be fully classically simulated with classical simulation methods such as Pauli Propagation or tensor networks. Nevertheless, the performance of our implemented methods indicates that they will also scale for the quantum dynamics of larger systems, which cannot yet be classically simulated to high precision. On the current scale, error mitigation mainly reduces the execution time. IBM&#39;s MPS comparison took 30 hours per data point, while we get away with a few minutes in trade-off for some accuracy.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../imaginary-time-evolution/">« Imaginary Time Evolution</a><a class="docs-footer-nextpage" href="../circuit_compression_example/">Circuit compression »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Monday 17 August 2026 09:45">Monday 17 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

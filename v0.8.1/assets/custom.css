@@ -1,0 +1,16 @@
+/* style plain text outputs differently from Julia code cells */
+pre:has(code.nohighlight) {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    padding-left: 10px !important;
+}
+
+pre code.nohighlight {
+    background-color: transparent !important;
+    padding: 0 !important;
+}
+
+/* hide the copy button overlay on output blocks */
+pre:has(code.nohighlight) .docs-copy-button {
+    display: none !important;
+}
