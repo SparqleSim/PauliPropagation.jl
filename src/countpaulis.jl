@@ -15,7 +15,7 @@ counts = @countpaulis psum = propagate(circuit, psum, thetas)
 ```
 """
 macro countpaulis(expr)
-    return _countingexpr(expr, :identity)
+    return PropagationBase._countingexpr(expr, identity)
 end
 
 """
@@ -34,31 +34,5 @@ peak = @peakpaulis psum, base = headandtails(circuit, obs, thetas, nlayers)
 ```
 """
 macro peakpaulis(expr)
-    return _countingexpr(expr, :_peak)
-end
-
-_peak(counts) = maximum(counts; init=0)
-
-# Evaluate `expr` with a counter installed and reduce what it counted.
-# A leading assignment is peeled off and performed outside the `try` block, because `try` opens a
-# soft local scope in which assignments to new variables would not reach the calling scope.
-function _countingexpr(expr, reducefunc)
-    is_assignment = isa(expr, Expr) && expr.head === :(=)
-    lhs = is_assignment ? expr.args[1] : nothing
-    rhs = is_assignment ? expr.args[2] : expr
-
-    counts = gensym(:counts)
-    value = gensym(:value)
-    assignment = is_assignment ? Expr(:(=), esc(lhs), value) : nothing
-
-    return quote
-        local $counts = PropagationBase.pushcounter!(Int[])
-        local $value = try
-            $(esc(rhs))
-        finally
-            PropagationBase.popcounter!($counts)
-        end
-        $assignment
-        $reducefunc($counts)
-    end
+    return PropagationBase._countingexpr(expr, PropagationBase._peak)
 end
