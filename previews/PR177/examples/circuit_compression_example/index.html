@@ -80,27 +80,27 @@ thetas_optimized = res.minimizer</code></pre><pre><code class="nohighlight hljs"
      0     1.603985e-05     2.843205e-04
 
 
- * time: 0.044332027435302734
+ * time: 0.030521869659423828
 
 
      2     1.198640e-05     4.583469e-05
- * time: 10.588587999343872
+ * time: 9.438374996185303
 
 
      4     1.106306e-05     5.592322e-05
- * time: 20.309592962265015
+ * time: 16.776355981826782
 
 
      6     9.998616e-06     6.135679e-05
- * time: 27.51969885826111
+ * time: 22.712373971939087
 
 
      8     5.553962e-06     1.038666e-04
- * time: 38.94872498512268
+ * time: 31.4982590675354
 
 
     10     5.030398e-06     9.969406e-06
- * time: 48.35571789741516</code></pre><h2 id="Statevector-simulator"><a class="docs-heading-anchor" href="#Statevector-simulator">Statevector simulator</a><a id="Statevector-simulator-1"></a><a class="docs-heading-anchor-permalink" href="#Statevector-simulator" title="Permalink"></a></h2><p>We use the Yao library to simulate the dynamics of an initial state <span>$\ket{\psi_0}$</span> under the differernt circuits. Note that the following results showing that the expectation value is much more accurate with the compressed ansatz can be strongly problem dependent, and must be taken as illustrative examples only.</p><pre><code class="language-julia hljs">using Yao
+ * time: 37.702133893966675</code></pre><h2 id="Statevector-simulator"><a class="docs-heading-anchor" href="#Statevector-simulator">Statevector simulator</a><a id="Statevector-simulator-1"></a><a class="docs-heading-anchor-permalink" href="#Statevector-simulator" title="Permalink"></a></h2><p>We use the Yao library to simulate the dynamics of an initial state <span>$\ket{\psi_0}$</span> under the differernt circuits. Note that the following results showing that the expectation value is much more accurate with the compressed ansatz can be strongly problem dependent, and must be taken as illustrative examples only.</p><pre><code class="language-julia hljs">using Yao
 using LinearAlgebra
 
 function heisenberg_1d(n, topology; J=1.0)
@@ -219,4 +219,4 @@ Plots.plot!(p_err, timestamps[2:end], transpose(mean(abs.(magnetizations[:, (1+e
 
 
 display(p)
-display(p_err)</code></pre><pre><code class="nohighlight hljs">3, mean AT = 0.011479990614483218, mean deeper = 0.002928244974399666, mean OPT = 0.002223524476785804</code></pre><p><img src="../circuit_compression_example_files/circuit_compression_example_32_1.svg" alt="svg"/></p><p><img src="../circuit_compression_example_files/circuit_compression_example_32_2.svg" alt="svg"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../introduction-example-error-mitigation/">« Error Mitigation using Pauli Propagation</a><a class="docs-footer-nextpage" href="../PP-from-Python/">Using PauliPropagation.jl from Python »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Monday 17 August 2026 14:48">Monday 17 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+display(p_err)</code></pre><pre><code class="nohighlight hljs">3, mean AT = 0.011479990614442829, mean deeper = 0.002928244974359276, mean OPT = 0.002223524476744956</code></pre><p><img src="../circuit_compression_example_files/circuit_compression_example_32_1.svg" alt="svg"/></p><p><img src="../circuit_compression_example_files/circuit_compression_example_32_2.svg" alt="svg"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../introduction-example-error-mitigation/">« Error Mitigation using Pauli Propagation</a><a class="docs-footer-nextpage" href="../PP-from-Python/">Using PauliPropagation.jl from Python »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Monday 17 August 2026 17:13">Monday 17 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
