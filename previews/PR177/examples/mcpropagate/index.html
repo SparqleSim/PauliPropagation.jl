@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Monte Carlo Propagation · PauliPropagation.jl</title><meta name="title" content="Monte Carlo Propagation · PauliPropagation.jl"/><meta property="og:title" content="Monte Carlo Propagation · PauliPropagation.jl"/><meta property="twitter:title" content="Monte Carlo Propagation · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../advanced_performance/">Advanced Performance</a></li><li class="is-active"><a class="tocitem" href>Monte Carlo Propagation</a><ul class="internal"><li><a class="tocitem" href="#A-minimal-example"><span>A minimal example</span></a></li><li><a class="tocitem" href="#A-more-realistic-circuit"><span>A more realistic circuit</span></a></li><li><a class="tocitem" href="#Summary"><span>Summary</span></a></li></ul></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/MonteCarlo/">Monte Carlo</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/Gradients/">Gradients</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Monte Carlo Propagation</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Monte Carlo Propagation</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/mcpropagate.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Monte-Carlo-Propagation"><a class="docs-heading-anchor" href="#Monte-Carlo-Propagation">Monte Carlo Propagation</a><a id="Monte-Carlo-Propagation-1"></a><a class="docs-heading-anchor-permalink" href="#Monte-Carlo-Propagation" title="Permalink"></a></h1><p>What do we do when conventional Pauli propagation runs out of memory? We introduce a randomized strategy to go beyond memory limitations. Each simulation is not fully accurate, but we can average expectation values over many, independent simulations.</p><p><code>mcpropagate()</code> and its in-place variant <code>mcpropagate!()</code> let you perform propagation as usual, but when the number of Paulis exceeds a <code>max_size</code>, the coefficient distribution is <em>resampled</em> to a lower number in an unbiased manner.</p><p>This notebook looks at what that trade-off actually looks like in practice: unbiased in expectation, but with variance that compounds every time resampling happens, and coefficients that can end up wildly, unphysically large. We also look at trading some of that variance away for a small, permanent bias.</p><pre><code class="language-julia hljs">using PauliPropagation
+using Plots
+using Statistics
+using Random
+
+Random.seed!(24)</code></pre><h2 id="A-minimal-example"><a class="docs-heading-anchor" href="#A-minimal-example">A minimal example</a><a id="A-minimal-example-1"></a><a class="docs-heading-anchor-permalink" href="#A-minimal-example" title="Permalink"></a></h2><p>Here is a minimal example circuit with two gates on two qubits. We also cap the Pauli sum to <code>max_size=2</code>.</p><pre><code class="language-julia hljs">nq = 2
+circuit = [PauliRotation(:Y, 1), PauliRotation([:X, :X], [1, 2])]
+thetas = [0.7, 0.5]
+pstr = PauliString(nq, :Z, 1)
+max_size = 2
+
+exact_psum = propagate(circuit, pstr, thetas; min_abs_coeff=0.0)
+exact_overlap = overlapwithzero(exact_psum)
+
+println(&quot;Exact Pauli sum:&quot;)
+println(exact_psum)
+println(&quot;Exact expectation = &quot;, exact_overlap)</code></pre><pre><code class="nohighlight hljs">Exact Pauli sum:
+
+
+PauliSum(nqubits: 2, 3 Pauli terms:
+ 0.47943 * YX
+ 0.67121 * ZI
+ -0.56535 * XI
+)
+
+
+Exact expectation = 0.6712121661589577</code></pre><p>Three terms survive exact propagation. Now compare that to single calls of <code>mcpropagate!</code>, capped at only 2 terms:</p><pre><code class="language-julia hljs">function toy_run()
+    psum = VectorPauliSum(pstr)
+    mcpropagate!(circuit, psum, thetas; max_size)
+    return overlapwithzero(psum)
+end
+
+for _ in 1:5
+    println(toy_run())
+end</code></pre><pre><code class="nohighlight hljs">0.0
+
+
+0.0
+0.0
+1.7159919131443044
+0.0</code></pre><p>Every individual run over- or under-shoots because we are trying to unbiasedly represent 3 Pauli strings with only with 2. But <code>mcpropagate!</code> is built so that each run is an unbiased estimator: averaged over many independent runs, the stochastic uncertainty cancels out.</p><pre><code class="language-julia hljs">reps = 20_000
+samples = [toy_run() for _ in 1:reps]
+
+println(&quot;Average of $reps runs: &quot;, mean(samples))
+println(&quot;Exact value:           &quot;, exact_overlap)
+
+histogram(samples, bins=40, label=&quot;single mcpropagate!() runs&quot;, xlabel=&quot;&lt;0|O|0&gt; estimate&quot;, ylabel=&quot;count&quot;, color=&quot;#2a78d6&quot;, linecolor=&quot;#2a78d6&quot;)
+vline!([exact_overlap], label=&quot;exact&quot;, color=:black, linewidth=2, linestyle=:dash)
+vline!([mean(samples)], label=&quot;average of $reps runs&quot;, color=&quot;#eb6834&quot;, linewidth=2, linestyle=:dash)</code></pre><pre><code class="nohighlight hljs">Average of 20000 runs: 0.6699232428915364
+
+
+Exact value:           0.6712121661589577</code></pre><p><img src="../mcpropagate_files/mcpropagate_7_2.svg" alt="svg"/></p><h2 id="A-more-realistic-circuit"><a class="docs-heading-anchor" href="#A-more-realistic-circuit">A more realistic circuit</a><a id="A-more-realistic-circuit-1"></a><a class="docs-heading-anchor-permalink" href="#A-more-realistic-circuit" title="Permalink"></a></h2><p>The same idea on a small Trotterized tilted-field Ising circuit on a 3x3 grid (9 qubits). We track a two-qubit <code>ZZ</code> expectation value over a handful of Trotter layers, capping the ensemble far below what it would naturally reach so that the resampling effects are easy to see.</p><pre><code class="language-julia hljs">nx, ny = 3, 3
+nq = nx * ny
+dt, h, J = 0.1, 1.0, 0.5
+
+topology = rectangletopology(nx, ny)
+layer = PauliRotation[]
+rxlayer!(layer, nq)
+rzlayer!(layer, nq)
+rzzlayer!(layer, topology)
+
+thetas = ones(countparameters(layer)) * dt * 2
+thetas[getparameterindices(layer, PauliRotation, [:X])] .*= h
+thetas[getparameterindices(layer, PauliRotation, [:Z])] .*= h
+thetas[getparameterindices(layer, PauliRotation, [:Z, :Z])] .*= J
+
+pstr = PauliString(nq, [:Z, :Z], [4, 5])
+nlayers = 5
+max_size = 25</code></pre><p>As ground truth, propagate deterministically layer by layer, with only a negligible coefficient truncation to keep the exact sum from exploding in size:</p><pre><code class="language-julia hljs">ref_psum = VectorPauliSum(pstr)
+ref_overlaps = [overlapwithzero(ref_psum)]
+for l in 1:nlayers
+    propagate!(layer, ref_psum, thetas; min_abs_coeff=1e-8)
+    push!(ref_overlaps, overlapwithzero(ref_psum))
+end
+
+println(&quot;Exact Pauli terms after $nlayers layers: &quot;, length(ref_psum))
+println(&quot;Exact overlaps per layer: &quot;, round.(ref_overlaps, digits=4))</code></pre><pre><code class="nohighlight hljs">Exact Pauli terms after 5 layers: 105012
+
+
+Exact overlaps per layer: 
+
+[1.0, 0.9605, 0.8592, 0.7366, 0.6333, 0.5723]</code></pre><p>The (near) exact sum already reaches tens of thousands of terms after a few layers. <code>mcpropagate!</code> instead keeps a running Pauli sum and resamples it back down to <code>max_size</code> terms whenever it grows past that cap - orders of magnitude smaller than the exact sum, so a lot of resampling happens along the way. A single run tracks the exact curve loosely at best:</p><pre><code class="language-julia hljs">function mc_trajectory(; min_rel_coeff=nothing)
+    psum = VectorPauliSum(pstr)
+    overlaps = [overlapwithzero(psum)]
+    maxcoeffs = [maxabscoeff(psum)]
+    for l in 1:nlayers
+        mcpropagate!(layer, psum, thetas; max_size, min_rel_coeff)
+        push!(overlaps, overlapwithzero(psum))
+        push!(maxcoeffs, maxabscoeff(psum))
+    end
+    return overlaps, maxcoeffs
+end
+
+single_overlaps, single_maxcoeffs = mc_trajectory()
+
+plot(0:nlayers, ref_overlaps, label=&quot;exact&quot;, color=:black, linestyle=:dash, linewidth=2, marker=:circle, xlabel=&quot;Layer&quot;, ylabel=&quot;Expectation&quot;, legend=:bottomleft)
+plot!(0:nlayers, single_overlaps, label=&quot;single mcpropagate!() run (max_size=$max_size)&quot;, color=&quot;#2a78d6&quot;, linewidth=2, marker=:circle)</code></pre><p><img src="../mcpropagate_files/mcpropagate_13_0.svg" alt="svg"/></p><h3 id="Averaging-many-runs"><a class="docs-heading-anchor" href="#Averaging-many-runs">Averaging many runs</a><a id="Averaging-many-runs-1"></a><a class="docs-heading-anchor-permalink" href="#Averaging-many-runs" title="Permalink"></a></h3><p>A single run is noisy, but on average, the runs are unbiased at every such that their mean should track the exact curve. Notice, though, how much the spread (standard deviation) across runs grows with circuit depth: each extra resampling step compounds the noise carried over from the last one.</p><pre><code class="language-julia hljs">reps = 300
+all_runs = [mc_trajectory()[1] for _ in 1:reps]
+
+mc_mean = [mean(r[l] for r in all_runs) for l in 1:nlayers+1]
+mc_std = [std(r[l] for r in all_runs) for l in 1:nlayers+1]
+
+plot(0:nlayers, mc_mean, ribbon=mc_std, label=&quot;mean +/- std of $reps runs&quot;, color=&quot;#2a78d6&quot;, linewidth=2, marker=:circle, fillalpha=0.2, xlabel=&quot;layer&quot;, ylabel=&quot;Expectation&quot;)
+plot!(0:nlayers, ref_overlaps, label=&quot;exact&quot;, color=:black, linestyle=:dash, linewidth=2)</code></pre><p><img src="../mcpropagate_files/mcpropagate_15_0.svg" alt="svg"/></p><p>The growth in standard deviation on its own, on a log scale:</p><pre><code class="language-julia hljs">plot(2:nlayers, mc_std[3:end], yscale=:log10, label=&quot;&quot;, color=&quot;#2a78d6&quot;, linewidth=2, marker=:circle, xlabel=&quot;Layer&quot;, ylabel=&quot;STD&quot;)</code></pre><p><img src="../mcpropagate_files/mcpropagate_17_0.svg" alt="svg"/></p><h3 id="Corrupted-coefficients"><a class="docs-heading-anchor" href="#Corrupted-coefficients">Corrupted coefficients</a><a id="Corrupted-coefficients-1"></a><a class="docs-heading-anchor-permalink" href="#Corrupted-coefficients" title="Permalink"></a></h3><p>The variance blow-up comes directly from the unbiased resampling. Every coefficient that is not dropped needs to be re-scaled up in magnitude. If you repeat this over and over, all coefficients will eventually be very large, even though on average they should give you back the correct expectation.</p><pre><code class="language-julia hljs">plot(0:nlayers, single_maxcoeffs, yscale=:log10, label=&quot;max |coefficient| in a single run&quot;, color=&quot;#2a78d6&quot;, linewidth=2, marker=:circle, xlabel=&quot;layer&quot;, ylabel=&quot;max |coefficient|&quot;)
+hline!([1.0], label=&quot;Normal Limit&quot;, color=:black, linestyle=:dash, linewidth=2)</code></pre><p><img src="../mcpropagate_files/mcpropagate_19_0.svg" alt="svg"/></p><h3 id="Trading-noise-for-bias-via-truncations"><a class="docs-heading-anchor" href="#Trading-noise-for-bias-via-truncations">Trading noise for bias via truncations</a><a id="Trading-noise-for-bias-via-truncations-1"></a><a class="docs-heading-anchor-permalink" href="#Trading-noise-for-bias-via-truncations" title="Permalink"></a></h3><p><code>mcpropagate!</code> also accepts the usual deterministic truncation keywords that <code>propagate!</code> does, e.g. <code>min_abs_coeff</code>, <code>min_rel_coeff</code>, or <code>max_weight</code>. Because coefficients tend to grow via unbiased resampling, we actually prefer <code>min_rel_coeff</code> over <code>min_abs_coeff</code>, but you can test things out.</p><p>A bit of deterministic truncation keeps introduces a bit of deterministic error with the benefit of strongly reducing the STD and generally the growth of the coefficients. If we are careful about it, we can find nice trade-offs.</p><pre><code class="language-julia hljs">min_rel_coeff = 0.01
+all_runs_biased = [mc_trajectory(; min_rel_coeff)[1] for _ in 1:reps]
+
+mc_mean_biased = [mean(r[l] for r in all_runs_biased) for l in 1:nlayers+1]
+mc_std_biased = [std(r[l] for r in all_runs_biased) for l in 1:nlayers+1]
+
+plot(3:nlayers, mc_std[4:end], yscale=:log10, label=&quot;unbiased&quot;, color=&quot;#2a78d6&quot;, linewidth=2, marker=:circle, xlabel=&quot;Layer&quot;, ylabel=&quot;STD&quot;)
+plot!(3:nlayers, mc_std_biased[4:end], label=&quot;min_rel_coeff=$min_rel_coeff&quot;, color=&quot;#eb6834&quot;, linewidth=2, marker=:circle)</code></pre><p><img src="../mcpropagate_files/mcpropagate_21_0.svg" alt="svg"/></p><h3 id="The-bias-variance-trade-off"><a class="docs-heading-anchor" href="#The-bias-variance-trade-off">The bias-variance trade-off</a><a id="The-bias-variance-trade-off-1"></a><a class="docs-heading-anchor-permalink" href="#The-bias-variance-trade-off" title="Permalink"></a></h3><p>Sweeping over <code>min_rel_coeff</code> shows you what trade-off to expect. Low truncations are pretty much unbiased, but have high variance. High truncations are biased, but have low variance. Somewhere in between is a sweet spot that minimizes the error for a fixed number of repetitions.</p><pre><code class="language-julia hljs">min_rel_coeffs = [1e-4, 1e-3, 1e-2, 1e-1]
+reps_sweep = 500
+
+biases = Float64[]
+stds = Float64[]
+for mrc in min_rel_coeffs
+    mrc_arg = mrc == 0.0 ? nothing : mrc
+    sweep_samples = [mc_trajectory(; min_rel_coeff=mrc_arg)[1][end] for _ in 1:reps_sweep]
+    push!(biases, abs(mean(sweep_samples) - ref_overlaps[end]))
+    push!(stds, std(sweep_samples))
+end
+
+plot(min_rel_coeffs, stds, label=&quot;STD&quot;, color=&quot;#2a78d6&quot;, linewidth=2, marker=:circle, xlabel=&quot;min_rel_coeff&quot;, xscale=:log10)
+plot!(min_rel_coeffs, biases, label=&quot;|bias|&quot;, color=&quot;#eb6834&quot;, linewidth=2, marker=:circle)</code></pre><p><img src="../mcpropagate_files/mcpropagate_23_0.svg" alt="svg"/></p><h2 id="Summary"><a class="docs-heading-anchor" href="#Summary">Summary</a><a id="Summary-1"></a><a class="docs-heading-anchor-permalink" href="#Summary" title="Permalink"></a></h2><p><code>mcpropagate</code> is effectively <code>propagate</code> with a randomized protocol that kicks in once the number of Paulis crosses your defined threshold. Left unbiased, statistical noise quickly build up across layers, giving you expectation estimtates that are completely off. Mixing in a bit of deterministic truncation keeps the variance in check, but also introduces a bias that averaging cannot eliminate. The recommended approach is to start with a lot of truncation / bias, and slowly reduce it until you the STD becomes so large that you won&#39;t have enough resources to average it down. That gives you the least biased result you can converge.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../advanced_performance/">« Advanced Performance</a><a class="docs-footer-nextpage" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Monday 17 August 2026 14:48">Monday 17 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
