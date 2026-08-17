@@ -51,6 +51,8 @@ using Random
 
     include("test_numericalcertificates.jl")
 
+    include("test_countpaulis.jl")
+
     include("test_visualization.jl")
 
     include("test_gates_against_yao.jl")
