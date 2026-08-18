@@ -182,7 +182,11 @@ export
     symmetrymerge,
     symmetrymerge!,
     translationmerge,
-    translationmerge!
+    translationmerge!,
+    reflectionmerge,
+    reflectionmerge!,
+    permutationmerge,
+    permutationmerge!
 
 include("Surrogate/Surrogate.jl")
 export

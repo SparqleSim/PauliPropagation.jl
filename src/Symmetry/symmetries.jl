@@ -1,38 +1,43 @@
 ### symmetries.jl
 ##
 # This file contains functions to merge Pauli strings by symmetries.
-# Currently it supports the following symmetry:
-# 1. translational symmetry in 1d and 2d.
-# 2. Reflection symmetry in 2d.
-# 3. Permutation symmetry.
+# Currently it supports the following symmetries:
+# 1. Translational symmetry in 1D and 2D.
+# 2. Reflection symmetry in 1D and 2D.
+# 3. Permutation symmetry, i.e. all-to-all connectivity.
+# The underlying bit manipulations live in `symmetry_utils.jl`.
 ##
 ###
 
+
 """
-    symmetrymerge(psum::AbstractPauliSum, mapfunc::Function) -> AbstractPauliSum
+    symmetrymerge(mapfunc, psum::AbstractPauliSum) -> AbstractPauliSum
 
 Merge equivalent Pauli strings in `psum` under a symmetry mapping.
 Each Pauli string is transformed using `mapfunc(pstr)` to its canonical
 representative, and identical representatives are combined.
 
 # Arguments
-- `psum`: A `PauliSum` containing Pauli strings and coefficients.
-- `mapfunc`: A function mapping each `PauliString` to its canonical representative.
+- `mapfunc`: A callable mapping each integer Pauli string (`PauliStringType`) 
+  to its canonical representative. It must be constant on symmetry orbits, 
+  i.e. equivalent Pauli strings must map to the same integer.
+- `psum`: A `PauliSum` or `VectorPauliSum` containing Pauli strings and coefficients.
 
 # Returns
-A new `PauliSum` where symmetric terms have been merged.
+A new Pauli sum of the same type where symmetric terms have been merged.
 
 # Example
 ```julia
 psum = PauliSum(6)
 add!(psum, :Z, 3)
 add!(psum, :Z, 6)
-symmetrymerge(psum, pstr -> _translatetolowestinteger(pstr, psum.nqubits))
+# merge under 1D translations, the same as `translationmerge(psum)`
+symmetrymerge(pstr -> _translatetolowestinteger(pstr, nqubits(psum)), psum)
 ```
 """
-function symmetrymerge(mapfunc::F, psum::PauliSum) where F<:Function
-    merged_psum = PauliPropagation.similar(psum)
-    # TODO: mage this work for mapfuc that also want to modify the coefficient
+function symmetrymerge(mapfunc::F, psum::PauliSum) where F
+    merged_psum = similar(psum)
+    # TODO: make this work for a `mapfunc` that also modifies the coefficient
     for (pstr, coeff) in psum
         pstr = mapfunc(pstr)
         add!(merged_psum, pstr, coeff)
@@ -44,28 +49,41 @@ end
 # `PropagationCache` wraps `psum` without copying it, so merging through a cache built
 # directly from `psum` would rewrite the caller's terms and coefficients in place.
 # Copy first to keep this out-of-place method non-mutating.
-function symmetrymerge(mapfunc::F, psum::VectorPauliSum) where F<:Function
+function symmetrymerge(mapfunc::F, psum::VectorPauliSum) where F
     return symmetrymerge!(mapfunc, deepcopy(psum))
 end
 
-function symmetrymerge!(mapfunc::F, psum::VectorPauliSum) where F # no <:Function restriction
+"""
+    symmetrymerge!(mapfunc, psum::VectorPauliSum)
+    symmetrymerge!(mapfunc, prop_cache::VectorPauliPropagationCache)
+
+In-place version of [`symmetrymerge`](@ref) for vector-backed Pauli sums.
+Returns the merged `psum` or `prop_cache`.
+"""
+function symmetrymerge!(mapfunc::F, psum::VectorPauliSum) where F
     cache = PropagationCache(psum)
     symmetrymerge!(mapfunc, cache)
     return extractsum!(cache, psum)
 end
 
-function symmetrymerge!(mapfunc::F, prop_cache::VectorPauliPropagationCache) where F<:Function
-    AK.map!(pstr -> mapfunc(pstr), activeterms(prop_cache), activeterms(prop_cache))
+# `mapfunc` is left unrestricted (no `<:Function`) so that any callable,
+# not only `Function`s, can be used as a mapper.
+function symmetrymerge!(mapfunc::F, prop_cache::VectorPauliPropagationCache) where F
+    AK.map!(mapfunc, activeterms(prop_cache), activeterms(prop_cache))
     merge!(prop_cache)
     return prop_cache
 end
 
 
+## Translational symmetry
+
 """
     translationmerge(psum::AbstractPauliSum)
 
-Shift and merge of a `psum` in a system with 1D translational symmetry.
-```
+Merge Pauli strings related by translations of a periodic 1D chain.
+
+# Example
+```julia
 psum = PauliSum(6)
 add!(psum, :Z, 3)
 add!(psum, :Z, 6)
@@ -75,178 +93,163 @@ translationmerge(psum)
 )
 ```
 """
-translationmerge(psum::AbstractPauliSum) = symmetrymerge(
-    (pstr -> _translatetolowestinteger(pstr, nqubits(psum))), psum
-)
+translationmerge(psum::AbstractPauliSum) = symmetrymerge(_translationmapper(psum), psum)
 
-
-# in-place version of translationmerge for 1D case
 """
-    translationmerge!(psum::VectorPauliSum||VectorPauliPropagationCache)
-Shift and merge of a `psum` in a system with 1D translational symmetry, in-place version.
-"""
-translationmerge!(psum) = symmetrymerge!(
-    (pstr -> _translatetolowestinteger(pstr, nqubits(psum))), psum
-)
+    translationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache})
 
+In-place version of [`translationmerge`](@ref) for a periodic 1D chain.
+"""
+translationmerge!(psum) = symmetrymerge!(_translationmapper(psum), psum)
+
+function _translationmapper(psum)
+    nq = nqubits(psum)
+    return pstr -> _translatetolowestinteger(pstr, nq)
+end
 
 """
     translationmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer)
 
-Shift and merge of a `psum` in a system with 2D translational symmetry.
-```
+Merge Pauli strings related by translations of a periodic `nx` x `ny` grid.
+Sites are numbered row by row, site `(x, y)` being qubit `(y - 1) * nx + x`,
+consistent with `rectangletopology`.
+
+# Example
+```julia
 psum = PauliSum(6)
 add!(psum, :Z, 3)
 add!(psum, :Z, 6)
-translationmerge(psum, 2, 3)
+translationmerge(psum, 3, 2)
+>>> PauliSum(nqubits: 6, 1 Pauli term: 
+ 2.0 * ZIIIII
+)
 ```
 """
 function translationmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer)
-    if nqubits(psum) != nx * ny
-        throw(
-            ArgumentError("Number of qubits $(nqubits(psum)) does not 
-                match grid size $(nx) x $(ny)"
-            )
-        )
-    end
+    return symmetrymerge(_translationmapper(psum, nx, ny), psum)
+end
+
+"""
+    translationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}, nx::Integer, ny::Integer)
+
+In-place version of [`translationmerge`](@ref) for a periodic `nx` x `ny` grid.
+"""
+function translationmerge!(psum, nx::Integer, ny::Integer)
+    return symmetrymerge!(_translationmapper(psum, nx, ny), psum)
+end
+
+function _translationmapper(psum, nx::Integer, ny::Integer)
+    _checkgridsize(psum, nx, ny)
 
     # precompute masks once to accelerate shifting
-    # main_mask: mask for all bits except the first column
-    # wrap_mask: mask for the first column    
     main_mask, wrap_mask = _computeshiftleftmasks(paulitype(psum), nx, ny)
 
-    mergefunc(pstr) = _translatetolowestinteger(
-        pstr, nx, ny, main_mask, wrap_mask
-    )
-
-    return symmetrymerge(mergefunc, psum)
-end
-
-function _computeshiftleftmasks(::Type{TT}, nx::Integer, ny::Integer) where TT
-    main_mask = zero(TT)  # main_mask: mask for all bits except the first column
-    wrap_mask = zero(TT)  # wrap_mask: mask for the first column    
-
-    for col in 1:nx
-        for row in 1:ny
-            site_index = (row - 1) * nx + col
-            bit_index = 2 * (site_index - 1)
-
-            if col == 1
-                # first column -> wrap mask
-                wrap_mask |= (TT(3) << bit_index)
-            else
-                main_mask |= (TT(3) << bit_index)
-            end
-        end
-    end
-
-    return main_mask, wrap_mask
-end
-
-# a function for 1D symmetric merging that does not check for existing terms
-# and instead shifts through to find the lowest integer representation
-# that is the representative that we merge to
-function _translatetolowestinteger(pstr::PauliStringType, nq)
-    if pstr == 0
-        return pstr
-    end
-
-    lowest_pstr = pstr
-    for _ in 1:nq
-        # shift periodically by one
-        pstr = _periodicshiftright(pstr, nq)
-
-        # if the shifted Pauli is lower, record lowest int
-        lowest_pstr = min(lowest_pstr, pstr)
-    end
-
-    return lowest_pstr
-end
-
-# the same strategy for the 2D case
-function _translatetolowestinteger(pstr::PauliStringType, nx, ny, main_mask, wrap_mask)
-    if pstr == 0
-        return pstr
-    end
-
-    lowest_pstr = pstr
-    for _ in 1:ny
-        for _ in 1:nx
-            # shift periodically by one column
-            pstr = _periodicshiftleft(pstr, nx, main_mask, wrap_mask)
-
-            # if the shifted Pauli is lower, record lowest int
-            lowest_pstr = min(lowest_pstr, pstr)
-        end
-
-        pstr = _periodicshiftup(pstr, nx, ny) # shift periodically by one row
-
-    end
-
-    return lowest_pstr
+    return pstr -> _translatetolowestinteger(pstr, nx, ny, main_mask, wrap_mask)
 end
 
 
-# For 1d case, it is easier to shift right and set the first pauli to the last position
-function _periodicshiftright(pstr::PauliStringType, nq)
-    first_pauli = getpauli(pstr, 1)
-    pstr = PauliPropagation._paulishiftright(pstr)
-    pstr = setpauli(pstr, first_pauli, nq)
-    return pstr
+## Reflection symmetry
+
+"""
+    reflectionmerge(psum::AbstractPauliSum)
+
+Merge Pauli strings related by reflection of a 1D chain, 
+i.e. by reversing the order of the qubits.
+
+# Example
+```julia
+psum = PauliSum(6)
+add!(psum, :Z, 1)
+add!(psum, :Z, 6)
+reflectionmerge(psum)
+>>> PauliSum(nqubits: 6, 1 Pauli term: 
+ 2.0 * ZIIIII
+)
+```
+"""
+reflectionmerge(psum::AbstractPauliSum) = symmetrymerge(_reflectionmapper(psum), psum)
+
+"""
+    reflectionmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache})
+
+In-place version of [`reflectionmerge`](@ref) for a 1D chain.
+"""
+reflectionmerge!(psum) = symmetrymerge!(_reflectionmapper(psum), psum)
+
+_reflectionmapper(psum) = _lowestpermutationmapper((_chainreflection(nqubits(psum)),))
+
+"""
+    reflectionmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; axes=(:x, :y))
+
+Merge Pauli strings related by reflections of an `nx` x `ny` grid.
+Sites are numbered row by row, site `(x, y)` being qubit `(y - 1) * nx + x`,
+consistent with `rectangletopology`.
+
+`axes` selects the mirror symmetries of the system:
+`:x` reflects the x coordinate (`x -> nx - x + 1`), `:y` reflects the y coordinate.
+By default both are used, which merges under the full point group of the 
+rectangle (both mirrors and their product, the rotation by 180 degrees).
+Pass `axes=:x` or `axes=:y` for systems that are symmetric under only one mirror.
+
+# Example
+```julia
+psum = PauliSum(6)
+add!(psum, :Z, 1)
+add!(psum, :Z, 3)
+reflectionmerge(psum, 3, 2)
+>>> PauliSum(nqubits: 6, 1 Pauli term: 
+ 2.0 * ZIIIII
+)
+```
+"""
+function reflectionmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; axes=(:x, :y))
+    return symmetrymerge(_reflectionmapper(psum, nx, ny, axes), psum)
+end
+
+"""
+    reflectionmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}, nx::Integer, ny::Integer; axes=(:x, :y))
+
+In-place version of [`reflectionmerge`](@ref) for an `nx` x `ny` grid.
+"""
+function reflectionmerge!(psum, nx::Integer, ny::Integer; axes=(:x, :y))
+    return symmetrymerge!(_reflectionmapper(psum, nx, ny, axes), psum)
+end
+
+function _reflectionmapper(psum, nx::Integer, ny::Integer, axes)
+    _checkgridsize(psum, nx, ny)
+    return _lowestpermutationmapper(_gridreflections(axes, nx, ny))
 end
 
 
-# Shifts a `pstr` left one column in a (`nx`, _ ) 2D grid of `nq` qubits.
-# This function shifts the entire bitstring left one column, 
-# and sets the first column of Paulis to the last column of the Paulis.
-function _periodicshiftleft(pstr::PauliStringType, nx, main_mask, wrap_mask)
-    # main_mask: mask for all bits except the first column
-    # wrap_mask: mask for the first column
+## Permutation symmetry
 
-    shift_size = 2 * nx - 2
-    first_col_paulis = pstr & wrap_mask
-    main_shift = (pstr & main_mask) >> 2
-    pstr = main_shift | (first_col_paulis << shift_size)
+"""
+    permutationmerge(psum::AbstractPauliSum)
 
-    return pstr
-end
+Merge Pauli strings related by any permutation of the qubits, 
+as in a system with all-to-all connectivity.
+Two Pauli strings are equivalent if they contain the same number of X, Y and Z, 
+and the representative of each class is the sorted string `X...X Y...Y Z...Z I...I`.
 
+This is the largest symmetry group of the qubits, containing in particular 
+translations and reflections.
 
-# Shifts a `pstr` up one row in a (`nx`, `ny`) 2D grid of `nq` qubits on a 
-# cylindrical lattice.
-# This function shifts the entire bitstring up one row, 
-# and sets the first row of Paulis to the last row of the Paulis.
-function _periodicshiftup(pstr::PauliStringType, nx, ny)
+# Example
+```julia
+psum = PauliSum(4)
+add!(psum, [:Z, :X], [1, 4])
+add!(psum, [:X, :Z], [2, 3])
+permutationmerge(psum)
+>>> PauliSum(nqubits: 4, 1 Pauli term: 
+ 2.0 * XZII
+)
+```
+"""
+permutationmerge(psum::AbstractPauliSum) = symmetrymerge(_permutationcanonicalform, psum)
 
-    n_bits = nx * ny * 2
-    shift_size = 2 * nx
-    first_row_paulis = pstr & _pauliwindowmask(typeof(pstr), 1, nx)
-    pstr = pstr >> shift_size
-    pstr = pstr | (first_row_paulis << (n_bits - shift_size))
+"""
+    permutationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache})
 
-    return pstr
-end
-
-
-# in-place version of translationmerge for 2D case
-function translationmerge!(psum, nx::Integer, ny::Integer)
-    if nqubits(psum) != nx * ny
-        throw(
-            ArgumentError("Number of qubits $(nqubits(psum)) does not 
-                match grid size $(nx) x $(ny)"
-            )
-        )
-    end
-
-    # precompute masks once to accelerate shifting
-    # main_mask: mask for all bits except the first column
-    # wrap_mask: mask for the first column    
-    main_mask, wrap_mask = PauliPropagation._computeshiftleftmasks(paulitype(psum), nx, ny)
-
-    mergefunc(pstr) = PauliPropagation._translatetolowestinteger(
-        pstr, nx, ny, main_mask, wrap_mask
-    )
-
-    return symmetrymerge!(mergefunc, psum)
-end
-
+In-place version of [`permutationmerge`](@ref).
+"""
+permutationmerge!(psum) = symmetrymerge!(_permutationcanonicalform, psum)

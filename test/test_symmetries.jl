@@ -1,5 +1,6 @@
 # Test File for symmetries.jl
 using Test
+using Random: randperm
 using PauliPropagation: _periodicshiftup
 
 function get_psum(nq)
@@ -85,5 +86,153 @@ end
 
         # merging twice from the same input gives the same result
         @test PauliSum(merged_vecpsum) == PauliSum(mergecall(input_vecpsum))
+    end
+end
+
+@testset "Reflection 1d merging" begin
+    nq = 6
+    input_psum = PauliSum(nq)
+    add!(input_psum, :Z, 1)
+    add!(input_psum, :Z, 6)                     # mirror image of Z on site 1
+    add!(input_psum, [:X, :Y], [2, 3])
+    add!(input_psum, [:Y, :X], [4, 5], 0.5)     # mirror image of XY on sites 2, 3
+    add!(input_psum, [:X, :Y], [4, 5])          # not a mirror image (order matters)
+
+    # representatives are the lowest integers, i.e. the images on the lower sites
+    expected_psum = PauliSum(nq)
+    add!(expected_psum, :Z, 1, 2)
+    add!(expected_psum, [:X, :Y], [2, 3], 1.5)
+    add!(expected_psum, [:Y, :X], [2, 3])
+
+    @test reflectionmerge(input_psum) == expected_psum
+    @test PauliSum(reflectionmerge(VectorPauliSum(input_psum))) == expected_psum
+    @test PauliSum(reflectionmerge!(VectorPauliSum(input_psum))) == expected_psum
+    @test PauliSum(reflectionmerge!(PropagationCache(VectorPauliSum(input_psum)))) == expected_psum
+end
+
+@testset "Reflection 2d merging" begin
+    # 3x2 grid, sites numbered row by row:
+    #   1 2 3
+    #   4 5 6
+    nx, ny = 3, 2
+    nq = nx * ny
+    input_psum = PauliSum(nq)
+    add!(input_psum, :Z, 1)             # corner
+    add!(input_psum, :Z, 3)             # x-mirror of site 1
+    add!(input_psum, :Z, 4)             # y-mirror of site 1
+    add!(input_psum, :Z, 6)             # x- and y-mirror of site 1
+    add!(input_psum, :Z, 2)             # top middle: only y-mirror is site 5
+    add!(input_psum, [:X, :Y], [1, 2])  # -> ZYX-type images: [Y,X] on (2,3), [X,Y] on (4,5), [Y,X] on (5,6)
+    add!(input_psum, [:Y, :X], [5, 6], 2.0)
+
+    # both mirrors (default): full point group of the rectangle
+    expected_both = PauliSum(nq)
+    add!(expected_both, :Z, 1, 4)
+    add!(expected_both, :Z, 2)
+    add!(expected_both, [:X, :Y], [1, 2], 3.0)
+    @test reflectionmerge(input_psum, nx, ny) == expected_both
+    @test PauliSum(reflectionmerge(VectorPauliSum(input_psum), nx, ny)) == expected_both
+    @test PauliSum(reflectionmerge!(VectorPauliSum(input_psum), nx, ny)) == expected_both
+    @test PauliSum(reflectionmerge!(PropagationCache(VectorPauliSum(input_psum)), nx, ny)) == expected_both
+
+    # x-mirror only: site 1 ~ 3, 4 ~ 6, but 1 !~ 4
+    expected_x = PauliSum(nq)
+    add!(expected_x, :Z, 1, 2)
+    add!(expected_x, :Z, 4, 2)
+    add!(expected_x, :Z, 2)
+    add!(expected_x, [:X, :Y], [1, 2])
+    add!(expected_x, [:X, :Y], [4, 5], 2.0)
+    @test reflectionmerge(input_psum, nx, ny; axes=:x) == expected_x
+    @test reflectionmerge(input_psum, nx, ny; axes=(:x,)) == expected_x
+
+    # y-mirror only: site 1 ~ 4, 3 ~ 6, 2 ~ 5, but 1 !~ 3
+    expected_y = PauliSum(nq)
+    add!(expected_y, :Z, 1, 2)
+    add!(expected_y, :Z, 3, 2)
+    add!(expected_y, :Z, 2)
+    add!(expected_y, [:X, :Y], [1, 2])
+    add!(expected_y, [:Y, :X], [2, 3], 2.0)
+    @test reflectionmerge(input_psum, nx, ny; axes=:y) == expected_y
+
+    # validation
+    @test_throws ArgumentError reflectionmerge(input_psum, 2, 2)
+    @test_throws ArgumentError reflectionmerge!(VectorPauliSum(input_psum), 2, 2)
+    @test_throws ArgumentError reflectionmerge(input_psum, nx, ny; axes=:z)
+    @test_throws ArgumentError reflectionmerge(input_psum, nx, ny; axes=())
+end
+
+@testset "Permutation merging" begin
+    nq = 4
+
+    pstr1 = PauliString(4, [:X, :Y, :Z], [1, 2, 3])
+    pstr2 = PauliString(4, [:Y, :Z, :X], [2, 3, 4])
+    pstr3 = PauliString(4, [:Z, :X, :Y], [1, 3, 4])
+    psum = PauliSum([pstr1, pstr2, pstr3])
+    rep_perm = permutationmerge(psum)
+    
+    expected = PauliSum(PauliString(4, [:X, :Y, :Z], [1, 2, 3], 3.0))
+    @test rep_perm == expected
+end
+
+@testset "Permutation merging (all-to-all)" begin
+    nq = 6
+    input_psum = PauliSum(nq)
+    # three strings with one X, one Y and one Z each, on different sites and in different orders
+    add!(input_psum, [:X, :Y, :Z], [1, 2, 3])
+    add!(input_psum, [:Z, :Y, :X], [4, 5, 6], 0.5)
+    add!(input_psum, [:Y, :Z, :X], [1, 4, 6], 0.25)
+    # two strings with two Z each
+    add!(input_psum, [:Z, :Z], [1, 6])
+    add!(input_psum, [:Z, :Z], [3, 4], 2.0)
+    # a string with an X only, and one with a Y only: not equivalent to each other
+    add!(input_psum, :X, 5)
+    add!(input_psum, :Y, 5)
+
+    expected_psum = PauliSum(nq)
+    add!(expected_psum, [:X, :Y, :Z], [1, 2, 3], 1.75)
+    add!(expected_psum, [:Z, :Z], [1, 2], 3.0)
+    add!(expected_psum, :X, 1)
+    add!(expected_psum, :Y, 1)
+
+    @test permutationmerge(input_psum) == expected_psum
+    @test PauliSum(permutationmerge(VectorPauliSum(input_psum))) == expected_psum
+    @test PauliSum(permutationmerge!(VectorPauliSum(input_psum))) == expected_psum
+    @test PauliSum(permutationmerge!(PropagationCache(VectorPauliSum(input_psum)))) == expected_psum
+
+    # the canonical form is the sorted string X...X Y...Y Z...Z I...I,
+    # is idempotent, and is invariant under arbitrary permutations of the sites
+    for _ in 1:200
+        nq = rand(1:40)
+        T = getinttype(nq)
+        pstr = rand(T) & ((T(1) << (2 * nq)) - T(1))
+        canonical = PauliPropagation._permutationcanonicalform(pstr)
+        @test countx(canonical) == countx(pstr)
+        @test county(canonical) == county(pstr)
+        @test countz(canonical) == countz(pstr)
+        @test canonical == symboltoint(T, vcat(fill(:X, countx(pstr)), fill(:Y, county(pstr)), fill(:Z, countz(pstr))), 1:countweight(pstr))
+        @test PauliPropagation._permutationcanonicalform(canonical) == canonical
+        @test PauliPropagation._permutationcanonicalform(getpauli(pstr, randperm(nq))) == canonical
+    end
+
+    # permutation symmetry contains translation and reflection symmetry
+    psum = get_psum(6)
+    @test permutationmerge(translationmerge(psum)) == permutationmerge(psum)
+    @test permutationmerge(reflectionmerge(psum, 3, 2)) == permutationmerge(psum)
+end
+
+@testset "Out-of-place reflection/permutation merging does not mutate input" begin
+    nq = 6
+    for mergecall in (psum -> reflectionmerge(psum),
+                      psum -> reflectionmerge(psum, 3, 2),
+                      psum -> permutationmerge(psum))
+        input_vecpsum = VectorPauliSum(get_psum(nq))
+        reference_terms = copy(input_vecpsum.terms)
+        reference_coeffs = copy(input_vecpsum.coeffs)
+
+        merged_vecpsum = mergecall(input_vecpsum)
+
+        @test input_vecpsum.terms == reference_terms
+        @test input_vecpsum.coeffs == reference_coeffs
+        @test merged_vecpsum.terms !== input_vecpsum.terms
     end
 end
