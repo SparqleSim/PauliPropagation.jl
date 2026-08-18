@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Using PauliPropagation.jl from Python · PauliPropagation.jl</title><meta name="title" content="Using PauliPropagation.jl from Python · PauliPropagation.jl"/><meta property="og:title" content="Using PauliPropagation.jl from Python · PauliPropagation.jl"/><meta property="twitter:title" content="Using PauliPropagation.jl from Python · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../advanced_performance/">Advanced Performance</a></li><li><a class="tocitem" href="../mcpropagate/">Monte Carlo Propagation</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li class="is-active"><a class="tocitem" href>Using PauliPropagation.jl from Python</a><ul class="internal"><li><a class="tocitem" href="#What-is-JuliaCall?"><span>What is JuliaCall?</span></a></li><li><a class="tocitem" href="#Setting-Up"><span>Setting Up</span></a></li><li><a class="tocitem" href="#A-Note-on-juliacall-Installation-and-Environments"><span>A Note on <code>juliacall</code> Installation and Environments</span></a></li><li><a class="tocitem" href="#Setting-Up-the-Python-Julia-Bridge"><span>Setting Up the Python-Julia Bridge</span></a></li><li><a class="tocitem" href="#Using-Julia-Through-Python"><span>Using Julia Through Python</span></a></li><li><a class="tocitem" href="#Understanding-Pauli-Strings-and-Operators"><span>Understanding Pauli Strings and Operators</span></a></li><li><a class="tocitem" href="#Working-with-Data-Between-Python-and-Julia."><span>Working with Data Between Python and Julia.</span></a></li><li><a class="tocitem" href="#Basic-Example:-Propagating-an-Observable-Through-a-Quantum-Circuit"><span>Basic Example: Propagating an Observable Through a Quantum Circuit</span></a></li><li><a class="tocitem" href="#Understanding-Propagation:"><span>Understanding Propagation:</span></a></li><li><a class="tocitem" href="#Simulating-Quantum-Dynamics"><span>Simulating Quantum Dynamics</span></a></li><li><a class="tocitem" href="#Comparing-Truncation-Effects"><span>Comparing Truncation Effects</span></a></li><li><a class="tocitem" href="#Summary"><span>Summary</span></a></li></ul></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/MonteCarlo/">Monte Carlo</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/Gradients/">Gradients</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Using PauliPropagation.jl from Python</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Using PauliPropagation.jl from Python</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/PP-from-Python.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Using-PauliPropagation.jl-from-Python"><a class="docs-heading-anchor" href="#Using-PauliPropagation.jl-from-Python">Using PauliPropagation.jl from Python</a><a id="Using-PauliPropagation.jl-from-Python-1"></a><a class="docs-heading-anchor-permalink" href="#Using-PauliPropagation.jl-from-Python" title="Permalink"></a></h1><p>This notebook shows how to use the Julia package <code>PauliPropagation.jl</code> from Python. If you&#39;re more comfortable with Python but want to use this Julia package for quantum simulations, this approach works pretty well, but you will still have to learn how our functions and types work.</p><p><strong>Important Note:</strong> The main purpose of this notebook is not to get you aquainted with our library. For that, please check out the notebook <code>1-basic-example</code>. It should be possible for you to read only knowing Python. Then come back and learn here how to use the library through Python. </p><h2 id="What-is-JuliaCall?"><a class="docs-heading-anchor" href="#What-is-JuliaCall?">What is JuliaCall?</a><a id="What-is-JuliaCall?-1"></a><a class="docs-heading-anchor-permalink" href="#What-is-JuliaCall?" title="Permalink"></a></h2><p>JuliaCall is just a Python package that lets you call Julia code from Python. It is pretty handy because:</p><ul><li>You can use Julia&#39;s fast code without leaving Python</li><li>You can call Julia functions almost like they are Python functions</li><li>It handles converting data between the languages for you (often automatically!)</li></ul><p>This is great because you can keep working in Python but still use the special features of PauliPropagation.jl when you need them.</p><p>For more information on <code>juliacall</code>, check out <a href="https://juliapy.github.io/PythonCall.jl/stable/juliacall/">this page</a>.</p><h2 id="Setting-Up"><a class="docs-heading-anchor" href="#Setting-Up">Setting Up</a><a id="Setting-Up-1"></a><a class="docs-heading-anchor-permalink" href="#Setting-Up" title="Permalink"></a></h2><p>First we need to load juliacall and set up the connection to Julia.</p><p>When running this for the first time, it might take a while as Julia gets set up.</p><pre><code class="language-julia hljs"># This installs into the global Python environment.
+!pip install juliacall numpy matplotlib
+
+# We&#39;ll also need numpy and matplotlib for our Python data manipulation and visualization
+import numpy as np
+import matplotlib.pyplot as plt</code></pre><pre><code class="nohighlight hljs">Collecting juliacall
+
+
+  Downloading juliacall-0.9.35-py3-none-any.whl.metadata (4.5 kB)
+
+
+Collecting numpy
+  Downloading numpy-2.4.6-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (6.6 kB)
+
+
+Collecting matplotlib
+  Downloading matplotlib-3.11.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (80 kB)
+
+
+Collecting juliapkg&lt;0.2,&gt;=0.1.24 (from juliacall)
+  Downloading juliapkg-0.1.26-py3-none-any.whl.metadata (7.3 kB)
+
+
+Collecting filelock&lt;4.0,&gt;=3.16 (from juliapkg&lt;0.2,&gt;=0.1.24-&gt;juliacall)
+
+
+  Downloading filelock-3.32.3-py3-none-any.whl.metadata (2.0 kB)
+Collecting semver&lt;4.0,&gt;=3.0 (from juliapkg&lt;0.2,&gt;=0.1.24-&gt;juliacall)
+
+
+  Downloading semver-3.0.4-py3-none-any.whl.metadata (6.8 kB)
+Collecting tomli&lt;3.0,&gt;=2.0 (from juliapkg&lt;0.2,&gt;=0.1.24-&gt;juliacall)
+
+
+  Downloading tomli-2.4.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (10 kB)
+Collecting tomlkit&lt;0.16,&gt;=0.13.3 (from juliapkg&lt;0.2,&gt;=0.1.24-&gt;juliacall)
+  Downloading tomlkit-0.15.1-py3-none-any.whl.metadata (3.3 kB)
+
+
+Collecting contourpy&gt;=1.0.1 (from matplotlib)
+  Downloading contourpy-1.3.3-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (5.5 kB)
+
+
+Collecting cycler&gt;=0.10 (from matplotlib)
+  Downloading cycler-0.12.1-py3-none-any.whl.metadata (3.8 kB)
+
+
+Collecting fonttools&gt;=4.28.2 (from matplotlib)
+  Downloading fonttools-4.63.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (118 kB)
+
+
+Collecting kiwisolver&gt;=1.3.1 (from matplotlib)
+  Downloading kiwisolver-1.5.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (5.1 kB)
+
+
+Requirement already satisfied: packaging&gt;=20.0 in /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages (from matplotlib) (26.3)
+
+
+Collecting pillow&gt;=9 (from matplotlib)
+
+
+  Downloading pillow-12.3.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.1 kB)
+
+
+Collecting pyparsing&gt;=3 (from matplotlib)
+  Downloading pyparsing-3.3.2-py3-none-any.whl.metadata (5.8 kB)
+Requirement already satisfied: python-dateutil&gt;=2.7 in /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages (from matplotlib) (2.9.0.post0)
+Requirement already satisfied: six&gt;=1.5 in /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages (from python-dateutil&gt;=2.7-&gt;matplotlib) (1.17.0)
+
+
+Downloading juliacall-0.9.35-py3-none-any.whl (12 kB)
+Downloading juliapkg-0.1.26-py3-none-any.whl (22 kB)
+Downloading filelock-3.32.3-py3-none-any.whl (98 kB)
+Downloading semver-3.0.4-py3-none-any.whl (17 kB)
+Downloading tomli-2.4.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (243 kB)
+
+
+Downloading tomlkit-0.15.1-py3-none-any.whl (49 kB)
+Downloading numpy-2.4.6-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.9 MB)
+[?25l   [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/16.9 MB[0m [31m?[0m eta [36m-:--:--[0m
+
+[2K   [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m16.9/16.9 MB[0m [31m111.8 MB/s[0m  [33m0:00:00[0m
+[?25hDownloading matplotlib-3.11.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (10.0 MB)
+[?25l   [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/10.0 MB[0m [31m?[0m eta [36m-:--:--[0m
+
+[2K   [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m10.0/10.0 MB[0m [31m120.0 MB/s[0m  [33m0:00:00[0m
+[?25hDownloading contourpy-1.3.3-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (355 kB)
+Downloading cycler-0.12.1-py3-none-any.whl (8.3 kB)
+Downloading fonttools-4.63.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (5.1 MB)
+[?25l   [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/5.1 MB[0m [31m?[0m eta [36m-:--:--[0m
+
+[2K   [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m5.1/5.1 MB[0m [31m131.2 MB/s[0m  [33m0:00:00[0m
+[?25hDownloading kiwisolver-1.5.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (1.4 MB)
+[?25l   [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/1.4 MB[0m [31m?[0m eta [36m-:--:--[0m
+
+[2K   [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m1.4/1.4 MB[0m [31m91.4 MB/s[0m  [33m0:00:00[0m
+[?25hDownloading pillow-12.3.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (6.9 MB)
+[?25l   [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m0.0/6.9 MB[0m [31m?[0m eta [36m-:--:--[0m
+
+[2K   [90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m [32m6.9/6.9 MB[0m [31m128.9 MB/s[0m  [33m0:00:00[0m
+[?25hDownloading pyparsing-3.3.2-py3-none-any.whl (122 kB)
+
+
+Installing collected packages: tomlkit, tomli, semver, pyparsing, pillow, numpy, kiwisolver, fonttools, filelock, cycler, juliapkg, contourpy, matplotlib, juliacall
+[?25l
+
+
+[?25h
+Successfully installed contourpy-1.3.3 cycler-0.12.1 filelock-3.32.3 fonttools-4.63.0 juliacall-0.9.35 juliapkg-0.1.26 kiwisolver-1.5.0 matplotlib-3.11.1 numpy-2.4.6 pillow-12.3.0 pyparsing-3.3.2 semver-3.0.4 tomli-2.4.1 tomlkit-0.15.1</code></pre><h2 id="A-Note-on-juliacall-Installation-and-Environments"><a class="docs-heading-anchor" href="#A-Note-on-juliacall-Installation-and-Environments">A Note on <code>juliacall</code> Installation and Environments</a><a id="A-Note-on-juliacall-Installation-and-Environments-1"></a><a class="docs-heading-anchor-permalink" href="#A-Note-on-juliacall-Installation-and-Environments" title="Permalink"></a></h2><p><strong>About Jupyter kernels:</strong> When you <code>pip install juliacall</code>, it will be installed into your global Python environment, not necessarily the environment that your Jupyter kernel is running in. If you want to use juliacall in an existing Jupyter kernel, just install the juliacall package into that kernel&#39;s Python environment with <code>pip install juliacall</code> as you usually would inside your environment. There&#39;s no need to create a separate kernel - juliacall will use the Julia instance it manages from your current Python process.</p><p><code>juliacall</code> then manages its own Julia environment. By default, it will install a suitable version of Julia if one is not found, or you can configure it to use an existing Julia installation. Julia packages required by <code>juliacall</code> or by the Julia code you run (like <code>PauliPropagation.jl</code> here) are typically installed within this <code>juliacall</code>-managed Julia environment.</p><p>So, while <code>juliacall</code> (the Python package) lives in your Python kernel&#39;s environment, the Julia operations themselves run in a separate Julia process and environment orchestrated by <code>juliacall</code>.</p><h2 id="Setting-Up-the-Python-Julia-Bridge"><a class="docs-heading-anchor" href="#Setting-Up-the-Python-Julia-Bridge">Setting Up the Python-Julia Bridge</a><a id="Setting-Up-the-Python-Julia-Bridge-1"></a><a class="docs-heading-anchor-permalink" href="#Setting-Up-the-Python-Julia-Bridge" title="Permalink"></a></h2><p>To use Julia from Python, we first need to import and initialize the <code>juliacall</code> library. This will:</p><ol><li>Start a Julia process in the background</li><li>Give us access to Julia&#39;s functionality through the <code>Main</code> object</li><li>Allow us to execute Julia code directly from Python</li></ol><p>When using <code>juliacall</code> for the first time on a system, it might take a few minutes to set up the Julia environment.</p><pre><code class="language-julia hljs"># This part can be annoying the first time - be patient!
+from juliacall import Main as jl
+
+print(&quot;Julia version:&quot;, jl.VERSION)</code></pre><pre><code class="nohighlight hljs">[juliapkg] Found dependencies: /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/juliapkg/juliapkg.json
+[juliapkg] Found dependencies: /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/juliacall/juliapkg.json
+[juliapkg] Locating Julia 1.10.3 - 1.11
+[juliapkg] WARNING: You have Julia 1.12.7 installed but 1.10.3 - 1.11 is required.
+[juliapkg]   It is recommended that you upgrade Julia or install JuliaUp.
+[juliapkg] Querying Julia versions from https://julialang-s3.julialang.org/bin/versions.json
+[juliapkg] WARNING: About to install Julia 1.11.9 to /home/runner/.julia/environments/pyjuliapkg/pyjuliapkg/install.
+[juliapkg]   If you use juliapkg in more than one environment, you are likely to
+[juliapkg]   have Julia installed in multiple locations. It is recommended to
+[juliapkg]   install JuliaUp (https://github.com/JuliaLang/juliaup) or Julia
+[juliapkg]   (https://julialang.org/downloads) yourself.
+[juliapkg] Downloading Julia from https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.9-linux-x86_64.tar.gz
+
+
+             download complete
+[juliapkg] Verifying download
+
+
+[juliapkg] Installing Julia 1.11.9 to /home/runner/.julia/environments/pyjuliapkg/pyjuliapkg/install
+
+
+[juliapkg] Using Julia 1.11.9 at /home/runner/.julia/environments/pyjuliapkg/pyjuliapkg/install/bin/julia
+[juliapkg] Finding libjulia:
+           | using Libdl
+           | print(abspath(Libdl.dlpath(&quot;libjulia&quot;)))
+[juliapkg] Using Julia project at /home/runner/.julia/environments/pyjuliapkg
+[juliapkg] Writing Project.toml:
+           | [deps]
+           | PythonCall = &quot;6099a3de-0909-46bc-b1f4-468b9a2dfc0d&quot;
+           | OpenSSL_jll = &quot;458c3c95-2e84-50aa-8efc-19380b2a3a95&quot;
+           | 
+           | [compat]
+           | PythonCall = &quot;=0.9.35&quot;
+           | OpenSSL_jll = &quot;~3.0&quot;
+           | 
+           | [preferences]
+[juliapkg] Installing packages:
+           | import Pkg
+           | Pkg.Registry.update()
+           | Pkg.add([
+           |   Pkg.PackageSpec(name=&quot;PythonCall&quot;, uuid=&quot;6099a3de-0909-46bc-b1f4-468b9a2dfc0d&quot;),
+           |   Pkg.PackageSpec(name=&quot;OpenSSL_jll&quot;, uuid=&quot;458c3c95-2e84-50aa-8efc-19380b2a3a95&quot;),
+           | ])
+           | Pkg.resolve()
+           | Pkg.precompile()
+
+
+    Updating registry at `~/.julia/registries/General.toml`
+
+
+   Resolving package versions...
+
+
+   Installed micromamba_jll ── v2.3.1+0
+   Installed UnsafePointers ── v1.0.0
+   Installed MicroMamba ────── v0.1.15
+   Installed Pidfile ───────── v1.3.0
+   Installed OpenSSL_jll ───── v3.0.20+0
+   Installed JSON ──────────── v1.7.1
+   Installed PrecompileTools ─ v1.2.1
+   Installed PythonCall ────── v0.9.35
+   Installed pixi_jll ──────── v0.76.2+0
+   Installed CondaPkg ──────── v0.2.36
+   Installed StructUtils ───── v2.8.5
+
+
+    Updating `~/.julia/environments/pyjuliapkg/Project.toml`
+  [6099a3de] + PythonCall v0.9.35
+⌅ [458c3c95] + OpenSSL_jll v3.0.20+0
+    Updating `~/.julia/environments/pyjuliapkg/Manifest.toml`
+  [992eb4ea] + CondaPkg v0.2.36
+  [9a962f9c] + DataAPI v1.16.0
+  [e2d170a0] + DataValueInterfaces v1.0.0
+  [82899510] + IteratorInterfaceExtensions v1.0.0
+  [692b3bcd] + JLLWrappers v1.8.0
+  [682c06a0] + JSON v1.7.1
+  [1914dd2f] + MacroTools v0.5.16
+  [0b3b1443] + MicroMamba v0.1.15
+  [bac558e1] + OrderedCollections v2.0.1
+  [69de0a69] + Parsers v2.8.7
+  [fa939f87] + Pidfile v1.3.0
+⌅ [aea7be01] + PrecompileTools v1.2.1
+  [21216c6a] + Preferences v1.5.2
+  [6099a3de] + PythonCall v0.9.35
+  [6c6a2e73] + Scratch v1.3.0
+  [ec057cc2] + StructUtils v2.8.5
+  [3783bdb8] + TableTraits v1.0.1
+  [bd369af6] + Tables v1.13.0
+  [e17b2a0c] + UnsafePointers v1.0.0
+⌅ [458c3c95] + OpenSSL_jll v3.0.20+0
+  [f8abcde7] + micromamba_jll v2.3.1+0
+  [4d7b5844] + pixi_jll v0.76.2+0
+  [0dad84c5] + ArgTools v1.1.2
+  [56f22d72] + Artifacts v1.11.0
+  [2a0f44e3] + Base64 v1.11.0
+  [ade2ca70] + Dates v1.11.0
+  [f43a241f] + Downloads v1.6.0
+  [7b1f6079] + FileWatching v1.11.0
+  [b77e0a4c] + InteractiveUtils v1.11.0
+  [4af54fe1] + LazyArtifacts v1.11.0
+  [b27032c2] + LibCURL v0.6.4
+  [76f85450] + LibGit2 v1.11.0
+  [8f399da3] + Libdl v1.11.0
+  [56ddb016] + Logging v1.11.0
+  [d6f4376e] + Markdown v1.11.0
+  [ca575930] + NetworkOptions v1.2.0
+  [44cfe95a] + Pkg v1.11.0
+  [de0858da] + Printf v1.11.0
+  [9a3f8284] + Random v1.11.0
+  [ea8e919c] + SHA v0.7.0
+  [9e88b42a] + Serialization v1.11.0
+  [fa267f1f] + TOML v1.0.3
+  [a4e569a6] + Tar v1.10.0
+  [8dfed614] + Test v1.11.0
+  [cf7118a7] + UUIDs v1.11.0
+  [4ec0a83e] + Unicode v1.11.0
+  [deac9b47] + LibCURL_jll v8.6.0+0
+  [e37daf67] + LibGit2_jll v1.7.2+0
+  [29816b5a] + LibSSH2_jll v1.11.0+1
+  [c8ffd9c3] + MbedTLS_jll v2.28.6+0
+  [14a3606d] + MozillaCACerts_jll v2023.12.12
+  [83775a58] + Zlib_jll v1.2.13+1
+  [8e850ede] + nghttp2_jll v1.59.0+0
+  [3f19e933] + p7zip_jll v17.4.0+2
+        Info Packages marked with ⌅ have new versions available but compatibility constraints restrict them from upgrading. To see why use `status --outdated -m`
+Precompiling
+
+ project...
+
+
+    964.5 ms  ✓ DataValueInterfaces
+
+
+   1231.9 ms  ✓ DataAPI
+   1408.1 ms  ✓ IteratorInterfaceExtensions
+
+
+   1642.3 ms  ✓ UnsafePointers
+
+
+   2247.1 ms  ✓ OrderedCollections
+
+
+   1745.4 ms  ✓ Scratch
+   1703.8 ms  ✓ Pidfile
+
+
+   2358.1 ms  ✓ StructUtils
+
+
+   1076.9 ms  ✓ TableTraits
+
+
+   2300.5 ms  ✓ Preferences
+
+
+   1560.2 ms  ✓ PrecompileTools
+
+
+   1771.6 ms  ✓ JLLWrappers
+
+
+   2762.8 ms  ✓ Tables
+   6109.5 ms  ✓ MacroTools
+
+
+   1609.0 ms  ✓ OpenSSL_jll
+
+
+   1928.5 ms  ✓ StructUtils → StructUtilsTablesExt
+
+
+   3775.6 ms  ✓ micromamba_jll
+
+
+   3345.0 ms  ✓ pixi_jll
+
+
+   5659.6 ms  ✓ MicroMamba
+
+
+  18350.4 ms  ✓ Parsers
+
+
+  12295.2 ms  ✓ JSON
+
+
+   8535.3 ms  ✓ CondaPkg
+
+
+  31678.4 ms  ✓ PythonCall
+  23 dependencies successfully precompiled in 77 seconds. 27 already precompiled.
+  2 dependencies had output during precompilation:
+┌ CondaPkg
+│  Downloading artifact: pixi
+└  
+┌ MicroMamba
+│  Downloading artifact: micromamba
+└  
+
+
+  No Changes to `~/.julia/environments/pyjuliapkg/Project.toml`
+  No Changes to `~/.julia/environments/pyjuliapkg/Manifest.toml`
+
+
+Detected IPython. Loading juliacall extension. See https://juliapy.github.io/PythonCall.jl/stable/compat/#IPython
+
+
+Julia version: 1.11.9</code></pre><p>Now we install <code>Paulipropagation.jl</code> using the <code>jl.seval</code> functionality that evaluates strings as Julia code.</p><pre><code class="language-julia hljs">print(&quot;Installing PauliPropagation.jl (grab a coffee, this could take a minute)...&quot;)
+jl.seval(&quot;&quot;&quot;
+    using Pkg
+    if !haskey(Pkg.project().dependencies, &quot;PauliPropagation&quot;)
+        Pkg.add(&quot;PauliPropagation&quot;)
+    end
+&quot;&quot;&quot;)
+
+jl.seval(&quot;using PauliPropagation&quot;)
+print(&quot;Finally! PauliPropagation.jl is loaded&quot;)</code></pre><pre><code class="nohighlight hljs">Installing PauliPropagation.jl (grab a coffee, this could take a minute)...
+
+
+   Resolving package versions...
+
+
+   Installed PauliPropagation ─ v0.4.1
+    Updating `~/.julia/environments/pyjuliapkg/Project.toml`
+⌃ [293282d5] + PauliPropagation v0.4.1
+    Updating `~/.julia/environments/pyjuliapkg/Manifest.toml`
+  [66dad0bd] + AliasTables v1.1.3
+  [c3b6d118] + BitIntegers v0.3.7
+  [1654ce90] + Bits v0.2.0
+  [864edb3b] + DataStructures v0.19.6
+  [ffbed154] + DocStringExtensions v0.9.5
+  [92d709cd] + IrrationalConstants v0.2.6
+  [2ab3a3ac] + LogExpFunctions v1.0.1
+  [e1d29d7a] + Missings v1.2.0
+⌃ [293282d5] + PauliPropagation v0.4.1
+  [43287f4e] + PtrArrays v1.4.0
+  [a2af1166] + SortingAlgorithms v1.2.3
+  [10745b16] + Statistics v1.11.1
+  [82ae8749] + StatsAPI v1.8.0
+  [2913bbd2] + StatsBase v0.34.12
+  [37e2e46d] + LinearAlgebra v1.11.0
+  [2f01184e] + SparseArrays v1.11.0
+  [e66e0078] + CompilerSupportLibraries_jll v1.1.1+0
+  [4536629a] + OpenBLAS_jll v0.3.27+1
+  [bea87d4a] + SuiteSparse_jll v7.7.0+0
+  [8e850b90] + libblastrampoline_jll v5.11.0+0
+
+
+        Info Packages marked with ⌃ have new versions available and may be upgradable.
+Precompiling project...
+
+
+   1321.6 ms  ✓ StatsAPI
+   1850.5 ms  ✓ Statistics
+   2213.5 ms  ✓ DocStringExtensions
+   2038.5 ms  ✓ BitIntegers
+
+
+    779.3 ms  ✓ Missings
+   1582.4 ms  ✓ PtrArrays
+
+
+   1201.9 ms  ✓ Bits
+   1215.7 ms  ✓ AliasTables
+
+
+   4339.9 ms  ✓ IrrationalConstants
+
+
+   2111.3 ms  ✓ Statistics → SparseArraysExt
+   1135.4 ms  ✓ LogExpFunctions
+
+
+   4481.4 ms  ✓ DataStructures
+    815.1 ms  ✓ SortingAlgorithms
+
+
+   3626.1 ms  ✓ StatsBase
+   4372.4 ms  ✓ PauliPropagation
+  15 dependencies successfully precompiled in 16 seconds. 53 already precompiled.
+
+
+Finally! PauliPropagation.jl is loaded</code></pre><h2 id="Using-Julia-Through-Python"><a class="docs-heading-anchor" href="#Using-Julia-Through-Python">Using Julia Through Python</a><a id="Using-Julia-Through-Python-1"></a><a class="docs-heading-anchor-permalink" href="#Using-Julia-Through-Python" title="Permalink"></a></h2><p>One of the great things about <code>juliacall</code> is that it handles many data conversions automatically, making Julia functions feel quite Pythonic out of the box.</p><p>For example:</p><ul><li>Python lists of tuples can often be passed directly where Julia expects a vector of tuples (e.g., for topologies).</li><li>NumPy arrays are automatically converted to Julia arrays when passed to Julia functions.</li><li>Julia numbers (like <code>Int</code> or <code>Float64</code>) are usually converted to Python <code>int</code> or <code>float</code> automatically upon return.</li><li>Python&#39;s built-in functions like <code>len()</code> may be directly translated to, in this case, <code>length()</code> in Julia.</li></ul><p>We can still create a few shorter alias for <code>PauliPropagation</code> for convenience.</p><pre><code class="language-julia hljs">pp = jl.PauliPropagation
+
+Xsym = jl.Symbol(&quot;X&quot;)  # For X Pauli
+Ysym = jl.Symbol(&quot;Y&quot;)  # For Y Pauli
+Zsym = jl.Symbol(&quot;Z&quot;)  # For Z Pauli</code></pre><h2 id="Understanding-Pauli-Strings-and-Operators"><a class="docs-heading-anchor" href="#Understanding-Pauli-Strings-and-Operators">Understanding Pauli Strings and Operators</a><a id="Understanding-Pauli-Strings-and-Operators-1"></a><a class="docs-heading-anchor-permalink" href="#Understanding-Pauli-Strings-and-Operators" title="Permalink"></a></h2><p>Let&#39;s go over some of the core concepts from PauliPropagation.jl that we will be using here, and that are also subject of our other tutorials.</p><p>The main data types we will work with are <code>PauliString</code> and <code>PauliSum</code>. A <code>PauliString</code> is a tensor product of Pauli operators <span>$X$</span>, <span>$Y$</span>, <span>$Z$</span>, and <span>$I$</span> with a coefficient, like:</p><p><span>$0.5 \cdot X_1 \otimes Y_2 \otimes Z_3 \otimes I_4 \otimes ... \otimes I_{10}$</span></p><p>When you have multiple Pauli strings added together, that is a Pauli Sum:</p><p><span>$0.5 \cdot X_1 \otimes Z_2 + 1.2 \cdot Y_3 \otimes Y_4 + 0.7 \cdot Z_1 \otimes Z_5$</span></p><p>The quantum circuit is a sequence of gates acting onto the individual Pauli strings, and the topology of the circuit defines which qubits can interact with each other (this matters for two-qubit gates).</p><p>Let&#39;s create a simple Pauli operator and see what we get:</p><pre><code class="language-julia hljs"># Let&#39;s create a 10-qubit system for our examples
+nqubits = 10
+
+# A PauliString representing Z on the 5th qubit (indices are 1-based in Julia!)
+observable = pp.PauliString(nqubits, Zsym, 5)
+print(&quot;Single Z observable:&quot;, observable)
+
+# We can also create more complex observables
+# Format: PauliString(nqubits, [symbols ...], [positions ...], coefficient)
+complex_obs = pp.PauliString(nqubits, [Xsym, Ysym, Zsym], [1, 3, 7], 2.5)
+print(&quot;Complex observable:&quot;, complex_obs)
+
+# An example of an easy PauliSum  constructor, but all the others also work 
+pauli_sum_observable = pp.PauliSum(observable)
+
+# The objects have an internal juliacall type
+print(&quot;Type of pauli_sum_observable:&quot;, type(pauli_sum_observable))
+# but we can call python functions on them if they are defined
+print(f&quot;Length of pauli_sum_observable: {len(pauli_sum_observable)}&quot;)</code></pre><pre><code class="nohighlight hljs">Single Z observable: PauliString(nqubits: 10, 1.0 * IIIIZIIIII)
+
+
+Complex observable: PauliString(nqubits: 10, 2.5 * XIYIIIZIII)
+Type of pauli_sum_observable: &lt;class &#39;juliacall.AnyValue&#39;&gt;
+Length of pauli_sum_observable: 1</code></pre><h2 id="Working-with-Data-Between-Python-and-Julia."><a class="docs-heading-anchor" href="#Working-with-Data-Between-Python-and-Julia.">Working with Data Between Python and Julia.</a><a id="Working-with-Data-Between-Python-and-Julia.-1"></a><a class="docs-heading-anchor-permalink" href="#Working-with-Data-Between-Python-and-Julia." title="Permalink"></a></h2><p>A key aspect of using <code>juliacall</code> is understanding how data converts between Python and Julia. The good news is <code>juliacall</code> handles a lot of this automatically!</p><ol><li><strong>Julia arrays to NumPy arrays</strong>: When a Julia function returns an array, <code>juliacall</code> often gives you an object that behaves like a NumPy array (or can be easily converted with <code>np.array()</code>).</li><li><strong>NumPy arrays to Julia arrays</strong>: As we&#39;ve seen, passing a NumPy array to a Julia function that expects an array usually just works.</li><li><strong>Working with Julia objects in Python</strong>: You get back Python-side representations of Julia objects. For many common types (numbers, strings, collections), these behave very intuitively. For example, <code>len()</code> works on Julia collections.</li><li><strong>Accessing Julia documentation from Python</strong>: You can still use <code>jl.seval(&quot;@doc ...&quot;)</code>.</li></ol><pre><code class="language-julia hljs"># Julia function returning an array
+julia_random_array = jl.rand(5)
+print(&quot;Julia array (via juliacall):&quot;, julia_random_array)
+print(&quot;Type of Julia array object in Python:&quot;, type(julia_random_array))
+
+# Converting to NumPy array
+numpy_array_from_julia = np.array(julia_random_array)
+print(&quot;NumPy array type:&quot;, type(numpy_array_from_julia))
+print(&quot;NumPy array content:&quot;, numpy_array_from_julia)
+
+# Creating a NumPy array and passing it to a Julia function that uses it
+jl.seval(&quot;&quot;&quot;
+function sum_julia_array(arr)
+    return sum(arr)
+end
+&quot;&quot;&quot;)
+my_numpy_array = np.array([1.0, 2.0, 3.0, 4.0])
+sum_from_julia = jl.sum_julia_array(my_numpy_array) 
+print(f&quot;Sum from Julia (passing NumPy array {my_numpy_array}): {sum_from_julia} (type: {type(sum_from_julia)})&quot;)
+
+# Accessing documentation
+help_text = jl.seval(&quot;@doc PauliPropagation.propagate&quot;)
+print(&quot;\nDocumentation for propagate function (first 10 lines):\n&quot;)
+help_text_str = str(jl.string(help_text))
+print(&quot;\n&quot;.join(help_text_str.split(&quot;\n&quot;)[:10]) + &quot;\n...&quot;)</code></pre><pre><code class="nohighlight hljs">Julia array (via juliacall): 
+
+[0.9330265638113153, 0.2817897746461234, 0.1273183695666973, 0.14629029034993157, 0.21217325842674106]
+Type of Julia array object in Python: &lt;class &#39;juliacall.VectorValue&#39;&gt;
+
+
+NumPy array type: &lt;class &#39;numpy.ndarray&#39;&gt;
+NumPy array content: [0.93302656 0.28178977 0.12731837 0.14629029 0.21217326]
+
+
+Sum from Julia (passing NumPy array [1. 2. 3. 4.]): 10.0 (type: &lt;class &#39;float&#39;&gt;)
+
+
+
+Documentation for propagate function (first 10 lines):
+
+
+
+Base.Docs.DocStr(svec(&quot;    propagate(circ, pstr::PauliString, thetas=nothing; max_weight=Inf, min_abs_coeff=1e-10, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, kwargs...)\n\nPropagate a `PauliString` through the circuit `circ` in the Heisenberg picture. \nThis means that the circuit is applied to the Pauli string in reverse order, and the action of each gate is its conjugate action.\nParameters for the parametrized gates in `circ` are given by `thetas`, and need to be passed as if the circuit was applied as written in the Schrödinger picture.\nIf thetas are not passed, the circuit must contain only non-parametrized `StaticGates`.\nDefault truncations are `max_weight`, `min_abs_coeff`, `max_freq`, and `max_sins`.\n`max_freq`, and `max_sins` will lead to automatic conversion if the coefficients are not already wrapped in suitable `PathProperties` objects.\nA custom truncation function can be passed as `customtruncfunc` with the signature customtruncfunc(pstr::PauliStringType, coefficient)::Bool.\nFurther `kwargs` are passed to the lower-level functions `applymergetruncate!`, `applytoall!`, `applyandadd!`, and `apply`.\n&quot;), nothing, Dict{Symbol, Any}(:typesig =&gt; Union{Tuple{Any, PauliString}, Tuple{Any, PauliString, Any}}, :module =&gt; PauliPropagation, :linenumber =&gt; 7, :binding =&gt; PauliPropagation.propagate, :path =&gt; &quot;/home/runner/.julia/packages/PauliPropagation/yiq9i/src/Propagation/generics.jl&quot;))
+...</code></pre><h2 id="Basic-Example:-Propagating-an-Observable-Through-a-Quantum-Circuit"><a class="docs-heading-anchor" href="#Basic-Example:-Propagating-an-Observable-Through-a-Quantum-Circuit">Basic Example: Propagating an Observable Through a Quantum Circuit</a><a id="Basic-Example:-Propagating-an-Observable-Through-a-Quantum-Circuit-1"></a><a class="docs-heading-anchor-permalink" href="#Basic-Example:-Propagating-an-Observable-Through-a-Quantum-Circuit" title="Permalink"></a></h2><p>Now let&#39;s see <code>PauliPropagation.jl</code> and <code>juliacall</code> in action by running a quantum circuit and seeing what happens to a propagated Pauli observable.</p><p>PauliPropagation.jl computes the evolution of observables like a Z measurement on a specific qubit under the action of a quantum circuit. Let us try a prototypical example. Let&#39;s define an observable:</p><pre><code class="language-julia hljs"># We&#39;ll use the 10-qubit system defined earlier
+print(f&quot;System size: {nqubits} qubits&quot;)
+
+# Our observable is Z on the middle qubit, as a PauliString
+pstr = pp.PauliString(nqubits, Zsym, nqubits // 2)
+pstr</code></pre><pre><code class="nohighlight hljs">System size: 10 qubits
+
+
+
+
+
+PauliString(nqubits: 10, 1.0 * IIIIZIIIII)</code></pre><p>Now we define a custom topology, where &quot;topology&quot; is a fancy word for &quot;which qubits can talk to each other&quot;, and thus very important for real quantum hardware where not every qubit connects to every other one.</p><p>In PauliPropagation.jl, topologies would be defined as arrays of tuples of ints like <code>[(1, 2), (2, 3), ...]</code>. Interestingly, this is also the Python syntax and <code>juliacall</code> is smart enough to convert Python lists of tuples directly into the format Julia expects for topologies! This means topologies can be defined using pure Python syntax.</p><p>Let&#39;s create a simple ring of qubits with a few extra long-range connections:</p><pre><code class="language-julia hljs"># Each tuple represents a connection between two qubits (1-indexed)
+topology = [(1, 2), (2, 3), (3, 4), (4, 5), (5, 1),  # Ring
+                         (1, 6), (3, 8), (5, 10)]  # Some long-range connections
+
+# Juliacall will convert this Python list of tuples automatically when passed to a Julia function
+# that expects a topology. For example, when creating a circuit:
+# circuit = pp.tiltedtfitrottercircuit(nqubits, nlayers, topology=topology)
+
+# For comparison, let&#39;s also create a standard brick layer topology using PauliPropagation.jl
+# We can pass the Python list directly here too if the function supports it,
+# or use Julia&#39;s own construction if needed.
+# Here, bricklayertopology itself is a Julia function.
+brick_topology_jl = pp.bricklayertopology(nqubits, periodic=True)</code></pre><p>And plot it up:</p><pre><code class="language-julia hljs">print(&quot;Type of the Python topology: &quot;, type(topology))
+print(&quot;Type of the Julia topology:&quot;, type(brick_topology_jl))
+
+plt.figure(figsize=(6, 6))
+plt.title(&quot;Custom Qubit Topology (Visualized from Python list)&quot;)
+
+angles = np.linspace(0, 2*np.pi, nqubits, endpoint=False)
+positions = {i+1: (np.cos(angle), np.sin(angle)) for i, angle in enumerate(angles)}
+
+for q1, q2 in topology:
+    x1, y1 = positions[q1]
+    x2, y2 = positions[q2]
+    plt.plot([x1, x2], [y1, y2], &#39;b-&#39;, alpha=0.5)
+
+for i, (x, y) in positions.items():
+    plt.plot(x, y, &#39;ro&#39;, markersize=10)
+    plt.text(x*1.1, y*1.1, f&quot;{i}&quot;, fontsize=12)
+
+plt.axis(&#39;equal&#39;)
+plt.grid(True)
+plt.show()
+
+print(f&quot;Defined custom topology in Python with {len(topology)} connections.&quot;)
+# We can use Python&#39;s len() on Julia collections returned by juliacall!
+print(f&quot;For comparison, the standard brick layer topology (a Julia object) has {len(brick_topology_jl)} connections.&quot;)</code></pre><pre><code class="nohighlight hljs">Type of the Python topology:  &lt;class &#39;list&#39;&gt;
+Type of the Julia topology: &lt;class &#39;juliacall.VectorValue&#39;&gt;</code></pre><p><img src="../PP-from-Python_files/PP-from-Python_21_1.png" alt="png"/></p><pre><code class="nohighlight hljs">Defined custom topology in Python with 8 connections.
+For comparison, the standard brick layer topology (a Julia object) has 10 connections.</code></pre><h2 id="Understanding-Propagation:"><a class="docs-heading-anchor" href="#Understanding-Propagation:">Understanding Propagation:</a><a id="Understanding-Propagation:-1"></a><a class="docs-heading-anchor-permalink" href="#Understanding-Propagation:" title="Permalink"></a></h2><p>What actually happens when calling <code>pp.propagate()</code>? The key idea is that we work in the Pauli basis and compute the action of gates on Pauli operators (also called Pauli strings). We also work in the Heisenberg picture, where we compute how measurements or observables evolve, rather than evolving quantum states, which usually require exponentially many Pauli strings to represent them.</p><p>Here some key aspects to keep in mind:</p><ol><li><p><strong>Heisenberg evolution:</strong> Instead of simulating the evolution of the quantum state, the propagation tracks how the observable operator changes as it acted on by the (inverse of the) circuit.</p></li><li><p><strong>Pauli algebra:</strong> Each gate in the circuit transforms Pauli operators according to well-defined algebraic rules, which can be efficiently implemented.</p></li><li><p><strong>Growth of terms:</strong> As the observable is propagated through more circuit layers, it typically expands into a sum of many Pauli terms. This can quickly become computationally intensive.</p></li><li><p><strong>Truncation for efficiency:</strong> To keep the calculation tractable, less important terms are discarded. This is controlled by two main parameters:</p><ul><li><strong>Coefficient truncation:</strong> Discards terms whose coefficients fall below a threshold (<code>min_abs_coeff</code>).</li><li><strong>Weight truncation:</strong> Limits the number of non-identity Paulis in a Pauli string (<code>max_weight</code>).</li></ul></li></ol><p>Balancing these truncation parameters is crucial: too aggressive, and important contributions may be lost; too loose, and the computation may become infeasible due to the rapid growth in the number of terms. Now let us run our first simulation: The evolution under the tilted field Ising model.</p><pre><code class="language-julia hljs"># Creating a Tilted Transverse Field Ising Model (TFIM) circuit with 5 layers
+nlayers = 5
+# Pass the Python list of tuples directly for the topology
+circuit = pp.tiltedtfitrottercircuit(nqubits, nlayers, topology=topology)
+
+# pp.countparameters(circuit) returns a Python int directly
+num_parameters = pp.countparameters(circuit)
+print(f&quot;Circuit has {num_parameters} parameters.&quot;)
+
+# Creating circuit parameters using NumPy
+dt = 0.1
+parameters = np.ones(num_parameters) * dt * 2  # the x2 factor is by convention in Trotter circuits
+print(f&quot;Created parameters using NumPy:&quot;)
+parameters</code></pre><pre><code class="nohighlight hljs">Circuit has 140 parameters.
+Created parameters using NumPy:
+
+
+
+
+
+array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+       0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+       0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+       0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+       0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+       0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+       0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+       0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+       0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+       0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+       0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2])</code></pre><p>Now define our truncation parameters and propagate!</p><pre><code class="language-julia hljs"># The truncation parameters
+max_weight = 6
+min_abs_coeff = 1e-4
+
+# The result, pauli_sum_result, will be a Julia object (PauliSum)
+psum = pp.propagate(
+    circuit, pstr, parameters, 
+    max_weight=max_weight, min_abs_coeff=min_abs_coeff
+)
+
+print(f&quot;Result has {len(psum)} Pauli terms&quot;)
+
+# pp.overlapwithzero returns a Python float directly
+overlap = pp.overlapwithzero(psum)
+print(f&quot;Expectation value: {overlap}&quot;)</code></pre><pre><code class="nohighlight hljs">Result has 1132 Pauli terms
+
+
+Expectation value: 0.8628346139479492</code></pre><h2 id="Simulating-Quantum-Dynamics"><a class="docs-heading-anchor" href="#Simulating-Quantum-Dynamics">Simulating Quantum Dynamics</a><a id="Simulating-Quantum-Dynamics-1"></a><a class="docs-heading-anchor-permalink" href="#Simulating-Quantum-Dynamics" title="Permalink"></a></h2><p>Now we will demonstrate a more sophisticated and efficient approach to quantum simulation: layer-wise evolution.</p><p>Instead of creating a circuit with multiple layers and propagating through it all at once, we create a single-layer circuit, repeatedly propagate our observable (PauliSum) through this single layer, and track the expectation value and term count after each layer.</p><p>This approach is great when we want to track how expectation values during evolution while applying any layer only once.</p><pre><code class="language-julia hljs">max_layers = 20
+dt = 0.1
+
+circuit_layer = pp.tiltedtfitrottercircuit(nqubits, 1, topology=topology)
+nparams = pp.countparameters(circuit_layer)
+thetas = np.ones(nparams) * dt * 2
+
+
+# we create the Pauli sum and then manipulate it
+psum = pp.PauliSum(pp.PauliString(nqubits, Zsym, nqubits // 2))
+
+
+expectations = [pp.overlapwithzero(psum)]
+term_counts = [len(psum)]
+print(f&quot;Layer 0, Overlap: {expectations[0]:.4f}, Terms: {term_counts[0]}&quot;)
+
+# this all happens in an outer Python loop
+# looping in Python is not evil when it is a few slow-ish iterations
+for layer in range(1, max_layers + 1):
+    psum = pp.propagate(
+        circuit_layer, psum, thetas,
+        max_weight=max_weight, min_abs_coeff=min_abs_coeff
+    )
+
+    current_overlap = pp.overlapwithzero(psum)
+    current_terms = len(psum)
+    expectations.append(current_overlap)
+    term_counts.append(current_terms)
+
+    if layer % 5 == 0 or layer == 1 or layer == max_layers:
+        print(f&quot;Layer {layer}, Overlap: {current_overlap:.4f}, Terms: {current_terms}&quot;)
+</code></pre><pre><code class="nohighlight hljs">Layer 0, Overlap: 1.0000, Terms: 1
+Layer 1, Overlap: 0.9801, Terms: 17
+Layer 5, Overlap: 0.8628, Terms: 1132
+Layer 10, Overlap: 0.9099, Terms: 10784
+
+
+Layer 15, Overlap: 0.9459, Terms: 24672
+
+
+Layer 20, Overlap: 0.8979, Terms: 35603</code></pre><p>And now plot up the dynamics:</p><pre><code class="language-julia hljs">layer_indices = list(range(0, max_layers + 1))
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
+ax1.plot(layer_indices, expectations, &#39;o-&#39;, color=&#39;purple&#39;)
+ax1.set_xlabel(&#39;Number of Circuit Layers&#39;)
+ax1.set_ylabel(&#39;Expectation Value&#39;)
+ax1.set_title(&#39;Expectation Value vs. Circuit Depth&#39;)
+ax1.grid(True)
+
+ax2.plot(layer_indices, term_counts, &#39;s-&#39;, color=&#39;orange&#39;)
+ax2.set_xlabel(&#39;Number of Circuit Layers&#39;)
+ax2.set_ylabel(&#39;Number of Pauli Terms&#39;)
+ax2.set_title(&#39;Term Count Growth&#39;)
+ax2.grid(True)
+
+plt.tight_layout()
+plt.show()</code></pre><p><img src="../PP-from-Python_files/PP-from-Python_30_0.png" alt="png"/></p><h2 id="Comparing-Truncation-Effects"><a class="docs-heading-anchor" href="#Comparing-Truncation-Effects">Comparing Truncation Effects</a><a id="Comparing-Truncation-Effects-1"></a><a class="docs-heading-anchor-permalink" href="#Comparing-Truncation-Effects" title="Permalink"></a></h2><p>One of the most important considerations when using Pauli propagation is choosing appropriate truncation parameters. Let&#39;s systematically compare different truncation settings for the layer-wise evolution and visualize their effects.</p><p>We&#39;ll compare:</p><ul><li>Different <code>max_weight</code> settings (2, 4, 6, 8)</li><li>Same <code>min_abs_coeff</code> setting (1e-4)</li></ul><p>This will help us understand the trade-off between accuracy and computational cost during the step-by-step evolution.</p><pre><code class="language-julia hljs">weights = [2, 4, 6, 8]
+colors = [&#39;red&#39;, &#39;green&#39;, &#39;blue&#39;, &#39;purple&#39;]
+
+plt.figure(figsize=(12, 8))
+
+final_term_counts = []
+
+initial_pauli_string = pp.PauliString(nqubits, Zsym, nqubits // 2)
+
+for idx, weight in enumerate(weights):
+    psum = pp.PauliSum(initial_pauli_string)
+
+    expectations = [pp.overlapwithzero(psum)]
+    for layer in range(1, max_layers + 1):
+        psum = pp.propagate(
+            circuit_layer, psum, thetas,
+            max_weight=weight,
+            min_abs_coeff=min_abs_coeff
+        )
+        expectations.append(pp.overlapwithzero(psum))
+
+    term_count = len(psum)
+    final_term_counts.append(term_count)
+    print(f&quot;Max weight {weight}: {term_count} Pauli terms after {max_layers} layers&quot;)
+
+    plt.plot(layer_indices, expectations, &#39;o-&#39;, color=colors[idx],
+             label=f&#39;Max weight = {weight}&#39;)
+
+plt.xlabel(&#39;Number of Circuit Layers&#39;)
+plt.ylabel(&#39;Expectation Value&#39;)
+plt.title(f&#39;Truncation Effects on Layer-wise Evolution (Tilted TFIM, dt={dt})&#39;)
+plt.legend()
+plt.grid(True)
+plt.show()
+
+plt.figure(figsize=(10, 6))
+for idx, (weight, count) in enumerate(zip(weights, final_term_counts)):
+    plt.bar(f&quot;Weight = {weight}&quot;, count, color=colors[idx])
+plt.ylabel(&#39;Number of Pauli Terms&#39;)
+plt.title(f&#39;Effect of Max Weight on Final Term Count (After {max_layers} Layers, Layer-wise)&#39;)
+plt.grid(True, axis=&#39;y&#39;)
+plt.show()</code></pre><pre><code class="nohighlight hljs">Max weight 2: 94 Pauli terms after 20 layers
+Max weight 4: 5548 Pauli terms after 20 layers
+
+
+Max weight 6: 35603 Pauli terms after 20 layers
+
+
+Max weight 8: 61813 Pauli terms after 20 layers</code></pre><p><img src="../PP-from-Python_files/PP-from-Python_32_3.png" alt="png"/></p><p><img src="../PP-from-Python_files/PP-from-Python_32_4.png" alt="png"/></p><h2 id="Summary"><a class="docs-heading-anchor" href="#Summary">Summary</a><a id="Summary-1"></a><a class="docs-heading-anchor-permalink" href="#Summary" title="Permalink"></a></h2><p>In this notebook, we&#39;ve demonstrated how to use <code>PauliPropagation.jl</code> from Python using <code>juliacall</code>.</p><p><strong>Should</strong> you use Python to use <code>PauliPropagation.jl</code>? Maybe not, but you <strong>can</strong>. If you really don&#39;t want to touch Julia, or you want to more easily interface with your existing Python code, this could be a great step!</p><p>Some considerations on usage from Python are the following:</p><ul><li>There is some overhead going back and forth between Python and Julia - not huge, but noticeable when it happens a lot in-between fast operations. Crossing the barrier once for one big function call like <code>propagate()</code> is idea.</li><li>Error messages can be confusing - they often don&#39;t clearly indicate which side (Python or Julia) had the issue.</li><li>You still need familiarity with our Julia package, even if you are using it from Python. A Python wrapper is not actively in progress, but please feel free to contribute to one.</li><li>Any capabilities and limitations of <code>PauliPropagation.jl</code> still apply. </li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../circuit_compression_example/">« Circuit compression</a><a class="docs-footer-nextpage" href="../PP-Surrogate/">The Pauli Propagation Surrogate »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 18 August 2026 09:11">Tuesday 18 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>4. Pauli Transfer Matrix · PauliPropagation.jl</title><meta name="title" content="4. Pauli Transfer Matrix · PauliPropagation.jl"/><meta property="og:title" content="4. Pauli Transfer Matrix · PauliPropagation.jl"/><meta property="twitter:title" content="4. Pauli Transfer Matrix · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li class="is-active"><a class="tocitem" href>4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../advanced_performance/">Advanced Performance</a></li><li><a class="tocitem" href="../mcpropagate/">Monte Carlo Propagation</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/MonteCarlo/">Monte Carlo</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/Gradients/">Gradients</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>4. Pauli Transfer Matrix</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>4. Pauli Transfer Matrix</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/4-pauli-transfer-matrix.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="4.-Pauli-Transfer-Matrix"><a class="docs-heading-anchor" href="#4.-Pauli-Transfer-Matrix">4. Pauli Transfer Matrix</a><a id="4.-Pauli-Transfer-Matrix-1"></a><a class="docs-heading-anchor-permalink" href="#4.-Pauli-Transfer-Matrix" title="Permalink"></a></h1><p>The Pauli Transfer Matrix(PTM) of a (potentially unitary) matrix is its representation in Pauli basis, i.e., how it acts on each Pauli string. While this package is based on transforming Pauli strings into one or many Pauli strings, most gates are not defined via the actual PT matrix. However, there are some tools that you can use to work with matrices, both in 0/1 basis and in Pauli basis, potentially to define your own gates. </p><pre><code class="language-julia hljs">using PauliPropagation
+using LinearAlgebra</code></pre><p>Let us generate a random 1-qubit unitary matrix via Pauli matrix exponentials:</p><pre><code class="language-julia hljs"># The Pauli matrices are not exported
+using PauliPropagation: Xmat, Ymat, Zmat 
+
+U = exp(-im * (randn() * Xmat + randn() * Ymat + randn() * Zmat))</code></pre><pre><code class="nohighlight hljs">2×2 Matrix{ComplexF64}:
+ 0.0872691+0.712793im  -0.0334834+0.695118im
+ 0.0334834+0.695118im   0.0872691-0.712793im</code></pre><p>Verify that <span>$U$</span> is unitary via <span>$U \cdot U^\dagger = U^\dagger \cdot U = \mathbb{1}$</span>,</p><pre><code class="language-julia hljs">U * U&#39; ≈ U&#39; * U ≈ I(2)</code></pre><pre><code class="nohighlight hljs">true</code></pre><p>This unitary is in the very common 0/1 basis, also called the computational basis. Here is how you can transform it into the Pauli basis:</p><pre><code class="language-julia hljs"># note the default `heisenberg=true` kwarg
+Uptm = calculateptm(U)</code></pre><pre><code class="nohighlight hljs">4×4 transpose(::Matrix{Float64}) with eltype Float64:
+ 1.0   0.0         0.0         0.0
+ 0.0  -0.0183905  -0.170959    0.985106
+ 0.0   0.0778599  -0.982526   -0.169058
+ 0.0   0.996795    0.0735912   0.03138</code></pre><p>This by default returns the PTM of <code>U</code> in the <strong>Heisenberg</strong> picture, i.e., how it acts in the backpropagation of Pauli strings - the default in this package. To get the Schrödinger version, you can take the transpose of this matrix or call <code>calculateptm(U, heisenberg=false)</code>. To convince ourselves that <code>Uptm</code> is also a unitary in this basis, check <span>$U_{ptm} \cdot U_{ptm}^T = U_{ptm}^T \cdot U_{ptm} = \mathbb{1}$</span> due to unitaries being real-valued in this basis.</p><pre><code class="language-julia hljs">Uptm * transpose(Uptm) ≈ transpose(Uptm) * Uptm ≈ I(4)</code></pre><pre><code class="nohighlight hljs">true</code></pre><p>Great, but what does this unitary even represent? We mentioned that it represents the action of <code>U</code> on Pauli strings. A 1-qubit gate can act on 4 Paulis, <code>I</code>, <code>X</code>, <code>Y</code>, and <code>Z</code>, each being represented as <span>$(1, 0, 0, 0)^T$</span>, <span>$(0, 1, 0, 0)^T$</span>, <span>$(0, 0, 1, 0)^T$</span>, and <span>$(0, 0, 0, 1)^T$</span>, respectively. <code>Uptm</code> thus describes how each of those column vectors or an arbitrary sum thereof is transformed.</p><h3 id="Defining-Gates"><a class="docs-heading-anchor" href="#Defining-Gates">Defining Gates</a><a id="Defining-Gates-1"></a><a class="docs-heading-anchor-permalink" href="#Defining-Gates" title="Permalink"></a></h3><p>These matrices can also be turned into gates via the <code>TransferMapGate</code>. It accepts either the matrix representation of the gate in the 0/1 basis or the Pauli basis.</p><pre><code class="language-julia hljs"># on qubit 1
+qind = 1
+
+# for the unitary in 0/1 basis
+gU = TransferMapGate(U, qind)</code></pre><pre><code class="nohighlight hljs">TransferMapGate{TransferMap{UInt8, Float64}, TransferMap{UInt8, Float64}, UInt8, true}(TransferMap(4 columns, 10 entries, max 3 mapped terms/column), [1], 0x03, TransferMap(4 columns, 10 entries, max 3 mapped terms/column), 1, 1)</code></pre><pre><code class="language-julia hljs"># and also for the PTM
+gPTM = TransferMapGate(Uptm, qind)</code></pre><pre><code class="nohighlight hljs">TransferMapGate{TransferMap{UInt8, Float64}, TransferMap{UInt8, Float64}, UInt8, true}(TransferMap(4 columns, 10 entries, max 3 mapped terms/column), [1], 0x03, TransferMap(4 columns, 10 entries, max 3 mapped terms/column), 1, 1)</code></pre><p>And they produce the same gate. What is going on under the hood is that these matrices are converted into what we call <em>transfer maps</em>. They are created in the following way:</p><pre><code class="language-julia hljs">ptmap = totransfermap(Uptm)</code></pre><pre><code class="nohighlight hljs">TransferMap(4 columns, 10 entries, max 3 mapped terms/column)</code></pre><p>Remember that we encode our Pauli strings in integers, with single-qubit Paulis being 0 (<code>I</code>), 1 (<code>X</code>), 2 (<code>Y</code>), 3 (<code>Z</code>). If you index into <code>ptmap</code> with those numbers + 1, you will get the corresponding output Paulis with their coefficients. In other words, each entry of a PT map corresponds to a column of the PTM. The Paulis will be set onto the qubit index and the coefficients will be multiplied to the incoming Pauli string&#39;s coefficient.</p><p>What we also see is that this unitary is 3-branching in Pauli basis. <code>X</code>, <code>Y</code>, and <code>Z</code> Paulis will each map to all three with different coefficients. We can define a <code>TransferMapGate</code> from a PT map, specifying on what qubit it acts (here qubit 1).</p><pre><code class="language-julia hljs">g = TransferMapGate(ptmap, qind)</code></pre><pre><code class="nohighlight hljs">TransferMapGate{TransferMap{UInt8, Float64}, TransferMap{UInt8, Float64}, UInt8, true}(TransferMap(4 columns, 10 entries, max 3 mapped terms/column), [1], 0x03, TransferMap(4 columns, 10 entries, max 3 mapped terms/column), 1, 1)</code></pre><p>The gates <code>g</code>, <code>gU</code> and <code>gPTM</code> are all the same gate. Keep in mind, however, that this gate is not parametrized. It always acts the same. This can be seen fact that it is a subtype of <code>StaticGate</code>. Gates subtyping <code>ParametrizedGate</code> will receive parameters from the <code>propagate()</code> function, but <code>TransferMapGate</code>s don&#39;t use any.</p><pre><code class="language-julia hljs">g isa StaticGate</code></pre><pre><code class="nohighlight hljs">true</code></pre><p>Finally, let us define a circuit consisting of this gate on every qubit: </p><pre><code class="language-julia hljs"># 6 qubits
+nq = 6
+
+# define the circuit as a vector of gates
+circuit = [TransferMapGate(ptmap, qind) for qind in 1:nq];
+
+# make the observable a random global Pauli string because the gate acts trivially on identities `I`
+pstr = PauliString(nq, [rand((:X, :Y, :Z)) for _ in 1:nq], 1:nq)</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 6, 1.0 * ZYXYYX)</code></pre><pre><code class="language-julia hljs">psum = propagate(circuit, pstr)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 6, 729 Pauli terms:
+ 7.4155e-6 * ZXYYYX
+ 0.00094507 * XZZYXY
+ -7.0678e-7 * YZXYXX
+ -0.16154 * XYZXYZ
+ 4.2298e-9 * ZZXZZX
+ 3.8309e-5 * YZZXYX
+ 4.1184e-6 * XZXYXX
+ 1.6419e-6 * YYXXXX
+ 6.9815e-5 * YZZYZY
+ 3.8309e-5 * YYXXZZ
+ -7.1107e-6 * ZZZXYX
+ -1.7436e-5 * XXYYZX
+ -0.0021955 * XYYXXZ
+ 5.2066e-7 * YZXXXY
+ 0.00089381 * YZZYZZ
+ 2.9923e-6 * YZYXYX
+ 7.1661e-7 * XZXXXX
+ 0.00017302 * ZYYYZZ
+ 9.7062e-7 * ZZZZZY
+ 1.2903e-6 * ZXXYXY
+  ⋮)</code></pre><p>And there you go, you can now easily define gates from their matrix representations, both in 0/1 basis or Pauli basis.</p><h3 id="Parametrized-PTMs"><a class="docs-heading-anchor" href="#Parametrized-PTMs">Parametrized PTMs</a><a id="Parametrized-PTMs-1"></a><a class="docs-heading-anchor-permalink" href="#Parametrized-PTMs" title="Permalink"></a></h3><p>Remember when we use <code>TransferMapGate</code>, we need a fixed matrix representation which is then transformed into the PTM. We can also compute that matrix for parametrized gates if <code>tomatrix()</code> is defined for them. Here is how to do that for a <code>PauliRotation</code>:</p><pre><code class="language-julia hljs"># the matrix in the 0/1 basis
+U = tomatrix(PauliRotation(:X, 1), π/4)
+
+# the matrix in the Pauli basis
+ptm = calculateptm(U)
+
+# they can again be transformed into gates
+# TransferMapGate(U, 1)
+TransferMapGate(ptm, 1)</code></pre><pre><code class="nohighlight hljs">TransferMapGate{TransferMap{UInt8, Float64}, TransferMap{UInt8, Float64}, UInt8, true}(TransferMap(4 columns, 6 entries, max 2 mapped terms/column), [1], 0x03, TransferMap(4 columns, 6 entries, max 2 mapped terms/column), 1, 1)</code></pre><h3 id="Compressing-Circuits-into-one-PT-map"><a class="docs-heading-anchor" href="#Compressing-Circuits-into-one-PT-map">Compressing Circuits into one PT map</a><a id="Compressing-Circuits-into-one-PT-map-1"></a><a class="docs-heading-anchor-permalink" href="#Compressing-Circuits-into-one-PT-map" title="Permalink"></a></h3><p>One functionality which may make some gate sequences more performant to simulate is the ability to compress them into one PT map via <code>totransfermap()</code>. Parameters for parametrized gates can be passed as well.</p><pre><code class="language-julia hljs">nq = 5
+
+circuit = Gate[]
+append!(circuit, CliffordGate(:CNOT, pair) for pair in bricklayertopology(nq))
+append!(circuit, CliffordGate(:H, ii) for ii in 1:nq)
+append!(circuit, PauliRotation(:Y, ii) for ii in 1:nq)
+
+# the angles for the Pauli rotations
+thetas = [π / 8 for _ in 1:nq]
+
+# compile everything into one
+ptmap = totransfermap(nq, circuit, thetas)
+circuit_map = TransferMapGate(ptmap, 1:nq);
+
+## feel free to print this huge PT map
+# print(&quot;Now that is a mess! But it is correct:\n &quot;, ptmap)</code></pre><pre><code class="language-julia hljs"># it can be apply in one go
+pstr = PauliString(nq, [:X for _ in 1:nq], 1:nq)
+psum1 = propagate(circuit_map, pstr)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 5, 32 Pauli terms:
+ 0.11548 * ZXIIZ
+ -0.11548 * YZYXZ
+ -0.047835 * ZXZYY
+ -0.019814 * XIZYY
+ -0.11548 * YYXXZ
+ 0.047835 * IZXII
+ -0.047835 * YZXZY
+ 0.019814 * XIZZX
+ 0.27881 * IZXXZ
+ 0.047835 * XXZXI
+ 0.047835 * YYYYX
+ -0.11548 * IZYZY
+ 0.27881 * ZIIZX
+ 0.047835 * YYYZY
+ 0.11548 * ZIZXI
+ 0.047835 * ZXZZX
+ -0.11548 * IYXYX
+ 0.11548 * XXIZX
+ -0.019814 * YZYII
+ 0.019814 * ZXIXI
+  ⋮)</code></pre><p>Let&#39;s verify that we get the same answer using a circuit constructed from <code>TransferMapGate</code>s and natively supported gates.</p><pre><code class="language-julia hljs">psum2 = propagate(circuit, pstr, thetas)
+@show psum1 == psum2</code></pre><pre><code class="nohighlight hljs">psum1 == psum2 = true
+
+
+
+
+
+
+
+true</code></pre><p>Finally, lets&#39;s compare their performance</p><pre><code class="language-julia hljs">using BenchmarkTools
+println(&quot;Compiled circuit via transfer map:&quot;)
+@btime propagate($circuit_map, $pstr);
+println(&quot;Original circuit:&quot;)
+@btime propagate($circuit, $pstr, $thetas)</code></pre><pre><code class="nohighlight hljs">Compiled circuit via transfer map:
+
+
+  2.228 μs
+
+ (34 allocations: 3.69 KiB)
+Original circuit:
+  20.549 μs
+
+ (78 allocations: 5.64 KiB)</code></pre><p>There are quite a few nuances to discuss here. First, the size of the circuit in terms of the number of qubits <span>$n$</span> that can be compressed is limited. This is due to the <span>$4^n$</span> best-case and <span>$8^n$</span> worst-case memory and time scaling (depending on the branching behavior). It may still be possible and beneficial to compress common gate sequences, for example few-qubit entangling blocks occuring often throughout the circuit. However, it is not guaranteed that this type of PT map compression yields faster gates, especially when compressing few and otherwise highly optimized gates. The <code>TransferMapGate</code> is generic, but its application is not type stable and will induce a lot of memory movement. That being said - try it out for your use-case!</p><p>For an example of more low-level definition of of high-performance gates, check out the <code>custom-gates</code> notebook.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../3-utility-example/">« 3. Utility Example</a><a class="docs-footer-nextpage" href="../5-custom-gates/">5. How to Define Custom Gates »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 18 August 2026 09:11">Tuesday 18 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

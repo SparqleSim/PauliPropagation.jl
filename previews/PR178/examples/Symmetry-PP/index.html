@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Adding Symmetry to Pauli Propagation · PauliPropagation.jl</title><meta name="title" content="Adding Symmetry to Pauli Propagation · PauliPropagation.jl"/><meta property="og:title" content="Adding Symmetry to Pauli Propagation · PauliPropagation.jl"/><meta property="twitter:title" content="Adding Symmetry to Pauli Propagation · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../advanced_performance/">Advanced Performance</a></li><li><a class="tocitem" href="../mcpropagate/">Monte Carlo Propagation</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li class="is-active"><a class="tocitem" href>Adding Symmetry to Pauli Propagation</a><ul class="internal"><li><a class="tocitem" href="#Let&#39;s-use-translation-symmetry-in-propagation-of-a-Hamiltonian-evolution"><span>Let&#39;s use translation symmetry in propagation of a Hamiltonian evolution</span></a></li></ul></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/MonteCarlo/">Monte Carlo</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/Gradients/">Gradients</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Adding Symmetry to Pauli Propagation</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Adding Symmetry to Pauli Propagation</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/Symmetry-PP.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Adding-Symmetry-to-Pauli-Propagation"><a class="docs-heading-anchor" href="#Adding-Symmetry-to-Pauli-Propagation">Adding Symmetry to Pauli Propagation</a><a id="Adding-Symmetry-to-Pauli-Propagation-1"></a><a class="docs-heading-anchor-permalink" href="#Adding-Symmetry-to-Pauli-Propagation" title="Permalink"></a></h1><pre><code class="language-julia hljs">using PauliPropagation
+using PauliPropagation: _translatetolowestinteger, inttostring</code></pre><p>In this notebook, we show how symmetry can be added in Pauli Propagation.  The basic idea is to merge Pauli strings if they are related by a symmetry. </p><p>The related publication is <a href="https://arxiv.org/abs/2512.12094">Leveraging Symmetry Merging in Pauli Propagation</a>.</p><h3 id="Lowest-integer-representation-(canonical-representation)"><a class="docs-heading-anchor" href="#Lowest-integer-representation-(canonical-representation)">Lowest integer representation (canonical representation)</a><a id="Lowest-integer-representation-(canonical-representation)-1"></a><a class="docs-heading-anchor-permalink" href="#Lowest-integer-representation-(canonical-representation)" title="Permalink"></a></h3><p>For instance, consider the following operator:</p><p class="math-container">\[
+P = XII + IXI + IIX.
+\]</p><p>Clearly, the Pauli string <span>$P$</span> is translational invariant.  Suppose we can just work with a representative <span>$XII$</span>, then the <em>effective</em> Pauli string is:</p><p class="math-container">\[
+\tilde{P} = 3 XII.
+\]</p><pre><code class="language-julia hljs"># Let us define the initial Pauli string
+nq = 3
+p = PauliSum(nq)
+for i in 1:nq
+    add!(p, :X, i)
+end
+println(&quot;Initial Pauli string: &quot;, p)</code></pre><pre><code class="nohighlight hljs">Initial Pauli string: PauliSum(nqubits: 3, 3 Pauli terms:
+ 1.0 * IXI
+ 1.0 * IIX
+ 1.0 * XII
+)</code></pre><p>First we discuss how to find the representatives. </p><p>Consider the translation symmetru in <span>$1d$</span>, we adopt representatives that are  given by the lowest integers. </p><pre><code class="language-julia hljs"># To find the representative, we define a function that maps a Pauli string to an integer.
+# Consider the second Pauli string:
+pstr = PauliString(nq, :X, 2)
+# The integer representation is given by:
+println(&quot;Integer representation of &quot;, pstr, &quot; is &quot;, pstr.term)
+
+# We can then translate the integer to the lowest integer in its symmetry class:
+rep_int = _translatetolowestinteger(pstr.term, nq)
+println(&quot;The representative integer is &quot;, rep_int)
+
+# We can verify that this lowest integer representation corresponds to XII
+println(&quot;The representative Pauli string is XII: &quot;, PauliString(nq, :X, 1).term)</code></pre><pre><code class="nohighlight hljs">Integer representation of PauliString(nqubits: 3, 1.0 * IXI)
+
+ is 4
+The representative integer is 
+
+1
+The representative Pauli string is XII: 1</code></pre><pre><code class="language-julia hljs"># To get the effective representation of the original Pauli string, we can do:
+translationmerge(p)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 3, 1 Pauli term: 
+ 3.0 * XII
+)</code></pre><p>As another example, consider the two Pauli strings <span>$XIZI$</span> and <span>$ZIXI$</span>.  Their representative is given by the latter because we want the smaller Pauli to be in the higher position and identities as far as possible. </p><pre><code class="language-julia hljs"># Let&#39;s verify that is the case:
+nq = 4
+pstr = PauliString(nq, [:X, :Z], [2, 4])
+println(&quot;The integer representation of &quot;, pstr, &quot; is &quot;, pstr.term)
+println(&quot;The lowest integer representation of &quot;, pstr, &quot; is &quot;, _translatetolowestinteger(pstr.term, nq))
+pstr = PauliString(nq, [:Z, :X], [1, 3])
+println(&quot;The integer representation of &quot;, pstr, &quot; is &quot;, pstr.term)  
+# println(&quot;The lowest integer representation of &quot;, pstr, &quot; is &quot;, _translatetolowestinteger(pstr.term, nq))</code></pre><pre><code class="nohighlight hljs">The integer representation of PauliString(nqubits: 4, 1.0 * IXIZ)
+
+ is 196
+The lowest integer representation of PauliString(nqubits: 4, 1.0 * IXIZ) is 19
+The integer representation of PauliString(nqubits: 4, 1.0 * ZIXI) is 19</code></pre><p>We can also apply this in <span>$2d$</span>. It&#39;s a bit tricky to visualize a <span>$2d$</span> Pauli string but we can use the helper function</p><pre><code class="language-julia hljs"># Imagine we have a 2x3 lattice with periodic boundary conditions.
+# We can represent a Pauli string on this lattice using a 6-qubit Pauli string.
+# For example, consider the following Pauli string:
+nx, ny = 2, 3
+nq = nx * ny
+pstr = PauliString(nq, [:X, :Y, :Z], [1, 3, 5])
+println(&quot;The integer representation of &quot;, pstr, &quot; is &quot;, pstr.term)
+# To find its representative under 2D translations, we can use the following helper function:
+println(&quot;The 2d visualization of &quot;, pstr, &quot; is:&quot; )
+println(inttostring(pstr.term, nx, ny))
+</code></pre><pre><code class="nohighlight hljs">The integer representation of PauliString(nqubits: 6, 1.0 * XIYIZI)
+
+ is 801
+The 2d visualization of PauliString(nqubits: 6, 1.0 * XIYIZI) is:
+XI
+YI
+ZI</code></pre><pre><code class="language-julia hljs"># Now consider another Pauli string that is a translation of the previous one:
+pstr2 = PauliString(nq, [:X, :Y, :Z], [2, 4, 6])
+println(&quot;The integer representation of &quot;, pstr2, &quot; is &quot;, pstr2.term)
+println(&quot;The 2d visualization of &quot;, pstr2, &quot; is:&quot; )
+println(inttostring(pstr2.term, nx, ny))
+
+pstr3 = PauliString(nq, [:Z, :X, :Y], [4, 6, 2])
+println(&quot;The integer representation of &quot;, pstr3, &quot; is &quot;, pstr3.term)
+println(&quot;The 2d visualization of &quot;, pstr3, &quot; is:&quot; )
+println(inttostring(pstr3.term, nx, ny))</code></pre><pre><code class="nohighlight hljs">The integer representation of PauliString(nqubits: 6, 1.0 * IXIYIZ) is 3204
+The 2d visualization of PauliString(nqubits: 6, 1.0 * IXIYIZ) is:
+IX
+IY
+IZ
+
+The integer representation of PauliString(nqubits: 6, 1.0 * IYIZIX) is 1224
+The 2d visualization of PauliString(nqubits: 6, 1.0 * IYIZIX) is:
+IY
+IZ
+IX</code></pre><pre><code class="language-julia hljs"># Turns out for 2d finding the lowest integer representation can be speed up 
+# by precomputing &quot;masks&quot; for translations in x and y directions. 
+# See `_translatetolowestinteger` in the source code for details.
+# We will just call the function `translationmerge` here.
+
+# The representative Pauli string is given by
+psum = PauliSum([pstr, pstr2, pstr3])
+rep_int_2d = translationmerge(psum, nx, ny)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 6, 1 Pauli term: 
+ 3.0 * YIZIXI
+)</code></pre><h4 id="You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*"><a class="docs-heading-anchor" href="#You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*">You can also define the merging function for your own symmetry. Let&#39;s see an example of this using <em>permutation symmetry</em></a><a id="You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*-1"></a><a class="docs-heading-anchor-permalink" href="#You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*" title="Permalink"></a></h4><p>We can define the representative of Paulis under permutation symmetry by counting the number of Pauli <span>$X, Y, Z$</span></p><pre><code class="language-julia hljs">function _permutationcanonicalform(pstr::PauliStringType)
+    if pstr == 0
+        return pstr
+    end
+
+    num_x = countx(pstr)
+    num_y = county(pstr)
+    num_z = countz(pstr)
+
+    # construct the canonical form PauliString
+    pstr_canonical = identitylike(pstr)
+    for ii in 1:num_x
+        pstr_canonical = setpauli(pstr_canonical, :X, ii)
+    end
+    for ii in (num_x+1):(num_x+num_y)
+        pstr_canonical = setpauli(pstr_canonical, :Y, ii)
+    end
+    for ii in (num_x+num_y+1):(num_x+num_y+num_z)
+        pstr_canonical = setpauli(pstr_canonical, :Z, ii)
+    end
+
+    return pstr_canonical
+end</code></pre><pre><code class="nohighlight hljs">_permutationcanonicalform (generic function with 1 method)</code></pre><pre><code class="language-julia hljs"># Now define a shorthand for merging under permutation symmetry
+permutationmerge(psum::PauliSum) = symmetrymerge(
+    psum, (pstr -&gt; _permutationcanonicalform(pstr))
+)</code></pre><pre><code class="nohighlight hljs">permutationmerge (generic function with 1 method)</code></pre><pre><code class="language-julia hljs"># Let&#39;s see some examples of merging!
+pstr1 = PauliString(4, [:X, :Y, :Z], [1, 2, 3])
+pstr2 = PauliString(4, [:Y, :Z, :X], [2, 3, 4])
+pstr3 = PauliString(4, [:Z, :X, :Y], [1, 3, 4])
+psum = PauliSum([pstr1, pstr2, pstr3])
+rep_perm = permutationmerge(psum)
+println(&quot;The representative under permutation symmetry is: &quot;, rep_perm)</code></pre><pre><code class="nohighlight hljs">The representative under permutation symmetry is: PauliSum(nqubits: 4, 1 Pauli term: 
+ 3.0 * XYZI
+)</code></pre><h2 id="Let&#39;s-use-translation-symmetry-in-propagation-of-a-Hamiltonian-evolution"><a class="docs-heading-anchor" href="#Let&#39;s-use-translation-symmetry-in-propagation-of-a-Hamiltonian-evolution">Let&#39;s use translation symmetry in propagation of a Hamiltonian evolution</a><a id="Let&#39;s-use-translation-symmetry-in-propagation-of-a-Hamiltonian-evolution-1"></a><a class="docs-heading-anchor-permalink" href="#Let&#39;s-use-translation-symmetry-in-propagation-of-a-Hamiltonian-evolution" title="Permalink"></a></h2><p>Consider the dynamics by the tilted-field Ising model implemented in <code>tiltedtfitrottercircuit</code>.</p><p class="math-container">\[
+U(\Delta t) = \prod_{a=1}^{l} \prod_{j=1}^n e^{-i \Delta t g_x   X_j} \prod_{j=1}^{n-1} e^{-i \Delta t g_z  Z_j} e^{-i \Delta t g_z Z_j Z_{j+1}}.
+\]</p><pre><code class="language-julia hljs"># Let&#39;s set up the circuit
+nq = 11
+periodic = true  # periodic boundary condition for translation symmetry
+deltat = 0.1
+layers = [3, 5]  # number of layers to look at
+circ = tiltedtfitrottercircuit(nq, 1; topology=bricklayertopology(nq, periodic=periodic))
+</code></pre><pre><code class="nohighlight hljs">33-element Vector{Gate}:
+ PauliRotation([:Z, :Z], [1, 2])
+ PauliRotation([:Z, :Z], [3, 4])
+ PauliRotation([:Z, :Z], [5, 6])
+ PauliRotation([:Z, :Z], [7, 8])
+ PauliRotation([:Z, :Z], [9, 10])
+ PauliRotation([:Z, :Z], [11, 1])
+ PauliRotation([:Z, :Z], [2, 3])
+ PauliRotation([:Z, :Z], [4, 5])
+ PauliRotation([:Z, :Z], [6, 7])
+ PauliRotation([:Z, :Z], [8, 9])
+ PauliRotation([:Z, :Z], [10, 11])
+ PauliRotation([:Z], [1])
+ PauliRotation([:Z], [2])
+ ⋮
+ PauliRotation([:Z], [11])
+ PauliRotation([:X], [1])
+ PauliRotation([:X], [2])
+ PauliRotation([:X], [3])
+ PauliRotation([:X], [4])
+ PauliRotation([:X], [5])
+ PauliRotation([:X], [6])
+ PauliRotation([:X], [7])
+ PauliRotation([:X], [8])
+ PauliRotation([:X], [9])
+ PauliRotation([:X], [10])
+ PauliRotation([:X], [11])</code></pre><pre><code class="language-julia hljs"># Helper functions for the evolution angles
+function get_tfim_couplings(circuit, deltat::Float64; J=1, hz=0.9045, hx=1.4)
+    thetas = []
+
+    indices_gate_zz = getparameterindices(circuit, PauliRotation, [:Z, :Z])
+    indices_gate_x = getparameterindices(circuit, PauliRotation, [:X])
+    indices_gate_z = getparameterindices(circuit, PauliRotation, [:Z])
+
+    for (idx, gate) in enumerate(circuit)
+
+        if idx in indices_gate_zz
+            coupling_strength = - deltat * J
+        elseif idx in indices_gate_x
+            coupling_strength = - deltat * hx
+        elseif idx in indices_gate_z
+            coupling_strength = - deltat * hz
+        else
+            throw(ArgumentError(&quot;Gate at index $idx is neither ZZ, X nor Z rotation&quot;))
+        end
+        push!(thetas, coupling_strength * 2) # e^i t P / 2 * 2
+    end
+            
+    return thetas
+end</code></pre><pre><code class="nohighlight hljs">get_tfim_couplings (generic function with 1 method)</code></pre><pre><code class="language-julia hljs"># Build evolution angles for TFIM model
+nl = maximum(layers)
+thetas = get_tfim_couplings(circ, deltat) # angle per layer
+
+# initialie a list to store results
+results = []
+
+for merging in (:full, :none)  # :full means translation merging
+
+    # Consider the inital pauli string
+    p_evolved = PauliString(nq, :Z, div(nq, 2) + 1)
+    println(&quot;Initial Pauli string: &quot;, p_evolved)  
+
+    for l in collect(1:maximum(layers))
+      
+        # Evolution 1 full Trotter layer
+        p_evolved = propagate(circ, p_evolved, thetas; layer=1)
+
+        if merging == :none
+            # no merging
+        elseif merging == :full
+            p_evolved = translationmerge(p_evolved)
+        end
+
+        if l in layers
+            println(&quot;Layer $l with merging type: $merging&quot;)
+            overlap = overlapwithzero(p_evolved)
+            push!(results, (
+                merging=merging, layer=l, nterms=length(p_evolved),
+                overlap=overlap
+                )
+            )
+        end
+    end
+end    </code></pre><pre><code class="nohighlight hljs">Initial Pauli string: PauliString(nqubits: 11, 1.0 * IIIIIZIIIII)
+
+
+Layer 3 with merging type: full
+
+
+Layer 5 with merging type: full
+
+
+Initial Pauli string: PauliString(nqubits: 11, 1.0 * IIIIIZIIIII)
+Layer 3 with merging type: none
+Layer 5 with merging type: none</code></pre><pre><code class="language-julia hljs"># Check the results:
+results</code></pre><pre><code class="nohighlight hljs">4-element Vector{Any}:
+ (merging = :full, layer = 3, nterms = 1422, overlap = 0.7309034078384146)
+ (merging = :full, layer = 5, nterms = 12172, overlap = 0.5258230815192094)
+ (merging = :none, layer = 3, nterms = 1972, overlap = 0.7309034078384142)
+ (merging = :none, layer = 5, nterms = 34617, overlap = 0.5258230802947047)</code></pre><pre><code class="language-julia hljs"># verify that the expectatin values of symmetry merged Pauli strings are the same as those without merging
+for l in layers
+    overlap_none = filter(r -&gt; r.merging == :none &amp;&amp; r.layer == l, results)[1].overlap
+    overlap_full = filter(r -&gt; r.merging == :full &amp;&amp; r.layer == l, results)[1].overlap
+    @assert isapprox(overlap_none, overlap_full)
+end</code></pre><p>Notice that the minimal symmetric circuit layer is actually not necessary the full layer!  For instance, instead of working with the trotter layer implemented in <code>tiltedtfitrottercircuit</code>. let&#39;s merge after each sub-layers as the follows: apply</p><p class="math-container">\[
+U(\Delta t)_Z =  \prod_{j=1}^{n-1} e^{-i \Delta t g_z  Z_j} e^{-i \Delta t g_z Z_j Z_{j+1}},
+\]</p><p>merge and apply</p><p class="math-container">\[
+U(\Delta t)_X =  \prod_{j=1}^n e^{-i \Delta t g_x   X_j},
+\]</p><p>merge.  The two sublayers are each translation invariant but form the total Trotter layer. </p><pre><code class="language-julia hljs"># let&#39;s do the above merging for the sublayers
+circ_z = circ[1:2*nq]  # get the ZZ and Z layers
+circ_x = circ[2*nq+1:end]  # get the X layers
+thetas_z = thetas[1:2*nq]
+thetas_x = thetas[2*nq+1:end]
+
+p_evolved = PauliString(nq, :Z, div(nq, 2) + 1)
+println(&quot;Initial Pauli string: &quot;, p_evolved)  
+
+for l in collect(1:maximum(layers))
+
+    # Evolution under Z layer
+    p_evolved = propagate(circ_z, p_evolved, thetas_z; layer=1)
+    p_evolved = translationmerge(p_evolved)
+
+    # Evolution under X layer
+    p_evolved = propagate(circ_x, p_evolved, thetas_x; layer=1)
+    p_evolved = translationmerge(p_evolved)
+
+    if l in layers
+
+        overlap = overlapwithzero(p_evolved)
+        push!(results, (
+            merging=:sublayer, layer=l, nterms=length(p_evolved),
+            overlap=overlap
+            )
+        )
+    
+    end
+end            </code></pre><pre><code class="nohighlight hljs">Initial Pauli string: PauliString(nqubits: 11, 1.0 * IIIIIZIIIII)</code></pre><pre><code class="language-julia hljs">results</code></pre><pre><code class="nohighlight hljs">6-element Vector{Any}:
+ (merging = :full, layer = 3, nterms = 1422, overlap = 0.7309034078384146)
+ (merging = :full, layer = 5, nterms = 12172, overlap = 0.5258230815192094)
+ (merging = :none, layer = 3, nterms = 1972, overlap = 0.7309034078384142)
+ (merging = :none, layer = 5, nterms = 34617, overlap = 0.5258230802947047)
+ (merging = :sublayer, layer = 3, nterms = 300, overlap = 0.7309034078384145)
+ (merging = :sublayer, layer = 5, nterms = 6753, overlap = 0.5258230815192095)</code></pre><p>! Interestingly merging every sublayers reduce the number of Pauli terms even further!</p><pre><code class="language-julia hljs"># verify that the expectatin values of symmetry merged Pauli strings are the same as those without merging
+for l in layers
+    overlap_none = filter(r -&gt; r.merging == :none &amp;&amp; r.layer == l, results)[1].overlap
+    overlap_full = filter(r -&gt; r.merging == :full &amp;&amp; r.layer == l, results)[1].overlap
+    overlap_sublayer = filter(r -&gt; r.merging == :sublayer &amp;&amp; r.layer == l, results)[1].overlap
+    @assert isapprox(overlap_none, overlap_full)
+    @assert isapprox(overlap_none, overlap_sublayer)
+end</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../PP-Surrogate/">« The Pauli Propagation Surrogate</a><a class="docs-footer-nextpage" href="../visualization_example/">Pauli Evolution Visualization Examples »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 18 August 2026 09:11">Tuesday 18 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
