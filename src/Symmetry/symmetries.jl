@@ -1,11 +1,12 @@
 ### symmetries.jl
 ##
 # This file contains functions to merge Pauli strings by symmetries.
-# Currently it supports translational symmetry in 1d and 2d.
+# Currently it supports the following symmetry:
+# 1. translational symmetry in 1d and 2d.
+# 2. Reflection symmetry in 2d.
+# 3. Permutation symmetry.
 ##
 ###
-
-Base.real(pstr::PauliString) = PauliString(nqubits(pstr), pstr.term, real(pstr.coeff))
 
 """
     symmetrymerge(psum::AbstractPauliSum, mapfunc::Function) -> AbstractPauliSum
@@ -40,9 +41,11 @@ function symmetrymerge(mapfunc::F, psum::PauliSum) where F<:Function
     return merged_psum
 end
 
+# `PropagationCache` wraps `psum` without copying it, so merging through a cache built
+# directly from `psum` would rewrite the caller's terms and coefficients in place.
+# Copy first to keep this out-of-place method non-mutating.
 function symmetrymerge(mapfunc::F, psum::VectorPauliSum) where F<:Function
-    cache = symmetrymerge!(mapfunc, PropagationCache(psum))
-    return VectorPauliSum(cache)
+    return symmetrymerge!(mapfunc, deepcopy(psum))
 end
 
 function symmetrymerge!(mapfunc::F, psum::VectorPauliSum) where F # no <:Function restriction
@@ -116,7 +119,7 @@ function translationmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer)
         pstr, nx, ny, main_mask, wrap_mask
     )
 
-    return symmetrymerge(psum, mergefunc)
+    return symmetrymerge(mergefunc, psum)
 end
 
 function _computeshiftleftmasks(::Type{TT}, nx::Integer, ny::Integer) where TT
@@ -247,74 +250,3 @@ function translationmerge!(psum, nx::Integer, ny::Integer)
     return symmetrymerge!(mergefunc, psum)
 end
 
-
-# TODO: reflection
-# function reflectionmerge(psum::PauliSum, nx, ny)
-#     reflect_mapper = ReflectionMapper(nx, ny)
-#     return symmetrymerge(pstr -> reflect_mapper(pstr), psum)
-# end
-
-# reflectionmerge(psum::VectorPauliSum, args...) = reflectionmerge!(deepcopy(psum), args...)
-
-
-# function reflectionmerge!(psum, nx::Integer, ny::Integer)
-#     if nqubits(psum) != nx * ny
-#         throw(
-#             ArgumentError("Number of qubits $(nqubits(psum)) does not 
-#                 match grid size $(nx) x $(ny)"
-#             )
-#         )
-#     end
-
-#     # precompute maps once to accelerate reflection
-#     reflect_mapper = ReflectionMapper(nx, ny)
-
-#     return symmetrymerge!(reflect_mapper, psum)
-# end
-
-# function translationreflectionmerge!(psum, nx::Integer, ny::Integer)
-#     if nqubits(psum) != nx * ny
-#         throw(
-#             ArgumentError("Number of qubits $(nqubits(psum)) does not 
-#                 match grid size $(nx) x $(ny)"
-#             )
-#         )
-#     end
-
-#     # precompute masks once to accelerate shifting
-#     # main_mask: mask for all bits except the first column
-#     # wrap_mask: mask for the first column    
-#     main_mask, wrap_mask = PauliPropagation._computeshiftleftmasks(paulitype(psum), nx, ny)
-
-#     # precompute maps once to accelerate reflection
-#     reflect_mapper = ReflectionMapper(nx, ny)
-
-#     # combine symmetries
-#     mergefunc(pstr) = _translateandreflecttolowestinteger(
-#         pstr, nx, ny, main_mask, wrap_mask, reflect_mapper
-#     )
-
-#     return symmetrymerge!(mergefunc, psum)
-# end
-
-# function _translateandreflecttolowestinteger(pstr::Integer, nx, ny, main_mask, wrap_mask, reflect_mapper)
-#     if pstr == 0
-#         return pstr
-#     end
-
-#     lowest_pstr = pstr
-#     for _ in 1:ny
-#         for _ in 1:nx
-#             # shift periodically by one column
-#             pstr = _periodicshiftleft(pstr, nx, main_mask, wrap_mask)
-
-#             # if the shifted Pauli is lower, record lowest int
-#             lowest_pstr = min(lowest_pstr, reflect_mapper(pstr))
-#         end
-
-#         pstr = _periodicshiftup(pstr, nx, ny) # shift periodically by one row
-
-#     end
-
-#     return lowest_pstr
-# end

@@ -57,3 +57,33 @@ end
     @test PauliSum(merged_vecpsum) == expected_psum
 
 end
+
+@testset "Out-of-place merging does not mutate input" begin
+    nq = 6
+    nx, ny = 3, 2
+
+    # `symmetrymerge` builds a PropagationCache, which wraps the VectorPauliSum
+    # without copying it. The out-of-place methods must copy first, or they
+    # silently corrupt the caller's sum (merged terms, unresized arrays).
+    for mergecall in (psum -> translationmerge(psum),
+                      psum -> translationmerge(psum, nx, ny))
+
+        input_vecpsum = VectorPauliSum(get_psum(nq))
+        reference_terms = copy(input_vecpsum.terms)
+        reference_coeffs = copy(input_vecpsum.coeffs)
+
+        merged_vecpsum = mergecall(input_vecpsum)
+
+        # input is untouched, down to its length
+        @test input_vecpsum.terms == reference_terms
+        @test input_vecpsum.coeffs == reference_coeffs
+        @test PauliSum(input_vecpsum) == get_psum(nq)
+
+        # output shares no storage with the input
+        @test merged_vecpsum.terms !== input_vecpsum.terms
+        @test merged_vecpsum.coeffs !== input_vecpsum.coeffs
+
+        # merging twice from the same input gives the same result
+        @test PauliSum(merged_vecpsum) == PauliSum(mergecall(input_vecpsum))
+    end
+end
