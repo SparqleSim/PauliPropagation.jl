@@ -60,6 +60,9 @@ function _propagate!(stepfunc::F, circuit, target, params=nothing; kwargs...) wh
         else
             stepfunc(gate, target; kwargs...)
         end
+
+        # free unless `@countpaulis` or `@peakpaulis` installed a counter
+        _recordsize!(target)
     end
 
     return target
