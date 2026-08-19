@@ -154,6 +154,16 @@ All of the above can be addressed by writing the additional missing code due to 
 Starting with version `0.8`, we provide an `mcpropagate(...; max_size)` function. It propagates as usual, truncates if you pass truncation parameters, and when the number of terms exceeds `max_size`, it resamples down to a `resampling_size` (default `max_size / 2`) via an unbiased procedure. This in principle allows one to arbitrarily trade memory for averaging time, but note that all coefficients become increasingly large and inaccurate the more often it must resample. See the `mcpropagate.ipynb` notebook in the examples folder.
 
 
+## Counting Pauli Strings
+To inspect how many Pauli strings a propagation creates, prefix any expression that propagates with `@countpaulis` or `@peakpaulis`:
+
+```julia
+counts = @countpaulis psum = propagate(circuit, observable, parameters; min_abs_coeff)
+peak = @peakpaulis rewindgradient(circuit, observable, parameters, overlapwithzero)
+```
+
+`@countpaulis` returns the number of Pauli strings after every applied gate (after merging and truncating), and `@peakpaulis` returns only the maximum. Both work with any function that propagates internally, including `propagate(...)`, `propagate!(...)`, `mcpropagate(...)`, and `rewindgradient(...)`. Importantly, tracking a function that multi-threads over parallel propagations can yield unexpected results.
+
 ## Yao.jl integration
 
 Load `Yao` or `YaoBlocks` together with `PauliPropagation` to convert observables to Yao blocks:
