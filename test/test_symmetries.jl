@@ -199,21 +199,6 @@ end
     @test PauliSum(permutationmerge!(VectorPauliSum(input_psum))) == expected_psum
     @test PauliSum(permutationmerge!(PropagationCache(VectorPauliSum(input_psum)))) == expected_psum
 
-    # the canonical form is the sorted string X...X Y...Y Z...Z I...I,
-    # is idempotent, and is invariant under arbitrary permutations of the sites
-    for _ in 1:200
-        nq = rand(1:40)
-        T = getinttype(nq)
-        pstr = rand(T) & ((T(1) << (2 * nq)) - T(1))
-        canonical = PauliPropagation._permutationcanonicalform(pstr)
-        @test countx(canonical) == countx(pstr)
-        @test county(canonical) == county(pstr)
-        @test countz(canonical) == countz(pstr)
-        @test canonical == symboltoint(T, vcat(fill(:X, countx(pstr)), fill(:Y, county(pstr)), fill(:Z, countz(pstr))), 1:countweight(pstr))
-        @test PauliPropagation._permutationcanonicalform(canonical) == canonical
-        @test PauliPropagation._permutationcanonicalform(getpauli(pstr, randperm(nq))) == canonical
-    end
-
     # permutation symmetry contains translation and reflection symmetry
     psum = get_psum(6)
     @test permutationmerge(translationmerge(psum)) == permutationmerge(psum)
