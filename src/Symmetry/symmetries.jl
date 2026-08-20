@@ -72,6 +72,9 @@ end
 
 function symmetrymerge!(mapfunc::F, prop_cache::VectorPauliPropagationCache; thread::Bool=true) where F
     AK.map!(mapfunc, activeterms(prop_cache), activeterms(prop_cache); max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    # remapping the terms destroys the sorted order that `merge!` relies on via the 
+    # sorted-prefix marker; reset it so `merge!` performs a full sort and deduplication
+    setsortedprefix!(mainsum(prop_cache), 0)
     merge!(prop_cache; thread)
     return prop_cache
 end

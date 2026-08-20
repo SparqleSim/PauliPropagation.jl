@@ -245,3 +245,30 @@ end
     # sanity check: matching dimensions do not throw
     @test translationmerge(input_psum, 2, 3) isa PauliSum
 end
+
+@testset "Symmetry merging on a propagated cache" begin
+    # `propagate!` leaves the cache with a full sorted-prefix marker,
+    # and `symmetrymerge!`'s in-place term remapping used to leave it stale, so `merge!`
+    # took the sorted-tail fast path and silently skipped deduplication.
+    nq = 6
+    circuit = [PauliRotation([:X, :X], [1, 2]), PauliRotation([:Y, :Y], [3, 4])]
+    thetas = [0.3, 0.7]
+
+    for mergecall! in (permutationmerge!, translationmerge!, reflectionmerge!)
+        psum = get_psum(nq)
+        prop_cache = PropagationCache(VectorPauliSum(psum))
+        propagate!(circuit, prop_cache, thetas; min_abs_coeff=0.0)
+        mergecall!(prop_cache)
+
+        # reference through the dict-backed path, which has no cache invariants
+        expected = mergecall!(propagate(circuit, psum, thetas; min_abs_coeff=0.0))
+
+        merged_psum = PauliSum(nq)
+        for (pstr, coeff) in zip(PauliPropagation.activeterms(prop_cache), PauliPropagation.activecoeffs(prop_cache))
+            add!(merged_psum, pstr, coeff)
+        end
+        @test merged_psum == expected
+        # in particular the duplicates were actually merged away
+        @test length(prop_cache) == length(expected)
+    end
+end
