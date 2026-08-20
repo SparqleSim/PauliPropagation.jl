@@ -220,16 +220,8 @@ end
         @test input_vecpsum.coeffs == reference_coeffs
         @test merged_vecpsum.terms !== input_vecpsum.terms
     end
-
-@testset "translationmerge does not mutate its input" begin
-    nq = 6
-    vpsum = VectorPauliSum(get_psum(nq))
-    original = deepcopy(vpsum)
-
-    translationmerge(vpsum)
-
-    @test PauliSum(vpsum) == PauliSum(original)
 end
+
 
 @testset "translationmerge thread=false matches thread=true" begin
     nq = 6

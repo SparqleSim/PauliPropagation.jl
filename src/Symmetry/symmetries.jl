@@ -11,7 +11,7 @@
 
 
 """
-    symmetrymerge(psum::AbstractPauliSum, mapfunc::Function; thread=true) -> AbstractPauliSum
+    symmetrymerge(mapfunc, psum::AbstractPauliSum; thread=true) -> AbstractPauliSum
 
 Merge equivalent Pauli strings in `psum` under a symmetry mapping.
 Each Pauli string is transformed using `mapfunc(pstr)` to its canonical
@@ -36,49 +36,45 @@ add!(psum, :Z, 6)
 symmetrymerge(pstr -> _translatetolowestinteger(pstr, nqubits(psum)), psum)
 ```
 """
-function symmetrymerge(mapfunc::F, psum::AbstractPauliSum; thread::Bool=true) where F<:Function
+# `mapfunc` is left unrestricted (no `<:Function`) so that any callable can be used.
+function symmetrymerge(mapfunc::F, psum::AbstractPauliSum; thread::Bool=true) where F
     return symmetrymerge!(mapfunc, deepcopy(psum); thread)
 end
 
 
 """
-    symmetrymerge!(mapfunc::Function, psum::PauliSum)
-    symmetrymerge!(mapfunc, psum::VectorPauliSum)
-    symmetrymerge!(mapfunc, prop_cache::VectorPauliPropagationCache)
+    symmetrymerge!(mapfunc, psum::PauliSum; thread=true)
+    symmetrymerge!(mapfunc, psum::VectorPauliSum; thread=true)
+    symmetrymerge!(mapfunc, prop_cache::VectorPauliPropagationCache; thread=true)
 
-In-place version of [`symmetrymerge`](@ref) for vector-backed Pauli sums.
-Returns the merged `psum` or `prop_cache`.
+In-place version of [`symmetrymerge`](@ref).
+Returns the merged `psum` or `prop_cache`, which is the same object that was passed in.
+The dict-backed `PauliSum` method accepts `thread` for a uniform interface but runs serially.
 """
-
-function symmetrymerge!(mapfunc::F, psum::PauliSum) where F
+function symmetrymerge!(mapfunc::F, psum::PauliSum; thread::Bool=true) where F
     merged_psum = similar(psum)
-    # TODO: mage this work for mapfuc that also want to modify the coefficient
+    # TODO: make this work for a `mapfunc` that also modifies the coefficient
     for (pstr, coeff) in psum
-        pstr = mapfunc(pstr)
-        add!(merged_psum, pstr, coeff)
+        add!(merged_psum, mapfunc(pstr), coeff)
     end
 
-    return merged_psum
+    # dict keys cannot be remapped in place, so merge into a fresh sum
+    # and move the result into the caller's psum
+    copy!(psum, merged_psum)
+    return psum
 end
 
-function symmetrymerge!(mapfunc::F, psum::VectorPauliSum) where F
+function symmetrymerge!(mapfunc::F, psum::VectorPauliSum; thread::Bool=true) where F
     cache = PropagationCache(psum)
-    symmetrymerge!(mapfunc, cache)
+    symmetrymerge!(mapfunc, cache; thread)
     return extractsum!(cache, psum)
 end
 
-function symmetrymerge!(mapfunc::Function, prop_cache::VectorPauliPropagationCache; thread::Bool=true) where F<:Function
-    AK.map!(pstr -> mapfunc(pstr), activeterms(prop_cache), activeterms(prop_cache); max_tasks=maxtasks(thread))
-    merge!(prop_cache)
+function symmetrymerge!(mapfunc::F, prop_cache::VectorPauliPropagationCache; thread::Bool=true) where F
+    AK.map!(mapfunc, activeterms(prop_cache), activeterms(prop_cache); max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    merge!(prop_cache; thread)
     return prop_cache
 end
-
-# old function for reference
-# function symmetrymerge(psum::VectorPauliSum, mapfunc::F; thread::Bool=true) where F<:Function
-#     # deepcopy so psum is left untouched, matching the PauliSum method above and symmetrymerge's own name (no `!`)
-#     cache = symmetrymerge!(PropagationCache(deepcopy(psum)), mapfunc; thread)
-#     return VectorPauliSum(cache)
-# end
 
 
 ## Translational symmetry
@@ -99,16 +95,14 @@ translationmerge(psum)
 )
 ```
 """
-translationmerge(psum::AbstractPauliSum; thread::Bool=true) = symmetrymerge(
-    (pstr -> _translatetolowestinteger(pstr, nqubits(psum))), psum; thread
-)
+translationmerge(psum::AbstractPauliSum; thread::Bool=true) = symmetrymerge(_translationmapper(psum), psum; thread)
 
 """
     translationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache})
 
 In-place version of [`translationmerge`](@ref) for a periodic 1D chain.
 """
-translationmerge!(psum; thread::Bool=true) = symmetrymerge!(_translationmapper(psum, thread), psum)
+translationmerge!(psum; thread::Bool=true) = symmetrymerge!(_translationmapper(psum), psum; thread)
 
 function _translationmapper(psum)
     nq = nqubits(psum)
@@ -134,7 +128,7 @@ translationmerge(psum, 3, 2)
 ```
 """
 function translationmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; thread::Bool=true)
-    return symmetrymerge(_translationmapper(psum, nx, ny, thread), psum)
+    return symmetrymerge(_translationmapper(psum, nx, ny), psum; thread)
 end
 
 """
@@ -143,20 +137,18 @@ end
 In-place version of [`translationmerge`](@ref) for a periodic `nx` x `ny` grid.
 """
 function translationmerge!(psum, nx::Integer, ny::Integer; thread::Bool=true)
-    return symmetrymerge!(_translationmapper(psum, nx, ny, thread), psum)
+    return symmetrymerge!(_translationmapper(psum, nx, ny), psum; thread)
 end
 
-function _translationmapper(psum, nx::Integer, ny::Integer, thread::Integer)
+# builds and returns the canonicalization function; the merge itself
+# happens in `symmetrymerge`/`symmetrymerge!`
+function _translationmapper(psum, nx::Integer, ny::Integer)
     _checkgridsize(psum, nx, ny)
 
     # precompute masks once to accelerate shifting
     main_mask, wrap_mask = _computeshiftleftmasks(paulitype(psum), nx, ny)
 
-    mergefunc(pstr) = _translatetolowestinteger(
-        pstr, nx, ny, main_mask, wrap_mask
-    )
-
-    return symmetrymerge(mergefunc, psum; thread)    
+    return pstr -> _translatetolowestinteger(pstr, nx, ny, main_mask, wrap_mask)
 end
 
 
