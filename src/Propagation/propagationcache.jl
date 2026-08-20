@@ -20,6 +20,9 @@ function PropagationBase.PropagationCache(psum::AbstractPauliSum)
     return PauliPropagationCache(psum)
 end
 
+function PropagationBase.PropagationCache(psum::PauliString)
+    return PauliPropagationCache(PauliSum(psum))
+end
 
 PropagationBase.mainsum(prop_cache::AbstractPauliPropagationCache) = prop_cache.psum
 PropagationBase.auxsum(prop_cache::AbstractPauliPropagationCache) = prop_cache.aux_psum
@@ -88,7 +91,11 @@ function VectorPauliPropagationCache(vpsum::PauliSum)
 end
 
 function PropagationBase.activesum(prop_cache::VectorPauliPropagationCache)
-    return VectorPauliSum(nqubits(prop_cache), activeterms(prop_cache), activecoeffs(prop_cache))
+    n_sorted = sortedprefix(mainsum(prop_cache))
+    active_size = activesize(prop_cache)
+    # we can only assume something went wront here. Reset to 0.
+    n_sorted = n_sorted > active_size ? 0 : n_sorted
+    return VectorPauliSum(nqubits(prop_cache), activeterms(prop_cache), activecoeffs(prop_cache), n_sorted)
 end
 
 # convert back
@@ -98,8 +105,8 @@ function VectorPauliSum(prop_cache::VectorPauliPropagationCache)
     return vecpsum
 end
 
-function PauliSum(prop_cache::VectorPauliPropagationCache)
-    merge!(prop_cache)
+function PauliSum(prop_cache::VectorPauliPropagationCache; thread::Bool=true)
+    merge!(prop_cache; thread)
     return PauliSum(nqubits(prop_cache), Dict(zip(activeterms(prop_cache), activecoeffs(prop_cache))))
 end
 

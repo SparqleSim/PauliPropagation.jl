@@ -40,6 +40,9 @@ end
 
 # Return `true` if an integer Pauli string should be truncated because its weight (i.e., number of non-identity Paulis) is larger than `max_weight`. 
 function truncateweight(pstr::Integer, max_weight::Real)
+    if isinf(max_weight)
+        return false
+    end
     return countweight(pstr) > max_weight
 end
 

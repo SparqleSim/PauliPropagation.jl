@@ -1,6 +1,8 @@
 # Defines mapping of integers 0, 1, 2, 3 to symbols :I, :X, :Y, :Z
 const pauli_symbols = (:I, :X, :Y, :Z)
 
+maxqubits(::T) where T<:Integer = maxqubits(T)
+maxqubits(::Type{T}) where T<:Integer = div(bitsize(T), 2)
 
 # Returns the integer representation of the identity Pauli string acting on `nqubits` qubits.
 # The type of will be the smallest integer type that can hold the number of qubits, as given by `getinttype(nqubits)`.
@@ -54,9 +56,7 @@ function symboltoint(nqubits::Integer, paulis, qinds)
     end
 
     # check that qinds are in the correct range 1 <= qind <= nqubits
-    if any(qind -> !(1 <= qind <= nqubits), qinds)
-        throw(ArgumentError("Indices `qinds` should be in the range 1 <= ... <= nqubits=$nqubits. Got `qinds`=$(qinds)."))
-    end
+    _check_qind_range(nqubits, qinds)
 
     # check that indices are unique, which is otherwise likely unintended
     if length(qinds) != length(Set(qinds))
@@ -73,6 +73,7 @@ end
 Maps a single symbol `pauli` acting on the index `qind` to an integer Pauli string. Other sites are set to the identity.
 """
 function symboltoint(nqubits::Integer, pauli::Symbol, qind::Integer)
+    _check_qind_range(nqubits, qind)
     TT = getinttype(nqubits)
     return symboltoint(TT, pauli, qind)
 end
@@ -84,6 +85,7 @@ Maps a single symbol `pauli` acting on the index `qind` to an integer Pauli stri
 Other sites are set to the identity.
 """
 function symboltoint(::Type{TT}, pauli::Symbol, qind::Integer) where {TT<:PauliStringType}
+    _check_qind_range(maxqubits(TT), qind)
     converted_pauli = identitypauli(TT)
     converted_pauli = setpauli(converted_pauli, pauli, qind)
     return converted_pauli
@@ -97,6 +99,7 @@ Other sites are set to the identity.
 `qinds` can be any iterable.
 """
 function symboltoint(::Type{TT}, paulis, qinds) where {TT<:PauliStringType}
+    _check_qind_range(maxqubits(TT), qinds)
     converted_pstr = identitypauli(TT)
     for (qind, pauli) in zip(qinds, paulis)
         converted_pstr = setpauli(converted_pstr, pauli, qind)
@@ -168,6 +171,7 @@ end
 
 # Gets the Pauli on index `index` of an integer Pauli string.
 function getpauli(pstr::PauliStringType, index::Integer)
+    _check_qind_range(maxqubits(pstr), index)
     return _getpaulibits(pstr, index)
 end
 
@@ -178,6 +182,7 @@ end
 Gets the Paulis on indices `qinds` of a `pstr` in the integer representation.
 """
 function getpauli(pstr::PauliStringType, qinds)
+    _check_qind_range(maxqubits(pstr), qinds)
     pstr_new = zero(pstr)
     for (i, qind) in enumerate(qinds)
         pair = _getpaulibits(pstr, qind) # get two bits for pauli at qind
@@ -195,6 +200,9 @@ This function is useful for extracting a continuous sub-PauliString.
 """
 function getpauli(pstr::PauliStringType, qind1::Int, qind2::Int)
     # Get the Paulis on the indices from `qind1` to `qind2`
+    _check_qind_range(maxqubits(pstr), qind1)
+    _check_qind_range(maxqubits(pstr), qind2)
+
     if qind1 > qind2
         throw(ArgumentError("`qind1` should be less than or equal to `qind2`. Got `qind1=$qind1` and `qind2=$qind2`."))
     end
@@ -211,6 +219,7 @@ Sets the Pauli on index `index` of an integer Pauli string to `target_pauli`.
 That Pauli should be provided as integer (0, 1, 2, 3).
 """
 function setpauli(pstr::PauliStringType, target_pauli::PauliType, index::Integer)
+    _check_qind_range(maxqubits(pstr), index)
     return _setpaulibits(pstr, target_pauli, index)
 end
 
@@ -221,6 +230,9 @@ end
 Sets the Paulis from `index1` to `index2` of an integer Pauli string to `target_paulis`.
 """
 function setpauli(pstr::PauliStringType, target_paulis::PauliStringType, index1::Integer, index2::Integer)
+
+    _check_qind_range(maxqubits(pstr), index1)
+    _check_qind_range(maxqubits(pstr), index2)
 
     if index1 > index2
         throw(ArgumentError("`index1` should be less than or equal to `index2`. Got `index1=$index1` and `index2=$index2`."))
@@ -239,6 +251,8 @@ Sets the Pauli on `index` of an integer Pauli string to `target_pauli`.
 That Pauli should be provided as a symbol (:I, :X, :Y, :Z).
 """
 function setpauli(pstr::PauliStringType, target_pauli::Symbol, index::Integer)
+    _check_qind_range(maxqubits(pstr), index)
+
     # `symboltoint` to ensure we work with `PauliType`, i.e., integers
     return setpauli(pstr, symboltoint(target_pauli), index)
 end
@@ -255,6 +269,8 @@ Set the Paulis `qinds` of an integer Pauli string `pstr` to `target_paulis`.
 Use Tuples for `qinds` in performance critical functions because they are immutable.
 """
 function setpauli(pstr::PauliStringType, target_paulis::PauliStringType, qinds)
+    _check_qind_range(maxqubits(pstr), qinds)
+
     for (ii, qind) in enumerate(qinds)
         pstr = setpauli(pstr, getpauli(target_paulis, ii), qind)
     end
@@ -273,6 +289,8 @@ Set the Paulis `qinds` of an integer Pauli string `pstr` to `target_paulis`.
 Use tuples in performance critical functions because they are immutable.
 """
 function setpauli(pstr::PauliStringType, target_paulis, qinds)
+    _check_qind_range(maxqubits(pstr), qinds)
+
     for (ii, qind) in enumerate(qinds)
         pstr = setpauli(pstr, symboltoint(target_paulis[ii]), qind)
     end
@@ -286,11 +304,16 @@ end
 Returns a string representation of an integer Pauli string `pstr` on `nqubits` qubits.
 The characters of the string from left to right are the Paulis on the qubits from 1 to `nqubits`.
 """
-inttostring(pstr::PauliType, nqubits::Integer) = prod("$(inttosymbol(getpauli(pstr, ii)))" for ii in 1:nqubits)
+function inttostring(pstr::PauliType, nqubits::Integer)
+    _check_qind_range(maxqubits(pstr), nqubits)
+    return prod("$(inttosymbol(getpauli(pstr, ii)))" for ii in 1:nqubits)
+end
 
 
 ## visualization tool for 2D
 function inttostring(pstr::PauliType, nx::Integer, ny::Integer)
+    _check_qind_range(maxqubits(pstr), nx*ny)
+
     str = ""
 
     for ii in 1:ny

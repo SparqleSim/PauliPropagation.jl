@@ -85,8 +85,25 @@ jobs:
         run: ln -s ../../README.md index.md
         working-directory: docs/src
 
+      - name: Set up Python for nbconvert
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install python deps
+        run: |
+          pip install nbconvert ipykernel
+          python -m ipykernel install --user --name python3 --display-name "Python 3"
+
+      - name: Install other notebook deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
       - name: Build and deploy
-        run: julia --color=yes --project=docs docs/make.jl
+        run: |
+          mkdir -p docs/src/examples
+          julia --color=yes docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

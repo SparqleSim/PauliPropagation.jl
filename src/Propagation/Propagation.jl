@@ -12,3 +12,6 @@ include("specializations.jl")
 # vectorspecializations.jl contains specializations for the VectorPauliSum type,
 # which is intended for multithreaded CPU and GPU propagation.
 include("vectorspecializations.jl")
+
+# vectormontecarlo.jl contains the Monte Carlo (mcapplytoall!) specializations for VectorPauliSum.
+include("vectormontecarlo.jl")

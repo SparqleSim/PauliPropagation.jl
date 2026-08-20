@@ -50,6 +50,10 @@ mutable struct PauliTreeTracker{T<:Number} <: PathProperties
     function PauliTreeTracker(coeff::T, node_id::String, parent_id::Union{String,Nothing}=nothing) where {T<:Number}
         new{T}(coeff, node_id, parent_id)
     end
+
+    function PauliTreeTracker{T}(coeff::T, node_id::String, parent_id::Union{String,Nothing}=nothing) where {T<:Number}
+        new{T}(coeff, node_id, parent_id)
+    end
 end
 
 """

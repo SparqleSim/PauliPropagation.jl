@@ -2,9 +2,10 @@ module PropagationBase
 using LinearAlgebra
 using AcceleratedKernels
 const AK = AcceleratedKernels
+using Base.Threads
 
 include("./utils.jl")
-export tonumber
+export tonumber, maxtasks
 
 include("./termsum.jl")
 export
@@ -25,7 +26,9 @@ export
     set!,
     empty!,
     similar,
-    capacity
+    capacity,
+    sortedprefix,
+    setsortedprefix!
 
 include("./propagationcache.jl")
 export
@@ -59,6 +62,8 @@ export
     ParametrizedGate,
     countparameters
 
+include("./countterms.jl")
+
 include("./propagate.jl")
 export propagate,
     propagate!,
@@ -71,7 +76,7 @@ include("./merge.jl")
 export merge, merge!, mergefunc
 
 include("./truncate.jl")
-export truncate, truncate!
+export truncate, truncate!, maxabscoeff
 
 
 include("./vectorbackend.jl")
@@ -82,7 +87,26 @@ export
     flagcoeffs!,
     flagstoindices!,
     permuteviaindices!,
-    filterviaflags!
+    filterviaflags!,
+    coeffcumsum,
+    coeffcumsum!
 
+include("./sortedtailmerge.jl")
+
+include("./xortailmerge.jl")
+
+include("./MonteCarlo/MonteCarlo.jl")
+export
+    mcpropagate,
+    mcpropagate!,
+    applymergetruncateresample!,
+    mcsample,
+    mcsample!,
+    mcapplytoall!,
+    resample,
+    resample!,
+    multinomial_resample!,
+    systematic_resample!,
+    semideterministic_systematic_resample!
 
 end

@@ -30,6 +30,18 @@ function propagate!(circuit, prop_cache::AbstractPropagationCache, params=nothin
 end
 
 function _propagate!(circuit, prop_cache::AbstractPropagationCache, params=nothing; kwargs...)
+    return _propagate!(applymergetruncate!, circuit, prop_cache, params; kwargs...)
+end
+
+"""
+    _propagate!(stepfunc, circuit, target, params=nothing; kwargs...)
+
+Generic gate-iteration loop shared by `propagate!` and Monte Carlo variants like `mcpropagate!`/`mcsample!`.
+Promotes/validates `circuit`/`params`, then calls `stepfunc(gate, target, [param]; kwargs...)` for each gate in order.
+`target` is typically a propagation cache, but can be any object `stepfunc` knows how to mutate in place
+(e.g. a bare `VectorPauliSum` for `mcsample!`).
+"""
+function _propagate!(stepfunc::F, circuit, target, params=nothing; kwargs...) where {F}
     # if circuit is actually a single gate, promote it to a list [gate]
     # similarly the params if it is a single number
     circuit, params = _promotecircandparams(circuit, params)
@@ -44,13 +56,16 @@ function _propagate!(circuit, prop_cache::AbstractPropagationCache, params=nothi
     for gate in circuit
         if isa(gate, ParametrizedGate)
             param = popfirst!(parameter_iterator)
-            applymergetruncate!(gate, prop_cache, param; kwargs...)
+            stepfunc(gate, target, param; kwargs...)
         else
-            applymergetruncate!(gate, prop_cache; kwargs...)
+            stepfunc(gate, target; kwargs...)
         end
+
+        # free unless `@countpaulis` or `@peakpaulis` installed a counter
+        _recordsize!(target)
     end
 
-    return prop_cache
+    return target
 end
 
 """
@@ -124,6 +139,9 @@ function applytoall!(gate, prop_cache::AbstractPropagationCache, args...; kwargs
     # by default we can already swap the term sums here
     # merge!(prop_cache) will then likely not do anything
     swapsums!(prop_cache)
+
+    # in general sortedness will not be preserved
+    setsortedprefix!(mainsum(prop_cache), 0)
 
     return
 end

@@ -32,6 +32,35 @@ end
     topo = rectangletopology(rand(1:10), rand(1:10))
     @test topo == unique(topo)
 
+    # the periodic wraparound must not self-loop or duplicate a pair at small nqubits
+    @test staircasetopology(1; periodic=true) == Tuple{Int,Int}[]
+    @test staircasetopology(2; periodic=true) == [(1, 2)]
+
+end
+
+
+@testset "Test rectanglebricktopology" begin
+    # small grid dimensions must not produce self-loops or duplicate (possibly reversed) pairs
+    for nx in 1:6, ny in 1:6, periodic_x in (false, true), periodic_y in (false, true)
+        topo = rectanglebricktopology(nx, ny; periodic_x=periodic_x, periodic_y=periodic_y)
+        @test all(pair -> pair[1] != pair[2], topo)
+
+        normalized = [pair[1] < pair[2] ? pair : (pair[2], pair[1]) for pair in topo]
+        @test normalized == unique(normalized)
+    end
+
+    # with full periodicity, it connects the same pairs as rectangletopology
+    for nx in 1:6, ny in 1:6
+        brick_topo = Set(pair[1] < pair[2] ? pair : (pair[2], pair[1]) for pair in rectanglebricktopology(nx, ny; periodic_x=true, periodic_y=true))
+        grid_topo = Set(rectangletopology(nx, ny; periodic=true))
+        @test brick_topo == grid_topo
+    end
+
+    # without periodicity, it connects the same pairs as the full open grid
+    nx, ny = rand(2:8), rand(2:8)
+    brick_topo = Set(pair[1] < pair[2] ? pair : (pair[2], pair[1]) for pair in rectanglebricktopology(nx, ny))
+    grid_topo = Set(rectangletopology(nx, ny))
+    @test brick_topo == grid_topo
 end
 
 

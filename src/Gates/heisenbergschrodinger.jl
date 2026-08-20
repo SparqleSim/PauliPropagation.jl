@@ -1,6 +1,9 @@
 ###
 ##
-# A file to manage conversion of our gates to Heisenberg or Schrödinger picture propagation.
+# Conversion of circuits between the Heisenberg and Schrödinger picture. This is specific to how
+# Pauli (and Pauli-adjacent) gates transform under conjugation, so it lives here in flat
+# `PauliPropagation` code rather than in the basis-agnostic `PropagationBase`.
+# Per-gate behavior is added by overloading `_toheisenberg`/`_toschrodinger` for concrete gate types.
 ##
 ###
 
@@ -59,14 +62,10 @@ function toheisenberg(gate::Gate, param)
 end
 
 # We already assume gates are defined in Heisenberg picture
-function _toheisenberg(gate::StaticGate)
-    return gate
-end
+_toheisenberg(gate::StaticGate) = gate
 
-# We already assume gates are defined in Heisenberg picture 
-function _toheisenberg(gate::ParametrizedGate, param)
-    return gate, param
-end
+# We already assume gates are defined in Heisenberg picture
+_toheisenberg(gate::ParametrizedGate, param) = (gate, param)
 
 function _toheisenberg(gate::FrozenGate)
     gate_heisenberg, param_heisenberg = _toheisenberg(gate.gate, gate.parameter)
@@ -127,11 +126,7 @@ function toschrodinger(gate::Gate, param)
     return only(circ), only(params)
 end
 
-
-function _toschrodinger(gate::G, args...) where G
-    throw(error("Unkown how to define gate of type $G in the Schrodinger picture. 
-    Please implement `toschrodinger(gate::G [, param])` for this gate type."))
-end
+_toschrodinger(gate, args...) = PropagationBase._thrownotimplemented(gate, :toschrodinger)
 
 
 # Method to transpose a `PauliRotation` gate for Schrödinger picture propagation.
@@ -150,19 +145,17 @@ end
 
 # Method to transpose a `CliffordGate` for Schrödinger picture propagation.
 # If not already registered, the transposed Clifford map is created via `transposecliffordmap()`
-# and stored in the global `clifford_map`. 
+# and stored in the global `clifford_map`.
 # This Clifford gate is called `:(old_symbol)_transpose`, where `old_symbol` is the symbol of the original Clifford gate.
 function _toschrodinger(gate::CliffordGate)
     transposed_symbol = Symbol(gate.symbol, :_transpose)
 
-    if haskey(clifford_map, transposed_symbol)
-        return gate
+    if !haskey(clifford_map, transposed_symbol)
+        # register the transpose
+        lookup_map = clifford_map[gate.symbol]
+        transposed_map = transposecliffordmap(lookup_map)
+        clifford_map[transposed_symbol] = transposed_map
     end
-
-    # register the transpose 
-    lookup_map = clifford_map[gate.symbol]
-    transposed_map = transposecliffordmap(lookup_map)
-    clifford_map[transposed_symbol] = transposed_map
 
     return CliffordGate(transposed_symbol, gate.qinds)
 end

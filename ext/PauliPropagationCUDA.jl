@@ -11,6 +11,10 @@ using CUDA
 const CUDAVectorPauliSum = VectorPauliSum{<:CuArray,<:CuArray}
 const CUDAVectorPauliPropagationCache = VectorPauliPropagationCache{CUDAVectorPauliSum,<:CuArray,<:CuArray}
 
+# sortedtailmerge!'s scalar merge loop and CPU task-spawning have no GPU equivalent; routing
+# CuArray-backed caches away from it keeps them on the portable AcceleratedKernels-based merge.
+PB._iscpuarray(::CuArray) = false
+
 const _UNIFIED = true
 
 function CUDA.cu(psum::VectorPauliSum; unified=_UNIFIED)

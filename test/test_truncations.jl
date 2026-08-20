@@ -55,3 +55,62 @@ end
     @test isapprox(overlapwithzero(evolved_p), expected_expval, rtol=1e-3)
 
 end
+
+@testset "maxabscoeff Tests" begin
+    """Test maxabscoeff() on Dict- and Array-based term sums."""
+    nq = 4
+    paulis = (:X, :Y, :Z)
+    qinds = (1, 2, 3)
+    coeffs = (0.1, -0.7, 0.3)
+
+    psum = PauliSum(nq)
+    for (pauli, qind, coeff) in zip(paulis, qinds, coeffs)
+        add!(psum, pauli, qind, coeff)
+    end
+
+    @test maxabscoeff(psum) ≈ maximum(abs, coeffs)
+
+    vpsum = VectorPauliSum(psum)
+    @test maxabscoeff(vpsum) ≈ maximum(abs, coeffs)
+
+    # complex coefficients: the reduction must stay real-valued internally
+    complex_coeffs = (0.1 + 0.2im, -0.7 - 0.3im, 0.3im)
+
+    cpsum = PauliSum(ComplexF64, nq)
+    for (pauli, qind, coeff) in zip(paulis, qinds, complex_coeffs)
+        add!(cpsum, pauli, qind, coeff)
+    end
+
+    @test maxabscoeff(cpsum) ≈ maximum(abs, complex_coeffs)
+
+    cvpsum = VectorPauliSum(cpsum)
+    @test maxabscoeff(cvpsum) ≈ maximum(abs, complex_coeffs)
+end
+
+@testset "Truncate relative coefficient Tests" begin
+    """Test the min_rel_coeff truncation, comparing Dict- and Array-based propagation."""
+    seed = 42
+    circ, pstr, thetas = brickcircuit(seed)
+
+    min_abs_coeff = 1e-8
+
+    # min_rel_coeff=0.0 does not add any truncation beyond min_abs_coeff
+    expected_p = propagate(circ, pstr, thetas; min_abs_coeff=min_abs_coeff)
+    zero_rel_p = propagate(circ, pstr, thetas; min_abs_coeff=min_abs_coeff, min_rel_coeff=0.0)
+    @test length(zero_rel_p) == length(expected_p)
+    @test isapprox(overlapwithzero(zero_rel_p), overlapwithzero(expected_p))
+
+    # increasing min_rel_coeff can only truncate more aggressively,
+    # and Dict- and Array-based propagation must agree
+    prev_nterms = length(expected_p)
+    for min_rel_coeff in (1e-4, 1e-3, 1e-2)
+        dnum = propagate(circ, pstr, thetas; min_abs_coeff=min_abs_coeff, min_rel_coeff=min_rel_coeff)
+        dvec = propagate(circ, VectorPauliSum(pstr), thetas; min_abs_coeff=min_abs_coeff, min_rel_coeff=min_rel_coeff)
+
+        @test length(dnum) == length(dvec)
+        @test isapprox(overlapwithzero(dnum), overlapwithzero(dvec))
+
+        @test length(dnum) <= prev_nterms
+        prev_nterms = length(dnum)
+    end
+end
