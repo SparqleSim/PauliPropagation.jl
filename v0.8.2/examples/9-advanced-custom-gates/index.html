@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>9. Advanced - How to Define Custom Gates · PauliPropagation.jl</title><meta name="title" content="9. Advanced - How to Define Custom Gates · PauliPropagation.jl"/><meta property="og:title" content="9. Advanced - How to Define Custom Gates · PauliPropagation.jl"/><meta property="twitter:title" content="9. Advanced - How to Define Custom Gates · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li class="is-active"><a class="tocitem" href>9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../advanced_performance/">Advanced Performance</a></li><li><a class="tocitem" href="../mcpropagate/">Monte Carlo Propagation</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/MonteCarlo/">Monte Carlo</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/Gradients/">Gradients</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>9. Advanced - How to Define Custom Gates</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>9. Advanced - How to Define Custom Gates</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/9-advanced-custom-gates.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="9.-Advanced-How-to-Define-Custom-Gates"><a class="docs-heading-anchor" href="#9.-Advanced-How-to-Define-Custom-Gates">9. Advanced - How to Define Custom Gates</a><a id="9.-Advanced-How-to-Define-Custom-Gates-1"></a><a class="docs-heading-anchor-permalink" href="#9.-Advanced-How-to-Define-Custom-Gates" title="Permalink"></a></h1><p>In an earlier example notebook, we showed you the basics of defining custom gates. The approach demonstrated there may already be enough for your purposes, and potentially already as efficient as possible. In this notebook, we will discuss the considerations that go into making high-performing gates. </p><pre><code class="language-julia hljs">using Revise
+using PauliPropagation</code></pre><h3 id="The-SWAP-example"><a class="docs-heading-anchor" href="#The-SWAP-example">The SWAP example</a><a id="The-SWAP-example-1"></a><a class="docs-heading-anchor-permalink" href="#The-SWAP-example" title="Permalink"></a></h3><p>Let us again consider the SWAP gate example</p><pre><code class="language-julia hljs">struct CustomSWAPGate &lt;: StaticGate
+    qinds::Tuple{Int, Int}  # The two sites to be swapped
+end</code></pre><p>Again define the action,</p><pre><code class="language-julia hljs">function PauliPropagation.apply(gate::CustomSWAPGate, pstr, coeff; kwargs...)
+    # get the Pauli on the first site
+    pauli1 = getpauli(pstr, gate.qinds[1])
+    # get the Pauli on the second site
+    pauli2 = getpauli(pstr, gate.qinds[2])
+    
+    # set the Pauli on the first site to the second Pauli
+    pstr = setpauli(pstr, pauli2, gate.qinds[1])
+    # set the Pauli on the second site to the first Pauli
+    pstr = setpauli(pstr, pauli1, gate.qinds[2])
+
+    # apply() is always expected to return a tuple of (pstr, coeff) tuples
+    return tuple((pstr, coeff))
+end</code></pre><p>Now set up a bigger simulation with 25 qubits on a 5 by 5 grid.</p><pre><code class="language-julia hljs">nx = 5
+ny = 5
+nq = nx * ny
+
+topology = rectangletopology(nx, ny)</code></pre><p><code>nl</code> layers of a circuit consisting of <code>RX</code> and <code>RZZ</code> Pauli rotations, but insert a layer of swaps in between.</p><pre><code class="language-julia hljs">trotter_layer = tfitrottercircuit(nq, 1; topology=topology);
+
+nl = 3
+ourSWAP_circuit = Gate[]
+append!(ourSWAP_circuit, trotter_layer)
+for _ in 2:nl
+    append!(ourSWAP_circuit, (CustomSWAPGate(pair) for pair in topology))
+    append!(ourSWAP_circuit, trotter_layer)
+end</code></pre><pre><code class="language-julia hljs">nparams = countparameters(ourSWAP_circuit)</code></pre><pre><code class="nohighlight hljs">195</code></pre><p>Define our observable as <span>$Z_7 Z_{13}$</span>.</p><pre><code class="language-julia hljs">pstr = PauliString(nq, [:Z, :Z], [7, 13])</code></pre><pre><code class="nohighlight hljs">PauliString(nqubits: 25, 1.0 * IIIIIIZIIIIIZIIIIIII...)</code></pre><p>Circuit parameters with a random seed.</p><pre><code class="language-julia hljs">using Random
+Random.seed!(42)
+thetas = randn(nparams)</code></pre><p>For this notebook, we will use a minimum coefficient threshold. The results are still almost exact in this simple case.</p><pre><code class="language-julia hljs">min_abs_coeff = 1e-3</code></pre><pre><code class="nohighlight hljs">0.001</code></pre><p>Run the circuit</p><pre><code class="language-julia hljs">@time ourSWAP_psum = propagate(ourSWAP_circuit, pstr, thetas; min_abs_coeff=min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  2.720709 seconds (2.44 M allocations: 120.667 MiB, 1.12% gc time, 98.34% compilation time)
+
+
+
+
+
+PauliSum(nqubits: 25, 13198 Pauli terms:
+ -0.013537 * IIZZIZXXIIIIYZIIIZII...
+ 0.0025156 * IIIIIIXYIIIIZIIIIXZI...
+ -0.0016705 * IIIIIIYYXIIXYZIIZZII...
+ 0.002661 * IIIZIIZYYIIZYXIIIZZI...
+ -0.0027996 * IIXZIIYYIIIIYZIIIYZI...
+ -0.001725 * IIZZIIYYZIIIZYIIIIZI...
+ 0.0013354 * IIZZIYYYIIIIXIIIIXII...
+ 0.001438 * IIIIIIXYZIIZIYIIIIZZ...
+ 0.0015348 * IZIIIIXIIIIXYIIIIXZI...
+ -0.0018285 * IZIIIZYIIIIYYIIIIYZI...
+ 0.0034953 * IIIIIIZYIIIIZIIIIZII...
+ 0.0027765 * IIIIIIYIZIIXXXZIZYZI...
+ -0.0010834 * IIZIIZXYZIIIYYZIIZZZ...
+ -0.0030723 * IIZZIYYZZIIIYYIIIYII...
+ -0.0011065 * IZIZIIXZIIIIYZIIIXZI...
+ 0.0025227 * IIXIIZZIIIIZXIIIIYZI...
+ 0.001622 * IZIIIYYYIIIXXIIIZZII...
+ -0.0020525 * IIIIIYYYIIIXYIIIZZII...
+ -0.0025499 * IIIIIIXIIIIXXIIIZXZI...
+ -0.0066057 * IIYZIZZIIIIZXIIIIZII...
+  ⋮)</code></pre><p>Overlap with the zero-state:</p><pre><code class="language-julia hljs">overlapwithzero(ourSWAP_psum)</code></pre><pre><code class="nohighlight hljs">0.11159958430219122</code></pre><p>We already mentioned that <code>PauliPropagation.jl</code> contains a <code>CliffordGate</code> implementation of SWAP. Let&#39;s implement the same thing and compare performance.</p><pre><code class="language-julia hljs">cliffSWAP_circuit = Gate[]
+append!(cliffSWAP_circuit, trotter_layer)
+for _ in 2:nl
+    append!(cliffSWAP_circuit, (CliffordGate(:SWAP, pair) for pair in topology))
+    append!(cliffSWAP_circuit, trotter_layer)
+end</code></pre><pre><code class="language-julia hljs">@time cliffSWAP_psum = propagate(cliffSWAP_circuit, pstr, thetas; min_abs_coeff=min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  0.229220 seconds (109.87 k allocations: 6.848 MiB, 79.36% compilation time)</code></pre><p>Are the results the same?</p><pre><code class="language-julia hljs">overlapwithzero(cliffSWAP_psum)</code></pre><pre><code class="nohighlight hljs">0.11159958430219122</code></pre><pre><code class="language-julia hljs">cliffSWAP_psum == ourSWAP_psum</code></pre><pre><code class="nohighlight hljs">true</code></pre><p>Yes! We can also benchmark the performance.</p><pre><code class="language-julia hljs">using BenchmarkTools</code></pre><pre><code class="language-julia hljs">@btime propagate($ourSWAP_circuit, $pstr, $thetas; min_abs_coeff=$min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  43.651 ms
+
+ (1355 allocations: 1.83 MiB)</code></pre><pre><code class="language-julia hljs">@btime propagate($cliffSWAP_circuit, $pstr, $thetas; min_abs_coeff=$min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  39.993 ms
+
+ (1355 allocations: 1.83 MiB)</code></pre><p>No downside at all from defining our custom gate. How? This is because the <code>apply</code> function for this gate is <em>type stable</em>! Type stability is absolutely crucial in Julia, and codes live and die by it.</p><pre><code class="language-julia hljs">@code_warntype apply(CustomSWAPGate((1, 1)), pstr.term, 1.0)</code></pre><pre><code class="nohighlight hljs">MethodInstance for apply(::CustomSWAPGate, ::PauliPropagation.UInt56, ::Float64)
+
+
+  from apply([90mgate[39m::[1mCustomSWAPGate[22m, [90mpstr[39m, [90mcoeff[39m; kwargs...)[90m @[39m [90mMain[39m [90m[4mIn[3]:1[24m[39m
+Arguments
+
+
+  #self#[36m::Core.Const(PauliPropagation.PropagationBase.apply)[39m
+  gate[36m::CustomSWAPGate[39m
+
+
+  pstr[36m::PauliPropagation.UInt56[39m
+  coeff[36m::Float64[39m
+Body[36m::Tuple{Tuple{PauliPropagation.UInt56, Float64}}[39m
+[90m1 ─[39m
+
+ %1 = Main
+
+.:(var&quot;#apply#1&quot;)[36m::Core.Const(Main.var&quot;#apply#1&quot;)[39m
+[90m│  [39m %2 = Core
+
+.NamedTuple()[36m::Core.Const(NamedTuple())[39m
+[90m│  [39m %3 = Base.pairs(%
+
+2)[36m::Core.Const(Base.Pairs{Symbol, Union{}, Nothing, @NamedTuple{}}())[39m
+[90m│  [39m %4 = (%1)(%3, #self#
+
+, gate, pstr, coeff)[36m::Tuple{Tuple{PauliPropagation.UInt56, Float64}}[39m
+[90m└──[39m      return %4</code></pre><p>All blue means that everything is great! If correctly implemented, <code>apply</code> will be type stable if it returns a known number of Pauli and coefficient pairs. Here it is just 1 because it is a Clifford gate.</p><h3 id="A-gate-that-branches-into-more-than-one-Pauli-string"><a class="docs-heading-anchor" href="#A-gate-that-branches-into-more-than-one-Pauli-string">A gate that branches into more than one Pauli string</a><a id="A-gate-that-branches-into-more-than-one-Pauli-string-1"></a><a class="docs-heading-anchor-permalink" href="#A-gate-that-branches-into-more-than-one-Pauli-string" title="Permalink"></a></h3><p>Onto an example of a gate that can <em>split</em> a Pauli string into two: The <code>T</code> gate.</p><pre><code class="language-julia hljs">struct CustomTGate &lt;: StaticGate
+    qind::Int
+end</code></pre><p>A <code>T</code> gate is a non-Clifford gate that commutes with <code>I</code> and <code>Z</code>, splits <code>X</code> into <code>cos(π/4)X - sin(π/4)Y</code>, and <code>Y</code> into <code>cos(π/4)Y + sin(π/4)X</code> (in the Heisenberg picture). </p><p>Let&#39;s write the code for that.</p><pre><code class="language-julia hljs">function PauliPropagation.apply(gate::CustomTGate, pstr, coeff; kwargs...)
+    # get the Pauli on the site `gate.qind`
+    pauli = getpauli(pstr, gate.qind)
+    
+    if pauli == 0 || pauli == 3  # I or Z commute
+        # return a tuple of one (pstr, coeff) tuple
+        return tuple((pstr, coeff))     
+    end
+    
+    if pauli == 1 # X goes to X, -Y
+        new_pauli = 2  # Y
+        # set the Pauli
+        new_pstr = setpauli(pstr, new_pauli, gate.qind)
+        # adapt the coefficients
+        new_coeff = -1 * coeff * sin(π/4)
+        
+    else # Y goes to Y, X
+        new_pauli = 1  # X
+        # set the Pauli
+        new_pstr = setpauli(pstr, new_pauli, gate.qind)
+        # adapt the coefficients
+        new_coeff = coeff * sin(π/4)
+    end
+
+    updated_coeff = coeff * cos(π/4)
+
+    # return a tuple of two (pstr, coeff) tuples
+    return tuple((pstr, updated_coeff), (new_pstr, new_coeff))
+    
+end</code></pre><p>Insert a layer of <code>TGate</code>s after each Trotter layer.</p><pre><code class="language-julia hljs">ourT_circuit = Gate[]
+for _ in 1:nl
+    append!(ourT_circuit, trotter_layer)
+    append!(ourT_circuit, (CustomTGate(qind) for qind in 1:nq)) 
+end</code></pre><p>And run:</p><pre><code class="language-julia hljs">@time ourT_psum = propagate(ourT_circuit, pstr, thetas; min_abs_coeff=min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  0.423940 seconds (119.80 k allocations: 7.816 MiB, 71.52% compilation time)
+
+
+
+
+
+PauliSum(nqubits: 25, 15787 Pauli terms:
+ -0.0032424 * IXIIIIZXXIIZXZIIIZII...
+ 0.0027962 * IZZIIIIYIIIZXZIIIZII...
+ -0.0014795 * IIZIIIZXZIIZZXZIIIZI...
+ 0.0037487 * IZIIIYXZIIIXXIIIZZII...
+ 0.0014359 * IZIIIIYZIIIXYIIIZXZI...
+ -0.0017245 * IYYIIIXXXIIIXIIIIZII...
+ -0.0029594 * IXIIIIXXIIIIYZIIIZII...
+ 0.0010417 * XXZIIZXYIIIIYZIIIZII...
+ 0.0025217 * IIIIIZXIZIIIYYIIZXII...
+ -0.0018537 * IXIIIIYIIIIZXZIIIYZI...
+ -0.0010255 * IZIIIZYZIIIXYZIIZYII...
+ -0.0037346 * IZIIIYXYIIIXYZIIZZII...
+ -0.0010858 * IZIIIIYIIIIZXZIIZYZI...
+ -0.0017078 * IZZIIYXYZIIZXZIIIZII...
+ 0.0013272 * IYIIIYYXXIIIYZIIIZII...
+ 0.0010339 * IIIIIIZIZZIIYXYIIYIZ...
+ 0.0011072 * IZIIIIXIIIIXYIIIIXZI...
+ -0.0010679 * IIIZIIZIYIIIYZZIIZII...
+ -0.0010275 * IXZIIYXYZIIZXZIIIZII...
+ 0.0012996 * IYIIIYYIIIIZZIIIIZII...
+  ⋮)</code></pre><pre><code class="language-julia hljs">overlapwithzero(ourT_psum)</code></pre><pre><code class="nohighlight hljs">0.3146654070299996</code></pre><p>But did it work? Again, we have an implementation of a <code>TGate</code> in our library. In case you are interested, we currently implement <code>T</code> gates as Pauli <code>Z</code> rotations at an angle of <code>π/4</code>. Let&#39;s compare to that.</p><pre><code class="language-julia hljs">libraryT_circuit = Gate[]
+for _ in 1:nl
+    append!(libraryT_circuit, trotter_layer)
+    append!(libraryT_circuit, (TGate(qind) for qind in 1:nq)) 
+end</code></pre><p>If you call <code>PauliGate(:Z, qind, parameter)</code>, this will create a so-called <code>FrozenGate</code> wrapping the parametrized <code>PauliGate</code>, with a fixed <code>parameter</code> at the time of circuit construction.</p><p>Run it and compare</p><pre><code class="language-julia hljs">@time libraryT_psum = propagate(libraryT_circuit, pstr, thetas; min_abs_coeff=min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  0.110996 seconds (33.26 k allocations: 3.750 MiB, 50.53% compilation time)</code></pre><pre><code class="language-julia hljs">overlapwithzero(libraryT_psum)</code></pre><pre><code class="nohighlight hljs">0.3146654070299997</code></pre><pre><code class="language-julia hljs">libraryT_psum == ourT_psum</code></pre><pre><code class="nohighlight hljs">true</code></pre><p>It works! But is it optimal?</p><pre><code class="language-julia hljs">using BenchmarkTools</code></pre><pre><code class="language-julia hljs">@btime propagate($ourT_circuit, $pstr, $thetas;min_abs_coeff=$min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  59.864 ms
+
+ (1351 allocations: 2.22 MiB)</code></pre><pre><code class="language-julia hljs">@btime propagate($libraryT_circuit, $pstr, $thetas; min_abs_coeff=$min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  55.453 ms
+
+ (1656 allocations: 2.24 MiB)</code></pre><p>No, because <code>apply</code> for the <code>CustomTGate</code> is not type-stable.</p><pre><code class="language-julia hljs">@code_warntype apply(CustomTGate(1), pstr.term, 0.0)</code></pre><pre><code class="nohighlight hljs">MethodInstance for apply(::CustomTGate, ::PauliPropagation.UInt56, ::Float64)
+  from apply([90mgate[39m::[1mCustomTGate[22m, [90mpstr[39m, [90mcoeff[39m; kwargs...)[90m @[39m [90mMain[39m [90m[4mIn[21]:1[24m[39m
+Arguments
+  #self#[36m::Core.Const(PauliPropagation.PropagationBase.apply)[39m
+  gate[36m::CustomTGate[39m
+  pstr[36m::PauliPropagation.UInt56[39m
+  coeff[36m::Float64[39m
+Body[33m[1m::Union{Tuple{Tuple{PauliPropagation.UInt56, Float64}}, Tuple{Tuple{PauliPropagation.UInt56, Float64}, Tuple{PauliPropagation.UInt56, Float64}}}[22m[39m
+[90m1 ─[39m %1 = Main.:(var&quot;#apply#8&quot;)[36m::Core.Const(Main.var&quot;#apply#8&quot;)[39m
+[90m│  [39m %2 = Core.NamedTuple()[36m::Core.Const(NamedTuple())[39m
+[90m│  [39m %3 = Base.pairs(%2)[36m::Core.Const(Base.Pairs{Symbol, Union{}, Nothing, @NamedTuple{}}())[39m
+[90m│  [39m %4 = (%1)(%3, #self#, gate, pstr, coeff)[33m[1m::Union{Tuple{Tuple{PauliPropagation.UInt56, Float64}}, Tuple{Tuple{PauliPropagation.UInt56, Float64}, Tuple{PauliPropagation.UInt56, Float64}}}[22m[39m
+
+
+[90m└──[39m      return %4</code></pre><p>It either returns a tuple of one tuple <code>Tuple{Tuple{UInt64, Float64}}</code> or a tuple of two tuples <code>Tuple{Tuple{UInt64, Float64}, Tuple{UInt64, Float64}}</code>. Yellow <code>@code_warntype</code> output means it might be okay (it is not that much slower after all), but be wary of red. When this is the case, you may want to define some more involved functions above <code>apply()</code> for optimal performance. This is how we would do it.  To avoid such type instabilities, we can overload a higher level function <code>applytoall!()</code>. This is also usefull because the runtime of the T-gate simulation is dominated by commutation (because the Pauli I is very comon for local observables), we could leave those commuting Pauli strings where they are -&gt; in their original Pauli sum. For this, we can overload the function <code>applytoall!()</code>, which differs in that one performs the loop over the Pauli strings in the Pauli sum here, and one can thus use the old Pauli sum more flexibly. You will receive a <code>AbstractPauliPropagationCache</code> object (here a <code>PauliPropagationCache</code> that wraps two <code>PauliSum</code> objects. Our convention is that anything left in the main <code>psum</code> or the auxiliary <code>aux_psum</code> is later merged back into <code>psum</code>. Thus, we can simply skip the commuting Pauli strings, and edit the coefficient of Pauli strings in-place. See this version of the function:</p><pre><code class="language-julia hljs">function PauliPropagation.applytoall!(gate::CustomTGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
+    psum = mainsum(prop_cache)
+    aux_psum = auxsum(prop_cache)
+    
+    for (pstr, coeff) in psum 
+        # the content of the previous apply() function:
+        pauli = getpauli(pstr, gate.qind)
+
+        if pauli == 0 || pauli == 3  # I or Z commute
+            # do nothing
+            continue
+        end
+
+        if pauli == 1 # X goes to X, -Y
+            new_pauli = 2  # Y
+            new_pstr = setpauli(pstr, new_pauli, gate.qind)
+            new_coeff = -1 * coeff * sin(π/4)
+        else # Y goes to Y, X
+            new_pauli = 1  # X
+            new_pstr = setpauli(pstr, new_pauli, gate.qind)
+            new_coeff = coeff * sin(π/4)
+        end
+
+        updated_coeff = coeff * cos(π/4)
+
+        # you can use add!() if the Pauli sums may already contain that string 
+        # here we know they don&#39;t, so we use set!() for minorly better performance
+        set!(psum, pstr, updated_coeff)
+        set!(aux_psum, new_pstr, new_coeff)
+    end
+    return prop_cache
+end</code></pre><pre><code class="language-julia hljs">@time ourT_psum2 = propagate(ourT_circuit, pstr, thetas; min_abs_coeff=min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  0.131415 seconds (47.06 k allocations: 4.400 MiB, 54.12% compilation time: 100% of which was recompilation)</code></pre><pre><code class="language-julia hljs">overlapwithzero(ourT_psum2)</code></pre><pre><code class="nohighlight hljs">0.3146654070299997</code></pre><pre><code class="language-julia hljs">ourT_psum == ourT_psum2</code></pre><pre><code class="nohighlight hljs">true</code></pre><p>And check the performance. It is equivalent for all intents and purposes.</p><pre><code class="language-julia hljs">@btime propagate($ourT_circuit, $pstr, $thetas; min_abs_coeff=$min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  50.752 ms
+
+ (1356 allocations: 2.23 MiB)</code></pre><pre><code class="language-julia hljs">@btime propagate($libraryT_circuit, $pstr, $thetas; min_abs_coeff=$min_abs_coeff)</code></pre><pre><code class="nohighlight hljs">  52.012 ms
+
+ (1656 allocations: 2.24 MiB)</code></pre><p>Enjoy defining custom and high-performance gates! </p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../8-automatic-differentiation/">« 8. An example of Automatic Differentiation</a><a class="docs-footer-nextpage" href="../advanced_performance/">Advanced Performance »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 20 August 2026 09:45">Thursday 20 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
