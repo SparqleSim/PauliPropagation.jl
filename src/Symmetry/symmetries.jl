@@ -158,7 +158,7 @@ end
 ## Reflection symmetry
 
 """
-    reflectionmerge(psum::AbstractPauliSum)
+    reflectionmerge(psum::AbstractPauliSum; thread=true)
 
 Merge Pauli strings related by reflection of a 1D chain, 
 i.e. by reversing the order of the qubits.
@@ -174,19 +174,19 @@ reflectionmerge(psum)
 )
 ```
 """
-reflectionmerge(psum::AbstractPauliSum) = symmetrymerge(_reflectionmapper(psum), psum)
+reflectionmerge(psum::AbstractPauliSum; thread::Bool=true) = symmetrymerge(_reflectionmapper(psum), psum; thread)
 
 """
-    reflectionmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache})
+    reflectionmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}; thread=true)
 
 In-place version of [`reflectionmerge`](@ref) for a 1D chain.
 """
-reflectionmerge!(psum) = symmetrymerge!(_reflectionmapper(psum), psum)
+reflectionmerge!(psum; thread::Bool=true) = symmetrymerge!(_reflectionmapper(psum), psum; thread)
 
 _reflectionmapper(psum) = _lowestpermutationmapper((_chainreflection(nqubits(psum)),))
 
 """
-    reflectionmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; axes=(:x, :y))
+    reflectionmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; axes=(:x, :y), thread=true)
 
 Merge Pauli strings related by reflections of an `nx` x `ny` grid.
 Sites are numbered row by row, site `(x, y)` being qubit `(y - 1) * nx + x`,
@@ -209,17 +209,17 @@ reflectionmerge(psum, 3, 2)
 )
 ```
 """
-function reflectionmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; axes=(:x, :y))
-    return symmetrymerge(_reflectionmapper(psum, nx, ny, axes), psum)
+function reflectionmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; axes=(:x, :y), thread::Bool=true)
+    return symmetrymerge(_reflectionmapper(psum, nx, ny, axes), psum; thread)
 end
 
 """
-    reflectionmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}, nx::Integer, ny::Integer; axes=(:x, :y))
+    reflectionmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}, nx::Integer, ny::Integer; axes=(:x, :y), thread=true)
 
 In-place version of [`reflectionmerge`](@ref) for an `nx` x `ny` grid.
 """
-function reflectionmerge!(psum, nx::Integer, ny::Integer; axes=(:x, :y))
-    return symmetrymerge!(_reflectionmapper(psum, nx, ny, axes), psum)
+function reflectionmerge!(psum, nx::Integer, ny::Integer; axes=(:x, :y), thread::Bool=true)
+    return symmetrymerge!(_reflectionmapper(psum, nx, ny, axes), psum; thread)
 end
 
 function _reflectionmapper(psum, nx::Integer, ny::Integer, axes)
@@ -231,7 +231,7 @@ end
 ## Permutation symmetry
 
 """
-    permutationmerge(psum::AbstractPauliSum)
+    permutationmerge(psum::AbstractPauliSum; thread=true)
 
 Merge Pauli strings related by any permutation of the qubits, 
 as in a system with all-to-all connectivity.
@@ -252,11 +252,11 @@ permutationmerge(psum)
 )
 ```
 """
-permutationmerge(psum::AbstractPauliSum) = symmetrymerge(_permutationcanonicalform, psum)
+permutationmerge(psum::AbstractPauliSum; thread::Bool=true) = symmetrymerge(_permutationcanonicalform, psum; thread)
 
 """
-    permutationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache})
+    permutationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}; thread=true)
 
 In-place version of [`permutationmerge`](@ref).
 """
-permutationmerge!(psum) = symmetrymerge!(_permutationcanonicalform, psum)
+permutationmerge!(psum; thread::Bool=true) = symmetrymerge!(_permutationcanonicalform, psum; thread)

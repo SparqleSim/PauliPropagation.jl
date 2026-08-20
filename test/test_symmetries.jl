@@ -223,14 +223,23 @@ end
 end
 
 
-@testset "translationmerge thread=false matches thread=true" begin
+@testset "thread=false matches thread=true" begin
     nq = 6
     vpsum = VectorPauliSum(get_psum(nq))
 
-    merged_thread = translationmerge(vpsum; thread=true)
-    merged_nothread = translationmerge(vpsum; thread=false)
+    # every public entry point accepts `thread` and gives the same result either way
+    @test PauliSum(translationmerge(vpsum; thread=false)) == PauliSum(translationmerge(vpsum; thread=true))
+    @test PauliSum(translationmerge(vpsum, 3, 2; thread=false)) == PauliSum(translationmerge(vpsum, 3, 2; thread=true))
+    @test PauliSum(reflectionmerge(vpsum; thread=false)) == PauliSum(reflectionmerge(vpsum; thread=true))
+    @test PauliSum(reflectionmerge(vpsum, 3, 2; thread=false)) == PauliSum(reflectionmerge(vpsum, 3, 2; thread=true))
+    @test PauliSum(reflectionmerge(vpsum, 3, 2; axes=:x, thread=false)) == PauliSum(reflectionmerge(vpsum, 3, 2; axes=:x, thread=true))
+    @test PauliSum(permutationmerge(vpsum; thread=false)) == PauliSum(permutationmerge(vpsum; thread=true))
 
-    @test PauliSum(merged_thread) == PauliSum(merged_nothread)
+    # in-place versions too
+    @test PauliSum(translationmerge!(deepcopy(vpsum); thread=false)) == PauliSum(translationmerge!(deepcopy(vpsum); thread=true))
+    @test PauliSum(reflectionmerge!(deepcopy(vpsum); thread=false)) == PauliSum(reflectionmerge!(deepcopy(vpsum); thread=true))
+    @test PauliSum(reflectionmerge!(deepcopy(vpsum), 3, 2; thread=false)) == PauliSum(reflectionmerge!(deepcopy(vpsum), 3, 2; thread=true))
+    @test PauliSum(permutationmerge!(deepcopy(vpsum); thread=false)) == PauliSum(permutationmerge!(deepcopy(vpsum); thread=true))
 end
 
 @testset "translationmerge grid dimension mismatch" begin
