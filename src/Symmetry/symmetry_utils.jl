@@ -245,3 +245,49 @@ function _permutationcanonicalform(pstr::TT) where {TT<:PauliStringType}
 
     return xs | ys | zs
 end
+
+
+## Block-wise permutation symmetry (residual subsymmetry)
+
+# Canonical representative under S_{B_1} x ... x S_{B_k}, where the blocks are contiguous
+# site ranges (lo, hi) that partition 1:nq in order (empty blocks, hi < lo, are allowed).
+# Each block is sorted independently as in the single-block form above.
+function _permutationcanonicalform(pstr::TT, blocks) where {TT<:PauliStringType}
+    canonical = zero(TT)
+    for (lo, hi) in blocks
+        hi < lo && continue
+        block_paulis = _getpaulibits(pstr, lo, hi)          # Paulis of the block, shifted to sites 1..hi-lo+1
+        canonical |= _permutationcanonicalform(block_paulis) << (2 * (lo - 1))
+    end
+    return canonical
+end
+
+# Blocks must be contiguous, ordered, non-overlapping and cover 1:nq exactly; otherwise
+# sites would be dropped or double counted by the canonical form.
+function _checkblocks(nq::Integer, blocks)
+    next_site = 1
+    for (lo, hi) in blocks
+        lo == next_site || throw(ArgumentError(
+            "Blocks must be contiguous and ordered: expected a block starting at site $(next_site), got ($(lo), $(hi))."))
+        hi >= lo - 1 || throw(ArgumentError("Invalid block ($(lo), $(hi))."))
+        next_site = hi + 1
+    end
+    next_site == nq + 1 || throw(ArgumentError(
+        "Blocks $(blocks) do not cover all $(nq) qubits."))
+    return nothing
+end
+
+"""
+    residualpermutationblocks(i, j, nq)
+
+Site blocks of the symmetry that survives inside a block of commuting all-to-all two-qubit
+gates applied in lexicographic order of their qubit pairs. After the gate on `(i, j)` has been
+applied, the gates still to come are invariant under 
+`S_{[1, i-1]} x S_{i} x S_{[i+1, j]} x S_{[j+1, nq]}`, so the Pauli sum may be merged with
+`permutationmerge!(psum, residualpermutationblocks(i, j, nq))` after every gate.
+Returns `((1, i-1), (i, i), (i+1, j), (j+1, nq))`.
+"""
+function residualpermutationblocks(i::Integer, j::Integer, nq::Integer)
+    1 <= i < j <= nq || throw(ArgumentError("Need 1 <= i < j <= nq, got i=$(i), j=$(j), nq=$(nq)."))
+    return ((1, i - 1), (i, i), (i + 1, j), (j + 1, nq))
+end

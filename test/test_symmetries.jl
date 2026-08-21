@@ -281,3 +281,87 @@ end
         @test length(prop_cache) == length(expected)
     end
 end
+
+@testset "Block-wise permutation merging" begin
+    nq = 6
+    T = getinttype(nq)
+    allbits = (T(1) << (2 * nq)) - T(1)
+    blocks = ((1, 2), (3, 3), (4, 6))
+
+    for _ in 1:100
+        pstr = rand(T) & allbits
+        # a single block is the full permutation canonical form
+        @test PauliPropagation._permutationcanonicalform(pstr, ((1, nq),)) == PauliPropagation._permutationcanonicalform(pstr)
+        canonical = PauliPropagation._permutationcanonicalform(pstr, blocks)
+        # idempotent, and invariant under permutations within the blocks
+        @test PauliPropagation._permutationcanonicalform(canonical, blocks) == canonical
+        perm = vcat(randperm(2), [3], 3 .+ randperm(3))
+        @test PauliPropagation._permutationcanonicalform(getpauli(pstr, perm), blocks) == canonical
+        # the site counts per block are preserved
+        for (lo, hi) in blocks
+            @test countweight(getpauli(canonical, lo:hi)) == countweight(getpauli(pstr, lo:hi))
+        end
+    end
+
+    # merging: sites 1,2 equivalent, site 3 on its own, sites 4,5,6 equivalent
+    psum = PauliSum(nq)
+    add!(psum, [:X, :Z], [1, 4])
+    add!(psum, [:X, :Z], [2, 5], 0.5)
+    add!(psum, [:X, :Z], [3, 6])
+    expected = PauliSum(nq)
+    add!(expected, [:X, :Z], [1, 4], 1.5)
+    add!(expected, [:X, :Z], [3, 4])
+    @test permutationmerge(psum, blocks) == expected
+    @test PauliSum(permutationmerge(VectorPauliSum(psum), blocks)) == expected
+    @test PauliSum(permutationmerge!(VectorPauliSum(psum), blocks)) == expected
+    @test PauliSum(permutationmerge!(PropagationCache(VectorPauliSum(psum)), blocks)) == expected
+    @test PauliSum(permutationmerge!(VectorPauliSum(psum), blocks; thread=false)) == expected
+    @test permutationmerge(psum, ((1, nq),)) == permutationmerge(psum)
+
+    # validation of the block structure
+    @test_throws ArgumentError permutationmerge(psum, ((1, 3), (5, 6)))   # gap
+    @test_throws ArgumentError permutationmerge(psum, ((1, 4), (3, 6)))   # overlap
+    @test_throws ArgumentError permutationmerge(psum, ((1, 5),))          # does not cover
+    @test_throws ArgumentError permutationmerge(psum, ((2, 6),))          # does not start at 1
+
+    # residual blocks of the lexicographic all-to-all sweep
+    @test residualpermutationblocks(2, 4, 6) == ((1, 1), (2, 2), (3, 4), (5, 6))
+    @test residualpermutationblocks(1, 2, 6) == ((1, 0), (1, 1), (2, 2), (3, 6))
+    @test residualpermutationblocks(5, 6, 6) == ((1, 4), (5, 5), (6, 6), (7, 6))
+    @test_throws ArgumentError residualpermutationblocks(3, 3, 6)
+    @test_throws ArgumentError residualpermutationblocks(0, 3, 6)
+end
+
+@testset "Residual-subsymmetry sweep is exact" begin
+    # a commuting all-to-all block applied gate by gate with a residual merge after every
+    # gate must agree with applying the whole block and merging under S_N once
+    nq = 6
+    psum = PauliSum(nq)
+    for i in 1:nq
+        add!(psum, :X, i)
+    end
+    add!(psum, [:Z, :Y], [2, 5], 0.3)
+    # the block must be permutation symmetric: the same angle on every pair
+    pairs = [(i, j) for i in 1:nq for j in i+1:nq]
+    gates = Dict(p => PauliRotation([:Y, :Y], [p...]) for p in pairs)
+    thetas = Dict(p => 0.17 for p in pairs)
+
+    plain = PropagationCache(VectorPauliSum(psum))
+    propagate!([gates[p] for p in pairs], plain, [thetas[p] for p in pairs]; min_abs_coeff=0.0)
+    permutationmerge!(plain)
+
+    residual = PropagationCache(VectorPauliSum(psum))
+    for i in 1:nq-1, j in i+1:nq
+        propagate!([gates[(i, j)]], residual, [thetas[(i, j)]]; min_abs_coeff=0.0)
+        permutationmerge!(residual, residualpermutationblocks(i, j, nq))
+    end
+    permutationmerge!(residual)
+
+    tosum(c) = (s = PauliSum(nq); for (t, co) in zip(PauliPropagation.activeterms(c), PauliPropagation.activecoeffs(c)); add!(s, t, co); end; s)
+    a, b = tosum(plain), tosum(residual)
+    # compare coefficient by coefficient over the union of keys: a coefficient that cancels
+    # to exactly zero on one path may survive as ~1e-17 on the other (summation order)
+    allkeys = union(Set(paulis(a)), Set(paulis(b)))
+    @test all(isapprox(getcoeff(a, p), getcoeff(b, p); atol=1e-10) for p in allkeys)
+    @test count(p -> abs(getcoeff(a, p)) > 1e-10, allkeys) == count(p -> abs(getcoeff(b, p)) > 1e-10, allkeys)
+end

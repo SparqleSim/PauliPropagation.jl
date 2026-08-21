@@ -209,7 +209,8 @@ export
     reflectionmerge,
     reflectionmerge!,
     permutationmerge,
-    permutationmerge!
+    permutationmerge!,
+    residualpermutationblocks
 
 include("Surrogate/Surrogate.jl")
 export

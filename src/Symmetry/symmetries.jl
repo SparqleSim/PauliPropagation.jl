@@ -260,3 +260,38 @@ permutationmerge(psum::AbstractPauliSum; thread::Bool=true) = symmetrymerge(_per
 In-place version of [`permutationmerge`](@ref).
 """
 permutationmerge!(psum; thread::Bool=true) = symmetrymerge!(_permutationcanonicalform, psum; thread)
+
+"""
+    permutationmerge(psum::AbstractPauliSum, blocks; thread=true)
+    permutationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}, blocks; thread=true)
+
+Merge Pauli strings related by permutations within each of the contiguous site blocks
+`blocks = ((lo_1, hi_1), ..., (lo_k, hi_k))`, i.e. under `S_{B_1} x ... x S_{B_k}`.
+The blocks must partition `1:nqubits(psum)` in order; empty blocks (`hi < lo`) are allowed.
+Within each block the representative is the sorted string `X...X Y...Y Z...Z I...I`.
+A single block `((1, nqubits),)` is the full permutation merge.
+
+This is the merge that stays valid *inside* a block of commuting all-to-all gates applied
+one by one, see [`residualpermutationblocks`](@ref): merging after every gate keeps the
+intermediate Pauli sum polynomially small instead of letting it expand until the block ends.
+
+# Example
+```julia
+psum = PauliSum(4)
+add!(psum, [:X, :Z], [1, 3])
+add!(psum, [:X, :Z], [2, 4])
+permutationmerge(psum, ((1, 2), (3, 4)))   # swaps within {1,2} and within {3,4}
+>>> PauliSum(nqubits: 4, 1 Pauli term: 
+ 2.0 * XIZI
+)
+```
+"""
+function permutationmerge(psum::AbstractPauliSum, blocks; thread::Bool=true)
+    _checkblocks(nqubits(psum), blocks)
+    return symmetrymerge(pstr -> _permutationcanonicalform(pstr, blocks), psum; thread)
+end
+
+function permutationmerge!(psum, blocks; thread::Bool=true)
+    _checkblocks(nqubits(psum), blocks)
+    return symmetrymerge!(pstr -> _permutationcanonicalform(pstr, blocks), psum; thread)
+end
