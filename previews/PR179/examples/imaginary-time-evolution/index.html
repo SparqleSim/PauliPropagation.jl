@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Imaginary Time Evolution · PauliPropagation.jl</title><meta name="title" content="Imaginary Time Evolution · PauliPropagation.jl"/><meta property="og:title" content="Imaginary Time Evolution · PauliPropagation.jl"/><meta property="twitter:title" content="Imaginary Time Evolution · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li><a class="tocitem" href="../advanced_performance/">Advanced Performance</a></li><li><a class="tocitem" href="../mcpropagate/">Monte Carlo Propagation</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li class="is-active"><a class="tocitem" href>Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/MonteCarlo/">Monte Carlo</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/Gradients/">Gradients</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Imaginary Time Evolution</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Imaginary Time Evolution</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/imaginary-time-evolution.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Imaginary-Time-Evolution"><a class="docs-heading-anchor" href="#Imaginary-Time-Evolution">Imaginary Time Evolution</a><a id="Imaginary-Time-Evolution-1"></a><a class="docs-heading-anchor-permalink" href="#Imaginary-Time-Evolution" title="Permalink"></a></h1><p>In analogy to the real-time evolution under some Hamiltonian <span>$H$</span> for time <span>$t$</span>, one can define imaginary-time evolution by substituting <span>$t \to -i\tau$</span>.</p><p>While most common applications of PauliPropagation.jl work in the Heisenberg picture (evolving observables), imaginary-time evolution is typically defined on quantum states (the Schrödinger picture).</p><p>The unnormalized imaginary time evolution of a quantum state <span>$\rho$</span> to an inverse temperature <span>$\beta$</span> is given by the similarity transform:</p><p class="math-container">\[\rho(\beta) \propto e^{-\beta H} = e^{-\beta/2 H} \rho(0) e^{-\beta/2 H}\]</p><p>Similar to real time, we decompose the Hamiltonian via a Trotter approximation into a product of several <em>imaginary Pauli rotations</em>. If <span>$\tau$</span> is small enough, and if we apply those rotations iteratively <span>$N$</span> times, we can approximate the thermal state.</p><pre><code class="language-julia hljs">using PauliPropagation</code></pre><pre><code class="language-julia hljs"># an example imaginary time rotation
+gate = ImaginaryPauliRotation([:X, :Y], [1, 3])</code></pre><pre><code class="nohighlight hljs">ImaginaryPauliRotation([:X, :Y], [1, 3])</code></pre><p>But wait, aren&#39;t quantum states dense in the Pauli basis? Why do we even work in the Heisenberg picture with observables if we can do this? </p><p>The resolution lies in the distinction between <em>pure states</em> and <em>mixed states</em>, and the concept of <em>temperature</em>. It is true that pure states are inefficient to represent in the Pauli basis beyond low numbers of qubits <span>$n$</span>, requiring at least <span>$2^n$</span> Pauli strings. </p><p>However, mixed states can be sparse in the Pauli basis. The extreme example is the <em>maximally mixed state</em> <span>$\rho \propto I$</span>. This is also sometimes called the <em>infinite temperature state</em> (<span>$\beta=0$</span>). It consists of exactly one Pauli string: the identity Pauli string. This implies we can efficiently apply imaginary time evolution gates onto the maximally mixed state to reach finite temperatures.</p><pre><code class="language-julia hljs">nq = 8
+rho_maxmixed = PauliString(nq, :I, 1)
+
+# try to evolve in the Schrödinger picture
+τ = 0.1
+
+# this will error, because we have heisenberg=true by default
+# propagate(gate, rho_maxmixed, τ)
+
+propagate(gate, rho_maxmixed, τ; heisenberg=false)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 8, 2 Pauli terms:
+ 1.0 * IIIIIIII
+ -0.099668 * XIYIIIII
+)</code></pre><p>That seems cool! ... But wait again, how come we can evolve the identity Pauli string? Shouldn&#39;t the Identity commute with everything?</p><p>That is true for real-time evolution (<span>$e^{iHt} I e^{-iHt} = I$</span>), but not for imaginary-time (<span>$e^{-\tau H} I e^{-\tau H} = e^{-2\tau H}$</span>). If an imaginary Pauli rotation generated by the Pauli <span>$P$</span> is applied to a Pauli string <span>$Q$</span>, this is what happens:</p><p class="math-container">\[
+e^{-\frac{\tau}{2} P} Q e^{-\frac{\tau}{2} P} =
+\begin{cases}
+Q, &amp; [P, Q] \neq 0, \\
+\cosh(\tau) Q - \sinh(\tau) PQ, &amp; [P, Q] = 0,
+\end{cases}
+\]</p><p>See this example where we apply an operator that anti-commutes with <span>$Z$</span> (our gate is <span>$X_1 Y_3$</span>):</p><pre><code class="language-julia hljs">rho_anticomm = PauliString(nq, :Z, 1)
+propagate(gate, rho_anticomm, τ; heisenberg=false, normalize_coeffs=false)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 8, 1 Pauli term: 
+ 1.0 * ZIIIIIII
+)</code></pre><p>Why did we have to set the <code>normalize_coeffs</code> kwarg? Usually quantum states have a significant identity component, and it often convenient to divide by its coefficients. Imagine having to actually divide the state through by <span>$2^n$</span>. That seems very numerically unstable. That factor will later implicitly be regained by using <code>scalarproduct()</code> instead of <code>overlapwithpaulisum()</code>. Furthermore, imaginary time rotations tend to change coefficient magnitudes, including <span>$Tr[\rho]$</span>. This would have to be normalized for expectation values anyway. See this example: </p><pre><code class="language-julia hljs">propagate(gate, rho_maxmixed, τ; heisenberg=false, normalize_coeffs=false)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 8, 2 Pauli terms:
+ 1.005 * IIIIIIII
+ -0.10017 * XIYIIIII
+)</code></pre><p>Normalizing like this also plays nicely with our absolute coefficient truncation threshold <code>min_abs_coeff</code>. We don&#39;t want to scale it for a different number of qubits and as a function of the number of gates. </p><p>Let&#39;s look at a full example, where we attempt to <em>lower the temperature</em> <span>$T$</span> starting from the maximally mixed state state. This requires a total imaginary time of <span>$\beta = 1/T$</span>. At every <span>$\beta$</span>, we create an approximation of the so-called <em>Gibbs</em> state</p><p class="math-container">\[
+\rho_\beta = e^{-\beta H} / Tr[e^{-\beta H}] = e^{-\beta/2 H} I  e^{-\beta/2 H}/ Tr[e^{-\beta H}]
+\]</p><pre><code class="language-julia hljs">topology = bricklayertopology(nq)
+
+# some Hamiltonian parameters 
+h = 1.0
+J = 0.5
+
+H = PauliSum(nq)
+for i in 1:nq
+    add!(H, :X, i, h)
+end
+for pair in topology
+    add!(H, [:Z, :Z], pair, J)
+end
+
+
+# now the corresponding Trotter circuit for the imaginary time evolution
+
+# a small time step
+τ = 0.01
+imaginary_circuit = Gate[]
+imaginary_params = Float64[]
+for i in 1:nq
+    push!(imaginary_circuit, ImaginaryPauliRotation([:X], [i]))
+    # in real-time there would be another factor of 2 here, but we already have the 1/2 factor in evolution definition
+    push!(imaginary_params, τ * h)
+end
+for pair in topology
+    push!(imaginary_circuit, ImaginaryPauliRotation([:Z, :Z], pair))
+    push!(imaginary_params, τ * J)
+end
+</code></pre><pre><code class="language-julia hljs"># at higher qubit numbers, only lower and lower beta (higher temperatures) are reachable
+beta = 2.0
+nlayers = round(Int, beta / τ)
+
+# truncations will generally help a lot but can introduce errors
+min_abs_coeff = 1e-5
+
+rho_beta = deepcopy(rho_maxmixed)
+
+# track how the energy of the system decreases
+energies = Float64[scalarproduct(H, rho_beta)]
+for layer in 1:nlayers
+    rho_beta = propagate!(imaginary_circuit, rho_beta, imaginary_params; heisenberg=false, min_abs_coeff)
+    push!(energies, scalarproduct(H, rho_beta))
+end
+rho_beta</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 8, 8033 Pauli terms:
+ -0.041058 * XIYYIZZX
+ -0.0018573 * XZIIXXZX
+ 0.038497 * XXIXXYXY
+ -0.00053129 * YXXXYXYY
+ -0.0019324 * ZXXXZXXI
+ 0.0032111 * YYXZIXZX
+ 0.00077509 * ZZXYIYZZ
+ -0.057304 * XIZZXXZZ
+ -0.0030367 * YIXYIXIX
+ 0.057133 * ZZXZZXII
+ -0.0043161 * XZXZZIZX
+ -0.0008588 * IIYXXIYI
+ 0.14153 * XXYYXIIX
+ -0.0057889 * ZIZZZYYI
+ -0.053337 * YYIIIZZI
+ 0.0030089 * IIZZZXXZ
+ -0.0007211 * ZIXZIZXZ
+ -0.17802 * XZZXIXIX
+ 0.059408 * IZZXZZXI
+ -0.012215 * IYXXYIIX
+  ⋮)</code></pre><pre><code class="language-julia hljs">using Plots
+
+betas = LinRange(0, beta, length(energies))
+
+plot(betas, energies, xlabel=&quot;β&quot;, ylabel=&quot;⟨H⟩&quot;, label=&quot;Final energy: $(round(energies[end], digits=3))&quot;)</code></pre><p><img src="../imaginary-time-evolution_files/imaginary-time-evolution_12_0.svg" alt="svg"/></p><p>A few final notes on imaginary time: </p><ul><li><code>ImaginaryPauliRotation</code>s are currently not supported in the Heisenberg picture. Feel free to work around it to experiment.</li><li>Because lower temperature states are so drastically denser in Pauli basis, the betas (temperatures) reachable may be very low (high) at higher qubit numbers.</li><li>Truncations are both your friend and enemy - as always. They make things faster until they make them wrong.</li><li>Be mindful of the normalization performed in the propagation. It continually divides through by the partition sum.</li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../ex_ttfi_op_evolution/">« Operator evolution Tilted Transverse Field Ising model</a><a class="docs-footer-nextpage" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Wednesday 26 August 2026 14:20">Wednesday 26 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
