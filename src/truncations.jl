@@ -74,10 +74,11 @@ function truncatemincoeff(coeff::Complex, min_abs_coeff::Real)
 end
 
 
-# Return `true` if `abs(path_property.coeff) < min_abs_coeff`. 
+# Return `true` if `abs(path_property.coeff) < min_abs_coeff`, delegating to the method
+# for the wrapped coefficient's type (so e.g. a complex coeff gets the abs2 fast path).
 function truncatemincoeff(path_property::PProp, min_abs_coeff::Real) where {PProp<:PathProperties}
     if hasfield(PProp, :coeff)
-        return abs(path_property.coeff) < min_abs_coeff
+        return truncatemincoeff(path_property.coeff, min_abs_coeff)
     else
         return false
     end
