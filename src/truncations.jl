@@ -59,23 +59,22 @@ function truncatemincoeff(coeff, min_abs_coeff::Real)
 end
 
 
-# Return `true` if `abs(coeff) < min_abs_coeff`. 
+# For general number types, simply use `abs`.
 function truncatemincoeff(coeff::Number, min_abs_coeff::Real)
     return abs(coeff) < min_abs_coeff
 end
 
 
-# Complex specialization, compared via the squares: `abs2` avoids the overflow-safe
-# `hypot` inside `abs` (~5-12x cheaper and SIMD-able; the dominant cost of the
-# truncation pass on large vector-backend sums). For real coefficients `abs` is a
-# single instruction, so only `Complex` benefits.
+# Complex specialization: `abs2` avoids the overflow-safe `hypot` inside `abs`.
+# Is ~5-12x cheaper and SIMD-able. 
+# For real coefficients `abs` is a single instruction, so only `Complex` benefits.
 function truncatemincoeff(coeff::Complex, min_abs_coeff::Real)
     return abs2(coeff) < min_abs_coeff^2
 end
 
 
-# Return `true` if `abs(path_property.coeff) < min_abs_coeff`, delegating to the method
-# for the wrapped coefficient's type (so e.g. a complex coeff gets the abs2 fast path).
+# Delegating to the `truncatemincoeff` method for the wrapped coefficient's type.
+# If the `PathProperties` type does not have a `coeff` field, it defaults to `false`.
 function truncatemincoeff(path_property::PProp, min_abs_coeff::Real) where {PProp<:PathProperties}
     if hasfield(PProp, :coeff)
         return truncatemincoeff(path_property.coeff, min_abs_coeff)
