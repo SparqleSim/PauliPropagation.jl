@@ -79,9 +79,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliRotation, prop_cache::P
 
     # invoke function from library
     if !fused
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliRotation,PauliPropagation.AbstractPauliPropagationCache,typeof(theta)},
-            gate, prop_cache, theta;
+        return _invokedefault(gate, prop_cache, theta;
             min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, kwargs...)
     end
 

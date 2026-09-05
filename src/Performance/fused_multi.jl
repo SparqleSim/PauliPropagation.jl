@@ -4,14 +4,9 @@
 # every zone: a zone writes what it branches straight into the box its owner takes delivery of, and
 # the truncations that read the coefficient are paid in the merge that follows.
 #
-# Fusing needs the zones to be array-backed, and the branching gates need the zone assignment to be
-# linear, which is to say a power-of-two number of zones. Anything else falls through to the default.
+# Fusing needs the zones to be array-backed; dict zones fall through to the default.
 ##
 ###
-
-# a single box per zone only exists where a gate that branches by a fixed mask permutes the zones
-_fusedzones(prop_cache::PauliPropagation.MultiPauliPropagationCache) =
-    _fusedzonestorage(prop_cache) && isxorlinear(prop_cache)
 
 _fusedzonestorage(prop_cache::PauliPropagation.MultiPauliPropagationCache) =
     zonestorage(prop_cache) isa PropagationBase.ArrayStorage
@@ -31,10 +26,8 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotati
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing,
     thread::Bool=true, kwargs...)
 
-    if !fused || !_fusedzones(prop_cache)
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliPropagation.PauliRotation,PauliPropagation.AbstractPauliPropagationCache,typeof(theta)},
-            gate, prop_cache, theta;
+    if !fused || !_fusedzonestorage(prop_cache)
+        return _invokedefault(gate, prop_cache, theta;
             min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
@@ -53,10 +46,8 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing,
     thread::Bool=true, kwargs...)
 
-    if !fused || !_fusedzones(prop_cache)
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliPropagation.ImaginaryPauliRotation,PauliPropagation.AbstractPauliPropagationCache,typeof(tau)},
-            gate, prop_cache, tau;
+    if !fused || !_fusedzonestorage(prop_cache)
+        return _invokedefault(gate, prop_cache, tau;
             normalize_coeffs, min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
@@ -148,9 +139,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliNoise,
     fused::Bool=false, thread::Bool=true, kwargs...)
 
     if !fused || !_fusedzonestorage(prop_cache)
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliPropagation.PauliNoise,PauliPropagation.AbstractPauliPropagationCache,typeof(lambda)},
-            gate, prop_cache, lambda; thread, kwargs...)
+        return _invokedefault(gate, prop_cache, lambda; thread, kwargs...)
     end
 
     PropagationBase._eachzone(prop_cache, thread) do zone_id

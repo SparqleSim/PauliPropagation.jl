@@ -10,6 +10,7 @@ using .PropagationBase: _park!
 """
     MultiPauliSum(psum::AbstractPauliSum, n_zones=defaultnzones())
     MultiPauliSum(pstr::PauliString, n_zones=defaultnzones())
+    MultiPauliSum(pstrs::Vector{PauliString}, n_zones=defaultnzones())
     MultiPauliSum(nq::Integer, n_zones=defaultnzones())
     MultiPauliSum(CoeffType, nq::Integer, n_zones=defaultnzones())
 
@@ -26,8 +27,8 @@ operation on a zone needs to be thread-safe.
 Splitting a `PauliSum` gives zones of `PauliSum`s, splitting a `VectorPauliSum` gives zones of
 `VectorPauliSum`s, and the zone type is what decides how a zone propagates.
 
-Any `n_zones` works, but a power of two makes the zone assignment linear in the Pauli string, which
-lets `PauliRotation` and the other gates that branch by a fixed mask take a faster path. See
+`n_zones` must be a power of two, which makes the zone assignment linear in the Pauli string and lets
+`PauliRotation` and the other gates that branch by a fixed mask take a faster path. See
 [`ZoneMap`](@ref).
 
 # Examples
@@ -51,6 +52,8 @@ MultiPauliSum(msum::MultiPauliSum, n_zones::Integer=defaultnzones()) =
     _fillzones!(_emptyzones(first(zones(msum)), nqubits(msum), n_zones), msum)
 
 MultiPauliSum(pstr::PauliString, n_zones::Integer=defaultnzones()) = MultiPauliSum(PauliSum(pstr), n_zones)
+MultiPauliSum(pstrs::Union{AbstractArray,Tuple,Base.Generator}, n_zones::Integer=defaultnzones()) =
+    MultiPauliSum(PauliSum(pstrs), n_zones)
 MultiPauliSum(nq::Integer, n_zones::Integer=defaultnzones()) = MultiPauliSum(PauliSum(nq), n_zones)
 MultiPauliSum(::Type{CT}, nq::Integer, n_zones::Integer=defaultnzones()) where {CT} = MultiPauliSum(PauliSum(CT, nq), n_zones)
 
@@ -68,26 +71,28 @@ end
 # the zones carry the trait, everything else is inherited from AbstractPauliSum
 PropagationBase.storage(msum::MultiPauliSum) = msum.zones
 nqubits(msum::MultiPauliSum) = msum.nqubits
-
-Base.length(msum::MultiPauliSum) = sum(length, zones(msum))
-Base.isempty(msum::MultiPauliSum) = all(isempty, zones(msum))
-
-# the terms of a MultiPauliSum are iterated zone by zone, which carries no element type
-PropagationBase.termtype(msum::MultiPauliSum) = termtype(first(zones(msum)))
-PropagationBase.coefftype(msum::MultiPauliSum) = coefftype(first(zones(msum)))
 paulitype(msum::MultiPauliSum) = termtype(msum)
 
-# a p-norm over the zones' p-norms is the p-norm over all coefficients
-LinearAlgebra.norm(msum::MultiPauliSum, L::Real=2) = norm([norm(zone, L) for zone in zones(msum)], L)
-
-Base.similar(msum::MultiPauliSum) = MultiPauliSum(msum.nqubits, map(emptylike, zones(msum)), zonemap(msum))
+PropagationBase.withzones(msum::MultiPauliSum, new_zones) =
+    MultiPauliSum(msum.nqubits, new_zones, zonemap(msum))
 
 convertcoefftype(::Type{CT}, msum::MultiPauliSum) where {CT} =
-    MultiPauliSum(msum.nqubits, map(zone -> convertcoefftype(CT, zone), zones(msum)), zonemap(msum))
+    withzones(msum, map(zone -> convertcoefftype(CT, zone), zones(msum)))
+
+Base.conj!(msum::MultiPauliSum) = (foreach(conj!, zones(msum)); msum)
 
 function Base.show(io::IO, msum::MultiPauliSum)
     println(io, "MultiPauliSum of $(nameof(eltype(zones(msum)))) with $(length(msum)) terms over $(nzones(msum)) zones:")
     println(io, "  zone sizes: ", zonesizes(msum))
+
+    # the zones are printed in turn, so the Pauli strings do not come out in any particular order
+    for (i, (pstr, coeff)) in enumerate(msum)
+        if i > 20
+            println(io, "  ...")
+            break
+        end
+        println(io, "  ", coeff, " * ", inttostring(pstr, nqubits(msum)))
+    end
 end
 
 """
@@ -101,7 +106,7 @@ unchanged.
 function (::Type{TS})(msum::MultiPauliSum) where {TS<:AbstractTermSum}
     psum = TS(coefftype(msum), nqubits(msum))
     for (pstr, coeff) in msum
-        _park!(StorageType(psum), psum, pstr, coeff)
+        pushterm!(psum, pstr, coeff)
     end
     return psum
 end

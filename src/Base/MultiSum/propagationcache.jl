@@ -25,6 +25,8 @@ outboxes(prop_cache::AbstractPropagationCache) = prop_cache.outboxes
 zones(prop_cache::AbstractPropagationCache) = zones(mainsum(prop_cache))
 zonemap(prop_cache::AbstractPropagationCache) = zonemap(mainsum(prop_cache))
 nzones(prop_cache::AbstractPropagationCache) = length(zonecaches(prop_cache))
+
+# a zone cache reports what it holds, where the zone itself reports the length of the arrays under it
 zonesizes(prop_cache::AbstractPropagationCache) = map(length, zonecaches(prop_cache))
 
 
@@ -33,8 +35,21 @@ zonesizes(prop_cache::AbstractPropagationCache) = map(length, zonecaches(prop_ca
 _length(::MultiSumStorage, prop_cache::AbstractPropagationCache) = sum(length, zonecaches(prop_cache))
 _capacity(::MultiSumStorage, prop_cache::AbstractPropagationCache) = sum(capacity, zonecaches(prop_cache))
 
-_terms(::MultiSumStorage, prop_cache::AbstractPropagationCache) = terms(activesum(prop_cache))
-_coefficients(::MultiSumStorage, prop_cache::AbstractPropagationCache) = coefficients(activesum(prop_cache))
+_terms(::MultiSumStorage, prop_cache::AbstractPropagationCache) =
+    Iterators.flatten(terms(zonecache) for zonecache in zonecaches(prop_cache))
+_coefficients(::MultiSumStorage, prop_cache::AbstractPropagationCache) =
+    Iterators.flatten(coefficients(zonecache) for zonecache in zonecaches(prop_cache))
+
+# the zones carry their own auxiliary sums, so the types are read off the main sum alone
+_termtype(::MultiSumStorage, prop_cache::AbstractPropagationCache) = termtype(mainsum(prop_cache))
+_coefftype(::MultiSumStorage, prop_cache::AbstractPropagationCache) = coefftype(mainsum(prop_cache))
+_numcoefftype(::MultiSumStorage, prop_cache::AbstractPropagationCache) = numcoefftype(mainsum(prop_cache))
+
+_activesum(::MultiSumStorage, prop_cache::AbstractPropagationCache) =
+    withzones(mainsum(prop_cache), map(activesum, zonecaches(prop_cache)))
+
+_resize!(::MultiSumStorage, prop_cache::AbstractPropagationCache, n_new::Int) =
+    _resizezones!(prop_cache, n_new)
 
 _maxabscoeff(::MultiSumStorage, prop_cache::AbstractPropagationCache) = maximum(maxabscoeff, zonecaches(prop_cache))
 

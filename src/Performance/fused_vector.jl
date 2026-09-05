@@ -19,9 +19,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotati
 
     # invoke function from library
     if !fused
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliPropagation.PauliRotation,PauliPropagation.AbstractPauliPropagationCache,typeof(theta)},
-            gate, prop_cache, theta;
+        return _invokedefault(gate, prop_cache, theta;
             min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
@@ -43,9 +41,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
     thread::Bool=true, kwargs...)
 
     if !fused
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliPropagation.ImaginaryPauliRotation,PauliPropagation.AbstractPauliPropagationCache,typeof(tau)},
-            gate, prop_cache, tau;
+        return _invokedefault(gate, prop_cache, tau;
             normalize_coeffs, min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
@@ -234,9 +230,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliNoise,
     thread::Bool=true, kwargs...)
 
     if !fused
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliPropagation.PauliNoise,PauliPropagation.AbstractPauliPropagationCache,typeof(lambda)},
-            gate, prop_cache, lambda;
+        return _invokedefault(gate, prop_cache, lambda;
             min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 

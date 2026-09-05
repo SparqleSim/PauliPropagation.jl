@@ -56,7 +56,7 @@ pstr = PauliString(nq, [:Z, :Z], [2, 3])
     thetas = randn(countparameters(rotations))
     params = [gate isa ParametrizedNoiseChannel ? 0.05 : randn() for gate in mixed if gate isa ParametrizedGate]
 
-    for n_zones in (1, 2, 3, 4, 7, 8)
+    for n_zones in (1, 2, 4, 8)
         @test agreeswithpaulisum(rotations, pstr, thetas, n_zones; min_abs_coeff=0.0)
         @test agreeswithpaulisum(rotations, pstr, thetas, n_zones; min_abs_coeff=1e-3, max_weight=4)
         @test agreeswithpaulisum(rotations, pstr, thetas, n_zones; min_abs_coeff=1e-8, heisenberg=false)
@@ -104,12 +104,10 @@ end
         @test maxdeviation(expected, got) < 1e-12
     end
 
-    # dict zones and a zone count that is not a power of two have nothing to fuse, and fall through
+    # dict zones have nothing to fuse, and fall through
     default = PauliSum(propagate(rotations, VectorPauliSum(pstr), thetas; min_abs_coeff=1e-8))
-    for seed in (PauliSum(pstr), VectorPauliSum(pstr)), n_zones in (4, 6)
-        seed isa VectorPauliSum && ispow2(n_zones) && continue
-
-        got = fused(rotations, MultiPauliSum(seed, n_zones), thetas; min_abs_coeff=1e-8)
+    for n_zones in (1, 4)
+        got = fused(rotations, MultiPauliSum(PauliSum(pstr), n_zones), thetas; min_abs_coeff=1e-8)
         @test length(got) == length(default)
         @test maxdeviation(default, got) < 1e-12
     end
@@ -209,6 +207,46 @@ end
     @test isempty(empty!(msum))
 end
 
+@testset "MultiPauliSum interface additions" begin
+    vpsum = VectorPauliSum(nq)
+    add!(vpsum, [:X, :Y], [1, 2], 0.5)
+    add!(vpsum, [:Z], [3], 0.25)
+    msum = MultiPauliSum(vpsum, 4)
+
+    # the zones are printed in turn, so the terms come out in no particular order
+    printed = sprint(show, msum)
+    @test occursin("over 4 zones", printed)
+    @test all(occursin(inttostring(pstr, nq), printed) for pstr in terms(vpsum))
+
+    @test conj(convertcoefftype(ComplexF64, msum)) == convertcoefftype(ComplexF64, msum)
+    @test conj(mult!(convertcoefftype(ComplexF64, msum), im)) == mult!(convertcoefftype(ComplexF64, msum), -im)
+
+    # a hint reserves room without changing what the zones hold
+    @test PauliSum(sizehint!(deepcopy(msum), 400)) == PauliSum(vpsum)
+
+    pstrs = [PauliString(nq, [:X, :Y], [1, 2], 0.5), PauliString(nq, :Z, 3, 0.25)]
+    @test PauliSum(MultiPauliSum(pstrs, 4)) == PauliSum(pstrs)
+    @test eltype(zones(MultiPauliSum(pstrs, 4))) == typeof(PauliSum(pstrs))
+
+    # `+` keeps the sum it was handed: its zone type, its zone count, and a widened coefficient type
+    summed = msum + PauliString(nq, :Z, 3, 0.25)
+    @test summed isa MultiPauliSum
+    @test eltype(zones(summed)) == typeof(vpsum) && nzones(summed) == 4
+    @test getcoeff(summed, [:Z], [3]) == 0.5
+    @test coefftype(msum + PauliString(nq, :Z, 3, 0.25im)) == ComplexF64
+
+    # a zone only holds the terms it owns, so copying across differing assignments is refused
+    @test_throws ArgumentError copy!(MultiPauliSum(vpsum, 8), MultiPauliSum(vpsum, 4))
+    @test PauliSum(copy!(deepcopy(msum), msum)) == PauliSum(vpsum)
+
+    # `emptylike` keeps the very type it was handed, zone type included
+    empty_msum = emptylike(msum)
+    @test isempty(empty_msum) && nzones(empty_msum) == 4 && eltype(zones(empty_msum)) == typeof(vpsum)
+
+    # the zone accessors are for multi sums alone
+    @test_throws MethodError zones(PauliSum(nq))
+end
+
 @testset "MultiPauliSum constructors and conversions" begin
     psum = PauliSum(nq)
     add!(psum, [:X, :Y], [1, 2], 0.5)
@@ -216,12 +254,13 @@ end
     vpsum = VectorPauliSum(psum)
 
     @test nzones(MultiPauliSum(psum)) == defaultnzones()
+    @test ispow2(defaultnzones())
     @test_throws ArgumentError MultiPauliSum(psum, 0)
+    @test_throws ArgumentError MultiPauliSum(psum, 6)
 
     # empty sums, on a number of qubits and optionally a coefficient type
     @test isempty(MultiPauliSum(nq)) && nqubits(MultiPauliSum(nq)) == nq
     @test nzones(MultiPauliSum(nq, 8)) == 8
-    @test nzones(MultiPauliSum(nq, 6)) == 6
     @test coefftype(MultiPauliSum(ComplexF64, nq, 8)) == ComplexF64
     @test PauliSum(MultiPauliSum(PauliString(nq, :X, 1), 4)) == PauliSum(PauliString(nq, :X, 1))
 
@@ -274,7 +313,7 @@ end
     Random.seed!(42)
     psum = propagate(rotations, PauliSum(pstr), randn(countparameters(rotations)); min_abs_coeff=1e-10)
 
-    for n_zones in (2, 4, 6, 8), seed in (psum, VectorPauliSum(psum))
+    for n_zones in (2, 4, 8), seed in (psum, VectorPauliSum(psum))
         msum = propagate(mixed, MultiPauliSum(seed, n_zones), [gate isa ParametrizedNoiseChannel ? 0.05 : 0.3 for gate in mixed if gate isa ParametrizedGate]; min_abs_coeff=1e-8)
 
         # every term sits in the zone that owns it, and no zone holds a term twice
@@ -291,8 +330,6 @@ end
     islinear(msum) = all(zoneof(msum, term ⊻ mask) - 1 == (zoneof(msum, term) - 1) ⊻ (zoneof(msum, mask) - 1)
                          for (term, mask) in terms_and_masks)
 
-    @test isxorlinear(MultiPauliSum(psum, 8)) && islinear(MultiPauliSum(psum, 8))
-    @test !isxorlinear(MultiPauliSum(psum, 6)) && !islinear(MultiPauliSum(psum, 6))
-    @test zonemap(MultiPauliSum(psum, 8)) isa XorZoneMap
-    @test zonemap(MultiPauliSum(psum, 6)) isa FoldedZoneMap
+    @test all(islinear(MultiPauliSum(psum, n_zones)) for n_zones in (1, 2, 4, 8))
+    @test zonemap(MultiPauliSum(psum, 8)) isa ZoneMap
 end

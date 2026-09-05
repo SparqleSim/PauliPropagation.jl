@@ -31,16 +31,6 @@ PropagationBase.PropagationCache(msum::MultiPauliSum) = MultiPauliPropagationCac
 
 PropagationBase.mainsum(prop_cache::MultiPauliPropagationCache) = prop_cache.msum
 
-PropagationBase.activesum(prop_cache::MultiPauliPropagationCache) =
-    MultiPauliSum(nqubits(prop_cache), map(activesum, zonecaches(prop_cache)), zonemap(prop_cache))
-
-# the zones carry their own auxiliary sums, so the types are read off the main sum alone
-PropagationBase.termtype(prop_cache::MultiPauliPropagationCache) = termtype(mainsum(prop_cache))
-PropagationBase.coefftype(prop_cache::MultiPauliPropagationCache) = coefftype(mainsum(prop_cache))
-PropagationBase.numcoefftype(prop_cache::MultiPauliPropagationCache) = numcoefftype(mainsum(prop_cache))
-
-Base.resize!(prop_cache::MultiPauliPropagationCache, n_new::Int) = PropagationBase._resizezones!(prop_cache, n_new)
-
 function Base.show(io::IO, prop_cache::MultiPauliPropagationCache)
     println(io, "MultiPauliPropagationCache with $(length(prop_cache)) terms over $(nzones(prop_cache)) zones:")
     println(io, "  zone sizes: ", zonesizes(prop_cache))

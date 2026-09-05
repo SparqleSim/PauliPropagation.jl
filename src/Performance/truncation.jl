@@ -1,8 +1,15 @@
 ###
 ##
-# Truncation for the fused gate applications.
+# Truncation and dispatch shared by the fused gate applications.
 ##
 ###
+
+# Hands the gate back to the library's own `applymergetruncate!`, the method one step less specific
+# than every overload in this module. Used by each of them when it cannot fuse.
+@inline _invokedefault(gate, prop_cache, param; kwargs...) =
+    invoke(PauliPropagation.applymergetruncate!,
+        Tuple{typeof(gate),PauliPropagation.AbstractPauliPropagationCache,typeof(param)},
+        gate, prop_cache, param; kwargs...)
 
 @inline function _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
     _truncateweight(pstr, max_weight) && return true

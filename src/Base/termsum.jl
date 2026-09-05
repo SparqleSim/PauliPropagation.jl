@@ -40,7 +40,8 @@ Defaults to a no-op for all `AbstractTermSum` types.
 """
 setsortedprefix!(term_sum::AbstractTermSum, n::Int) = term_sum
 
-Base.length(term_sum::AbstractTermSum) = length(terms(term_sum))
+Base.length(term_sum::AbstractTermSum) = _length(StorageType(term_sum), term_sum)
+_length(::StorageType, term_sum::AbstractTermSum) = length(terms(term_sum))
 
 nsites(term_sum::TS) where TS<:AbstractTermSum = _thrownotimplemented(TS, :nsites)
 
@@ -57,8 +58,11 @@ _coefficients(::ArrayStorage, term_sum::AbstractTermSum) = storage(term_sum)[2]
 coeffs(term_sum::AbstractTermSum) = coefficients(term_sum)
 
 # receives the object
-termtype(term_sum::TS) where TS<:AbstractTermSum = eltype(terms(term_sum))
-coefftype(term_sum::TS) where TS<:AbstractTermSum = eltype(coefficients(term_sum))
+termtype(term_sum::AbstractTermSum) = _termtype(StorageType(term_sum), term_sum)
+_termtype(::StorageType, term_sum::AbstractTermSum) = eltype(terms(term_sum))
+
+coefftype(term_sum::AbstractTermSum) = _coefftype(StorageType(term_sum), term_sum)
+_coefftype(::StorageType, term_sum::AbstractTermSum) = eltype(coefficients(term_sum))
 
 # this is used to determine type-stable return values for numerical operations
 numcoefftype(term_sum::TS) where TS<:AbstractTermSum = numcoefftype(coefftype(term_sum))
@@ -189,7 +193,9 @@ Calls `LinearAlgebra.norm(coefficients(psum))`.
 If `psum` contains duplicate terms, the coefficients are NOT merged before hand
 and the norm value will be affected.
 """
-function LinearAlgebra.norm(psum::AbstractTermSum, L::Real=2)
+LinearAlgebra.norm(psum::AbstractTermSum, L::Real=2) = _norm(StorageType(psum), psum, L)
+
+function _norm(::StorageType, psum::AbstractTermSum, L::Real)
     if length(psum) == 0
         return zero(numcoefftype(psum))
     end
@@ -416,7 +422,37 @@ function _empty!(::StorageType, term_sum::AbstractTermSum)
 end
 
 
-function Base.similar(term_sum::AbstractTermSum)
+"""
+    pushterm!(term_sum::AbstractTermSum, term, coeff)
+
+Append `term` with `coeff` without looking for a copy of it. An array-backed sum then holds the term
+twice until it is merged; a dict-backed one merges on the spot, since its terms are its keys.
+"""
+pushterm!(term_sum::AbstractTermSum, term, coeff) = _pushterm!(StorageType(term_sum), term_sum, term, coeff)
+
+@inline _pushterm!(::DictStorage, term_sum, term, coeff) = add!(term_sum, term, coeff)
+
+@inline function _pushterm!(::ArrayStorage, term_sum, term, coeff)
+    push!(terms(term_sum), term)
+    push!(coefficients(term_sum), coeff)
+    return term_sum
+end
+
+
+"""
+    sizehint!(term_sum::AbstractTermSum, n)
+
+Reserve room for `n` terms without changing what `term_sum` holds.
+"""
+Base.sizehint!(term_sum::AbstractTermSum, n) = _sizehint!(StorageType(term_sum), term_sum, n)
+_sizehint!(::DictStorage, term_sum::AbstractTermSum, n) = (sizehint!(storage(term_sum), n); term_sum)
+_sizehint!(::ArrayStorage, term_sum::AbstractTermSum, n) =
+    (sizehint!(terms(term_sum), n); sizehint!(coefficients(term_sum), n); term_sum)
+
+
+Base.similar(term_sum::AbstractTermSum) = _similar(StorageType(term_sum), term_sum)
+
+function _similar(::StorageType, term_sum::AbstractTermSum)
     similar_term_sum = deepcopy(term_sum)
     empty!(similar_term_sum)
     return similar_term_sum

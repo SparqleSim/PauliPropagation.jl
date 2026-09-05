@@ -31,6 +31,7 @@ export
     mult!,
     add!,
     set!,
+    pushterm!,
     mult!,
     empty!,
     similar,
@@ -203,7 +204,6 @@ export
     zonesizes,
     zonemap,
     zoneof,
-    isxorlinear,
     staysinzone
 
 include("Symmetry/Symmetry.jl")

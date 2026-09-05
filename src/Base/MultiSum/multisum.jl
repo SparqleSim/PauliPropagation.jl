@@ -1,7 +1,7 @@
 ###
 ##
 # A term sum split over one work zone per thread, with an owning zone per term.
-# Everything here is basis-agnostic: a concrete multi sum only carries its zones and zone masks,
+# Everything here is basis-agnostic: a concrete multi sum only carries its zones and its zone map,
 # and the storage trait routes the term sum interface through the owning zone.
 ##
 ###
@@ -13,8 +13,8 @@ Storage trait of a term sum split over work zones, each a term sum of the carrie
 thread owns. `zonestorage` is the storage trait of the zones, which every zone-local operation
 dispatches on.
 
-A term sum carries this trait by returning its zones from `storage` and its zone masks from
-`zonemasks`.
+A term sum carries this trait by returning its zones from `storage`, and supplies its
+[`ZoneMap`](@ref) through `zonemap` and its own type through [`withzones`](@ref).
 """
 struct MultiSumStorage{ST<:StorageType} <: StorageType
     zonestorage::ST
@@ -32,9 +32,10 @@ zonestorage(thing) = StorageType(thing).zonestorage
 """
     zones(msum::AbstractTermSum)
 
-The term sums that `msum` is split over. Defaults to `storage(msum)`.
+The term sums that `msum` is split over, which is the storage a multi sum carries.
 """
-zones(msum::AbstractTermSum) = storage(msum)
+zones(msum::AbstractTermSum) = _zones(StorageType(msum), msum)
+_zones(::MultiSumStorage, msum::AbstractTermSum) = storage(msum)
 
 """
     zonemap(msum::AbstractTermSum)
@@ -42,6 +43,15 @@ zones(msum::AbstractTermSum) = storage(msum)
 The [`ZoneMap`](@ref) that assigns a term to its zone. Defaults to the `zonemap` field of `msum`.
 """
 zonemap(msum::AbstractTermSum) = msum.zonemap
+
+"""
+    withzones(msum::AbstractTermSum, new_zones)
+
+`msum` with its zones replaced by `new_zones`, everything else carried over. This is the one thing a
+multi sum has to say about its own type; the zone-wise `similar`, `emptylike` and `activesum` are
+built on it.
+"""
+withzones(msum::TS, new_zones) where {TS<:AbstractTermSum} = _thrownotimplemented(TS, :withzones)
 
 """
     nzones(msum::AbstractTermSum)
@@ -63,69 +73,37 @@ zonesizes(msum::AbstractTermSum) = map(length, zones(msum))
 """
     ZoneMap(TermType, n_zones)
 
-Assigns every term to one of `n_zones` zones. Each bit of an intermediate bucket index is a parity of
-the term under a fixed mask, so the buckets read every site and no zone is favoured.
+Assigns every term to one of `n_zones` zones, which must be a power of two. Each bit of the zone
+index is a parity of the term under a fixed mask, so the index reads every site and no zone is
+favoured.
 
-A power-of-two `n_zones` gives an [`XorZoneMap`](@ref), whose zone index is the bucket index itself.
-Any other count gives a [`FoldedZoneMap`](@ref), which folds more buckets than zones onto the zones.
-"""
-abstract type ZoneMap end
-
-"""
-    XorZoneMap(masks)
-
-Zone map over `2^length(masks)` zones, whose zone index is the vector of mask parities of the term.
-The assignment is then linear, `zoneof(t ⊻ m) - 1 == (zoneof(t) - 1) ⊻ (zoneof(m) - 1)`, so a gate
-that moves every term it branches by the same `⊻ m` permutes the zones: each zone sends all of them to
-exactly one other zone, and each zone receives from exactly one. This is what
+The assignment is then linear over GF(2), `zoneof(t ⊻ m) - 1 == (zoneof(t) - 1) ⊻ (zoneof(m) - 1)`,
+so a gate that moves every term it branches by the same `⊻ m` permutes the zones: each zone sends all
+of them to exactly one other zone, and each zone receives from exactly one. This is what
 [`applyxorbranch!`](@ref) parks into a single box on.
 """
-struct XorZoneMap{TT} <: ZoneMap
+struct ZoneMap{TT}
     masks::Vector{TT}
 end
 
-"""
-    FoldedZoneMap(masks, zoneofbucket)
-
-Zone map over any number of zones, which `zoneofbucket` assigns the `2^length(masks)` buckets to in
-turn. `⊻` is only closed on the buckets, so folding breaks the linearity of [`XorZoneMap`](@ref) and a
-gate that branches by a fixed mask has to route every term it makes.
-"""
-struct FoldedZoneMap{TT} <: ZoneMap
-    masks::Vector{TT}
-    zoneofbucket::Vector{Int}
-end
-
-# enough buckets per zone that folding them evenly leaves the zones within a few percent of each other
-const _BUCKETS_PER_ZONE_BITS = 5
-const _MAX_BUCKET_BITS = 16
+# the masks are the whole map: how many there are is the zone count, and what they are is the assignment
+Base.:(==)(zone_map1::ZoneMap, zone_map2::ZoneMap) = zone_map1.masks == zone_map2.masks
 
 function ZoneMap(::Type{TT}, n_zones::Integer) where {TT}
     n_zones >= 1 || throw(ArgumentError("n_zones must be positive, got $n_zones."))
+    ispow2(n_zones) || throw(ArgumentError(
+        "n_zones must be a power of two, got $n_zones. The nearest are $(prevpow(2, n_zones)) and $(nextpow(2, n_zones))."))
 
-    zone_bits = trailing_zeros(nextpow(2, n_zones))
-    ispow2(n_zones) && return XorZoneMap(_zonemasks(TT, zone_bits))
-
-    n_bits = max(zone_bits, min(_MAX_BUCKET_BITS, zone_bits + _BUCKETS_PER_ZONE_BITS))
-    zoneofbucket = [bucket % Int(n_zones) + 1 for bucket in 0:(1<<n_bits-1)]
-    return FoldedZoneMap(_zonemasks(TT, n_bits), zoneofbucket)
+    return ZoneMap(_zonemasks(TT, trailing_zeros(Int(n_zones))))
 end
-
-"""
-    isxorlinear(zone_map::ZoneMap)
-
-Whether `⊻`-ing every term by the same mask permutes the zones of `zone_map`.
-"""
-isxorlinear(::XorZoneMap) = true
-isxorlinear(::FoldedZoneMap) = false
-isxorlinear(thing) = isxorlinear(zonemap(thing))
 
 """
     defaultnzones()
 
-The number of zones to split over when none is given: as many as there are threads.
+The number of zones to split over when none is given: as many as there are threads, rounded down to
+a power of two.
 """
-defaultnzones() = maxtasks(true)
+defaultnzones() = prevpow(2, maxtasks(true))
 
 """
     zoneof(msum, term)
@@ -133,8 +111,7 @@ defaultnzones() = maxtasks(true)
 
 The zone that owns `term`.
 """
-@inline zoneof(zone_map::XorZoneMap, term) = _zonebits(term, zone_map.masks) + 1
-@inline zoneof(zone_map::FoldedZoneMap, term) = @inbounds zone_map.zoneofbucket[_zonebits(term, zone_map.masks)+1]
+@inline zoneof(zone_map::ZoneMap, term) = _zonebits(term, zone_map.masks) + 1
 @inline zoneof(msum, term) = zoneof(zonemap(msum), term)
 
 @inline _zone(msum, term) = @inbounds zones(msum)[zoneof(msum, term)]
@@ -188,8 +165,17 @@ _delete!(::MultiSumStorage, msum::AbstractTermSum, term) = (delete!(_zone(msum, 
 
 _mult!(::MultiSumStorage, msum::AbstractTermSum, scalar::Number) = (foreach(zone -> mult!(zone, scalar), zones(msum)); msum)
 _empty!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(empty!, zones(msum)); msum)
-_copy!(::MultiSumStorage, dst_msum::AbstractTermSum, src_msum::AbstractTermSum) = (foreach(copy!, zones(dst_msum), zones(src_msum)); dst_msum)
+function _copy!(::MultiSumStorage, dst_msum::AbstractTermSum, src_msum::AbstractTermSum)
+    # a zone only holds the terms it owns, so copying across differing assignments loses ownership
+    zonemap(dst_msum) == zonemap(src_msum) ||
+        throw(ArgumentError("Cannot copy between multi sums with different zone assignments."))
 
+    foreach(copy!, zones(dst_msum), zones(src_msum))
+    return dst_msum
+end
+
+# a term sum merges and truncates without a `thread` argument, so these run the zones in turn and let
+# each zone thread inside. The zone-parallel versions are the ones on the propagation cache.
 _merge!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(merge!, zones(msum)); msum)
 
 function _truncate!(::MultiSumStorage, truncfunc::F, msum::AbstractTermSum; kwargs...) where {F<:Function}
@@ -199,18 +185,27 @@ end
 
 _maxabscoeff(::MultiSumStorage, msum::AbstractTermSum) = maximum(maxabscoeff, zones(msum))
 
+# the zones are iterated one after the other, which carries neither a length nor an element type
+_length(::MultiSumStorage, msum::AbstractTermSum) = sum(length, zones(msum))
+_termtype(::MultiSumStorage, msum::AbstractTermSum) = termtype(first(zones(msum)))
+_coefftype(::MultiSumStorage, msum::AbstractTermSum) = coefftype(first(zones(msum)))
 
-### Parking terms without deduplication
+# an empty multi sum of the same type is exactly what `emptylike` builds
+_similar(::MultiSumStorage, msum::AbstractTermSum) = emptylike(msum)
 
-@inline _park!(msum::AbstractTermSum, term, coeff) = _park!(zonestorage(msum), _zone(msum, term), term, coeff)
+# the zone assignment is a hash, so the zones take equal shares of the hint
+_sizehint!(::MultiSumStorage, msum::AbstractTermSum, n) =
+    (foreach(zone -> sizehint!(zone, cld(n, nzones(msum))), zones(msum)); msum)
 
-@inline _park!(::DictStorage, term_sum, term, coeff) = add!(term_sum, term, coeff)
+# a p-norm over the zones' p-norms is the p-norm over all coefficients
+_norm(::MultiSumStorage, msum::AbstractTermSum, L::Real) = LinearAlgebra.norm([norm(zone, L) for zone in zones(msum)], L)
 
-@inline function _park!(::ArrayStorage, term_sum, term, coeff)
-    push!(terms(term_sum), term)
-    push!(coefficients(term_sum), coeff)
-    return term_sum
-end
+
+### Parking terms with their owners
+
+# Appends the term to the zone that owns it. The storage trait is passed rather than derived, since
+# every zone of a multi sum carries the same one.
+@inline _park!(msum::AbstractTermSum, term, coeff) = _pushterm!(zonestorage(msum), _zone(msum, term), term, coeff)
 
 """
     emptylike(term_sum::AbstractTermSum)
@@ -219,9 +214,10 @@ An empty term sum of the type of `term_sum`, term type included. A zone must car
 was seeded from, so it is rebuilt from the empty storage rather than from the coefficient type and
 the number of sites, and `similar` is no help because it keeps the length.
 
-The defaults assume the constructor `TS(nsites, storage...)`. Overload this for a type that carries
-more than that.
+The dict and array defaults assume the constructor `TS(nsites, storage...)`. Overload this for a type
+that carries more than that.
 """
 emptylike(term_sum::AbstractTermSum) = _emptylike(StorageType(term_sum), term_sum)
+_emptylike(::MultiSumStorage, msum::AbstractTermSum) = withzones(msum, map(emptylike, zones(msum)))
 _emptylike(::DictStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(storage(term_sum)))
 _emptylike(::ArrayStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(terms(term_sum)), empty(coefficients(term_sum)))
