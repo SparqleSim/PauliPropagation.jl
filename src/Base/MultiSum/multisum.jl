@@ -100,10 +100,11 @@ end
 """
     defaultnzones()
 
-The number of zones to split over when none is given: as many as there are threads, rounded down to
-a power of two.
+The number of zones to split over when none is given: two per thread, rounded up to a power of two,
+and a single zone when single-threaded. Rounding down instead leaves threads idle for a whole round
+whenever the thread count is not a power of two.
 """
-defaultnzones() = prevpow(2, maxtasks(true))
+defaultnzones() = nextpow(2, 2 * maxtasks(true) - 1)
 
 """
     zoneof(msum, term)

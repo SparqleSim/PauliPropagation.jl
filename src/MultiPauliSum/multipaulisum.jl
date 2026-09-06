@@ -15,7 +15,7 @@ using .PropagationBase: _park!
     MultiPauliSum(CoeffType, nq::Integer, n_zones=defaultnzones())
 
 A Pauli sum split over `n_zones` work zones, each a Pauli sum of the type it was built from that a
-single thread owns. `n_zones` defaults to the number of threads. Every zone runs single-threaded, so
+single thread owns. `n_zones` defaults to [`defaultnzones`](@ref). Every zone runs single-threaded, so
 parallelism comes from the zones alone.
 
 `zoneof` assigns every Pauli string to one zone, so all copies of a Pauli string reach the same owner
