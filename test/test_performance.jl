@@ -286,3 +286,64 @@ end
     @test d_thread == d_nothread
     @test overlapwithzero(d_thread) == overlapwithzero(d_nothread)
 end
+
+@testset "fused Vector: branching with every product weight-dropped still scales the parents" begin
+    # every anticommuting term branches, but each product exceeds max_weight, so the fused apply
+    # appends nothing and must still leave the parents scaled by cos(theta)
+    theta = 0.7
+
+    # single task: X1 anticommutes with Z1 X2; the product Y1 X2 has weight 2
+    nq = 3
+    psum = PauliSum(nq)
+    add!(psum, :X, 1, 1.0)
+    add!(psum, :Z, 3, 0.5)
+    gate = PauliRotation([:Z, :X], [1, 2])
+    stock = propagate([gate], psum, [theta]; min_abs_coeff=0.0, max_weight=1)
+    vec_fused_sum = Performance.propagate([gate], VectorPauliSum(psum), [theta]; min_abs_coeff=0.0, max_weight=1, fused=true)
+    vec_fused = PauliSum(nq, Dict(zip(paulis(vec_fused_sum), coefficients(vec_fused_sum))))
+    @test vec_fused == stock
+    @test getcoeff(vec_fused_sum, :X, 1) == cos(theta)
+    @test getcoeff(vec_fused_sum, :Z, 3) == 0.5
+
+    # multi task: > 16384 terms of weight w with X on qubit 1 and identity on the last qubit, so
+    # the gate Z1 X_nq branches all of them into weight w + 1 products
+    nq = 14
+    w = 11
+    Random.seed!(3)
+    pstrs = unique([PauliString(nq, [:X; rand([:X, :Y, :Z], w - 1)], 1:w) for _ in 1:40_000])
+    @test length(pstrs) > 16384
+    vsum = VectorPauliSum(nq, [pstr.term for pstr in pstrs], rand(length(pstrs)))
+    gate = PauliRotation([:Z, :X], [1, nq])
+    stock = propagate([gate], vsum, [theta]; min_abs_coeff=0.0, max_weight=w)
+    fused = Performance.propagate([gate], vsum, [theta]; min_abs_coeff=0.0, max_weight=w, fused=true)
+    @test length(fused) == length(pstrs)
+    @test fused == stock
+end
+
+@testset "fused Vector PauliNoise truncates correctly across tasks and keeps the sorted prefix" begin
+    PB = PauliPropagation.PropagationBase
+    nq = 14
+    topo = bricklayertopology(nq; periodic=false)
+    circuit = hardwareefficientcircuit(nq, 6; topology=topo)
+    Random.seed!(9)
+    thetas = randn(countparameters(circuit))
+    big = propagate(circuit, VectorPauliSum(PauliString(nq, :Z, 3)), thetas; min_abs_coeff=1e-5)
+    @test length(big) > 16384
+
+    noise_circuit = [DepolarizingNoise(qind, 0.1 + 0.01 * qind) for qind in 1:nq]
+    min_abs_coeff = 1e-3
+    stock = propagate(noise_circuit, big; min_abs_coeff)
+    fused = Performance.propagate(noise_circuit, big; min_abs_coeff, fused=true)
+    @test length(fused) < length(big)
+    @test fused == stock
+
+    # on a merged (sorted) cache the survivors stay sorted, so the whole active range is the prefix
+    prop_cache = PropagationCache(big)
+    PB.merge!(prop_cache)
+    @test PB.sortedprefix(PB.mainsum(prop_cache)) == PB.activesize(prop_cache)
+    for gate in noise_circuit
+        PB.applymergetruncate!(gate, prop_cache; min_abs_coeff, fused=true)
+    end
+    @test PB.sortedprefix(PB.mainsum(prop_cache)) == PB.activesize(prop_cache)
+    @test issorted(view(PB.terms(PB.mainsum(prop_cache)), 1:PB.activesize(prop_cache)))
+end

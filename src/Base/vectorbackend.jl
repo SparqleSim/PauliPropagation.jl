@@ -10,6 +10,17 @@
     return pos + 1
 end
 
+# Moves each task's block src[start_t : start_t + count_t - 1] to dst[dst_base + offset_t : ...], where
+# start_t is the task's partition start and offset_t comes from `_offsetsfromcounts(counts)`. The
+# destinations are dense and disjoint and src is a different array, so the tasks run in parallel.
+function _compactblocks!(dst_terms, dst_coeffs, src_terms, src_coeffs, task_partitioner, n_tasks::Int, counts, offsets, dst_base::Int)
+    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+        _copyblock!(dst_terms, dst_coeffs, src_terms, src_coeffs,
+            dst_base + offsets[task_id], task_partitioner[task_id].start, counts[task_id])
+    end
+    return nothing
+end
+
 function sortbyterm!(prop_cache::AbstractPropagationCache; lt=isless, by=identity, rev=false, order=Base.Forward, thread::Bool=true)
 
     # if terms are are not native data types, sorting kwargs need to be provided
