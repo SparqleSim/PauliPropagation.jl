@@ -32,7 +32,8 @@ PropagationBase.applytoall!(gate::FrozenGate, prop_cache::MultiPauliPropagationC
 """
     applytoall!(gate::PauliRotation, prop_cache::MultiPauliPropagationCache, theta; kwargs...)
 
-Every zone rescales the Pauli strings that branch and parks the Pauli strings they make in its outbox.
+Specialized `applytoall!` for `PauliRotation` acting on a `MultiPauliPropagationCache`.
+Every zone rescales the coefficients of the Pauli strings that branch and collects the branched Pauli strings in its outbox.
 """
 function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::MultiPauliPropagationCache, theta; kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
@@ -52,7 +53,7 @@ end
 """
     applytoall!(gate::ImaginaryPauliRotation, prop_cache::MultiPauliPropagationCache, tau; kwargs...)
 
-Like the `PauliRotation` overload, except that imaginary Pauli rotations branch upon commutation.
+Like the `PauliRotation` method above, except that imaginary Pauli rotations branch upon commutation.
 """
 function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::MultiPauliPropagationCache, tau; kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
@@ -72,7 +73,8 @@ end
 """
     applytoall!(gate::AmplitudeDampingNoise, prop_cache::MultiPauliPropagationCache, gamma; kwargs...)
 
-Every zone rescales its Pauli strings and parks the ones that its Z Paulis damp into with their owners.
+Specialized `applytoall!` for `AmplitudeDampingNoise` acting on a `MultiPauliPropagationCache`.
+Every zone rescales the coefficients of its Pauli strings and collects the Pauli strings created by damping its Z Paulis in its outbox.
 """
 function PropagationBase.applytoall!(gate::AmplitudeDampingNoise, prop_cache::MultiPauliPropagationCache, gamma; kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qind)

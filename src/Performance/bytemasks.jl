@@ -27,10 +27,9 @@ end
 """
     WordMask{TT,N}
 
-A gate mask together with the `N` 64-bit words it touches, at most two for a one- or two-qubit gate,
-and per word the masks `ma`, `mb` that make the commutation test a parity:
-`isodd(count_ones(((w >> 1) & ma) ⊻ (w & mb)))`, from `(a0 & b1) ⊻ (a1 & b0)` per qubit with the
-gate's bit pair `a` fixed.
+A gate mask together with the `N` 64-bit words of a Pauli string that it acts on, which are at most two for a one- or two-qubit gate.
+Per word it also carries the masks `ma` and `mb` that turn the commutation check into the parity `isodd(count_ones(((w >> 1) & ma) ⊻ (w & mb)))`.
+This follows from `(a0 & b1) ⊻ (a1 & b0)` per qubit with the bit pair `a` of the gate fixed.
 """
 struct WordMask{TT,N}
     mask::TT
@@ -47,8 +46,8 @@ _plainmask(gate_mask) = gate_mask
 """
     _gatemask(gate_mask, terms)
 
-Wrap `gate_mask` for whichever local path applies, or return it unchanged when none does. Called once
-per gate, never per Pauli string.
+Wrap `gate_mask` for whichever local path applies, or return it unchanged when none does.
+Called once per gate, never per Pauli string.
 """
 function _gatemask(gate_mask::TT, terms) where {TT}
     local_mask = _bytemask(gate_mask, terms)
@@ -120,9 +119,9 @@ _bytesof(terms, gate_mask) = terms
     _gatecommutesat(gate_mask, terms, bytes, ii)
     _gateproduct(gate_mask, pstr, bytes, ii)
 
-Commutation check and rotation product for the Pauli string at index `ii`, where `bytes` is
-`_bytesof(terms, gate_mask)`. Any mask that is not a `ByteMask` falls back to the whole-string
-versions. `_gatecommutesat` answers without the string, where the mask can.
+Commutation check and rotation product for the Pauli string at index `ii`, where `bytes` is `_bytesof(terms, gate_mask)`.
+Any mask that is neither a `ByteMask` nor a `WordMask` falls back to the versions acting on the whole Pauli string.
+`_gatecommutesat` avoids reading the Pauli string itself where the mask allows it.
 """
 @inline _gatecommutes(gate_mask, pstr, bytes, ii) = PauliPropagation.commutes(gate_mask, pstr)
 @inline _gateproduct(gate_mask, pstr, bytes, ii) = PauliPropagation.paulirotationproduct(gate_mask, pstr)

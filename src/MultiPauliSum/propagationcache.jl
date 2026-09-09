@@ -8,12 +8,10 @@
 """
     MultiPauliPropagationCache(msum::MultiPauliSum)
 
-Propagation cache for a `MultiPauliSum`. It carries the propagation cache of every zone, so each zone
-propagates with the machinery of the sum it carries, and one outbox per zone. An outbox is itself a
-`MultiPauliSum`: a zone parks every Pauli string it makes under the zone that owns it, and the owners take
-delivery once every zone has finished making Pauli strings.
-
-There is no auxiliary sum on this level, since every zone brings its own.
+Propagation cache for a `MultiPauliSum`.
+It carries the propagation cache of every zone, so that each zone propagates with the machinery of the Pauli sum type it carries, and one outbox per zone.
+An outbox is itself a `MultiPauliSum` in which a zone collects every Pauli string it creates for the zone that owns it, and which the owning zones pick up once all zones have finished applying the gate.
+This cache carries no auxiliary sum of its own, because every zone brings one.
 """
 struct MultiPauliPropagationCache{MS<:MultiPauliSum,ZC<:AbstractPauliPropagationCache} <: AbstractPauliPropagationCache
     msum::MS

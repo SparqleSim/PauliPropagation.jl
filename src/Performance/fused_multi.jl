@@ -17,9 +17,10 @@ _fusedzonestorage(prop_cache::PauliPropagation.MultiPauliPropagationCache) =
 """
     applymergetruncate!(gate::PauliRotation, prop_cache::MultiPauliPropagationCache, theta; fused::Bool=false, kwargs...)
 
-Fused overload of `applymergetruncate!` for `PauliRotation` over work zones -- see file header. Only
-used when `fused=true` and the zones can take it; otherwise falls through (via `invoke`) to default
-behavior.
+Fused version of `applymergetruncate!` for `PauliRotation` acting on a `MultiPauliPropagationCache`.
+Every zone applies the gate to its own Pauli strings in a single pass, writing the branched Pauli strings straight into the outbox of the zone that owns them.
+The truncations that read the coefficient are then carried out in the merge that follows.
+Only used when `fused=true` and the zones are array-based; otherwise falls through (via `invoke`) to default behavior.
 """
 function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotation, prop_cache::PauliPropagation.MultiPauliPropagationCache, theta;
     fused::Bool=false,
@@ -38,8 +39,8 @@ end
 """
     applymergetruncate!(gate::ImaginaryPauliRotation, prop_cache::MultiPauliPropagationCache, tau; fused::Bool=false, normalize_coeffs=true, kwargs...)
 
-Fused overload of `applymergetruncate!` for `ImaginaryPauliRotation` over work zones. Shares its
-branch-and-write core with the fused `PauliRotation` overload.
+Fused version of `applymergetruncate!` for `ImaginaryPauliRotation` acting on a `MultiPauliPropagationCache`.
+Works like the fused `PauliRotation` method above, with which it shares its branch-and-write core.
 """
 function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPauliRotation, prop_cache::PauliPropagation.MultiPauliPropagationCache, tau;
     fused::Bool=false, normalize_coeffs::Bool=true,
@@ -131,9 +132,8 @@ end
 """
     applymergetruncate!(gate::PauliNoise, prop_cache::MultiPauliPropagationCache, lambda; fused::Bool=false, kwargs...)
 
-Fused overload of `applymergetruncate!` for `PauliNoise` over work zones. The gate leaves every Pauli
-string in the zone that owns it, so each zone runs the fused application of the sum it carries and
-nothing travels.
+Fused version of `applymergetruncate!` for `PauliNoise` acting on a `MultiPauliPropagationCache`.
+The gate leaves every Pauli string in the zone that owns it, so each zone runs the fused application of the Pauli sum type it carries and no Pauli string is moved between zones.
 """
 function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliNoise, prop_cache::PauliPropagation.MultiPauliPropagationCache, lambda;
     fused::Bool=false, thread::Bool=true, kwargs...)

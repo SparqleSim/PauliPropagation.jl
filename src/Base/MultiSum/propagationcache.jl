@@ -10,15 +10,16 @@
 """
     zonecaches(prop_cache::AbstractPropagationCache)
 
-The propagation caches of the zones. Defaults to the `zonecaches` field of `prop_cache`.
+Get the propagation caches of the zones.
+Defaults to the `zonecaches` field of `prop_cache`.
 """
 zonecaches(prop_cache::AbstractPropagationCache) = prop_cache.zonecaches
 
 """
     outboxes(prop_cache::AbstractPropagationCache)
 
-The outbox of every zone, each a multi sum in which a zone parks the terms it makes under the zone
-that owns them. Defaults to the `outboxes` field of `prop_cache`.
+Get the outbox of every zone, each of which is a multi sum in which a zone collects the terms it creates for the zones that own them.
+Defaults to the `outboxes` field of `prop_cache`.
 """
 outboxes(prop_cache::AbstractPropagationCache) = prop_cache.outboxes
 
@@ -78,11 +79,8 @@ end
 """
     _resizezones!(prop_cache::AbstractPropagationCache, n_new::Int)
 
-Give the zones room for `n_new` terms between them. The zone assignment is a hash, so the shares are
-equal.
-
-A zone holds the terms addressed to it next to the terms it already has, so its own share has to
-cover that peak, not just the terms that survive the gate.
+Give the zones room for `n_new` terms between them, in equal shares because the zone assignment spreads the terms evenly.
+Each zone holds the terms it receives next to the terms it already has, so its share has to cover that peak and not only the terms that survive the gate.
 """
 function _resizezones!(prop_cache::AbstractPropagationCache, n_new::Int)
     per_zone = cld(n_new, nzones(prop_cache))

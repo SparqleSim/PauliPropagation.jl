@@ -8,18 +8,16 @@
 """
     staysinzone(gate)::Bool
 
-Whether `gate` leaves every term in the zone that owns it, in which case every zone applies it with
-the machinery of the sum it carries and no term travels. Defaults to `false`, and can be overloaded
-for custom gates that only rescale coefficients.
+Whether `gate` leaves every term in the zone that owns it, in which case every zone applies the gate with the machinery of the sum it carries and no term is moved between zones.
+Defaults to `false`, and can be overloaded for custom gates that only rescale coefficients.
 """
 staysinzone(gate) = false
 
 """
     applytoallzones!(gate, prop_cache, args...; thread=true, kwargs...)
 
-Applies `gate` to every term of every zone via `apply`, parking the terms it makes with the zones that
-own them. This is the generic path, taken by every gate that does not branch off a copy of the terms
-it is applied to.
+Apply `gate` to every term of every zone via `apply()`, collecting the terms it creates in the outboxes of the zones that own them.
+This is the generic path, taken by every gate that does not move all of the terms it branches by the same bitmask.
 """
 function applytoallzones!(gate, prop_cache::AbstractPropagationCache, args...;
     thread::Bool=true, kwargs...)
@@ -41,14 +39,9 @@ end
 """
     applyxorbranch!(branchfunc, prop_cache, mask; thread=true, kwargs...)
 
-Applies a gate that moves every term it branches by the same `⊻ mask`.
-
-For every term, `branchfunc(term, coeff)` returns `nothing` to leave it untouched, or
-`(kept_coeff, new_coeff, branches)`: the term keeps `kept_coeff`, and if `branches` the term
-`term ⊻ mask` is parked with `new_coeff`.
-
-The zone assignment is linear in the term, so the gate permutes the zones and every zone parks into a
-single box and receives from a single zone.
+Apply a gate that moves every term it branches by the same `⊻ mask`.
+For every term, `branchfunc(term, coeff)` returns `nothing` to leave the term untouched, or `(kept_coeff, new_coeff, branches)`, where the term keeps `kept_coeff` and, if `branches`, the term `term ⊻ mask` is collected with `new_coeff`.
+Because the zone assignment is linear in the term, the gate permutes the zones, so that every zone writes into a single box of its outbox and receives from a single zone.
 """
 function applyxorbranch!(branchfunc::F, prop_cache::AbstractPropagationCache, mask;
     thread::Bool=true, kwargs...) where {F<:Function}
@@ -61,11 +54,10 @@ end
 """
     applyxorbranchzones!(zonefunc, prop_cache, mask; thread=true, kwargs...)
 
-[`applyxorbranch!`](@ref) with the first pass left to the caller: `zonefunc(zonecache, box)` applies
-the gate to one zone and writes what it branches into `box`, rather than being handed one term at a
-time. The zone that owns those terms then takes delivery of the box and merges it in.
-
-`kwargs` reach the merge, `truncfunc` included.
+Version of `applyxorbranch!()` with the first pass left to the caller.
+`zonefunc(zonecache, box)` applies the gate to one entire zone and writes the terms it branches into `box`, instead of being handed one term at a time.
+The zone that owns those terms then collects the box and merges it in.
+Further `kwargs` are passed on to the merge, including `truncfunc`.
 """
 function applyxorbranchzones!(zonefunc::F, prop_cache::AbstractPropagationCache, mask;
     thread::Bool=true, kwargs...) where {F<:Function}

@@ -14,22 +14,17 @@ using .PropagationBase: _park!
     MultiPauliSum(nq::Integer, n_zones=defaultnzones())
     MultiPauliSum(CoeffType, nq::Integer, n_zones=defaultnzones())
 
-A Pauli sum split over `n_zones` work zones, each a Pauli sum of the type it was built from that a
-single thread owns. `n_zones` defaults to [`defaultnzones`](@ref). Every zone runs single-threaded, so
-parallelism comes from the zones alone.
+`MultiPauliSum` is a `struct` that represents a Pauli sum split over `n_zones` work zones, where every zone is a Pauli sum of the type that it was constructed from and is owned by a single thread.
+`n_zones` defaults to `defaultnzones()`. Operations within a zone are single-threaded, so all parallelism comes from the zones.
 
-`zoneof` assigns every Pauli string to one zone, so all copies of a Pauli string reach the same owner
-and deduplication never has to look outside a zone. A gate makes Pauli strings that belong to other
-zones. Rather than writing into a zone it does not own, a thread parks them in an outbox, and the
-owner picks them up in a second pass. Every zone is then read and written by one thread only, and no
-operation on a zone needs to be thread-safe.
+`zoneof()` assigns every Pauli string to one zone, so that all copies of a Pauli string end up in the same zone and merging never has to look beyond a zone.
+The Pauli strings that a gate creates for other zones are collected in an outbox and picked up by the owning zone in a second pass, rather than written into a zone that another thread owns.
+Every zone is thus read and written by one thread only, and no operation on a zone needs to be thread-safe.
 
-Splitting a `PauliSum` gives zones of `PauliSum`s, splitting a `VectorPauliSum` gives zones of
-`VectorPauliSum`s, and the zone type is what decides how a zone propagates.
+Splitting a `PauliSum` gives zones of `PauliSum`s and splitting a `VectorPauliSum` gives zones of `VectorPauliSum`s, and the type of the zones determines how they are propagated.
 
-`n_zones` must be a power of two, which makes the zone assignment linear in the Pauli string and lets
-`PauliRotation` and the other gates that branch by a fixed mask take a faster path. See
-[`ZoneMap`](@ref).
+`n_zones` must be a power of two, which makes the zone assignment linear in the Pauli string and lets `PauliRotation` and the other gates that branch by a fixed bitmask take a faster path.
+See `ZoneMap`.
 
 # Examples
 ```julia
@@ -99,9 +94,8 @@ end
     PauliSum(msum::MultiPauliSum)
     VectorPauliSum(msum::MultiPauliSum)
 
-Gather the zones of `msum` back into a single Pauli sum of the given type. Every zone holds Pauli
-strings no other zone holds, so this needs no deduplication across zones, and it leaves `msum`
-unchanged.
+Gather the zones of `msum` back into a single Pauli sum of the indicated type, leaving `msum` unchanged.
+No merging across zones is needed, because every Pauli string is held by exactly one zone.
 """
 function (::Type{TS})(msum::MultiPauliSum) where {TS<:AbstractTermSum}
     psum = TS(coefftype(msum), nqubits(msum))

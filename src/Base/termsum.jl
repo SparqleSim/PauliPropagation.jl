@@ -425,8 +425,8 @@ end
 """
     pushterm!(term_sum::AbstractTermSum, term, coeff)
 
-Append `term` with `coeff` without looking for a copy of it. An array-backed sum then holds the term
-twice until it is merged; a dict-backed one merges on the spot, since its terms are its keys.
+Append `term` with coefficient `coeff` without checking whether `term_sum` already contains `term`.
+An array-based term sum then holds the term twice until it is merged, while a dict-based one merges immediately, because its terms are the keys.
 """
 pushterm!(term_sum::AbstractTermSum, term, coeff) = _pushterm!(StorageType(term_sum), term_sum, term, coeff)
 
@@ -442,7 +442,7 @@ end
 """
     sizehint!(term_sum::AbstractTermSum, n)
 
-Reserve room for `n` terms without changing what `term_sum` holds.
+Hint to `term_sum` to reserve space for `n` terms, without changing the terms it contains.
 """
 Base.sizehint!(term_sum::AbstractTermSum, n) = _sizehint!(StorageType(term_sum), term_sum, n)
 _sizehint!(::DictStorage, term_sum::AbstractTermSum, n) = (sizehint!(storage(term_sum), n); term_sum)

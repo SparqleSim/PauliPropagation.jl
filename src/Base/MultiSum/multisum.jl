@@ -9,12 +9,9 @@
 """
     MultiSumStorage(zonestorage::StorageType) <: StorageType
 
-Storage trait of a term sum split over work zones, each a term sum of the carried type that a single
-thread owns. `zonestorage` is the storage trait of the zones, which every zone-local operation
-dispatches on.
-
-A term sum carries this trait by returning its zones from `storage`, and supplies its
-[`ZoneMap`](@ref) through `zonemap` and its own type through [`withzones`](@ref).
+Storage type of a term sum that is split over work zones, each of which is a term sum of the carried type that one thread owns.
+`zonestorage` is the storage type of the zones, on which all zone-local operations dispatch.
+A term sum carries this storage type by returning its zones from `storage()`, and additionally needs to define `zonemap()` and `withzones()`.
 """
 struct MultiSumStorage{ST<:StorageType} <: StorageType
     zonestorage::ST
@@ -25,14 +22,14 @@ _storagetype(zones::Vector{<:AbstractTermSum}) = MultiSumStorage(StorageType(fir
 """
     zonestorage(thing)
 
-The storage trait of the zones of `thing`, which is a multi sum or a cache propagating one.
+Get the storage type of the zones of `thing`, which is either a multi sum or a propagation cache of one.
 """
 zonestorage(thing) = StorageType(thing).zonestorage
 
 """
     zones(msum::AbstractTermSum)
 
-The term sums that `msum` is split over, which is the storage a multi sum carries.
+Get the term sums that `msum` is split over, which is the storage that a multi sum carries.
 """
 zones(msum::AbstractTermSum) = _zones(StorageType(msum), msum)
 _zones(::MultiSumStorage, msum::AbstractTermSum) = storage(msum)
@@ -40,30 +37,31 @@ _zones(::MultiSumStorage, msum::AbstractTermSum) = storage(msum)
 """
     zonemap(msum::AbstractTermSum)
 
-The [`ZoneMap`](@ref) that assigns a term to its zone. Defaults to the `zonemap` field of `msum`.
+Get the `ZoneMap` that assigns each term to the zone that owns it.
+Defaults to the `zonemap` field of `msum`.
 """
 zonemap(msum::AbstractTermSum) = msum.zonemap
 
 """
     withzones(msum::AbstractTermSum, new_zones)
 
-`msum` with its zones replaced by `new_zones`, everything else carried over. This is the one thing a
-multi sum has to say about its own type; the zone-wise `similar`, `emptylike` and `activesum` are
-built on it.
+Return `msum` with its zones replaced by `new_zones` and everything else carried over.
+This is the only function that needs to know the concrete type of a multi sum.
+The zone-wise `similar()`, `emptylike()` and `activesum()` are built on it.
 """
 withzones(msum::TS, new_zones) where {TS<:AbstractTermSum} = _thrownotimplemented(TS, :withzones)
 
 """
     nzones(msum::AbstractTermSum)
 
-The number of work zones that `msum` is split over.
+Get the number of work zones that `msum` is split over.
 """
 nzones(msum::AbstractTermSum) = length(zones(msum))
 
 """
     zonesizes(msum::AbstractTermSum)
 
-The number of terms in each zone of `msum`.
+Get the number of terms in each zone of `msum`.
 """
 zonesizes(msum::AbstractTermSum) = map(length, zones(msum))
 
@@ -73,14 +71,11 @@ zonesizes(msum::AbstractTermSum) = map(length, zones(msum))
 """
     ZoneMap(TermType, n_zones)
 
-Assigns every term to one of `n_zones` zones, which must be a power of two. Each bit of the zone
-index is a parity of the term under a fixed mask, so the index reads every site and no zone is
-favoured.
-
-The assignment is then linear over GF(2), `zoneof(t ⊻ m) - 1 == (zoneof(t) - 1) ⊻ (zoneof(m) - 1)`,
-so a gate that moves every term it branches by the same `⊻ m` permutes the zones: each zone sends all
-of them to exactly one other zone, and each zone receives from exactly one. This is what
-[`applyxorbranch!`](@ref) parks into a single box on.
+Assignment of terms of type `TermType` to one of `n_zones` zones, where `n_zones` must be a power of two.
+Each bit of the zone index is the parity of the term under a fixed mask, which reads every site and spreads the terms evenly over the zones.
+This makes the assignment linear over GF(2), that is `zoneof(t ⊻ m) - 1 == (zoneof(t) - 1) ⊻ (zoneof(m) - 1)`.
+A gate that moves all of the terms it branches by the same `⊻ m` therefore permutes the zones, with each zone sending to and receiving from exactly one other zone.
+This is what `applyxorbranch!()` relies on.
 """
 struct ZoneMap{TT}
     masks::Vector{TT}
@@ -100,9 +95,8 @@ end
 """
     defaultnzones()
 
-The number of zones to split over when none is given: two per thread, rounded up to a power of two,
-and a single zone when single-threaded. Rounding down instead leaves threads idle for a whole round
-whenever the thread count is not a power of two.
+Get the number of zones to split over when none is given, which is two per thread rounded up to a power of two, and a single zone when single-threaded.
+Rounding down instead would leave threads idle for a whole round whenever the number of threads is not a power of two.
 """
 defaultnzones() = nextpow(2, 2 * maxtasks(true) - 1)
 
@@ -110,7 +104,7 @@ defaultnzones() = nextpow(2, 2 * maxtasks(true) - 1)
     zoneof(msum, term)
     zoneof(zone_map::ZoneMap, term)
 
-The zone that owns `term`.
+Get the index of the zone that owns `term`.
 """
 @inline zoneof(zone_map::ZoneMap, term) = _zonebits(term, zone_map.masks) + 1
 @inline zoneof(msum, term) = zoneof(zonemap(msum), term)
@@ -211,12 +205,9 @@ _norm(::MultiSumStorage, msum::AbstractTermSum, L::Real) = LinearAlgebra.norm([n
 """
     emptylike(term_sum::AbstractTermSum)
 
-An empty term sum of the type of `term_sum`, term type included. A zone must carry the very type it
-was seeded from, so it is rebuilt from the empty storage rather than from the coefficient type and
-the number of sites, and `similar` is no help because it keeps the length.
-
-The dict and array defaults assume the constructor `TS(nsites, storage...)`. Overload this for a type
-that carries more than that.
+Create an empty term sum of the same type as `term_sum`, including its term type.
+This differs from `similar()`, which for array-based term sums returns a term sum of the same length as `term_sum`.
+The default implementations assume the constructor `TS(nsites, storage...)` and can be overloaded for types that carry more than that.
 """
 emptylike(term_sum::AbstractTermSum) = _emptylike(StorageType(term_sum), term_sum)
 _emptylike(::MultiSumStorage, msum::AbstractTermSum) = withzones(msum, map(emptylike, zones(msum)))
