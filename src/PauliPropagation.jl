@@ -156,6 +156,12 @@ export
     resample!
 
 
+include("countpaulis.jl")
+export
+    @countpaulis,
+    @peakpaulis
+
+
 include("PathProperties/PathProperties.jl")
 export
     PathProperties,

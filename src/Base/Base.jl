@@ -64,6 +64,8 @@ export
     ParametrizedGate,
     countparameters
 
+include("./countterms.jl")
+
 include("./propagate.jl")
 export propagate,
     propagate!,

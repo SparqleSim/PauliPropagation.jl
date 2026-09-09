@@ -96,6 +96,9 @@ mutable struct _BackwardSweepState{OC,DC}
     commutator_buffer::Vector{ComplexF64}
 end
 
+# the backward sweep is carried by this state instead of a cache, so count the operator sum
+PropagationBase._termcount(state::_BackwardSweepState) = length(state.op_cache)
+
 # Records the gradient component for PauliRotation
 function _undostep!(gate::PauliRotation, state::_BackwardSweepState, theta; thread::Bool=true, kwargs...)
     gate_mask = symboltoint(state.nq, gate.symbols, gate.qinds)
