@@ -115,21 +115,17 @@ _bytesof(terms, gate_mask) = terms
     unsafe_load(words + (ii - 1) * Base.aligned_sizeof(TT) + 8 * (m.inds[k] - 1))
 
 """
-    _gatecommutes(gate_mask, pstr, bytes, ii)
-    _gatecommutesat(gate_mask, terms, bytes, ii)
+    _gatecommutes(gate_mask, terms, bytes, ii)
     _gateproduct(gate_mask, pstr, bytes, ii)
 
 Commutation check and rotation product for the Pauli string at index `ii`, where `bytes` is `_bytesof(terms, gate_mask)`.
-Any mask that is neither a `ByteMask` nor a `WordMask` falls back to the versions acting on the whole Pauli string.
-`_gatecommutesat` avoids reading the Pauli string itself where the mask allows it.
+Any mask that is neither a `ByteMask` nor a `WordMask` falls back to reading the whole Pauli string.
 """
-@inline _gatecommutes(gate_mask, pstr, bytes, ii) = PauliPropagation.commutes(gate_mask, pstr)
+@inline _gatecommutes(gate_mask, terms, bytes, ii) = PauliPropagation.commutes(gate_mask, (@inbounds terms[ii]))
 @inline _gateproduct(gate_mask, pstr, bytes, ii) = PauliPropagation.paulirotationproduct(gate_mask, pstr)
 
-@inline _gatecommutesat(gate_mask, terms, bytes, ii) = _gatecommutes(gate_mask, (@inbounds terms[ii]), bytes, ii)
-
 # the words anticommute independently, so the string commutes when they do so an even number of times
-@inline function _gatecommutesat(m::WordMask{TT,N}, terms, words, ii) where {TT,N}
+@inline function _gatecommutes(m::WordMask{TT,N}, terms, words, ii) where {TT,N}
     flags = ntuple(Val(N)) do k
         w = _wordat(words, ii, m, k)
         count_ones(((w >> 1) & m.ma[k]) ⊻ (w & m.mb[k]))
@@ -146,7 +142,7 @@ end
 end
 
 # two bytes commute overall when they anticommute in the same number of places, so when they agree
-@inline function _gatecommutes(m::ByteMask, pstr, bytes, ii)
+@inline function _gatecommutes(m::ByteMask, terms, bytes, ii)
     return PauliPropagation._bitcommutes(m.bytes[1], _byteat(bytes, ii, m, 1)) ==
            PauliPropagation._bitcommutes(m.bytes[2], _byteat(bytes, ii, m, 2))
 end

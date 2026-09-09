@@ -32,6 +32,7 @@ zonestorage(thing) = StorageType(thing).zonestorage
 Get the term sums that `msum` is split over, which is the storage that a multi sum carries.
 """
 zones(msum::AbstractTermSum) = _zones(StorageType(msum), msum)
+_zones(::StorageType, msum::TS) where {TS<:AbstractTermSum} = _thrownotimplemented(TS, :zones)
 _zones(::MultiSumStorage, msum::AbstractTermSum) = storage(msum)
 
 """
@@ -95,10 +96,15 @@ end
 """
     defaultnzones()
 
-Get the number of zones to split over when none is given, which is two per thread rounded up to a power of two, and a single zone when single-threaded.
-Rounding down instead would leave threads idle for a whole round whenever the number of threads is not a power of two.
+Get the number of zones to split over when none is given, which is one zone per thread if the number of threads is a power of two, and twice the next power of two otherwise.
+
+The zones of a round are handed to the threads in contiguous chunks, so a zone count that the number of threads divides keeps every thread busy for the whole round, and splitting it any further only adds per-zone overhead.
+A number of threads that divides no power of two leaves some threads with one zone more than the others, and more zones make that imbalance a smaller share of the round: six threads keep 67% of their capacity busy over eight zones, but 89% over sixteen.
 """
-defaultnzones() = nextpow(2, 2 * maxtasks(true) - 1)
+function defaultnzones()
+    n_tasks = maxtasks(true)
+    return ispow2(n_tasks) ? n_tasks : 2 * nextpow(2, n_tasks)
+end
 
 """
     zoneof(msum, term)
@@ -187,6 +193,7 @@ _coefftype(::MultiSumStorage, msum::AbstractTermSum) = coefftype(first(zones(msu
 
 # an empty multi sum of the same type is exactly what `emptylike` builds
 _similar(::MultiSumStorage, msum::AbstractTermSum) = emptylike(msum)
+_emptylike(::MultiSumStorage, msum::AbstractTermSum) = withzones(msum, map(emptylike, zones(msum)))
 
 # the zone assignment is a hash, so the zones take equal shares of the hint
 _sizehint!(::MultiSumStorage, msum::AbstractTermSum, n) =
@@ -202,14 +209,3 @@ _norm(::MultiSumStorage, msum::AbstractTermSum, L::Real) = LinearAlgebra.norm([n
 # every zone of a multi sum carries the same one.
 @inline _park!(msum::AbstractTermSum, term, coeff) = _pushterm!(zonestorage(msum), _zone(msum, term), term, coeff)
 
-"""
-    emptylike(term_sum::AbstractTermSum)
-
-Create an empty term sum of the same type as `term_sum`, including its term type.
-This differs from `similar()`, which for array-based term sums returns a term sum of the same length as `term_sum`.
-The default implementations assume the constructor `TS(nsites, storage...)` and can be overloaded for types that carry more than that.
-"""
-emptylike(term_sum::AbstractTermSum) = _emptylike(StorageType(term_sum), term_sum)
-_emptylike(::MultiSumStorage, msum::AbstractTermSum) = withzones(msum, map(emptylike, zones(msum)))
-_emptylike(::DictStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(storage(term_sum)))
-_emptylike(::ArrayStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(terms(term_sum)), empty(coefficients(term_sum)))

@@ -202,9 +202,7 @@ export
     zones,
     nzones,
     zonesizes,
-    zonemap,
-    zoneof,
-    staysinzone
+    zoneof
 
 include("Symmetry/Symmetry.jl")
 export

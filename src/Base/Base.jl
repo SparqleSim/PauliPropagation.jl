@@ -27,6 +27,7 @@ export
     pushterm!,
     empty!,
     similar,
+    emptylike,
     capacity,
     sortedprefix,
     setsortedprefix!
@@ -101,7 +102,6 @@ export
     zones,
     zonemap,
     zonestorage,
-    emptylike,
     withzones,
     defaultnzones,
     zonecaches,

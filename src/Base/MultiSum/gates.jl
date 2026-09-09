@@ -110,7 +110,7 @@ function _branchterms!(parkfunc::P, branchfunc::F, prop_cache::AbstractPropagati
         isnothing(branched) && continue
 
         kept_coeff, new_coeff, branches = branched
-        _setcoeff!(zone_storage, mainsum(zonecache), zone_coeffs, ii, term, kept_coeff)
+        _setcoeff!(zone_storage, zonecache, zone_coeffs, ii, term, kept_coeff)
         branches && parkfunc(term ⊻ mask, new_coeff)
     end
 
@@ -220,5 +220,5 @@ _emptyzone!(::ArrayStorage, zonecache) = (setactivesize!(zonecache, 0); setsorte
 
 # one loop serves both storages, so it hands over everything either of them needs: a dict writes by
 # term, an array by index into the coefficients its caller hoisted out of the loop
-@inline _setcoeff!(::DictStorage, term_sum, coeffs, ii::Int, term, coeff) = set!(term_sum, term, coeff)
-@inline _setcoeff!(::ArrayStorage, term_sum, coeffs, ii::Int, term, coeff) = (coeffs[ii] = coeff)
+@inline _setcoeff!(::DictStorage, zonecache, coeffs, ii::Int, term, coeff) = set!(mainsum(zonecache), term, coeff)
+@inline _setcoeff!(::ArrayStorage, zonecache, coeffs, ii::Int, term, coeff) = (coeffs[ii] = coeff)

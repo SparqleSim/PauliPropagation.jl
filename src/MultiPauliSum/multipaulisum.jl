@@ -5,8 +5,6 @@
 ##
 ###
 
-using .PropagationBase: _park!
-
 """
     MultiPauliSum(psum::AbstractPauliSum, n_zones=defaultnzones())
     MultiPauliSum(pstr::PauliString, n_zones=defaultnzones())
@@ -58,7 +56,7 @@ _emptyzones(seed::AbstractPauliSum, nq::Integer, n_zones::Integer) =
 
 function _fillzones!(msum::MultiPauliSum, psum)
     for (pstr, coeff) in psum
-        _park!(msum, pstr, coeff)
+        PropagationBase._park!(msum, pstr, coeff)
     end
     return merge!(msum)
 end

@@ -198,7 +198,7 @@ end
         bytes = _bytesof(terms, gate_mask)
 
         @inbounds for ii in lo:hi
-            does_commute = _gatecommutesat(gate_mask, terms, bytes, ii)
+            does_commute = _gatecommutes(gate_mask, terms, bytes, ii)
             _branchcondition(Val(GateType), does_commute) || continue
 
             pstr = terms[ii]

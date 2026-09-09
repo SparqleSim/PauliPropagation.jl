@@ -244,7 +244,7 @@ end
     @test isempty(empty_msum) && nzones(empty_msum) == 4 && eltype(zones(empty_msum)) == typeof(vpsum)
 
     # the zone accessors are for multi sums alone
-    @test_throws MethodError zones(PauliSum(nq))
+    @test_throws ErrorException zones(PauliSum(nq))
 end
 
 @testset "MultiPauliSum constructors and conversions" begin

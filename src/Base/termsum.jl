@@ -459,6 +459,18 @@ function _similar(::StorageType, term_sum::AbstractTermSum)
 end
 
 
+"""
+    emptylike(term_sum::AbstractTermSum)
+
+Create an empty term sum of the same type as `term_sum`, including its term type.
+This differs from `similar()`, which for array-based term sums returns a term sum of the same length as `term_sum`.
+The default implementations assume the constructor `TS(nsites, storage...)` and can be overloaded for types that carry more than that.
+"""
+emptylike(term_sum::AbstractTermSum) = _emptylike(StorageType(term_sum), term_sum)
+_emptylike(::DictStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(storage(term_sum)))
+_emptylike(::ArrayStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(terms(term_sum)), empty(coefficients(term_sum)))
+
+
 ### Short out-of-place algebra
 
 function Base.:+(term_sum1::AbstractTermSum, term_sum2::AbstractTermSum)
