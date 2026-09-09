@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Advanced Performance · PauliPropagation.jl</title><meta name="title" content="Advanced Performance · PauliPropagation.jl"/><meta property="og:title" content="Advanced Performance · PauliPropagation.jl"/><meta property="twitter:title" content="Advanced Performance · PauliPropagation.jl"/><meta name="description" content="Documentation for PauliPropagation.jl."/><meta property="og:description" content="Documentation for PauliPropagation.jl."/><meta property="twitter:description" content="Documentation for PauliPropagation.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/><link href="../../assets/custom.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.png" alt="PauliPropagation.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">PauliPropagation.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../1-basic-example/">1. Basic Example Notebook</a></li><li><a class="tocitem" href="../2-datatypes/">2. Explaining our Data Types</a></li><li><a class="tocitem" href="../3-utility-example/">3. Utility Example</a></li><li><a class="tocitem" href="../4-pauli-transfer-matrix/">4. Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../5-custom-gates/">5. How to Define Custom Gates</a></li><li><a class="tocitem" href="../6-numerical-certificate/">6. Numerical Certificates</a></li><li><a class="tocitem" href="../7-custom-pathproperties/">7. Record custom path properties</a></li><li><a class="tocitem" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation</a></li><li><a class="tocitem" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates</a></li><li class="is-active"><a class="tocitem" href>Advanced Performance</a><ul class="internal"><li><a class="tocitem" href="#A-6\\times6-tilted-field-Ising-circuit"><span>A <span>$6\times6$</span> tilted-field Ising circuit</span></a></li><li><a class="tocitem" href="#Switching-to-VectorPauliSum"><span>Switching to <code>VectorPauliSum</code></span></a></li><li><a class="tocitem" href="#Fused-kernels-in-PauliPropagation.Performance"><span>Fused kernels in <code>PauliPropagation.Performance</code></span></a></li><li><a class="tocitem" href="#Threading"><span>Threading</span></a></li><li><a class="tocitem" href="#Splitting-the-sum-over-work-zones-with-MultiPauliSum"><span>Splitting the sum over work zones with <code>MultiPauliSum</code></span></a></li><li><a class="tocitem" href="#Sizing-the-scratch-space-up-front-with-resize!"><span>Sizing the scratch space up front with <code>resize!</code></span></a></li><li><a class="tocitem" href="#Before-and-after"><span>Before and after</span></a></li><li><a class="tocitem" href="#Propagating-layer-by-layer-with-propagate!"><span>Propagating layer by layer with <code>propagate!</code></span></a></li><li><a class="tocitem" href="#Reusing-the-scratch-space-with-PropagationCache"><span>Reusing the scratch space with <code>PropagationCache</code></span></a></li><li><a class="tocitem" href="#Sizing-that-cache-up-front-too"><span>Sizing that cache up front too</span></a></li><li><a class="tocitem" href="#Before-and-after,-layer-by-layer"><span>Before and after, layer by layer</span></a></li><li><a class="tocitem" href="#Not-all-gates-cost-the-same"><span>Not all gates cost the same</span></a></li><li><a class="tocitem" href="#Summary"><span>Summary</span></a></li></ul></li><li><a class="tocitem" href="../mcpropagate/">Monte Carlo Propagation</a></li><li><a class="tocitem" href="../ex_ttfi_op_evolution/">Operator evolution Tilted Transverse Field Ising model</a></li><li><a class="tocitem" href="../imaginary-time-evolution/">Imaginary Time Evolution</a></li><li><a class="tocitem" href="../introduction-example-error-mitigation/">Error Mitigation using Pauli Propagation</a></li><li><a class="tocitem" href="../circuit_compression_example/">Circuit compression</a></li><li><a class="tocitem" href="../PP-from-Python/">Using PauliPropagation.jl from Python</a></li><li><a class="tocitem" href="../PP-Surrogate/">The Pauli Propagation Surrogate</a></li><li><a class="tocitem" href="../Symmetry-PP/">Adding Symmetry to Pauli Propagation</a></li><li><a class="tocitem" href="../visualization_example/">Pauli Evolution Visualization Examples</a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../../api/PauliDataTypes/">Data types</a></li><li><a class="tocitem" href="../../api/PauliAlgebra/">Pauli Algebra</a></li><li><a class="tocitem" href="../../api/Gates/">Gates</a></li><li><a class="tocitem" href="../../api/Circuits/">Circuits</a></li><li><a class="tocitem" href="../../api/Propagation/">Propagation</a></li><li><a class="tocitem" href="../../api/MonteCarlo/">Monte Carlo</a></li><li><a class="tocitem" href="../../api/StateOverlap/">State Overlap</a></li><li><a class="tocitem" href="../../api/Gradients/">Gradients</a></li><li><a class="tocitem" href="../../api/PathProperties/">Path Properties</a></li><li><a class="tocitem" href="../../api/PauliTransferMatrix/">Pauli Transfer Matrix</a></li><li><a class="tocitem" href="../../api/Surrogate/">Surrogate</a></li><li><a class="tocitem" href="../../api/Symmetry/">Symmetry</a></li><li><a class="tocitem" href="../../api/NumericalCertificates/">Numerical Certificates</a></li><li><a class="tocitem" href="../../api/Truncations/">Truncations</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Advanced Performance</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Advanced Performance</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SparqleSim/PauliPropagation.jl/blob/main/docs/src/examples/advanced_performance.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Advanced-Performance"><a class="docs-heading-anchor" href="#Advanced-Performance">Advanced Performance</a><a id="Advanced-Performance-1"></a><a class="docs-heading-anchor-permalink" href="#Advanced-Performance" title="Permalink"></a></h1><p><code>PauliPropagation.jl</code> is designed to be modular, extensible, and easy to use at a high level. At the same time, we want to enable state-of-the-art Pauli propagation performance. This is a notebook explaining how to squeeze the most out of this library. We change one thing at a time on one and the same example circuit, so that you can see what every step is worth.</p><pre><code class="language-julia hljs">using Pkg
+Pkg.activate(&quot;.&quot;)
+using PauliPropagation
+using PauliPropagation.Performance
+using Base.Threads
+using Printf
+using Plots
+
+println(&quot;Threads.nthreads() = $(nthreads())&quot;)
+println(&quot;Note thread-count and timings may vary based on the machine this notebook is run on.&quot;)</code></pre><pre><code class="nohighlight hljs">[32m[1m  Activating[22m[39m 
+
+Threads.nthreads() = 1
+
+
+project at `~/work/PauliPropagation.jl/PauliPropagation.jl/examples`
+
+
+Note thread-count and timings may vary based on the machine this notebook is run on.</code></pre><h2 id="A-6\\times6-tilted-field-Ising-circuit"><a class="docs-heading-anchor" href="#A-6\\times6-tilted-field-Ising-circuit">A <span>$6\times6$</span> tilted-field Ising circuit</a><a id="A-6\\times6-tilted-field-Ising-circuit-1"></a><a class="docs-heading-anchor-permalink" href="#A-6\\times6-tilted-field-Ising-circuit" title="Permalink"></a></h2><p>We consider the example quantum circuits that corresponds to the Trotterized dynamics of a <span>$6\times6$</span> tilted-field Ising Hamiltonian. One Trotter layer consists of single-qubit <span>$R_x$</span> and <span>$R_z$</span> rotations plus nearest-neighbour <span>$R_{zz}$</span> rotations. The observable is <span>$Z_{21}Z_{22}$</span> sitting right in the middle of the grid.</p><pre><code class="language-julia hljs">nx = 6
+ny = 6
+nq = nx * ny
+
+dt = 0.05
+h = 1.0
+J = 0.5
+
+topology = rectangletopology(nx, ny)
+layer = PauliRotation[]
+rxlayer!(layer, nq)
+rzlayer!(layer, nq)
+rzzlayer!(layer, topology)
+
+thetas = ones(countparameters(layer)) * dt * 2
+
+x_inds = getparameterindices(layer, PauliRotation, [:X])
+z_inds = getparameterindices(layer, PauliRotation, [:Z])
+zz_inds = getparameterindices(layer, PauliRotation, [:Z, :Z])
+thetas[x_inds] .*= h
+thetas[z_inds] .*= h
+thetas[zz_inds] .*= J
+
+pstr = PauliString(nq, [:Z, :Z], [21, 22])
+min_abs_coeff = 2.0^(-20)
+
+nlayers = 14</code></pre><h2 id="Switching-to-VectorPauliSum"><a class="docs-heading-anchor" href="#Switching-to-VectorPauliSum">Switching to <code>VectorPauliSum</code></a><a id="Switching-to-VectorPauliSum-1"></a><a class="docs-heading-anchor-permalink" href="#Switching-to-VectorPauliSum" title="Permalink"></a></h2><p>Most of our examples use the <code>PauliSum</code> type, which stores Pauli strings and their coefficients in a <code>Dict</code>. It is flexible and generally a robust choice. Our first performance suggestion is to switch to <code>VectorPauliSum</code>, which stores Pauli strings and their coefficients in two <code>Vector</code>s. This is generally faster for non-branching gates such as <code>CliffordGate</code> and <code>DepolarizingNoise</code>, but we also have optimized code for the very common <code>PauliRotation</code> gate.</p><p>Let us run all 14 layers with either type. The <code>PauliSum</code> run is slow enough that we time it once, compiling the code on one layer up front so that the timing does not carry the compilation. Every other configuration in this notebook first runs the propagation once as written, which is also what gives us the Pauli sum to look at, and then times the fastest of a few repetitions, so that growing the arrays to their final size for the first time stays out of the number.</p><pre><code class="language-julia hljs">circuit = repeat(layer, nlayers)
+circuit_thetas = repeat(thetas, nlayers)
+
+nreps = 3
+
+function besttime(f::F) where {F}
+    t = Inf
+    for _ in 1:nreps
+        GC.gc()
+        t = min(t, @elapsed f())
+    end
+    return t
+end</code></pre><pre><code class="nohighlight hljs">besttime (generic function with 1 method)</code></pre><pre><code class="language-julia hljs"># one layer up front, so that the single run below does not carry the compilation
+propagate(layer, PauliSum(pstr), thetas; min_abs_coeff)
+
+t_dict = @elapsed dict_psum = propagate(circuit, PauliSum(pstr), circuit_thetas; min_abs_coeff)
+
+vec_psum = propagate(circuit, VectorPauliSum(pstr), circuit_thetas; min_abs_coeff)
+
+t_vec = besttime(() -&gt; propagate(circuit, VectorPauliSum(pstr), circuit_thetas; min_abs_coeff))
+
+@printf(&quot;PauliSum:        %5.2f s   (%d Pauli terms)\n&quot;, t_dict, length(dict_psum))
+@printf(&quot;VectorPauliSum:  %5.2f s   (%d Pauli terms)\n&quot;, t_vec, length(vec_psum))</code></pre><pre><code class="nohighlight hljs">PauliSum:        25.28 s   (1036142 Pauli terms)
+VectorPauliSum:   8.65 s   (1036142 Pauli terms)</code></pre><p>Both give the same expectation value <span>$\langle Z_{21} Z_{22}\rangle$</span>.</p><pre><code class="language-julia hljs">overlapwithzero(dict_psum), overlapwithzero(vec_psum)</code></pre><pre><code class="nohighlight hljs">(0.6696851623009783, 0.6696851623009762)</code></pre><h2 id="Fused-kernels-in-PauliPropagation.Performance"><a class="docs-heading-anchor" href="#Fused-kernels-in-PauliPropagation.Performance">Fused kernels in <code>PauliPropagation.Performance</code></a><a id="Fused-kernels-in-PauliPropagation.Performance-1"></a><a class="docs-heading-anchor-permalink" href="#Fused-kernels-in-PauliPropagation.Performance" title="Permalink"></a></h2><p>The default propagation applies a gate to all Pauli strings, then merges the duplicates, then truncates, each as its own pass over the Pauli sum. We maintain this modularity so users can easily hook into it and extend the library. <code>PauliPropagation.Performance</code> is an opt-in module whose kernels fold those steps into fewer passes over a <code>VectorPauliSum</code>, which saves the memory traffic in between but is harder to extend. It brings its own <code>propagate</code> and <code>propagate!</code> with the same signatures, so all you have to do is qualify the call.</p><p>These kernels are somewhat experimental, and their coefficients can differ from the default ones in the last digits. Please report any issues you encounter via the issue tracker. Passing <code>fused=false</code> falls back to the default behavior.</p><pre><code class="language-julia hljs">fused_psum = Performance.propagate(circuit, VectorPauliSum(pstr), circuit_thetas; min_abs_coeff)
+
+t_fused = besttime(() -&gt; Performance.propagate(circuit, VectorPauliSum(pstr), circuit_thetas; min_abs_coeff))
+
+@printf(&quot;Performance.propagate:  %5.2f s   (%d Pauli terms)\n&quot;, t_fused, length(fused_psum))
+@printf(&quot;⟨Z21 Z22⟩ = %.14f  vs  %.14f\n&quot;, overlapwithzero(fused_psum), overlapwithzero(vec_psum))</code></pre><pre><code class="nohighlight hljs">Performance.propagate:   2.60 s   (1036142 Pauli terms)
+⟨Z21 Z22⟩ = 0.66968516230098  vs  0.66968516230098</code></pre><h2 id="Threading"><a class="docs-heading-anchor" href="#Threading">Threading</a><a id="Threading-1"></a><a class="docs-heading-anchor-permalink" href="#Threading" title="Permalink"></a></h2><p>Every run so far was multi-threaded, which is the default. <code>thread=false</code> forces a single-threaded propagation. Threading here means splitting one gate application across all threads, so it only pays off once the Pauli sum is large enough that the work per task outweighs the cost of spawning the tasks. Even at a million Pauli terms the return is modest, and on a smaller example or a busier machine it can just as well come out negative. The <code>MultiPauliSum</code> below threads differently and does better at all sizes.</p><p>Threading is also the wrong choice if you already parallelize at a higher level, because the nested tasks would only compete for the same cores.</p><pre><code class="language-julia hljs">t_serial = besttime(() -&gt; Performance.propagate(circuit, VectorPauliSum(pstr), circuit_thetas; min_abs_coeff, thread=false))
+
+@printf(&quot;thread=false:  %5.2f s\n&quot;, t_serial)
+@printf(&quot;thread=true:   %5.2f s\n&quot;, t_fused)</code></pre><pre><code class="nohighlight hljs">thread=false:   2.98 s
+thread=true:    2.60 s</code></pre><h2 id="Splitting-the-sum-over-work-zones-with-MultiPauliSum"><a class="docs-heading-anchor" href="#Splitting-the-sum-over-work-zones-with-MultiPauliSum">Splitting the sum over work zones with <code>MultiPauliSum</code></a><a id="Splitting-the-sum-over-work-zones-with-MultiPauliSum-1"></a><a class="docs-heading-anchor-permalink" href="#Splitting-the-sum-over-work-zones-with-MultiPauliSum" title="Permalink"></a></h2><p>Threading has so far meant many threads working on one Pauli sum together. <code>MultiPauliSum</code> takes the other route and splits the sum into work zones, each of them an ordinary Pauli sum that a single thread owns. Every Pauli string belongs to exactly one zone, so the threads never write into each other&#39;s zones and the zones never have to coordinate. The parallelism comes from the zones themselves rather than from splitting every gate application across threads.</p><p>A zone keeps the Pauli sum type it was split from, so splitting a <code>VectorPauliSum</code> and propagating it with <code>Performance.propagate</code> runs the fused kernels inside every zone. By default the sum is split over one zone per thread if the number of threads is a power of two, and over twice the next power of two otherwise, where an even split would leave threads idle.</p><pre><code class="language-julia hljs">zone_psum = Performance.propagate(circuit, MultiPauliSum(VectorPauliSum(pstr)), circuit_thetas; min_abs_coeff)
+
+t_zones = besttime(() -&gt; Performance.propagate(circuit, MultiPauliSum(VectorPauliSum(pstr)), circuit_thetas; min_abs_coeff))
+
+@printf(&quot;MultiPauliSum over %d zones:  %5.2f s   (%d Pauli terms)\n&quot;, nzones(zone_psum), t_zones, length(zone_psum))
+@printf(&quot;⟨Z21 Z22⟩ = %.14f  vs  %.14f\n&quot;, overlapwithzero(zone_psum), overlapwithzero(vec_psum))</code></pre><pre><code class="nohighlight hljs">MultiPauliSum over 1 zones:   5.63 s   (1036142 Pauli terms)
+⟨Z21 Z22⟩ = 0.66968516230098  vs  0.66968516230098</code></pre><h2 id="Sizing-the-scratch-space-up-front-with-resize!"><a class="docs-heading-anchor" href="#Sizing-the-scratch-space-up-front-with-resize!">Sizing the scratch space up front with <code>resize!</code></a><a id="Sizing-the-scratch-space-up-front-with-resize!-1"></a><a class="docs-heading-anchor-permalink" href="#Sizing-the-scratch-space-up-front-with-resize!" title="Permalink"></a></h2><p>Underneath, propagation works in a <code>PropagationCache</code>: a main and an auxiliary Pauli sum, plus a few helper arrays. Set up for us, it starts out at the size of our one-term input and grows along with the Pauli sum, which means repeatedly asking for more memory and copying over what is already there. If we build that cache ourselves, we can size it up front and hand it to <code>propagate!</code>.</p><p><code>resize!(prop_cache, N)</code> grows all of its arrays once, with <code>N</code> a generous estimate of the largest number of Pauli terms the run will reach. Estimating too high only costs memory, and estimating too low simply leaves the remaining growing to the arrays themselves.</p><pre><code class="language-julia hljs">resized_cache = PropagationCache(MultiPauliSum(VectorPauliSum(pstr)))
+resize!(resized_cache, 1_500_000)
+Performance.propagate!(circuit, resized_cache, circuit_thetas; min_abs_coeff)
+
+t_resize = besttime() do
+    pc = PropagationCache(MultiPauliSum(VectorPauliSum(pstr)))
+    resize!(pc, 1_500_000)
+    Performance.propagate!(circuit, pc, circuit_thetas; min_abs_coeff)
+end
+
+@printf(&quot;resize!d cache:  %5.2f s   (%d Pauli terms)\n&quot;, t_resize, length(resized_cache))
+@printf(&quot;⟨Z21 Z22⟩ = %.14f  vs  %.14f\n&quot;, overlapwithzero(resized_cache), overlapwithzero(vec_psum))</code></pre><pre><code class="nohighlight hljs">resize!d cache:   2.05 s   (1036142 Pauli terms)
+⟨Z21 Z22⟩ = 0.66968516230098  vs  0.66968516230098</code></pre><h2 id="Before-and-after"><a class="docs-heading-anchor" href="#Before-and-after">Before and after</a><a id="Before-and-after-1"></a><a class="docs-heading-anchor-permalink" href="#Before-and-after" title="Permalink"></a></h2><p>Let us count how many Paulis we work through per second with what we have so far. Every row keeps the changes of the rows above it.</p><pre><code class="language-julia hljs"># the number of Pauli terms each layer starts from, to count gate applications
+counts = Int[]
+count_msum = MultiPauliSum(VectorPauliSum(pstr))
+for l in 1:nlayers
+    push!(counts, length(count_msum))
+    Performance.propagate!(layer, count_msum, thetas; min_abs_coeff)
+end
+
+napplied = length(layer) * sum(counts)
+
+labels = [&quot;PauliSum&quot;, &quot;VectorPauliSum&quot;, &quot;+ Performance\nfused&quot;, &quot;+ MultiPauliSum\nzones&quot;, &quot;+ resize!\nup front&quot;]
+times = [t_dict, t_vec, t_fused, t_zones, t_resize]
+rates = napplied ./ times ./ 1e6
+
+@printf(&quot;%d gate applications on Pauli strings in total\n\n&quot;, napplied)
+for (l, t, r) in zip(labels, times, rates)
+    @printf(&quot;%-28s %6.2f s   %6.1f M Paulis/s\n&quot;, replace(l, &quot;\n&quot; =&gt; &quot; &quot;), t, r)
+end</code></pre><pre><code class="nohighlight hljs">200640660 gate applications on Pauli strings in total
+
+PauliSum                      25.28 s      7.9 M Paulis/s
+
+
+VectorPauliSum                 8.65 s     23.2 M Paulis/s
++ Performance fused            2.60 s     77.2 M Paulis/s
++ MultiPauliSum zones          5.63 s     35.6 M Paulis/s
++ resize! up front             2.05 s     97.9 M Paulis/s</code></pre><pre><code class="language-julia hljs">p = bar(labels, rates, legend=false, ylabel=&quot;Million Paulis / second&quot;, size=(750, 400),
+    ylims=(0, 1.15 * maximum(rates)), title=&quot;Paulis processed per second&quot;)
+annotate!(p, 1:length(rates), rates .+ 0.04 * maximum(rates), [text(@sprintf(&quot;%.0f&quot;, r), 9) for r in rates])
+p</code></pre><p><img src="../advanced_performance_files/advanced_performance_19_0.svg" alt="svg"/></p><h2 id="Propagating-layer-by-layer-with-propagate!"><a class="docs-heading-anchor" href="#Propagating-layer-by-layer-with-propagate!">Propagating layer by layer with <code>propagate!</code></a><a id="Propagating-layer-by-layer-with-propagate!-1"></a><a class="docs-heading-anchor-permalink" href="#Propagating-layer-by-layer-with-propagate!" title="Permalink"></a></h2><p>Everything so far handed the whole circuit over in one call. But a Trotterized time evolution applies the same layer over and over, and usually wants an expectation value after every step. <code>propagate!</code> advances one Pauli sum through one layer at a time, in place, so that we can read the observable off it in between.</p><p>This is a different thing to measure rather than another step up, which is why the plot above stops where it does. What stopping after every layer costs depends on how much work one layer is, and a layer of this circuit applies well over a hundred gates, so here it barely shows. The two sections after this one apply the same two ideas to the layer-by-layer loop, and a second plot at the end compares the three.</p><pre><code class="language-julia hljs">zone_msum = MultiPauliSum(VectorPauliSum(pstr))
+expectations = Float64[]
+
+for l in 1:nlayers
+    Performance.propagate!(layer, zone_msum, thetas; min_abs_coeff)
+    push!(expectations, overlapwithzero(zone_msum))
+end
+
+t_inplace = besttime() do
+    msum = MultiPauliSum(VectorPauliSum(pstr))
+    for l in 1:nlayers
+        Performance.propagate!(layer, msum, thetas; min_abs_coeff)
+    end
+end
+
+@printf(&quot;propagate! layer by layer:  %5.2f s   (%d Pauli terms)\n&quot;, t_inplace, length(zone_msum))</code></pre><pre><code class="nohighlight hljs">propagate! layer by layer:   1.52 s   (1036142 Pauli terms)</code></pre><p>The expectation values we collected along the way give us the whole time series.</p><pre><code class="language-julia hljs">plot(1:nlayers, expectations, xlabel=&quot;layer&quot;, ylabel=&quot;⟨Z21 Z22⟩&quot;, legend=false,
+    linewidth=2, marker=:circle, markersize=5, size=(650, 350))</code></pre><p><img src="../advanced_performance_files/advanced_performance_23_0.svg" alt="svg"/></p><h2 id="Reusing-the-scratch-space-with-PropagationCache"><a class="docs-heading-anchor" href="#Reusing-the-scratch-space-with-PropagationCache">Reusing the scratch space with <code>PropagationCache</code></a><a id="Reusing-the-scratch-space-with-PropagationCache-1"></a><a class="docs-heading-anchor-permalink" href="#Reusing-the-scratch-space-with-PropagationCache" title="Permalink"></a></h2><p>Every one of those 14 <code>propagate!</code> calls sets up its own cache internally and throws it away again afterwards. Handing <code>propagate!</code> a <code>PropagationCache</code> of our own keeps it alive across the layers instead. Every call writes into the auxiliary sum and then swaps the two, so nothing has to be allocated in between. There is not much to win here, because one layer of this circuit applies well over a hundred gates and the setup happens once per layer, but the shorter the layers the more it weighs.</p><p>Expectation values can be read straight off the cache with <code>overlapwithzero(prop_cache)</code>, without extracting a Pauli sum.</p><pre><code class="language-julia hljs">prop_cache = PropagationCache(MultiPauliSum(VectorPauliSum(pstr)))
+
+for l in 1:nlayers
+    Performance.propagate!(layer, prop_cache, thetas; min_abs_coeff)
+end
+
+t_cache = besttime() do
+    pc = PropagationCache(MultiPauliSum(VectorPauliSum(pstr)))
+    for l in 1:nlayers
+        Performance.propagate!(layer, pc, thetas; min_abs_coeff)
+    end
+end
+
+@printf(&quot;propagate! into a cache:  %5.2f s   (%d Pauli terms)\n&quot;, t_cache, length(prop_cache))
+@printf(&quot;⟨Z21 Z22⟩ = %.14f  vs  %.14f\n&quot;, overlapwithzero(prop_cache), expectations[end])</code></pre><pre><code class="nohighlight hljs">propagate! into a cache:   1.48 s   (1036142 Pauli terms)
+⟨Z21 Z22⟩ = 0.66968516230098  vs  0.66968516230098</code></pre><h2 id="Sizing-that-cache-up-front-too"><a class="docs-heading-anchor" href="#Sizing-that-cache-up-front-too">Sizing that cache up front too</a><a id="Sizing-that-cache-up-front-too-1"></a><a class="docs-heading-anchor-permalink" href="#Sizing-that-cache-up-front-too" title="Permalink"></a></h2><p><code>resize!</code> applies here just as it did further above. The cache we carry from one layer to the next can start at its final size instead of growing into it.</p><pre><code class="language-julia hljs">layer_resized_cache = PropagationCache(MultiPauliSum(VectorPauliSum(pstr)))
+resize!(layer_resized_cache, 1_500_000)
+
+for l in 1:nlayers
+    Performance.propagate!(layer, layer_resized_cache, thetas; min_abs_coeff)
+end
+
+t_layer_resize = besttime() do
+    pc = PropagationCache(MultiPauliSum(VectorPauliSum(pstr)))
+    resize!(pc, 1_500_000)
+    for l in 1:nlayers
+        Performance.propagate!(layer, pc, thetas; min_abs_coeff)
+    end
+end
+
+@printf(&quot;resize!d cache, layer by layer:  %5.2f s   (%d Pauli terms)\n&quot;, t_layer_resize, length(layer_resized_cache))
+@printf(&quot;⟨Z21 Z22⟩ = %.14f  vs  %.14f\n&quot;, overlapwithzero(layer_resized_cache), expectations[end])</code></pre><pre><code class="nohighlight hljs">resize!d cache, layer by layer:   1.43 s   (1036142 Pauli terms)
+⟨Z21 Z22⟩ = 0.66968516230098  vs  0.66968516230098</code></pre><h2 id="Before-and-after,-layer-by-layer"><a class="docs-heading-anchor" href="#Before-and-after,-layer-by-layer">Before and after, layer by layer</a><a id="Before-and-after,-layer-by-layer-1"></a><a class="docs-heading-anchor-permalink" href="#Before-and-after,-layer-by-layer" title="Permalink"></a></h2><p>The same count once more, for the three ways of walking the circuit one layer at a time. The scale is the one of the plot above, so the two can be read against each other.</p><pre><code class="language-julia hljs">layer_labels = [&quot;propagate!\nlayer by layer&quot;, &quot;+ Propagation\nCache&quot;, &quot;+ resize!\nup front&quot;]
+layer_times = [t_inplace, t_cache, t_layer_resize]
+layer_rates = napplied ./ layer_times ./ 1e6
+
+for (l, t, r) in zip(layer_labels, layer_times, layer_rates)
+    @printf(&quot;%-28s %6.2f s   %6.1f M Paulis/s\n&quot;, replace(l, &quot;\n&quot; =&gt; &quot; &quot;), t, r)
+end</code></pre><pre><code class="nohighlight hljs">propagate! layer by layer      1.52 s    132.0 M Paulis/s
++ Propagation Cache            1.48 s    135.1 M Paulis/s
++ resize! up front             1.43 s    140.7 M Paulis/s</code></pre><pre><code class="language-julia hljs">p = bar(layer_labels, layer_rates, legend=false, ylabel=&quot;Million Paulis / second&quot;, size=(550, 400),
+    ylims=(0, 1.15 * maximum(rates)), title=&quot;Paulis applied per second, layer by layer&quot;)
+annotate!(p, 1:length(layer_rates), layer_rates .+ 0.04 * maximum(rates), [text(@sprintf(&quot;%.0f&quot;, r), 9) for r in layer_rates])
+p</code></pre><p><img src="../advanced_performance_files/advanced_performance_30_0.svg" alt="svg"/></p><h2 id="Not-all-gates-cost-the-same"><a class="docs-heading-anchor" href="#Not-all-gates-cost-the-same">Not all gates cost the same</a><a id="Not-all-gates-cost-the-same-1"></a><a class="docs-heading-anchor-permalink" href="#Not-all-gates-cost-the-same" title="Permalink"></a></h2><p>A <code>PauliRotation</code> only branches the Pauli strings that anticommute with its generator, and leaves the rest untouched. What a gate costs therefore depends on where it sits. Take the Pauli sum after all 14 layers and apply a single <span>$R_{zz}$</span> rotation to it, once at a corner of the grid and once in the middle where the observable lives. In the middle, a good fraction of the sum branches; at the corner, the few branches that appear fall below <code>min_abs_coeff</code> right away.</p><p>We take the <code>VectorPauliSum</code> from the fused run further above, so that we time one gate on one Pauli sum rather than the same gate spread over the zones.</p><pre><code class="language-julia hljs">snapshot = fused_psum
+n = length(snapshot)
+theta = 2 * dt * J
+
+edge_gate = PauliRotation([:Z, :Z], [1, 2])
+mid_gate = PauliRotation([:Z, :Z], [21, 22])
+
+edge_cache = PropagationCache(deepcopy(snapshot))
+resize!(edge_cache, 2n)
+Performance.propagate!(edge_gate, edge_cache, theta; min_abs_coeff)
+
+mid_cache = PropagationCache(deepcopy(snapshot))
+resize!(mid_cache, 2n)
+Performance.propagate!(mid_gate, mid_cache, theta; min_abs_coeff)
+
+# a fresh cache per run, set up outside the timed region
+function gatetime(gate)
+    t = Inf
+    for _ in 1:nreps
+        pc = PropagationCache(deepcopy(snapshot))
+        resize!(pc, 2n)
+        GC.gc()
+        t = min(t, @elapsed Performance.propagate!(gate, pc, theta; min_abs_coeff))
+    end
+    return t
+end
+
+t_edge = gatetime(edge_gate)
+t_mid = gatetime(mid_gate)
+
+@printf(&quot;Rzz on qubits (1, 2):    %5.0f M Paulis/s   (%d -&gt; %d terms)\n&quot;, n / t_edge / 1e6, n, length(edge_cache))
+@printf(&quot;Rzz on qubits (21, 22):  %5.0f M Paulis/s   (%d -&gt; %d terms)\n&quot;, n / t_mid / 1e6, n, length(mid_cache))</code></pre><pre><code class="nohighlight hljs">Rzz on qubits (1, 2):     1085 M Paulis/s   (1036142 -&gt; 1036142 terms)
+Rzz on qubits (21, 22):    113 M Paulis/s   (1036142 -&gt; 1047250 terms)</code></pre><h2 id="Summary"><a class="docs-heading-anchor" href="#Summary">Summary</a><a id="Summary-1"></a><a class="docs-heading-anchor-permalink" href="#Summary" title="Permalink"></a></h2><p>Switch to <code>VectorPauliSum</code> once your Pauli sums reach hundreds of thousands of terms, and reach for the fused kernels in <code>PauliPropagation.Performance</code> if you need to squeeze out all the performance this library has to offer. Let them thread unless you are already parallelizing somewhere above, split the sum into work zones with <code>MultiPauliSum</code>, which is the parallelism that scales best here, and hand <code>propagate!</code> a <code>PropagationCache</code> that you have <code>resize!</code>d to the size you expect. For layered evolution, advance that same cache one layer at a time and estimate the observables off it in between, which costs a little throughput and gives you the whole time series.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../9-advanced-custom-gates/">« 9. Advanced - How to Define Custom Gates</a><a class="docs-footer-nextpage" href="../mcpropagate/">Monte Carlo Propagation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Wednesday 9 September 2026 21:46">Wednesday 9 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
