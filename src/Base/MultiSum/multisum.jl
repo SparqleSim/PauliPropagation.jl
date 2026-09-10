@@ -200,7 +200,7 @@ _sizehint!(::MultiSumStorage, msum::AbstractTermSum, n) =
     (foreach(zone -> sizehint!(zone, cld(n, nzones(msum))), zones(msum)); msum)
 
 # a p-norm over the zones' p-norms is the p-norm over all coefficients
-_norm(::MultiSumStorage, msum::AbstractTermSum, L::Real) = LinearAlgebra.norm([norm(zone, L) for zone in zones(msum)], L)
+_norm(::MultiSumStorage, msum::AbstractTermSum, L::Real) = LinearAlgebra.norm((norm(zone, L) for zone in zones(msum)), L)
 
 
 ### Parking terms with their owners

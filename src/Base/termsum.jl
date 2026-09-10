@@ -463,7 +463,7 @@ end
     emptylike(term_sum::AbstractTermSum)
 
 Create an empty term sum of the same type as `term_sum`, including its term type.
-This differs from `similar()`, which for array-based term sums returns a term sum of the same length as `term_sum`.
+This differs from `similar()`, which may keep the length of `term_sum` and leave its entries undefined.
 The default implementations assume the constructor `TS(nsites, storage...)` and can be overloaded for types that carry more than that.
 """
 emptylike(term_sum::AbstractTermSum) = _emptylike(StorageType(term_sum), term_sum)
