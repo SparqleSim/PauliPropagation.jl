@@ -53,15 +53,16 @@ function _tailscratch(aux_terms, aux_coeffs, n_new::Int, n_tail::Int, main_terms
     return similar(main_terms, n_tail), similar(main_coeffs, n_tail)
 end
 
-# merge the sorted head main[1:n_old] against an already sorted tail into aux, and commit; shared by every tail merge
+# merge the sorted head main[1:n_old] against an already sorted tail into aux, and commit; shared by
+# every tail merge. `distinct_tail` states that the tail holds no duplicates of its own.
 function _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs, n_old::Int,
-    tail_terms, tail_coeffs, n_tail::Int, truncfunc, thread::Bool)
+    tail_terms, tail_coeffs, n_tail::Int, truncfunc, thread::Bool, distinct_tail::Val=Val(false))
 
     task_partitioner, n_tasks = _preparetasks(n_old, thread)
 
     if n_tasks == 1
         merged_count = _tailmerge_write!(aux_terms, aux_coeffs, 1,
-            main_terms, main_coeffs, 1, n_old, tail_terms, tail_coeffs, 1, n_tail, truncfunc, Val(true))
+            main_terms, main_coeffs, 1, n_old, tail_terms, tail_coeffs, 1, n_tail, truncfunc, Val(true), distinct_tail)
     else
         # slice and partition the two-pointer merge across threads
         tail_bounds_per_task = Vector{Int}(undef, n_tasks + 1)
@@ -78,7 +79,7 @@ function _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_c
             head_range = task_partitioner[task_id]
             merged_counts_per_task[task_id] = _tailmerge_write!(aux_terms, aux_coeffs, 1,
                 main_terms, main_coeffs, head_range.start, head_range.stop,
-                tail_terms, tail_coeffs, tail_bounds_per_task[task_id], tail_bounds_per_task[task_id+1] - 1, truncfunc, Val(false))
+                tail_terms, tail_coeffs, tail_bounds_per_task[task_id], tail_bounds_per_task[task_id+1] - 1, truncfunc, Val(false), distinct_tail)
         end
 
         # prefix sum over the per-task counts gives each task its exact final write offset
@@ -90,7 +91,7 @@ function _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_c
             head_range = task_partitioner[task_id]
             _tailmerge_write!(aux_terms, aux_coeffs, write_offsets_per_task[task_id],
                 main_terms, main_coeffs, head_range.start, head_range.stop,
-                tail_terms, tail_coeffs, tail_bounds_per_task[task_id], tail_bounds_per_task[task_id+1] - 1, truncfunc, Val(true))
+                tail_terms, tail_coeffs, tail_bounds_per_task[task_id], tail_bounds_per_task[task_id+1] - 1, truncfunc, Val(true), distinct_tail)
         end
     end
 
@@ -101,7 +102,10 @@ end
 
 # Folds the run of terms in tail_terms[tail_j:tail_hi] equal to tail_term into `seed` via
 # mergefunc, in order. Returns (merged_coeff, run_length, next_tail_j).
-@inline function _foldtailrun(tail_terms, tail_coeffs, tail_j, tail_hi, tail_term, seed)
+# A tail the caller declares duplicate-free has no run to fold.
+@inline function _foldtailrun(tail_terms, tail_coeffs, tail_j, tail_hi, tail_term, seed, ::Val{DistinctTail}=Val(false)) where {DistinctTail}
+    DistinctTail && return seed, 0, tail_j
+
     merged_coeff = seed
     run_length = 0
     @inbounds while tail_j <= tail_hi && tail_terms[tail_j] == tail_term
@@ -114,11 +118,12 @@ end
 
 # Two-pointer merge of a sorted head against a sorted tail that may contain duplicate runs (against
 # the head or itself); collisions combined via mergefunc, `truncfunc` applied to every merged
-# coefficient. Writes from out_start when DoWrite, otherwise only counts. Returns the output count.
+# coefficient. `DistinctTail` states that the tail holds no duplicates of its own, which drops the
+# run scans. Writes from out_start when DoWrite, otherwise only counts. Returns the output count.
 @inline function _tailmerge_write!(out_terms, out_coeffs, out_start,
     head_terms, head_coeffs, head_lo, head_hi,
     tail_terms, tail_coeffs, tail_lo, tail_hi,
-    truncfunc::F, ::Val{DoWrite}) where {F,DoWrite}
+    truncfunc::F, ::Val{DoWrite}, distinct_tail::Val=Val(false)) where {F,DoWrite}
 
     head_i = head_lo
     tail_j = tail_lo
@@ -131,7 +136,8 @@ end
         while true
             if head_term == tail_term
                 # collision: merge the head term with the *entire run* of equal tail terms
-                merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j, tail_hi, tail_term, head_coeffs[head_i])
+                merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term,
+                    mergefunc(head_coeffs[head_i], tail_coeffs[tail_j]), distinct_tail)
                 write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, merged_coeff, truncfunc, Val(DoWrite))
                 head_i += 1
                 (head_i > head_hi || tail_j > tail_hi) && break
@@ -144,7 +150,7 @@ end
                 head_term = head_terms[head_i]
             else
                 # tail term has no match in the head (yet): merge its own run of duplicates first
-                merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j])
+                merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j], distinct_tail)
                 write_pos = _writekept!(out_terms, out_coeffs, write_pos, tail_term, merged_coeff, truncfunc, Val(DoWrite))
                 tail_j > tail_hi && break
                 tail_term = tail_terms[tail_j]
@@ -157,7 +163,7 @@ end
     end
     @inbounds while tail_j <= tail_hi
         tail_term = tail_terms[tail_j]
-        merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j])
+        merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j], distinct_tail)
         write_pos = _writekept!(out_terms, out_coeffs, write_pos, tail_term, merged_coeff, truncfunc, Val(DoWrite))
     end
 

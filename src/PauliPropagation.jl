@@ -31,6 +31,7 @@ export
     mult!,
     add!,
     set!,
+    pushterm!,
     mult!,
     empty!,
     similar,
@@ -199,6 +200,15 @@ include("numericalcertificates.jl")
 export
     estimatemse,
     estimatemse!
+
+include("MultiPauliSum/MultiPauliSum.jl")
+export
+    MultiPauliSum,
+    MultiPauliPropagationCache,
+    zones,
+    nzones,
+    zonesizes,
+    zoneof
 
 include("Symmetry/Symmetry.jl")
 export

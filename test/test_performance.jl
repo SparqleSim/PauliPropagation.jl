@@ -286,3 +286,55 @@ end
     @test d_thread == d_nothread
     @test overlapwithzero(d_thread) == overlapwithzero(d_nothread)
 end
+
+@testset "fused Vector: a cache with no room to spare matches one with room to spare" begin
+    # A cache that starts exactly full makes nearly every gate split its walk and grow.
+    # It has to land where a cache that never grows does.
+    nq = 14
+    topo = bricklayertopology(nq; periodic=false)
+    circuit = hardwareefficientcircuit(nq, 6; topology=topo)
+
+    Random.seed!(9)
+    thetas = randn(countparameters(circuit))
+    pstr = PauliString(nq, :Z, 3)
+    min_abs_coeff = 1e-4
+
+    tight = PropagationCache(VectorPauliSum(pstr))
+    roomy = PropagationCache(VectorPauliSum(pstr))
+    resize!(roomy, 10^6)
+
+    Performance.propagate!(circuit, tight, thetas; min_abs_coeff, fused=true, thread=false)
+    Performance.propagate!(circuit, roomy, thetas; min_abs_coeff, fused=true, thread=false)
+
+    @test length(tight) > 1024  # sanity check that the walks really do run out of room
+    @test capacity(roomy) == 10^6  # sanity check that the other one never grew
+    @test PauliSum(tight) == PauliSum(roomy)
+end
+
+@testset "fused Vector PauliNoise: a compacting walk matches an out-of-place one" begin
+    # The single-task noise walk keeps the surviving terms where they lie and closes the gaps the
+    # truncated ones leave. It has to agree with the multi-task walk, which writes them elsewhere,
+    # and with stock, on a sum long enough to be split and with enough of it dropped to move terms.
+    nq = 14
+    topo = bricklayertopology(nq; periodic=false)
+    circuit = hardwareefficientcircuit(nq, 6; topology=topo)
+
+    Random.seed!(9)
+    thetas = randn(countparameters(circuit))
+    pstr = PauliString(nq, :Z, 3)
+
+    grown = Performance.propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=1e-5, fused=true, thread=false)
+    @test length(grown) > 2 * 16384  # sanity check that the noise walk below is split across tasks
+
+    noise_circuit = [DepolarizingNoise(qind, 0.02 + 0.01 * qind) for qind in 1:nq]
+    min_abs_coeff = 1e-3
+
+    asdict(psum) = Dict(zip(paulis(psum), coefficients(psum)))
+    stock = asdict(propagate(noise_circuit, deepcopy(grown); min_abs_coeff))
+    nothread = Performance.propagate(noise_circuit, deepcopy(grown); min_abs_coeff, fused=true, thread=false)
+    threaded = Performance.propagate(noise_circuit, deepcopy(grown); min_abs_coeff, fused=true, thread=true)
+
+    @test length(nothread) < length(grown) ÷ 2  # sanity check that terms really are dropped
+    @test asdict(nothread) == stock
+    @test asdict(threaded) == stock
+end

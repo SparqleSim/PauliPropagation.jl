@@ -24,8 +24,10 @@ export
     add!,
     mult!,
     set!,
+    pushterm!,
     empty!,
     similar,
+    emptylike,
     capacity,
     sortedprefix,
     setsortedprefix!
@@ -94,6 +96,25 @@ export
 include("./sortedtailmerge.jl")
 
 include("./xortailmerge.jl")
+
+include("./MultiSum/MultiSum.jl")
+export
+    MultiSumStorage,
+    ZoneMap,
+    zones,
+    zonemap,
+    zonestorage,
+    withzones,
+    defaultnzones,
+    zonecaches,
+    outboxes,
+    nzones,
+    zonesizes,
+    zoneof,
+    staysinzone,
+    applytoallzones!,
+    applyxorbranch!,
+    applyxorbranchzones!
 
 include("./MonteCarlo/MonteCarlo.jl")
 export

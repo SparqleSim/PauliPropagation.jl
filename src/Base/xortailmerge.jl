@@ -56,8 +56,9 @@ function xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sor
 
     tail_terms, tail_coeffs = _xorsorttail!(groups, a_terms, a_coeffs, b_terms, b_coeffs; thread)
 
+    # the tail is `head ⊻ mask` over a duplicate-free head, so it holds no duplicates of its own
     return _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs,
-        n_old, tail_terms, tail_coeffs, n_tail, truncfunc, thread)
+        n_old, tail_terms, tail_coeffs, n_tail, truncfunc, thread, Val(true))
 end
 
 

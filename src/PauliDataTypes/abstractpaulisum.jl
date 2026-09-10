@@ -159,13 +159,12 @@ end
 
 Addition of a `PauliString` to a `PauliSum`. Returns a `PauliSum`.
 """
-function Base.:+(psum::PS, pstr::PauliString) where PS<:AbstractPauliSum
-    nq = _checknumberofqubits(psum, pstr)
+function Base.:+(psum::AbstractPauliSum, pstr::PauliString)
+    _checknumberofqubits(psum, pstr)
 
-    # get a compatible coefficient type
-    CType = promote_type(paulitype(psum), coefftype(pstr))
-    PlainPS = Base.typename(PS).wrapper
-    new_psum = PlainPS(CType, nq)
+    # an empty sum of the very type of `psum`, widened to hold both coefficient types
+    CType = promote_type(coefftype(psum), coefftype(pstr))
+    new_psum = CType === coefftype(psum) ? similar(psum) : convertcoefftype(CType, similar(psum))
 
     add!(new_psum, psum)
     add!(new_psum, pstr)

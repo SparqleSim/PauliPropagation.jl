@@ -28,6 +28,10 @@ include("./fused_dict.jl")
 include("./fused_vector.jl")
 
 
+# MultiPauliSum overloads that run the fused vector application inside every zone
+include("./fused_multi.jl")
+
+
 """
     propagate(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
 

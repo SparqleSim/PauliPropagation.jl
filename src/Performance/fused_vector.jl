@@ -19,9 +19,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotati
 
     # invoke function from library
     if !fused
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliPropagation.PauliRotation,PauliPropagation.AbstractPauliPropagationCache,typeof(theta)},
-            gate, prop_cache, theta;
+        return _invokedefault(gate, prop_cache, theta;
             min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
@@ -43,9 +41,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
     thread::Bool=true, kwargs...)
 
     if !fused
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliPropagation.ImaginaryPauliRotation,PauliPropagation.AbstractPauliPropagationCache,typeof(tau)},
-            gate, prop_cache, tau;
+        return _invokedefault(gate, prop_cache, tau;
             normalize_coeffs, min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
@@ -63,8 +59,9 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
     # we normalize by the coefficient of the identity Pauli string for numerical stability
     # getcoeff sums over any duplicates and binary-searches the sorted prefix, so it is both
     # correct and fast here without relying on merge!() having fully deduplicated everything
+    # scaling the active range rather than the whole cache leaves the trash past it alone
     if normalize_coeffs
-        PauliPropagation.mult!(prop_cache, 1 / PauliPropagation.getcoeff(PauliPropagation.activesum(prop_cache), 0))
+        PauliPropagation.activecoeffs(prop_cache) .*= 1 / PauliPropagation.getcoeff(PauliPropagation.activesum(prop_cache), 0)
     end
 
     return prop_cache
@@ -85,7 +82,7 @@ function _fusedrotation!(gate, prop_cache, kept_val, new_val, gatetype::Val;
         return prop_cache
     end
 
-    gate_mask = _bytemask(PauliPropagation.symboltoint(PauliPropagation.paulitype(prop_cache), gate.symbols, gate.qinds),
+    gate_mask = _gatemask(PauliPropagation.symboltoint(PauliPropagation.paulitype(prop_cache), gate.symbols, gate.qinds),
         PauliPropagation.terms(mainsum(prop_cache)))
 
     truncfunc(pstr, coeff) = _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
@@ -100,47 +97,17 @@ function _fusedrotation!(gate, prop_cache, kept_val, new_val, gatetype::Val;
     return prop_cache
 end
 
-# Counts each task's products in a first pass, then writes them in a second.
+# Appends every product past the end of the active range, in parent order.
 function _fusedapplytruncaterotation!(prop_cache::PauliPropagation.VectorPauliPropagationCache, gate_mask::TT, kept_val, new_val, max_weight, ::Val{GateType};
     thread::Bool=true) where {TT,GateType}
 
     n_old = activesize(prop_cache)
-
     task_partitioner, n_tasks = PropagationBase._preparetasks(n_old, thread)
-    main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
 
-    new_counts = Vector{Int}(undef, n_tasks)
-
-    # dry run: each task counts the products it will append, without writing
-    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
-        rng = task_partitioner[task_id]
-        new_counts[task_id] = _fusedbranchwrite!(main_terms, main_coeffs, 1, rng.start, rng.stop,
-            gate_mask, kept_val, new_val, max_weight, Val(GateType), Val(false))
-    end
-
-    new_offsets = PropagationBase._offsetsfromcounts(new_counts)
-    n_new = new_offsets[end] - 1
-
-    # A term that branched had its coefficient scaled, so no products does not on its own mean there
-    # is nothing to write. Without a weight limit, though, no product is ever dropped, and then no
-    # products does mean nothing branched -- worth taking, because a gate the sum has not spread to
-    # yet branches nothing at all and would otherwise be walked twice over.
-    if n_new == 0 && isinf(max_weight)
-        return prop_cache
-    end
-
-    resize_factor = 1.5
-    if PauliPropagation.capacity(prop_cache) < n_old + n_new
-        resize!(prop_cache, round(Int, (n_old + n_new) * resize_factor))
-        main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
-    end
-
-    # real pass: scale the branching coefficients where they lie and append each task's products at
-    # its own offset past the end
-    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
-        rng = task_partitioner[task_id]
-        _fusedbranchwrite!(main_terms, main_coeffs, n_old + new_offsets[task_id], rng.start, rng.stop,
-            gate_mask, kept_val, new_val, max_weight, Val(GateType), Val(true))
+    n_new = if n_tasks == 1
+        _serialbranchwrite!(prop_cache, n_old, gate_mask, kept_val, new_val, max_weight, Val(GateType))
+    else
+        _taskedbranchwrite!(prop_cache, n_old, task_partitioner, n_tasks, gate_mask, kept_val, new_val, max_weight, Val(GateType))
     end
 
     # the terms already there kept their Pauli strings and their order, so the sorted prefix stands
@@ -149,16 +116,79 @@ function _fusedapplytruncaterotation!(prop_cache::PauliPropagation.VectorPauliPr
     return prop_cache
 end
 
+# One task writes each product as it makes it, so nothing has to be counted first.
+# A term makes at most one product, so a walk never outruns the free slots it started with.
+function _serialbranchwrite!(prop_cache, n_old::Int, gate_mask, kept_val, new_val, max_weight, gatetype::Val)
+    pos = n_old + 1
+    lo = 1
+
+    while lo <= n_old
+        _growto!(prop_cache, pos)
+        terms, coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
+
+        hi = min(n_old, lo + PauliPropagation.capacity(prop_cache) - pos)
+        pos += _fusedbranchwrite!(terms, coeffs, pos, terms, coeffs, lo, hi, gate_mask, kept_val, new_val, max_weight, gatetype, Val(true))
+        lo = hi + 1
+    end
+
+    return pos - n_old - 1
+end
+
+# Several tasks have to agree on where each of them writes, so a pass counts their products first.
+function _taskedbranchwrite!(prop_cache, n_old::Int, task_partitioner, n_tasks::Int, gate_mask, kept_val, new_val, max_weight, gatetype::Val)
+    main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
+
+    new_counts = Vector{Int}(undef, n_tasks)
+
+    # dry run: each task counts the products it will append, without writing
+    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+        rng = task_partitioner[task_id]
+        new_counts[task_id] = _fusedbranchwrite!(main_terms, main_coeffs, 1, main_terms, main_coeffs, rng.start, rng.stop,
+            gate_mask, kept_val, new_val, max_weight, gatetype, Val(false))
+    end
+
+    new_offsets = PropagationBase._offsetsfromcounts(new_counts)
+    n_new = new_offsets[end] - 1
+
+    # Without a weight limit no product is dropped, so no products means nothing branched.
+    # Nothing was scaled either, and the second walk can be skipped.
+    if n_new == 0 && isinf(max_weight)
+        return 0
+    end
+
+    if _growto!(prop_cache, n_old + n_new)
+        main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
+    end
+
+    # real pass: scale the branching coefficients in place, append each task's products at its offset
+    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+        rng = task_partitioner[task_id]
+        _fusedbranchwrite!(main_terms, main_coeffs, n_old + new_offsets[task_id], main_terms, main_coeffs, rng.start, rng.stop,
+            gate_mask, kept_val, new_val, max_weight, gatetype, Val(true))
+    end
+
+    return n_new
+end
+
+# Room for at least `n` terms, in geometric steps so growing costs a copy only now and then.
+# Returns whether the arrays moved.
+function _growto!(prop_cache, n::Int)
+    PauliPropagation.capacity(prop_cache) >= n && return false
+    resize!(prop_cache, round(Int, n * 1.5))
+    return true
+end
+
 # flagging condition for PauliRotation or ImaginaryPauliRotation
 @inline _branchcondition(::Val{:PauliRotation}, does_commute) = !does_commute
 @inline _branchcondition(::Val{:ImaginaryPauliRotation}, does_commute) = does_commute
 
 # Walks terms[lo:hi], branching each term according to `_branchcondition(Val(GateType), ...)`. A
 # branching term keeps its Pauli string and only has its coefficient scaled, so it stays where it is
-# and needs no test -- its weight already passed. Its product is appended from new_start, unless it
-# is too heavy, which merging cannot undo. When DoWrite is false nothing is written and the products
-# are only counted. Returns the number of products.
-@inline function _fusedbranchwrite!(terms, coeffs, new_start, lo, hi,
+# and needs no test -- its weight already passed. Its product is written to out_terms/out_coeffs from
+# new_start, unless it is too heavy, which merging cannot undo. The output may be the very arrays
+# being walked, which is how a product lands past the end of the active range. When DoWrite is false
+# nothing is written and the products are only counted. Returns the number of products.
+@inline function _fusedbranchwrite!(out_terms, out_coeffs, new_start, terms, coeffs, lo, hi,
     gate_mask::TT, kept_val, new_val, max_weight, ::Val{GateType}, ::Val{DoWrite}) where {TT,GateType,DoWrite}
 
     new_pos = new_start
@@ -168,17 +198,16 @@ end
         bytes = _bytesof(terms, gate_mask)
 
         @inbounds for ii in lo:hi
-            pstr = terms[ii]
-
-            does_commute = _gatecommutes(gate_mask, pstr, bytes, ii)
+            does_commute = _gatecommutes(gate_mask, terms, bytes, ii)
             _branchcondition(Val(GateType), does_commute) || continue
 
+            pstr = terms[ii]
             coeff = coeffs[ii]
             DoWrite && (coeffs[ii] = coeff * kept_val)
 
             new_pstr, sign = _gateproduct(gate_mask, pstr, bytes, ii)
             if !_truncateweight(new_pstr, max_weight)
-                new_pos = PropagationBase._writeandadvance!(terms, coeffs, new_pos, new_pstr, coeff * new_val * sign, Val(DoWrite))
+                new_pos = PropagationBase._writeandadvance!(out_terms, out_coeffs, new_pos, new_pstr, coeff * new_val * sign, Val(DoWrite))
             end
         end
     end
@@ -201,9 +230,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliNoise,
     thread::Bool=true, kwargs...)
 
     if !fused
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliPropagation.PauliNoise,PauliPropagation.AbstractPauliPropagationCache,typeof(lambda)},
-            gate, prop_cache, lambda;
+        return _invokedefault(gate, prop_cache, lambda;
             min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
@@ -233,6 +260,16 @@ function _fusedapplytruncatenoise!(prop_cache::PauliPropagation.VectorPauliPropa
 
     task_partitioner, n_tasks = PropagationBase._preparetasks(n_old, thread)
     main_terms, main_coeffs, aux_terms, aux_coeffs = PropagationBase._mainauxarrays(prop_cache)
+
+    # One task can filter in place: the walk writes at or behind the term it just read, so source
+    # and destination may be the same arrays, and nothing has to be counted first.
+    if n_tasks == 1
+        n_kept, new_sortedprefix = _noisewrite!(main_terms, main_coeffs, 1,
+            main_terms, main_coeffs, 1, n_old, gate, qind, lambda, truncfunc, old_sortedprefix, Val(true))
+        setactivesize!(prop_cache, n_kept)
+        setsortedprefix!(mainsum(prop_cache), new_sortedprefix)
+        return prop_cache
+    end
 
     kept_counts = Vector{Int}(undef, n_tasks)
     sorted_kept_counts = Vector{Int}(undef, n_tasks)

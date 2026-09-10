@@ -37,7 +37,9 @@ coefficients(prop_cache::AbstractPropagationCache) = _coefficients(StorageType(p
 _coefficients(::DictStorage, prop_cache::AbstractPropagationCache) = coefficients(mainsum(prop_cache))
 _coefficients(::ArrayStorage, prop_cache::AbstractPropagationCache) = activecoeffs(prop_cache)
 
-function termtype(prop_cache::AbstractPropagationCache)
+termtype(prop_cache::AbstractPropagationCache) = _termtype(StorageType(prop_cache), prop_cache)
+
+function _termtype(::StorageType, prop_cache::AbstractPropagationCache)
     mainTT = termtype(mainsum(prop_cache))
     auxTT = termtype(auxsum(prop_cache))
     if mainTT != auxTT
@@ -46,7 +48,9 @@ function termtype(prop_cache::AbstractPropagationCache)
     return mainTT
 end
 
-function coefftype(prop_cache::AbstractPropagationCache)
+coefftype(prop_cache::AbstractPropagationCache) = _coefftype(StorageType(prop_cache), prop_cache)
+
+function _coefftype(::StorageType, prop_cache::AbstractPropagationCache)
     mainCT = coefftype(mainsum(prop_cache))
     auxCT = coefftype(auxsum(prop_cache))
     if mainCT != auxCT
@@ -55,7 +59,9 @@ function coefftype(prop_cache::AbstractPropagationCache)
     return mainCT
 end
 
-function numcoefftype(prop_cache::AbstractPropagationCache)
+numcoefftype(prop_cache::AbstractPropagationCache) = _numcoefftype(StorageType(prop_cache), prop_cache)
+
+function _numcoefftype(::StorageType, prop_cache::AbstractPropagationCache)
     mainNCT = numcoefftype(mainsum(prop_cache))
     auxNCT = numcoefftype(auxsum(prop_cache))
     if mainNCT != auxNCT
@@ -68,7 +74,9 @@ end
 # An optional interface for returning the mainsum when it is safe to return it as a whole or as a view.
 # Should leave the sum linked to the cache, and the cache unperturbed.
 # This is concrete type dependent.
-function activesum(prop_cache::AbstractPropagationCache)
+activesum(prop_cache::AbstractPropagationCache) = _activesum(StorageType(prop_cache), prop_cache)
+
+function _activesum(::StorageType, prop_cache::AbstractPropagationCache)
     _thrownotimplemented(prop_cache, :activesum)
 end
 
@@ -167,7 +175,10 @@ function mult!(prop_cache::AbstractPropagationCache, scalar::Number)
     return prop_cache
 end
 
-function Base.resize!(prop_cache::AbstractPropagationCache, new_size::Int)
+Base.resize!(prop_cache::AbstractPropagationCache, new_size::Int) =
+    _resize!(StorageType(prop_cache), prop_cache, new_size)
+
+function _resize!(::StorageType, prop_cache::AbstractPropagationCache, new_size::Int)
     _thrownotimplemented(prop_cache, :resize!)
 end
 

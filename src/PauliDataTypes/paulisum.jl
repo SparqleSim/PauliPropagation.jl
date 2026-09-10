@@ -95,9 +95,6 @@ end
 
 
 
-#     sizehint!(psum::PauliSum, n)
-# Hint to the `PauliSum` to reserve space for `n` terms.
-Base.sizehint!(psum::PauliSum, n) = sizehint!(psum.terms, n)
 
 
 
