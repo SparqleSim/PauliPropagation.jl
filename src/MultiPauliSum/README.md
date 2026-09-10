@@ -103,5 +103,6 @@ zone under a fixed `⊻`: one run per zone that sent to it, and for a Clifford g
 the gate maps on its qubits. Sorting the runs by XOR passes and merging them, rather than re-sorting
 the zone, would cover the Clifford gates, which pay a full sort per gate as it is.
 
-Monte Carlo propagation (`mcpropagate`, `mcsample`, `resample`) and `rewindgradient` do not take a
-`MultiPauliSum`: resampling weighs the whole sum at once, and neither has a zone-parallel form yet.
+Monte Carlo propagation (`mcpropagate`, `mcsample`, `resample`) does not take a `MultiPauliSum`,
+because resampling weighs the whole sum at once. `rewindgradient` takes one, but gathers it into a
+`VectorPauliSum` first, so neither has a zone-parallel form yet.

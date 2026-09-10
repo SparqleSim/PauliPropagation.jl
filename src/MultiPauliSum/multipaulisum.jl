@@ -24,6 +24,8 @@ Splitting a `PauliSum` gives zones of `PauliSum`s and splitting a `VectorPauliSu
 `n_zones` must be a power of two, which makes the zone assignment linear in the Pauli string and lets `PauliRotation` and the other gates that branch by a fixed bitmask take a faster path.
 See `ZoneMap`.
 
+Monte Carlo propagation (`mcpropagate()`, `mcsample()`, `resample()`) does not take a `MultiPauliSum`, and `rewindgradient()` gathers one into a `VectorPauliSum` before it runs.
+
 # Examples
 ```julia
 MultiPauliSum(4)                                # empty, on 4 qubits, over as many zones as threads
@@ -95,6 +97,9 @@ end
 Gather the zones of `msum` back into a single Pauli sum of the indicated type, leaving `msum` unchanged.
 No merging across zones is needed, because every Pauli string is held by exactly one zone.
 """
+PauliSum(::MultiPauliSum)
+
+# every term sum type gathers the same way, so the method is written once for all of them
 function (::Type{TS})(msum::MultiPauliSum) where {TS<:AbstractTermSum}
     psum = TS(coefftype(msum), nqubits(msum))
     for (pstr, coeff) in msum
