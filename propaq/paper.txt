@@ -1,0 +1,3627 @@
+Propaq: A Python package for Heisenberg Propagation
+Hrishikesh Belagali1,2 and Ryan LaRose1,3,4,2
+1
+
+Department of Computational Mathematics, Science, and Engineering, Michigan State University, East Lansing, MI 48823,
+
+arXiv:2609.07730v1 [quant-ph] 7 Sep 2026
+
+USA
+2
+
+Center for Quantum Computing, Science, and Engineering, Michigan State University, East Lansing, MI 48823, USA
+
+3
+
+Department of Electrical and Computer Engineering, Michigan State University, East Lansing, MI 48823, USA
+
+4
+
+Department of Physics and Astronomy, Michigan State University, East Lansing, MI 48823, USA
+
+simulable [3]. Additional theorems have been
+proved in this context, especially recently for efficient classical simulation with noisy quantum circuits [4–7].
+Recently, the classical simulation technique underlying the Gottesman-Knill theorem has gained
+traction due to challenges to quantum advantage
+claims [8–10]. The simulation technique is commonly known as either sparse Pauli dynamics [9,
+10] or Pauli propagation [11]. Subsequently, Majorana propagation — the same underlying technique but working in the Majorana basis instead of the Pauli basis — was introduced [12].
+Software packages for these techniques closely
+followed, with implementations in major quantum software packages like Qiskit and other
+standalone/plugin packages appearing. Software
+packages include the PauliPropagation.jl [11] and
+MajoranaPropagation.jl [13] Julia packages, the
+pauli-prop Qiskit add-on [14], the pyrauli
+package [15] which is implemented in C with
+Python bindings, and most recently the monoprop [12, 16] package which supports both Pauli
+and Majorana propagation.
+In this work, we introduce a Python package
+for Heisenberg propagation that we call Propaq.
+Propaq is implemented in Rust for performance
+and has Python front-ends for usability with major quantum software packages. Notably, direct
+support for Qiskit circuits is provided. We show
+in numerical benchmarks that Propaq is among
+the fastest Heisenberg simulators available. Further, Propaq has several features that distinguish
+it from current state of the art. Notably, Propaq
+supports Heisenberg propagation in any basis.
+The Pauli and Majorana bases are built-in to the
+library and natively supported, and any other
+user-defined bases are also supported. Propaq
+also supports hybrid Schrödinger-Heisenberg simulation. Here, instead of back-propagating ob-
+
+We introduce Propaq, a performant
+and flexible Python package implementing Heisenberg propagation techniques for
+classically simulating quantum circuits.
+Propaq is compatible with major quantum
+software packages like Qiskit and Cirq, and
+matches or outperforms similar state-ofthe-art packages for Heisenberg propagation. Beyond this, Propaq has multiple
+distinguishing features for simulation and
+research. These include Heisenberg propagation in any basis, hybrid SchrödingerHeisenberg simulation, custom truncation
+and noisy simulation methods, and detailed logging information for analyzing
+simulation accuracy, runtime, and memory
+usage. We describe these features, how to
+use Propaq for research, and its backend
+implementation.
+
+1 Introduction
+Classically simulating quantum circuits is important practically to benchmark algorithms, error
+mitigation/correction techniques, and other protocols. Classical simulation is also important theoretically to refine the boundaries of quantum
+advantage [1] and ultimately to understand the
+power of quantum computation. In this vein,
+multiple famous theorems about quantum computation have been discovered through the lens
+of simulating circuits. Two prominent examples
+are the Gottesman-Knill theorem, which states
+that an important subclass of quantum operations known as Clifford operations are efficiently
+simulable [2], and the time evolving block decimation algorithm, which shows that weakly entangled one-dimensional circuits are efficiently
+Ryan LaRose: Corresponding author: rmlarose@msu.edu
+
+1
+
+(a)
+
+(b)
+
+103
+102
+
+104
+
+pauli-prop
+pyrauli
+PauliPropagation.jl
+MonoProp
+propaq (Pauli)
+
+101
+100
+
+Number of Terms
+
+10
+
+−1
+
+10
+
+106
+
+−2
+
+10
+
+10−30
+
+9
+
+5
+
+10
+
+3
+
+10
+
+0
+
+10
+15
+Trotter step
+
+20
+
+Propagation Wall Time (s)
+
+Propagation Wall Time (s)
+
+104
+
+103
+
+propaq (Majorana)
+MajoranaPropagation.jl
+
+102
+101
+100
+
+Number of Terms
+
+109
+
+−1
+
+10
+
+106
+
+−2
+
+10
+
+10−30
+
+25
+
+MonoProp (Majorana)
+
+103
+100
+
+5
+
+10
+15
+Trotter step
+
+20
+
+25
+
+Figure 1: Heisenberg propagation wall-clock runtime and number of terms (inset) for various packages. Here, we
+benchmark computing expectation values of a Z observable for (a) Trotterized time evolution of a 2D TFIM on a
+6 × 6 square lattice (J = 1.0, h = 0.5, ∆t = 0.1) and (b) Trotterized time evolution of a 2D Hubbard model on a
+3 × 3 square lattice (t = 1.0, U = 4.0, ∆t = 0.1). All backends use a coefficient cutoff of 10−6 and 64 threads,
+except for the single-threaded pauli-prop package. As shown, Propaq exceeds the performance of all packages in
+both bases, except for the monoprop package which is roughly equal to Propaq.
+
+2 Features and Performance
+
+servables fully through the circuit, we allow forward evolution to a bipartation. In certain cases,
+this can provide a useful space/time tradeoff
+and present advantages in simulation, as was explored recently in quantum-classical hybrid simulation [17]. Additionally, Propaq contains logging
+tools to easily analyze simulation accuracy, providing details on the total number of terms and
+total L1 coefficient norm discarded, among other
+metrics. Propaq also supports custom noise channels and natively supports noisy simulation with
+any propagation method. For these reasons, we
+expect Propaq to be a useful package for quantum
+information researchers and software developers,
+enabling both fast simulation and future research
+in (hybrid Schrödinger-)Heisenberg simulation.
+
+2.1 Benchmarks with other packages
+In Fig. 1, we evaluate the performance of
+Propaq against other packages for Heisenberg
+propagation, including pauli-prop, pyrauli,
+PauliPropagation.jl,
+MajoranaPropagation.jl,
+and monoprop. In this benchmark, we show the
+wall-clock runtime for computing the expectation
+value of a single Z observable after Trotterized
+time evolution of a 6 × 6 transverse-field Ising
+model (Fig. 1(a)) and a 3 × 3 Hubbard model
+(Fig. 1(b)). For all benchmarks, we utilize a
+coefficient cutoff of 10−6 and run on 64 AMD
+EPYC 7H12 cores. When applicable, we use both
+Pauli and Majorana propagation. As shown in
+Fig. 1, Propaq performs similarly to monoprop,
+which both outperform all other packages. For
+large Trotter steps, where the number of terms
+reaches a billion, the speedup approaches 100x.
+While packages have different strengths and performance is somewhat benchmark dependent, we
+have found this behavior to be generally true for
+all packages. It is worth noting that pauli-prop
+has a single-threaded implementation while other
+packages are multi-threaded. In this benchmark,
+all packages maintain a similar number of terms
+in the back-propagated operator, and the multithreaded packages consequently have similar
+peak memory usage. Memory usage is shown in
+
+To these ends, the rest of the paper is organized
+as follows. We first provide more details on both
+the features and performance of Propaq mentioned above, showing benchmarks with other
+packages and highlighting Propaq’s capabilities,
+in Sec. 2. We then provide background on Heisenberg propagation in Sec. 3. Section 4 shows how
+to get started with Propaq and how to use the
+library through various examples. In Sec. 5, we
+discuss the design and implementation of Propaq,
+providing backend implementation and low-level
+software details. Finally, we provide more performance benchmarks for Propaq in Sec. 6.
+2
+
+Mµ(t) (×10−4)
+
+−0.33325
+6.5
+5.5
+4.5
+3.5
+2.5
+1.5
+0.5
+-0.5
+0
+5
+
+10
+
+15
+
+20
+
+25
+
+30
+
+the required abstract methods. Example code is
+provided in Sec. 4. After this, observable backpropagation can be used as with this custom basis
+in the same way as with the built-in bases (Pauli
+and Majorana).
+As an example, we use Propaq to compute magnetizations in the Potts model in
+Fig. 2. Here, we use backpropagation with WeylHeisenberg operators, a generalization of Pauli
+operators to qudits. Creating a subclass for WeylHeisenberg propagation allows us to use Propaq
+for simulating circuits with all features, notably
+term truncation. In Fig. 2, the magnetizations
+of the seven-site, three-state Potts spin chain are
+computed with a weight cutoff of w = 4. As
+shown, the computed expectation values are in
+excellent agreement with exact diagonalization
+for short times, up to t ≤ 25. Afterwards, the
+expectation values accumulate error due to the
+w = 4 truncation. The complete code in Propaq
+to implement this example is provided in Appendix A. To the best of our knowledge, Propaq
+is the only library to support backpropagation in
+any basis, and this example would not be possible
+with other packages.
+
+35
+
+t
+
+Figure 2: An illustrative example of Propaq’s ability
+to perform Heisenberg evolution in any basis, demonstrated via time evolution of the three-state (qutrit)
+Potts model [18]. We subclass Propaq’s core propagation engine to do Heisenberg evolution with WeylHeisenberg operators, a higher-dimensional generalization of qubit Pauli operators. Here we compute the
+magnetizations M2 (t) (blue) and M3 (t) (green) for a
+quench of the three-state Potts spin chain in the positive oblique regime (h2 = 0.1, n = 7) using exact diagonalization (solid) and Weyl-Heisenberg propagation
+(markers) in Propaq. After creating a subclass to enable
+propagation in a new basis, all features of Propaq can
+be used. To illustrate this, we perform backpropagation
+with a weight cutoff of w = 4. As can be seen, results
+are in excellent agreement with exact diagonalization up
+to t ≤ 25 despite the weight cutoff, then start to accumulate error after. When computing these observables,
+the system is initialized in the fully polarized state.
+
+2.3 Hybrid Schrödinger-Heisenberg simulation
+more detail in Fig. 10 in Sec. 6, which contains
+additional performance benchmarks.
+
+In addition to traditional Heisenberg propagation, Propaq supports a hybrid SchrödingerHeisenberg simulation algorithm. In this approach, a circuit is divided into two parts: the
+first part is simulated in the Schrödinger picture,
+and the latter is simulated in the Heisenberg picture. In other words, for circuit U = UN · · · U1 ,
+this method evaluates expectation values via
+
+2.2 Arbitrary basis backpropagation
+Although Heisenberg propagation is generally
+carried out in the Pauli or Majorana basis, it applies to any operator basis. Propaq supports this
+natively in its design. To implement backpropagation in any basis, the following methods need
+to be implemented:
+
+h
+
+1. Products of basis elements,
+
+i
+
+h
+
+Tr U ρU † O = Tr ρ̃k Õk ,
+
+i
+
+(1)
+
+ρ̃k := Uk · · · U1 ρ U1† · · · Uk†
+
+(2)
+
+†
+†
+Õk := Uk+1
+· · · UN
+O UN · · · Uk+1 .
+
+(3)
+
+where
+
+2. If a term branches under a circuit operation,
+and
+
+3. The operator weight (for truncation support),
+4. Diagonal expectation with a basis state,
+
+This is shown schematically in Fig. 3. The expectation value (1) is computed via a series of overlap
+computations between ρ̃k and the basis-expanded
+Õk . Currently, Propaq supports matrix product
+states for the forward Schrödinger evolution, but
+in principle any method is supported. Indeed,
+the user only needs to be define the method for
+
+5. Express gates in terms of basis generators.
+6. Hashing, equality and byte representations
+for term I/O
+These are defined by subclassing Propaq’s abstract classes for propagation and implementing
+3
+
+HEISENBERG
+
+U≤k = Uk · · · U1
+
+U>k = UN · · · Uk+1
+
+Gate time (ms)
+
+SCHRÖDINGER
+
+Uk
+
+U1
+
+ρ
+
+Uk+1
+
+UN
+
+102
+100
+10−2
+
+O
+
+Terms
+
+108
+
+backpropagation of the observable
+
+forward evolution of the state
+
+Õk =
+
+ρ̃k =
+
+X
+
+cj
+
+X
+
+j
+
+Z
+
+I
+
+106
+
+Y
+
+j
+
+X
+
+Z
+
+I
+
+Y
+
+=
+
+X
+
+cj Pj ρ̃
+
+107
+104
+
+k
+
+j
+
+Discarded Coeff
+L1 norm
+
+X
+
+
+Tr ρ̃k Õk =
+cj
+
+Terms
+discarded
+
+1010
+
+Figure 3: Graphical illustration of the SchrödingerHeisenberg simulation method (1). The circuit is partitioned at index k (dashed line). Operations before the
+partition are applied to the initial state ρ via Schrödinger
+simulation, for example a matrix product state (MPS).
+Operations after the partition are applied to the observable O via Heisenberg simulation, for example in the
+Pauli basis as illustrated. Finally, the expectation value
+is computed as a series of overlaps between the forwardevolved state and the backpropagated observable. In
+Propaq, forward MPS is currently implemented, but custom methods are support — all that needs to be defined
+is how to compute overlaps between the forward-evolved
+state and the backpropagated observable basis elements.
+
+100
+10−3
+0
+
+2000
+
+4000
+Gate index
+
+6000
+
+8000
+
+Figure 4: Illustration of some logging/analysis features
+in Propaq. From top to bottom, this plot shows the
+time to apply each gate in milliseconds, the cumulative
+number of terms in the simulation, the cumulative number of terms discarded, and the cumulative L1 norm
+of discarded coefficients. The last metric provides an
+upper bound on observable accuracy. Propaq contains
+additional logging/analysis metrics not shown here, for
+example truncation events, total elapsed time, and maximum discarded coefficient L1 norm. The data shown is
+for the simulation of a two-layer unitary cluster Jastrow
+ansatz [20] with Majorana propagation and a coefficient
+cutoff of 10−6 .
+
+forward simulation (which is commonly done via
+another package, e.g. Stim for Clifford simulation [19]) and the overlap calculation for the particular basis. We expect this hybrid algorithm
+to present a useful space-time tradeoff for particular problems and/or compute platforms, and
+to our knowledge Propaq is the only Heisenberg
+simulation package to support this. We note that
+this hybrid algorithm is also compatible with forward evolution on a quantum computer as in [17].
+Code for using this hybrid algorithm method is
+shown in detail in Sec. 4.
+
+2.4 Truncation, logging, and accuracy
+A cornerstone of Heisenberg simulators is truncation, used as a heuristic to circumvent the general
+exponential complexity of the simulation. While
+this is commonly employed, it is not well understood how to choose the best truncation strategy
+for a given problem, or what the observable accuracy will be. To address these issues, Propaq enables the use of both commonly used truncation
+strategies — coefficient and weight truncation —
+plus custom truncation strategies.
+4
+
+can log simulation statistics by creating a propagator with a logger object as below.
+
+Truncation is handled in Propaq via a sequence
+of truncation strategies, as below.
+Listing 2.1. Truncation policies in Propaq.
+1
+2
+3
+4
+5
+6
+7
+
+Listing 2.4. Logging simulation statistics in Propaq.
+
+from propaq.truncation import WeightTruncator,
+,→ CoefficientTruncator, TermBudget
+
+1
+2
+
+truncation = [
+CoefficientTruncator(1e-6),
+WeightTruncator(5),
+TermBudget(min_terms=1_000)
+]
+
+3
+4
+5
+6
+7
+8
+
+This truncation strategy says to discard terms
+with coefficient magnitude smaller than 10−6 , discard terms with weight larger than five, and never
+drop below one thousand terms. Any combination of these policies can be used in simulation,
+and custom truncation policies can be defined.
+Truncation policies are incorporated into propagators at instantiation.
+
+2
+3
+
+from propaq import PauliPropagator
+prop = PauliPropagator(truncation=truncation)
+
+The use of propagators to simulate circuits is done by calling the propagate or
+expectation_value methods, shown in Sec. 4. We
+remark that custom propagators in other bases
+(Sec. 2.2) support truncation in the same manner.
+On top of truncation, Propaq contains detailed
+logging tools to analyze runtime and memory
+complexity as well as simulation accuracy. First,
+progress through a simulation can be tracked during runtime with a progress bar.
+Listing 2.3. Propaq implements a progress bar to show
+simulation progress and estimate total runtime.
+1
+2
+3
+4
+5
+
+logger = Logger("log.jsonl", log_every=1)
+prop = MajoranaPropagator(
+truncation=CoefficientTruncator(1e-6),
+progress_bar=True,
+logger=logger,
+)
+
+This provides the propagator with logging tools
+to track timing of various stages of the propagation, as well as truncation statistics, including the
+L1 norm of the discarded terms, number of terms
+discarded, largest magnitude of discarded terms,
+etc. An example of this functionality is shown
+in Fig. 4 for simulating a chain of twenty Hydrogen atoms with Pauli propagation and a cutoff
+of 10−6 . Here, we see that, even though nearly
+108 terms are discarded due to truncation, the
+discarded coefficient L1 norm is more mild, between 100 and 101 , providing a bound on observable accuracy. In addition to providing insight to
+simulation performance and accuracy, these tools
+are provided to aid in fine-tuning truncation parameters, and to identify bottlenecks in custom
+propagation engines.
+Finally, we note that Propaq provides API
+methods to save backpropagated operators to
+disk in a compressed format. Operators can be
+loaded from disk into memory all at once, or in
+a streaming fashion, where terms are loaded one
+at a time. This allows for distributed computation of expectation values across multiple devices,
+as well as the ability to perform checkpoint and
+resume simulation. Code for saving and (lazily)
+loading operators so is shown in Sec. 4.
+
+Listing 2.2. Syntax for propagation with truncation.
+1
+
+from propaq import CoefficientTruncator,
+,→ Logger, MajoranaPropagator
+
+from propaq import PauliPropagator
+propagator = PauliPropagator(progress_bar=True)
+result = propagator.expectation_value(...)
+# Propagating: 100% 44/44 [00:00<00:00,
+,→ 273.21gate/s, terms=50]
+
+2.5 Noisy simulation
+In addition to truncation, another cornerstone of
+Heisenberg propagation techniques is noisy simulation. The reason for this is that noise can make
+simulation easier [6]. In particular, depolarizing
+noise has the effect of damping coefficients, as
+reviewed in Sec. 3, by causing the coefficients of
+some terms to go to zero (or below the truncation
+threshold), reducing the total number of terms in
+the backpropagated observable and thus reducing
+the complexity of the simulation.
+
+As shown, progress bars show the percentage of
+gates applied in the circuit, gate application time,
+and total number of terms in the simulation. The
+returned result contains the number of terms in
+backpropagated observable after every gate applied in simulation, which is useful for analyzing
+term growth and simulation complexity.
+Even more detailed analyses of the simulation
+can be enabled with Propaq’s logging tools. One
+5
+
+2 × 101
+
+Optimization Wall Time (s)
+
+0.412
+0.411
+
+⟨Z ⊗5 ⟩
+
+0.410
+0.409
+0.408
+0.407
+Cutoff evaluations
+Linear fit
+ZCE value (0.4117)
+
+0.406
+0.405
+
+Untruncated value (0.4124)
+
+0.404
+
+0.00
+
+0.25
+
+0.50
+
+0.75
+
+1.00
+
+1.25
+
+1.50
+
+6
+
+2 × 100
+
+Evaluation
+
+1.34 s
+Symbolic
+
+API methods for implementing this extrapolation
+technique are described in Sec. 4.
+Since noisy simulation generally makes Heisenberg propagation easier, as mentioned above, it
+is also natural to consider zero-noise extrapolation [21, 22] in this context. Here, the simulation
+is performed at increasing noise levels (with decreasing simulation cost), then a model is fit to
+the data and extrapolated to the zero-noise limit.
+The API methods for implementing this extrapolation technique are also described in Sec. 4.
+
+import propaq
+from propaq import UniformNoiseModel
+noise_model = UniformNoiseModel(damping=0.001)
+
+5
+7
+
+3 × 100
+
+Figure 6: Optimization wall time for depth-two QAOA
+max-cut ansatz on a 12-vertex, 3-regular graph. 1000
+iterations of direct numerical propagation is compared
+to surrogate model build time (orange) and evaluation
+time (green). While symbolically simulating the circuit
+takes 1.34 seconds, after this the total evaluation time
+for all optimization iterations is 1.18 seconds, providing a
+significant speedup over optimizing with direct numerical
+evaluation (12.2 seconds).
+
+Listing 2.5. Native noise models in Propaq.
+
+4
+
+4 × 100
+
+Numerical
+
+Propaq contains native support for noisy simulation with implementations of depolarizing
+noise.
+
+3
+
+6 × 100
+
+1.18 s
+
+Figure 5: Zero-coefficient-cutoff extrapolation for a fivequbit periodic TFIM circuit evolved for 4 Trotter steps.
+A linear extrapolation is applied to estimate the untruncated expectation value of Z ⊗5 . As can be seen, the
+extrapolated value is closer to the exact result than the
+truncated values.
+
+2
+
+10
+
+1.75
+
+Coefficient cutoff (10−3 )
+
+1
+
+12.2 s
+1
+
+# Pass into a Pauli/Majorana propagator
+prop = propaq.PauliPropagator(noise=noise_model)
+
+The UniformNoiseModel applies single-qubit depolarizing noise to all qubits after every layer of
+operations. Propaq also defines GateNoiseModel
+which allows the user to specify the noise channel
+to apply. Beyond this, custom noise channels are
+supported and can be used with all Propaq propagation features. An example of defining a custom
+channel for use in noisy simulation is Sec. 4.
+
+2.7 Optimizations
+Propaq contains multiple optimizations for performance, both at the software and algorithmic/theory level. While the low-level backend
+design is described in Sec. 5, we highlight two
+algorithmic optimizations here. First, tuning
+(variationally optimizing) gate parameters is a
+common algorithmic primitive in the variational
+quantum eigensolver [23], quantum approximate
+optimization algorithm [24], and other variational
+quantum algorithms [25–28]. In this setting, circuits need to be simulated many times as a subroutine to optimize the objective function. To
+mitigate this problem, Propaq supports symbolic/surrogate propagation. In this method, the
+objective function is computed once with sym-
+
+2.6 Extrapolation Methods
+Both truncation and noisy simulation allow for
+the implementation of extrapolation methods. In
+particular, Propaq supports zero-cutoff extrapolation (ZCE) in which the simulation is performed
+at increasing truncation levels, then a model is fit
+to the data to predict the zero-cutoff limit behavior of simulation. In Fig. 5, we show that a truncated expectation value can be extrapolated to
+the zero-cutoff limit for a five-qubit TFIM circuit, improving the simulation accuracy. The
+6
+
+Propagation Wall Time (s)
+
+efficiency gains. To illustrate this, we perform
+a timing study, comparing the performance of
+Propaq with and without Clifford deferral on random Clifford+T circuits. The results, shown in
+Fig. 7, demonstrate that deferring Clifford gates
+can confer significant performance gains for circuits with high densities of Clifford gates.
+
+Clifford deferral on
+Clifford deferral off
+
+102
+
+101
+
+3 Background
+
+100
+0.0
+
+0.1
+
+0.2
+
+0.3
+
+3.1 Heisenberg Propagation
+
+0.4
+
+T-gate insertion probability p
+
+We briefly review the theory of Heisenberg propagation [2, 11, 12, 30]. Consider a quantum circuit
+
+Figure 7: Runtime comparison of ⟨Z⟩ calculation with
+and without Clifford deferral on a 64-qubit, 80 layer
+Clifford+T circuit. Each layer of the circuit consists of
+a random single-qubit Clifford gate on each qubit, followed by a perfect-matching layer of CNOT gates. A T
+gate is applied to a random qubit with probability p. As
+shown, Propaq’s Clifford deferral optimization (Sec. 2.7)
+can lead to a large decrease in runtime, up to around 10x,
+especially for circuits with high T gate density.
+
+C := UL . . . U2 U1
+
+(4)
+
+consisting of L gates, an observable O, and a
+quantum state |Ψ0 ⟩. The expectation value of
+the observable with respect to the state after the
+circuit is applied is given by
+h
+
+
+
+E[O] := ⟨Ψ0 |C † OC|Ψ0 ⟩ = Tr O CρC †
+
+i
+
+(5)
+
+with
+
+bolic angles, then can be efficiently evaluated for
+other parameters. While the overhead of the first
+simulation can be large depending on the problem, this technique can present significant utility when the number of optimization steps is
+large and renders serial simulation at separate
+parameters intractable. An example of this is
+shown in Fig. 6. Here, we fix 1000 iterations
+for a depth-two QAOA max-cut ansatz on twelve
+qubits. The total time for optimization numerically (non-symbolic simulation) is 12.2 seconds.
+While symbolically simulating the circuit the first
+time takes 1.34 seconds, after this the total evaluation time for all optimization iterations is 1.18
+seconds, providing a significant speedup over direct numerical evaluation.
+Additionally, Propaq implements another algorithmic optimization for simulating circuits that
+we call Clifford deferral. In general, for each gate
+application in the circuit we will have to evaluate
+two terms, cos(θ) and sin(θ), where the angle θ is
+determined by the term and gate (see (9)). This
+potentially requires allocating and re-merging a
+large number of terms. For Clifford gates, we
+can store the adjoint action of the gate in a stabilizer tableau [29], and defer the action of a sequence of Clifford gates. Once a non-Clifford gate
+is encountered, it is pushed through the tableau
+and applied to all terms in parallel, providing
+
+ρ := |Ψ0 ⟩⟨Ψ0 |.
+
+(6)
+
+This is the Schrödinger picture of quantum mechanics in which the state evolves in time and the
+observable is fixed. Through the cyclicity of the
+trace, we can equivalently write this as
+E[O] = Tr
+
+h
+
+ i
+
+C † OC ρ
+
+(7)
+
+to recover the Heisenberg picture, where the observable is back-propagated through the circuit
+and the state remains fixed. By representing the
+observable in a basis of operators {σi }, we can
+write
+X
+ci σi
+O=
+i
+
+where ci are the coefficients of the observable in
+the operator basis. The action of the circuit is
+precisely the adjoint action of each layer on the
+basis elements, which can be computed via the
+commutation relations of the operator basis. After parameterizing each gate as
+Ui = exp{−iθσi /2},
+
+(8)
+
+the action of the gate on a basis element σj is
+given by
+(
+
+σj 7→
+
+7
+
+σj
+cos(θ)σj + i sin(θ)σi′
+
+[σi , σj ] = 0
+[σi , σj ] ̸= 0
+
+(9)
+
+where σi′ is a new basis element generated by the
+commutator [σi , σj ]. Because of this, the number of terms in the back-propagated observable
+will generally grow exponentially with the number of gates in the circuit, and it is often necessary
+to truncate the back-propagated observable to a
+manageable number of terms. This is generally
+done by discarding terms with small coefficients
+or high weight.
+
+Using the Kraus operator representation (11) and
+simple properties of the trace, we may write
+"
+
+!
+X
+
+Tr[E(ρ)O] = Tr
+
+Ki ρKi†
+
+#
+
+O
+
+(15)
+
+i
+
+=
+
+X
+
+h
+
+i
+
+(16)
+
+h
+
+i
+
+(17)
+
+Tr Ki ρKi† O
+
+i
+
+=
+
+X
+
+Tr ρKi† OKi
+
+i
+
+"
+
+!#
+X
+
+= Tr ρ
+
+3.2 Noisy Heisenberg Propagation
+
+Ki† OKi
+
+(18)
+
+i
+
+Heisenberg propagation with noise can lessen simulation complexity [6] and thus presents a common application. Here, we are interested in the
+computation of (7) with noise applied to the
+state. That is, our goal is to estimate
+E[O] := Tr[E(U ρU † )O]
+
+=: Tr[ρE † (O)].
+
+In the last step, we defined the adjoint (dual)
+channel E † with Kraus operators {Ki† }. Certain channels, notably the single-qubit depolarizing channel (13), are self-adjoint, meaning that
+Ki† = Ki for all i and so E † = E.
+In Pauli propagation,
+
+(10)
+
+where E is a quantum channel (completely positive, trace preserving map). Naturally, there are
+many such maps E defined by their action and
+when/where they act during the quantum computation. Most generally, a quantum channel is
+defined by its Kraus operators {Ki }m
+i=1 via
+E(ρ) =
+
+X
+
+Ki ρKi† ,
+
+O=
+
+P = sX1x1 X2x2 · · · Xnxn Z1z1 Z2z2 · · · Znzn .
+
+(11)
+
+(20)
+
+(21)
+
+Here, s ∈ C is a phase, X and Z are the singlequbit Pauli operators defined by
+"
+
+0 1
+X=
+1 0
+
+(12)
+
+"
+
+#
+
+(22)
+#
+
+1 0
+Z=
+,
+0 −1
+
+i
+
+Two typical models that have been studied are
+single-qubit depolarizing noise
+
+(23)
+
+and xi , zi ∈ {0, 1}. Note that Y := iXZ can
+be generated up to phase from the product of X
+and Z, and that X 2 = Y 2 = Z 2 = I. Since
+P := {I, X, Y, Z} is a basis for any single-qubit
+operator, Pn := P ⊗n is a basis for any n-qubit
+operator.
+Consider a single-qubit Pauli P under a singlequbit depolarizing channel Ep . By definition, we
+have
+
+p
+Ep (ρ) := (1−p)ρ+ (XρX + Y ρY + ZρZ) (13)
+3
+where 0 ≤ p ≤ 1 and X, Y , and Z are the Pauli
+matrices applied (1) after every parallel layer of
+gates in the circuit, or (2) after every gate in
+the circuit. These have been studied in [6] because they model quantum hardware relatively
+well but are still tractable to work with analytically. We remark that Propaq implements (1) as
+UniformNoiseModel, as shown in Sec. 4. Consider
+a single-qubit state ρ acted on by a depolarizing
+channel (11). Our goal is to evaluate
+Tr[Ep (ρ)O].
+
+ci Pi
+
+where Pi are n-qubit Pauli operators of the form
+
+with the only restriction on Ki being the completeness relation
+Ki† Ki = I.
+
+X
+i
+
+i
+
+X
+
+(19)
+
+p
+Ep (P ) = (1 − p)P + (XP X + Y P Y + ZP Z).
+3
+(24)
+For any non-identity Pauli P ∈ {X, Y, Z}, it is
+easy to verify that
+XP X + Y P Y + ZP Z = −P.
+
+(14)
+8
+
+(25)
+
+3.3 Surrogate/Symbolic Propagation
+
+Thus, the action of the depolarizing channel on a
+non-identity Pauli can be written
+
+
+p
+4
+Ep (P ) = (1 − p)P + (−P ) = 1 − p P. (26)
+3
+3
+For P = I, we have that
+Ep (I) = I.
+
+Consider a parameterized quantum circuit C(Θ),
+an observable O, and an initial state |Ψ0 ⟩. It is
+often of interest to compute the expectation value
+of the observable with respect to the evolved state
+as a function of the parameters Θ:
+
+(27)
+
+Therefore, when propagated through a channel,
+non-identity Paulis pick up a damping factor of
+
+E[O](Θ) = ⟨Ψ0 |C(Θ)† OC(θ)|Ψ0 ⟩
+
+e−γ := (1 − 4p/3),
+
+This is particularly relevant for variational quantum algorithms and quantum machine learning
+applications. Although one can compute the expectation value for each parameter setting Θ using numerical propagation, this can become computationally expensive for large circuits and many
+parameter settings. The parameters do not affect the circuit structure, rather they only affect
+the coefficients of the back-propagated operator.
+Therefore, rather than numerically propagating
+the operator for each Θ, one can symbolically
+propagate the operator once to obtain
+
+(28)
+
+while the identity is unchanged.
+For a tensor product channel acting on an nqubit Pauli string
+P ≡ P1 ⊗ · · · ⊗ Pn 7→ Ep (P1 ) ⊗ · · · ⊗ Ep (Pn ), (29)
+we see that
+P ≡ P1 ⊗ · · · ⊗ Pn 7→ e−γw[P ] P
+
+(30)
+
+where w[P ] is the weight (number of non-identity
+Paulis) of Pauli P .
+In Majorana propagation,
+O=
+
+X
+
+ci Mi
+
+f : Θ 7→ E[O](Θ) :=
+
+(31)
+
+where Mi are n-qubit Majorana operators (often
+called Majorana monomials in this context) of the
+form
+b2n−1 b2n
+M = sγ1b1 γ2b2 · · · γ2n−1
+γ2n .
+(32)
+
+γ2j−1 := 
+
+
+
+Zk  Xj
+
+(33)
+
+k=1
+
+
+
+γ2j := 
+
+j−1
+Y
+
+(38)
+
+i.e. a function that maps the parameters to the
+expectation value of the observable. Terms that
+are structurally negligible can be pruned from
+the back-propagated operator, resulting in a surrogate model that can be evaluated for any parameter setting Θ. Propaq implements surrogate propagation and provides an API for saving, loading, and evaluating surrogate models.
+The details of implementation and usage are described in Sec. 4.8. It is worth noting that surrogate propagation is significantly more expensive
+than numerical propagation, as a result of having to track the symbolic coefficient tree and perform symbolic algebra, and the method should be
+used when many energy evaluations are required
+for parameter tuning such that fast subsequent
+energy evaluation outweighs the initial cost, as
+shown in the example of Fig. 6.
+
+Here, s ∈ C is a phase, the Majorana operators
+are defined by
+j−1
+Y
+
+ci (Θ) Tr(Pi ρ0 )
+
+i
+
+i
+
+
+
+X
+
+(37)
+
+
+
+Z k  Yj ,
+
+(34)
+
+k=1
+
+and bi ∈ {0, 1}.
+Under a tensor product of single-qubit channels
+E(M ) := (E1 ⊗ · · · ⊗ En ) (M ),
+
+(35)
+
+we can express the Majorana M in the Pauli basis
+P(M ) via (33) - (34) to obtain a similar mapping
+to (30), namely
+Ep (P(M )1 ) ⊗ · · · ⊗ Ep (P(M )n ) = e−γw[P(M )] M.
+(36)
+The only difference relative to (36) is that in (30)
+we must use the Pauli weight w[P(M )] instead
+of the Majorana weight w[M ]. Since Majoranas
+are nonlocal, a single Majorana operator can have
+high Pauli weight, e.g. w[P(γ2n )] = n, leading to
+different damping factors in noisy simulation.
+
+4 API and Usage
+In this section, we provide a “getting started”
+guide with Propaq, starting with installation and
+proceeding through most common uses. This section is designed to be self-contained and provide
+more details on the features highlighted in Sec. 2,
+as well as show additional features.
+9
+
+4.1 Installation and Dependencies
+
+Listing 4.4. (continued)
+
+Propaq can be installed on Linux, Windows and
+Mac via PyPI using the following command:
+
+4
+
+,→ CoefficientTruncator
+5
+6
+
+Listing 4.1. Installation of Propaq via PyPI.
+
+7
+8
+
+pip install propaq
+
+9
+10
+
+Propaq is natively compatible with Qiskit circuits, and this is a dependency of the library. Compatibility with Cirq [31], FFSIM [32],
+OpenFermion [33], and Quimb [34] (for hybrid
+Schrödinger-Heisenberg simulation with matrix
+product states) are optional extras that can be
+installed via the following command:
+
+11
+
+# Convert to Propaq circuit and observable.
+pc = PauliCircuit.from_qiskit(qc)
+pts = PauliTermSum.from_sparse_pauli_op(obs)
+
+12
+13
+14
+15
+16
+17
+18
+19
+
+# Construct a propagator.
+prop = PauliPropagator(
+noise=UniformNoiseModel(damping=0.001),
+truncation=[CoefficientTruncator(1e-6)],
+n_threads=16,
+progress_bar=True
+)
+
+20
+21
+
+Listing 4.2. Installation of Propaq with optional extras.
+
+22
+23
+
+pip install propaq[cirq,ffsim,openfermion,hybrid]
+
+24
+25
+26
+
+The source code for Propaq is available on
+GitHub [35].
+4.1.1
+
+qc: qiskit.QuantumCircuit = ...
+obs: qiskit.SparsePauliOp = ...
+initial_state: int = ...
+
+27
+
+# Compute the expectation value.
+result = prop.expectation_value(
+observable=pts,
+circuit=pc,
+initial_state=initial_state
+)
+result.expectation_value # Type: float
+
+Here, we assume that the user has a quantum
+circuit defined as a qiskit.QuantumCircuit, an
+observable expressed as a qiskit.SparsePauliOp,
+and an initial bitstring represented as an integer
+(e.g. 0 for the all |0⟩⊗n state in the computational
+basis). After, a PauliPropagator is constructed
+with various options for noise, truncation, number of threads to use, and whether or not to show
+simulation progress. These options are used when
+the expectation_value method is called to compute the expectation value of the observable in
+the circuit and initial state.
+One can use the analogous method from_cirq
+to parse a Cirq circuit.
+Additionally, the
+MajoranaTermSum,
+MajoranaCircuit,
+and
+MajoranaPropagator, along with their conversion methods from Qiskit, Cirq, OpenFermion,
+and ffsim can be used to perform Majorana
+propagation. Note that these require optional
+dependencies as described in Sec. 4.1.
+
+Building for a specific CPU
+
+The wheels distributed on PyPI are built to
+be generic and compatible with a wide range
+of CPUs across different architectures. Several
+hot paths in the propagation engine can be autovectorized by the compiler, and therefore benefit from CPU-specific optimizations. Therefore,
+for users who want to maximize performance on
+known CPU architecture, Propaq can be built
+from source using a Rust toolchain:
+Listing 4.3. Building Propaq for the host CPU.
+git clone https://github.com/hkbelagali/propaq
+cd propaq
+maturin build --release
+pip install target/wheels/propaq-*.whl
+
+This build will generally only work on the exact
+CPU architecture it was built on, therefore building in cluster environments must be done on the
+same target node that will be used for running
+the simulations.
+
+4.3 Truncation and Noise Policies
+4.2 Basic Usage
+
+4.3.1
+
+The following code block shows the basic usage
+of Propaq to simulate a circuit.
+
+Propaq implements truncation policies which can
+be used to control the growth of the operator during propagation. The built-in truncation policies
+include CoefficientTruncator, WeightTruncator
+(numeric), and FrequencyTruncator (symbolic).
+The propagator objects accept a list of truncation policies, which are applied in the order pro-
+
+Listing 4.4. Basic usage of Propaq.
+1
+2
+3
+
+Built-in Truncation Policies
+
+import qiskit
+from propaq import PauliCircuit, PauliTermSum,
+,→ PauliPropagator, UniformNoiseModel,
+
+10
+
+vided. Users can also specify a TermBudget, which
+suppresses all other lossy truncation policies until the operator has at least the given number of
+live terms, keeping propagation exact until it has
+had room to grow. For example, the following list
+of truncation policies says to truncate terms with
+coefficients below 10−6 and weight above 5, but
+keep propagation exact below 100 terms.
+
+Listing 4.7. Custom noise in Propaq.
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+
+Listing 4.5. Truncation policies in Propaq.
+1
+2
+3
+4
+5
+
+12
+
+truncation = [
+CoefficientTruncator(1e-6),
+WeightTruncator(5),
+TermBudget(min_terms=100),
+]
+
+13
+14
+15
+16
+17
+18
+19
+
+This list of truncation policies can then be provided to a propagator, e.g. the PauliPropagator
+from Listing 4.4, and then used in simulation.
+4.3.2
+
+20
+
+Built-in Noise Models
+
+Listing 4.6. Uniform depolarizing noise.
+from propaq import UniformNoiseModel
+
+2
+3
+4
+
+# Generate a model scaling each term by
+,→ exp(-0.001 * weight[P])
+noise_model = UniformNoiseModel(damping=0.001)
+
+5
+6
+7
+
+class DephasingGateNoise(GateNoiseModel):
+X_MASK = 0x5555555555555555
+def __init__(self, gamma: float) -> None:
+self.gamma = gamma
+def damping_factor_term(self,
+basis_kind: int,
+words: list[int],
+n_units: int,
+weight: int
+) -> float:
+x_count = sum(
+bin(w & self.X_MASK).count("1")
+for w in words
+)
+return math.exp(-self.gamma * x_count)
+
+As shown, the necessary method to implement is
+damping_factor_term which returns the numerical value to damp coefficients of backpropagated
+observables by, depending on the basis and observable. Other custom channels can be defined
+in this manner and subsequently used with propagators in the normal way.
+Since the backend of Propaq is in Rust, custom noise in Python can be sped up by defining them directly in Rust. For this reason,
+Propaq features a plugin application binary interface (ABI), through which users can implement
+their own noise and truncation policies in Rust,
+C, or ahead-of-time (AOT) compiled Julia. This
+method works by accepting a shared library (.so
+on Linux, .dylib on Mac, and .dll on Windows)
+that specifies its permissions and implements the
+noise or truncation policy. As an example, we
+demonstrate how to implement a noise plugin in
+C in Appendix B, which defines uniform_noise.c.
+After this, the shared library is built so that it is
+available as libuniform_noise.so Then, it can be
+loaded and used in Propaq as follows:
+
+Propaq provides uniform depolarizing noise for
+both Pauli and Majorana propagation through
+the UniformNoiseModel class. This applies a uniform depolarizing channel to each qubit after every layer in the circuit.
+
+1
+
+import math
+from propaq.noise import GateNoiseModel
+
+# Pass into a Pauli/Majorana propagator
+prop = PauliPropagator(noise=noise_model)
+
+Since the propagation engine is generic, the
+UniformNoiseModel can be used with any prop-
+
+agator. For example, it can be used directly with
+Weyl-Heisenberg propagation (see Appendix A)
+and naturally generalizes to a qudit depolarizing
+channel.
+
+Listing 4.8. Using a custom noise plugin in Propaq.
+
+4.3.3
+
+Custom Noise and Truncation Policies
+
+1
+2
+
+While Propaq contains native support for depolarizing noise, custom noise models are supported. This can be done by inheriting from
+GateNoiseModel, as shown below. In this example, we implement a channel for depolarizing
+noise
+E(ρ) = (1 − p)ρ + pZρZ
+(39)
+
+3
+4
+
+from propaq.noise import NativeNoiseModel
+from propaq.truncation import NativeTruncator
+damping = 0.001
+
+5
+6
+7
+8
+9
+10
+
+# Load the shared library, and pass in damping
+,→ as a JSON string
+noise_model = NativeNoiseModel(
+'libuniform_noise.so',
+config=f'{{"damping": {damping}}}'
+)
+
+11
+12
+
+with p = (1 − e−γ )/2.
+
+13
+
+11
+
+# Use like any other noise model
+prop = PauliPropagator(noise=noise_model)
+
+where Rab (n, θ) ∈ SO(3) is a rotation matrix
+given by
+
+Listing 4.8. (continued)
+14
+15
+16
+17
+18
+19
+20
+21
+
+# Custom truncation policy
+truncator = NativeTruncator(
+'libtruncator.so',
+config=f'{{"...": ...}}'
+)
+
+R(n, θ) = cos(θ)I + sin(θ)[n]× + (1 − cos(θ))nn⊤
+(43)
+where [n]× is the cross-product matrix of n.
+The overlap between a spin coherent state |n⟩ =
+Un (θ)|S, S⟩ and a spin operator Sa can be computed as
+⟨n|Sa |n⟩ = S · na
+(44)
+
+prop = MajoranaPropagator(truncation=truncator)
+
+We remark that Propaq employs a permission
+system for its noise and truncation plugins. This
+ensures that the plugin has access to the necessary data and resources, while allowing the engine
+to perform optimizations and parallelization depending on the access level. For example, the action of a noise plugin that only requires the weight
+(such as uniform depolarizing noise) can be precomputed once at the beginning of the propagation. This virtually eliminates all overhead of
+the plugin, and allows for efficient parallel execution. In contrast, a plugin that requires access
+to full term’s structure generally cannot be precomputed, and requires careful design to prevent
+race conditions and ensure reproducibility. The
+permissions and details for implementing plugins
+are described in the Propaq documentation [35].
+
+In the following code snippet, we demonstrate
+how to implement these spin operators in Propaq
+by subclassing the appropriate methods.
+Listing 4.9. Subclassing Propaq for a single spin-S particle.
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+
+4.4 Arbitrary basis propagation
+
+14
+
+Propaq supports propagation in arbitrary bases
+through its Python API. The user can define a custom basis representation and algebraic relations by subclassing the AbstractTerm,
+DictTermSum, and AbstractPropagator classes.
+This allows the user to utilize extrapolation methods and term I/O for eligible custom bases. As an
+example, we study a single spin-S system, which
+lives in a Hilbert space of dimension d = 2S + 1
+with commutation relation
+
+16
+
+[Sa , Sb ] = iϵabc Sc .
+
+15
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+
+(40)
+
+29
+
+For S = 1/2, this reduces to the Pauli algebra.
+Note that this is not a complete operator basis for
+S > 1/2. We can define a single parameterized
+gate Un (θ) for a rotation about an arbitrary axis
+n, given by
+
+30
+
+Un (θ) = exp{−iθ(n · S)}
+
+37
+
+31
+32
+33
+34
+35
+36
+
+(41)
+
+38
+39
+
+Then, via Wigner’s theorem, we get the closedform for every rotation S,
+Un† (θ)Sa Un (θ) =
+
+X
+
+Rab (n, θ)Sb
+
+40
+
+(42)
+
+41
+
+b
+
+12
+
+from dataclasses import dataclass
+import numpy as np
+from propaq.datatypes import AbstractTerm,
+,→ DictTermSum
+from propaq.propagators import
+,→ AbstractPropagator
+@dataclass(frozen=True, slots=True)
+class SpinTerm(AbstractTerm):
+axis: int # 0, 1, 2 for Sx , Sy , Sz
+spin: float # S
+@property
+def weight(self) -> int: # 3. from 2.2
+return 1
+@property
+def n_units(self) -> int:
+return 1
+def commutes_with(self, other: "SpinTerm")
+,→ -> bool: # 2. from 2.2
+return self.axis == other.axis
+def __matmul__(self, other: "SpinTerm") ->
+,→ tuple[complex, "SpinTerm"]: # 1. from 2.2
+raise NotImplementedError
+def trace_with_diag_state(self, diag_state)
+,→ -> complex: # 4. from 2.2
+return self.spin * diag_state[self.axis]
+def to_bytes(self) -> bytes: # 6. from 2.2
+return bytes([self.axis, round(2 *
+,→ self.spin)])
+@classmethod
+def from_bytes(cls, data: bytes, n_units:
+,→ int) -> "SpinTerm": # 6. from 2.2
+axis, doubled_spin = data[0], data[1]
+return cls(axis, doubled_spin / 2)
+def __hash__(self) -> int: # 6. from 2.2
+return hash((self.axis, self.spin))
+def __eq__(self, other: object) -> bool: #
+,→ 6. from 2.2
+return isinstance(other, SpinTerm) and
+,→ self.axis == other.axis and self.spin ==
+,→ other.spin
+
+gate in Propaq using its generator representation:
+
+Listing 4.9. (continued)
+42
+43
+44
+45
+46
+47
+48
+49
+
+50
+51
+52
+53
+54
+
+55
+56
+57
+58
+
+class SpinTermSum(DictTermSum[SpinTerm]):
+term_type = SpinTerm # enables file I/O
+
+Listing 4.10. Registering a CX gate in Propaq.
+1
+
+class SpinRotation:
+def __init__(self, axis: tuple[float,
+,→ float, float], angle: float):
+n = np.asarray(axis) /
+,→ np.linalg.norm(axis)
+cross = np.array([[0, -n[2], n[1]],
+,→ [n[2], 0, -n[0]], [-n[1], n[0], 0]])
+self.R = np.cos(angle) * np.eye(3) +
+,→ np.sin(angle) * cross + (1 ,→ np.cos(angle)) * np.outer(n, n)
+
+2
+3
+4
+5
+6
+7
+8
+9
+10
+
+class SpinPropagator(AbstractPropagator):
+term_sum_type = SpinTermSum
+
+from propaq.circuits import PauliCircuit,
+,→ pauli_rotation_generator,
+,→ register_qiskit_gate
+def cnot_terms(
+instr: qiskit.circuit.Instruction,
+q_indices: tuple[int, int],
+width: int,
+rep: GateRep
+):
+i, j = q_indices # control, target
+n_qubits = rep.qubits_in_width(width)
+
+11
+12
+
+# Get the string repr of a Pauli
+def label(axis_i, axis_j):
+chars = ["I"] * n_qubits
+if axis_i:
+chars[n_qubits - 1 - i] = axis_i
+if axis_j:
+chars[n_qubits - 1 - j] = axis_j
+return "".join(chars)
+
+13
+
+def apply_gate(self, term: SpinTerm, coeff:
+,→ complex, rotation: "SpinRotation"): # 5.
+,→ from 2.2
+for b in range(3):
+weight = rotation.R[term.axis, b]
+if weight:
+yield SpinTerm(b, term.spin),
+,→ coeff * weight
+
+14
+15
+16
+17
+18
+19
+20
+21
+
+# Build the generator terms
+terms = []
+for axis_i, axis_j, coeff in (
+("Z", None, math.pi / 2),
+(None, "X", math.pi / 2),
+("Z", "X", -math.pi / 2),
+):
+gen, unit = pauli_rotation_generator(
+rep,
+label(axis_i, axis_j)
+)
+terms.append((gen, coeff * unit))
+return [terms]
+
+22
+23
+
+Although the matrix multiplication method is
+not required for the spin basis, it is necessary to
+implement to satisfy the AbstractTerm interface.
+We also note that custom bases are not currently
+routed through the Rust backend, and are therefore slower than the built-in Pauli and Majorana
+bases by a non-trivial constant factor. We are actively working on extending support for custom
+bases into the Rust backend.
+
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+
+4.5 Custom Gate Registration
+
+# Register the qiskit gate
+register_qiskit_gate("cx", cnot_terms)
+
+For certain gates, gate registry can yield significant performance improvements. An example is
+shown in Fig. 8 where custom decomposition registered with Propaq achieves a 2-5x speedup when
+benchmarking the wall clock time of propagation
+for a ten-qubit non-Clifford brickwork exchange
+ansatz.
+
+Heisenberg propagation is a general procedure
+that can be applied to any gate, provided that
+it can be parameterized in terms of basis generators and angles. It is impractical to implement
+every possible gate in the core engine, therefore
+Propaq decomposes gates into its native basis using quantum compilation techniques. Although
+this ensures that any gate can be accurately represented, the decompositions are not necessarily
+optimal, and can lead to larger-than-necessary
+operator growth. For cases where the user has
+a custom gate that is not in the native basis with
+a known, optimal decomposition, Propaq allows
+the user to register the gate in terms of its generator representation. Propaq will validate the usersupplied generator representation by comparing
+it to its native decomposition. If the two representations are equivalent, the gate can be used in
+the propagation engine in its optimized form. As
+an example, we demonstrate how to register a CX
+
+4.6 Logging, Storage, and I/O
+4.6.1
+
+Logging
+
+Propaq supports logging of propagation statistics
+and runtime diagnostics. These features are provided by Logger objects.
+Listing 4.11. Logging in Propaq.
+1
+
+from propaq import Logger
+
+2
+3
+4
+5
+6
+
+13
+
+# Save to propagation.log, and log every 5 gates.
+logger = Logger(
+filename='propagation.log',
+log_every=5,
+
+0
+
+10
+
+Energy (Ha)
+
+Propagation Wall Time (s)
+
+101
+
+10−1
+
+10−2
+
+Native Decomposition
+Registered Decomposition
+
+1 10 20 30 40 50 60 70 80 90 100
+No. of Layers
+
+-1.4
+-1.6
+-1.8
+-2.0
+-2.2
+-2.4
+-2.6
+-2.8
+-3.0
+-3.2
+-3.4
+
+Noisy data
+ZNE value (-3.0408 Ha)
+Noiseless (-3.1558 Ha)
+HF energy (-3.1560 Ha)
+CCSD energy (-3.2572 Ha)
+
+1
+
+2
+
+3
+
+4
+
+Noise Value (10−3 )
+
+Figure 8: Propagation runtime for a 10-qubit nonClifford brickwork exchange ansatz for a Propaq’s native
+decomposition, and a custom decomposition registered
+with Propaq.
+
+Figure 9: Zero-noise extrapolation of a 2-layer unitary
+cluster Jastrow (UCJ) ansatz for a (H2 )3 molecule. A
+uniform depolarizing noise channel is applied after each
+layer of the ansatz, and a linear extrapolation is performed to estimate the expectation value.
+
+Listing 4.11. (continued)
+7
+8
+
+)
+prop = PauliPropagator(logger=logger)
+
+Listing 4.13. (continued)
+4
+
+This writes information to the log file at regular
+intervals defined by log_every in a JSONL format. The data can be parsed and analyzed using
+the LogParser class, which returns trajectories of
+each logged quantity.
+
+5
+6
+7
+8
+
+2
+3
+4
+
+from propaq import LogParser
+log = LogParser('propagation.log')
+log.terms_discarded # list[int]
+
+Additional
+
+logged
+
+quantities
+
+# Load a term sum from disk.
+termsum = PauliTermSum.from_file('obs.gz')
+
+Term sums can also be saved to disk through via
+termsum.save('obs.gz'). These operations are
+eager in memory, and therefore impractical for
+very large operators. Therefore, we also provide a
+lazy interface for loading and merging operators.
+This enables distributed workflows for propagation. Users can partition an observable and run
+on different devices, store the results in disk, and
+then merge the results into a single operator later
+for analysis.
+
+Listing 4.12. Parsing logs in Propaq.
+1
+
+prop = PauliPropagator(...)
+prop.propagate(..., filename='obs.gz')
+
+include
+
+discarded_coeff_l1,
+discarded_coeff_max,
+ms_per_gate,
+elapsed_ms,
+gate_events,
+terms_before,
+terms_after,
+and
+truncation_events, among others defined in
+
+Propaq’s documentation [35].
+
+Listing 4.14. Lazy loading and merging of propagated
+operators in Propaq.
+
+4.6.2
+
+1
+
+Storage and I/O
+
+2
+3
+
+Storing propagated operators is a common requirement for many applications and downstream
+analysis. Propaq provides a simple interface for
+storing and loading propagated operators in a binary format.
+
+5
+6
+7
+8
+9
+10
+11
+
+from propaq import PauliTermSum
+
+# Or: merge multiple operators into one
+files = ['obs1.gz', 'obs2.gz', 'obs3.gz']
+obs = PauliTermSum()
+for f in files:
+obs.merge_from_file(
+PauliTermStreamer.from_file(f)
+)
+
+Merging using a streamer ensures that the operator is not first materialized and then merged,
+which redundantly increases memory usage.
+
+2
+3
+
+streamer = PauliTermStreamer.from_file('obs.gz')
+
+4
+
+Listing 4.13. Storing and loading propagated operators
+in Propaq.
+1
+
+from propaq import PauliTermStreamer
+
+# Propagate and save a term sum to disk.
+
+14
+
+through the ZeroNoiseExtrapolator class. An example of applying ZNE with Propaq is shown below.
+
+4.7 Extrapolation Methods
+Propaq provides classes and methods to implement extrapolation methods for zero-cutoff
+and zero-noise limit behavior of quantum circuits, which are detailed in the following section. Propaq also allows users to implement extrapolators for custom noise and truncation policies by subclassing ZeroNoiseExtrapolator and
+ZeroCutoffExtrapolator, the details of which are
+mentioned in Propaq’s documentation [35].
+
+Listing 4.16. Zero-noise extrapolation in Propaq.
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+
+4.7.1
+
+Zero-Cutoff Extrapolation
+
+11
+12
+13
+
+An example result of zero-cutoff extrapolation
+improving the accuracy of expectation values was
+shown in Fig. 5. The following code block shows
+the general structure for using zero-cutoff extrapolation in Propaq.
+
+14
+15
+16
+17
+
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+
+from propaq import CoefficientCutoffExtrapolator
+from propaq import CoefficientTruncator
+circuit: PauliCircuit = ...
+observable: PauliTermSum = ...
+prop: PauliPropagator = PauliPropagator(
+truncation=[CoefficientTruncator(1e-6)]
+)
+cce = CoefficientCutoffExtrapolator(
+fitting_fn = lambda x, a, b: a + b * x,
+cutoff_values=[1e-6, 1e-5, 1e-4, 1e-3]
+)
+result_cce = cce.run(
+propagator=prop,
+circuit=circuit,
+observable=observable,
+initial_state=0,
+)
+
+zne = ZeroNoiseExtrapolator(
+fitting_fn = lambda x, a, b: a + b * x,
+noise_values=[0.005, 0.010, 0.015, 0.020]
+)
+result = zne.run(
+propagator=prop,
+circuit=circuit,
+observable=observable,
+initial_state=0,
+)
+
+4.8 Variational Algorithms
+Symbolic propagation allows for the construction
+of surrogate models for variational algorithms
+and parameter sweeps. The SurrogatePropagator
+class provides the interface necessary to run these
+algorithms, porting from Qiskit and Cirq objects.
+
+As shown, zero-cutoff extrapolation can be easily implemented by simply defining the fit function fitting_fn and set of cutoff values to
+run. We remark that Propaq also defines a
+WeightCutoffExtrapolator which performs truncation based on observable weight. The usage for
+this extrapolator is identical to the above.
+
+Listing 4.17. Surrogate propagation in Propaq.
+1
+2
+3
+4
+5
+6
+7
+8
+9
+
+4.7.2
+
+circuit: PauliCircuit = ...
+observable: PauliTermSum = ...
+noise = UniformNoiseModel(damping=0.00)
+prop = PauliPropagator(noise=noise)
+
+Example results are shown in Fig. 9 for a twolayer unitary cluster Jastrow ansatz for a hydrogen chain. While both the bias and variance
+of ZNE is strongly noise and problem dependent, and still largely an active area of research,
+Propaq’s implementation allows researchers to
+easily use and analyze these techniques in the
+context of Heisenberg propagation.
+
+Listing 4.15. Zero-cutoff extrapolation in Propaq.
+1
+
+from propaq import ZeroNoiseExtrapolator
+
+10
+
+Zero-Noise Extrapolation
+
+11
+12
+
+In addition to zero-cutoff extrapolation, Propaq
+also implements zero-noise extrapolation (ZNE).
+While ZNE has been implemented in several
+quantum error mitigation packages [36, 37], it
+is natural to consider ZNE for noisy Heisenberg
+propagation because, as discussed in Sec. 3, it reduces simulation complexity at larger noise levels.
+For this reason Propaq natively implements ZNE
+
+# Construct a parameterized Qiskit circuit
+theta = ParameterVector('theta', 6)
+qc = QuantumCircuit(3)
+qc.x(0)
+qc.x(2)
+it = 0
+for layer in range(2):
+for q in range(3):
+qc.rz(theta[it], q)
+it += 1
+
+13
+14
+15
+16
+17
+18
+
+# Build the surrogate model
+obs : PauliTermSum = ...
+circuit = SurrogatePauliCircuit.from_qiskit(qc)
+model = PauliSurrogatePropagator().build(obs,
+,→ circuit, initial_state=0)
+
+19
+20
+21
+
+15
+
+# Wrap the model for ease of use
+variational_model = VariationalSurrogateModel(
+
+and Rust differ in their design patterns, necessitating different data types and interfaces for the
+two languages, described in this section. We remark that several design decisions were adopted
+from monoprop [16] — notably BasisString,
+OperatorIndex, and InvertedIndex data types
+— while other design elements, previously mentioned features, and the Rust backend/Python
+frontend, were uniquely chosen.
+
+Listing 4.17. (continued)
+22
+23
+
+)
+
+model, circuit.parameter_sources,
+,→ circuit.qiskit_parameters
+
+24
+25
+26
+27
+28
+29
+
+# Optimize using scipy.minimize
+def cost(x):
+return variational_model.evaluate(x)
+result = minimize(cost, x0=np.random.rand(6),
+,→ method='COBYLA', options={'maxiter': 1000})
+
+4.9 Hybrid Simulation
+
+5.1 Term Storage
+
+The hybrid Schrödinger–Heisenberg simulation is
+provided through the hybrid_expectation_value
+method. We provide a code snippet demonstrating how to use this method, assuming the user
+has a quimb MatrixProductState object, and a
+PauliTermSum back-propagated observable.
+
+The nature of Heisenberg propagation demands a
+data structure that can compactly represent enormous numbers of operators, and allow for efficient
+computation of their algebraic relations. The
+symplectic representation of Pauli and Majorana
+operators is a natural choice, where the operators
+are represented as bitmasks, and the commutation relations become bitwise operations. Consistent with Rust’s design philosophy, we separate
+the term storage (BasisString) from term behavior (PauliAlgebra/MajoranaAlgebra). This allows
+the engine to be generic over the basis, and promotes the implementation of new bases in the
+future. Propaq utilizes three main data types for
+representing operators: Bitset, BasisString, and
+OperatorIndex. The second two are integrated
+with the dynamically-sized Bitset data type for
+pyo3 boundary crossing.
+
+Listing 4.18. Hybrid Schrödinger–Heisenberg simulation in Propaq.
+1
+2
+
+from quimb.tensor import MatrixProductState
+from propaq import PauliTermSum,
+,→ hybrid_expectation_value
+
+3
+4
+5
+
+# Forward-evolved state.
+mps: MatrixProductState = ...
+
+6
+7
+8
+
+# Backward-evolved observable.
+observable: PauliTermSum = ...
+
+9
+10
+11
+
+# Compute the expectation value
+ev = hybrid_expectation_value(observable, mps)
+
+Here, the mps represents the forward simulation
+of the initial state to the circuit bipartation, and
+the obs represents the backward simulation of the
+observable to the bipartition. Of course, backpropagating obs to this point can be done with
+any propagation methods in Propaq previously
+described.
+
+5.1.1
+
+Bitset
+
+We implement a Bitset data type that can represent an arbitrary number of bits, and provide efficient implementations of the bitwise operations
+required for Heisenberg propagation. The Bitset
+data type is a contiguous array of 64-bit unsigned
+integers, where each bit represents a mode (qubit
+or Majorana mode). It allocates 4 integers by
+default, which supports up to 256/128 qubits for
+Pauli/Majorana operators without heap allocation.
+
+5 Design and Implementation
+Propaq is implemented in Rust, with rayon used
+for multithreading and pyo3 used to expose the
+Rust API to Python. This section describes the
+design and implementation of Propaq, including
+its data types and parallelization. A general
+trend in the design of Propaq is to use different data types for the Python frontend and the
+Rust backend, with fast conversions between the
+two. This gives Propaq a simple Python interface, and makes it compatible with most major
+quantum software packages written in Python, in
+addition to ensuring high performance. Python
+
+5.1.2
+
+BasisString<W>
+
+The dynamic size of Bitset makes it convenient
+for traveling across the pyo3 boundary. However, since the width of the bitmask is unknown
+at compile time, the compiler is limited in the
+optimizations it can perform on the bitwise operations, which is important for hot loop operation performance. Therefore, we implement
+16
+
+a BasisString data type that dispatches fixedsize operator representations for the Rust backend based on the system size. For example, if
+the system has 14 qubits, the BasisString<W>
+will dispatch with W = 1 64-bit word, the nextlargest available width. The qubit thresholds are
+32, 64, 128, up to 2048 qubits/sites. Since the
+width is known at compile time, the compiler can
+perform aggressive optimizations and autovectorization, resulting in performance improvements.
+BasisString, being a Rust const generic, cannot
+be used across the pyo3 boundary, and therefore
+its use in combination with Bitset allows for both
+performance and flexibility.
+5.1.3
+
+For example, if the target gate’s generator acts
+on index i, j, . . ., then the InvertedIndex can be
+used to compute the combined parity of the terms
+across these indices. This flags the terms that
+anticommute with the generator, whose bitmasks
+are materialized and passed downstream for computing the new terms. Thus, we are able to avoid
+materializing the bitmasks of all terms, leading to
+performance improvements for large term sums.
+
+5.2 Basis Algebra
+The types described in the previous section store
+the structure of the operators, but do not provide any interpretation of the algebraic relations between them. The Basis trait provides
+a contract for the algebraic relations of the basis, i.e. it informs the engine how to interpret a BasisString<W> in the context of the basis. The Basis trait is implemented for both the
+Pauli and Majorana bases in PauliAlgebra and
+MajoranaAlgebra, respectively.
+
+OperatorIndex
+
+Although the BasisString data type is efficient
+for representing individual operators, it is not the
+most optimal way of representing many strings
+in a term sum. Note that each gate in a circuit will only affect a small number of qubits,
+and therefore for large systems, the majority of
+the bits in the bitmask will be zero. Additionally, propagation is commonly accompanied by
+weight truncation, which will prune strings with
+a large number of non-zero bits. Therefore, in
+order to store many operators B1 , · · · Bn , we define the OperatorIndex data type which stores the
+indices of the non-trivial operations in a contiguous array for each key. This allows the propagator to easily identify which terms are affected
+by a gate. This architecture does not scale well
+if the number of non-trivial operations is large,
+and therefore OperatorIndex specifies an inline
+width W after which it will fall back to storing
+BasisString<W> in a hash map. In the presence
+of weight truncation, the inline width is fixed to
+twice the weight cutoff so that overflow into the
+hashmap never occurs. Additionally, the engine
+collects statistics on the number of terms that
+overflow into the hashmap, and automatically increases the inline width when necessary, with a
+hard cap of 32.
+In addition to the OperatorIndex data type,
+we adopt the InvertedIndex view from monoprop [16], which provides a transposed view of
+the rows. That is, rather than delivering the indices of non-trivial operations for each term, it
+delivers the terms that contain a non-trivial operation for each index. This allows for the efficient computation of anticommutation relations.
+
+5.2.1
+
+Pauli Strings
+
+A Pauli string is a tensor product of Pauli operators for each qubit (21). It is often more convenient to represent a Pauli string in its symplectic
+representation, i.e. as a pair of bitmasks. For n
+qubits, we define length n bitmasks x and z such
+that
+P = ik
+
+n
+O
+
+X xi Z z i
+
+(45)
+
+i=1
+
+Therefore, in combination with a 64-bit floating point number to represent the coefficient,
+a Pauli string can be stored as a struct of
+(coeff, x, z) in exactly 64 + 2n bits. Consistent with the design of term storage, Pauli
+strings have a frontend (PauliString) and backend (BasisString<W> + PauliAlgebra). For two
+Pauli strings Pa = (xa , za ) and Pb = (xb , zb ) represented by their x and z bitmasks, we implement
+the product rule, commutation relations, operator weight, and overlap calculation with reference
+bitstrings, given as follows:
+Pa Pb = i k Pc
+
+Pc := (xa ⊕ xb , za ⊕ zb ) (46)
+
+{Pa , Pb } = 0 iff p(xa ·zb )+p(za ·xb )
+weight(Pa ) = p(xa ∨ za )
+17
+
+mod 2 = 1
+(47)
+(48)
+
+(
+
+⟨ϕ|P |ϕ⟩ =
+
+x ̸= 0
+x=0
+
+0
+(−1)p(z·ϕ)
+
+s is the phase required to ensure the Hermiticity of the Majorana monomial. Note that this
+assumes that a2k = a2k−1 for all k, otherwise
+⟨ϕ|Ma |ϕ⟩ = 0. The weight is taken to be the Pauli
+weight of the Jordan-Wigner-transformed monomial, in order to ensure consistency with noise
+models. The serialization/deserialization, hashing, and equality comparison methods are also
+implemented for Majorana monomials.
+
+(49)
+
+where p(·) is the popcount function, |ϕ⟩ is a bitstring, ⊕ is the bitwise XOR operation, · is the
+bitwise AND operation, and ∨ is the bitwise OR
+operation. In addition to these algebraic relations, the data types also implement the necessary methods for serialization/deserialization,
+hashing, and equality comparison, enabling term
+I/O.
+5.2.2
+
+5.3 Coefficient Representation
+
+Majorana Monomials
+
+The propagation engines are designed to be
+generic over the coefficient representation, allowing the same engine to be used for numeric propagation with different floating point precisions, as
+well as symbolic propagation. This functionality
+is provided by the CoeffRepr trait, which mainly
+wraps the coefficient type and provides a contract
+for the necessary algebraic operations. The numeric propagators currently support double (f64)
+and single (f32) precision floating point numbers.
+The symbolic coefficients (SymbolicCoeff) are
+represented as directed acyclic graphs (DAGs) of
+algebraic operations, as is common in computer
+algebra systems (CAS). The arithmetic operations for scaling by a numerical coefficient, adding
+two coefficients, and multiplying by a symbolic
+cos(θ) or sin(θ) term are all represented as nodes
+in the DAG. The nodes are wrapped in atomic
+reference-counted pointers (Arc) to allow for sharing of subexpressions across threads. Therefore,
+the symbolic propagation becomes a DAG construction, and the compilation to the final surrogate model walks the DAG to generate the final
+expression. The Simplify object identifies and
+merges shared symbolic histories. As one might
+expect, this is significantly more restricted than
+merging in a numerical propagator, and consequently symbolic propagation is more memory intensive and slower than numerical propagation.
+
+The n-qubit Majorana operators (often called
+Majorana monomials), defined in (32) and repeated here for convenience, are given by
+b
+
+2n−1 b2n
+γ2n
+M = sγ1b1 γ2b2 . . . γ2n−1
+
+(50)
+
+where s ∈ C is a phase, bi are binary exponents,
+and γi are the Majorana operators obeying the
+anticommutation relations.
+γi† = γi ,
+
+{γi , γj } = 2δij I
+
+(51)
+
+Therefore, the Majorana operators can similarly be represented as a 2n-length bitmask, and the algebraic relations can be implemented as bitwise operations.
+Similar
+to Pauli strings, Majorana monomials have
+a frontend (MajoranaMonomial) and backend
+(BasisString<W> + MajoranaAlgebra), with the
+following algebraic relations implemented for two
+Majorana monomial bitmasks Ma = (a) and
+Mb = (b), with ℓa and ℓb active modes:
+(
+
+s = ih(ℓa )
+
+h(ℓ) :=
+
+0 ℓ ≡ 0, 1
+1 ℓ ≡ 2, 3
+
+M a Mb = i k Mc
+
+(mod 4)
+(52)
+(mod 4)
+
+Mc := (a ⊕ b)
+
+(53)
+
+Here, k is an integer determined by reordering of anticommuting Majoranas and the phases
+sa , sb , sc .
+
+5.4 Propagation Engine
+
+{Ma , Mb } = 0 iff ℓa ℓb + ℓa·b ≡ 1
+
+(mod 2)
+(54)
+weight(Ma ) = weight(JW(Ma ))
+(55)
+
+⟨ϕ|Ma |ϕ⟩ = (−1)⌊npaired /2⌋
+
+Y
+
+The propagation engine is responsible for applying gates, noise channels, and truncation policies
+to the operator in order to carry out the propagation. The observable is first divided over n partitions, one for each thread. This enables multithreading via rayon. Additionally, the partitions,
+which disjointly divide the term space, are pinned
+to their corresponding spawner threads on Linux
+
+(2ϕk −1)
+
+k : paired & active
+
+(56)
+where JW(·) is the Jordan-Wigner transformation, |ϕ⟩ is a bitstring/Slater determinant, and
+18
+
+(a)
+
+(b)
+
+106
+
+104
+
+MonoProp (Majorana)
+
+105
+Peak RSS (MB)
+
+Peak RSS (MB)
+
+105
+
+106
+pauli-prop
+pyrauli
+PauliPropagation.jl
+MonoProp
+propaq (Pauli)
+
+103
+102
+1010
+
+propaq (Majorana)
+MajoranaPropagation.jl
+
+104
+103
+102
+
+5
+
+10
+15
+Trotter step
+
+20
+
+1010
+
+25
+
+5
+
+10
+15
+Trotter step
+
+20
+
+25
+
+Figure 10: Peak memory usage across various backends for computing expectation values of (a) Single Z observable
+trotterized time evolution of a 2D TFIM on a 6 × 6 square lattice (J = 1.0, h = 0.5, ∆t = 0.1) (b) Single Z
+observable trotterized time evolution of a 2D Hubbard model on a 3 × 3 square lattice (t = 1.0, U = 4.0, ∆t = 0.1).
+All backends use a coefficient cutoff of 10−6 and 64 threads, except for the single-threaded pauli-prop package.
+
+in memory, this rescue mechanism minimizes information loss while being free in memory. Note
+that terms dropped due to weight truncation are
+not rescued, since this truncation is structural.
+The scan over the terms during this phase is used
+to compute truncation statistics, which are logged
+to file if logging is enabled. After the routing,
+the noise channels are applied, and the next gate
+is processed. This continues until all gates have
+been applied, at which point either the final term
+sum is returned, or the expectation value is calculated by computing term overlaps with the initial
+state.
+
+systems to promote cache locality of the term
+sums. The circuit is applied in reverse order, and
+as a result the noise channels are applied prior to
+each layer.
+For each gate, the propagator first checks if it can
+be deferred through the Clifford deferral mechanism (Sec 2.7). If so, its adjoint action is stored
+in a CliffordTableau. Once a non-Clifford gate
+is encountered later, it is conjugated through the
+tableau and applied to the term sum. Next, each
+owner thread identifies the terms affected by the
+gate through the OperatorIndex/InvertedIndex
+data structures described in Sec. 5.1.
+From here, the affected terms’ bitmasks in each
+partition are materialized by the owner thread.
+In the presence of coefficient truncation, the propagator estimates the coefficient magnitude of new
+terms and might choose not to produce them if
+they do not meet the threshold. For the new
+terms that are produced, they are then pruned
+according to given truncation policies. Terms not
+meeting the coefficient cutoff are stashed rather
+than being immediately dropped. It is common
+for an owner thread to produce terms not in its
+partition, and these terms must be routed to the
+correct owner thread. This is batched and done
+after each gate application across all threads to
+reduce the overhead of thread communication.
+In addition to this mechanism, if any term that
+was stashed due to truncation is later found in a
+partition, it is retrieved and added back to the
+term sum. Since the term is already being stored
+
+6 Memory and Thread Performance
+As shown in Fig. 1, Propaq meets or exceeds
+state-of-the-art Heisenberg propagation packages
+in terms of runtime. Here we show the analogous
+benchmark for memory. Specifically, we compare
+memory usage for the same benchmark in Fig. 1,
+namely computing a Pauli Z expectation value
+for two-dimensional 6 × 6 transverse-field Ising
+model and an 3 × 3 Hubbard model. These results are shown in Fig. 10. In these benchmarks,
+all simulators use the same coefficient cutoff of
+10−6 . As can be seen, despite the differences
+in runtime between packages in Fig. 1, they are
+much more similar in terms of memory usage. In
+this case, we still see Propaq performing on par
+or better than current state of the art, both in
+19
+
+Propagation Wall Time (s)
+
+103
+
+1 thread
+2 threads
+4 threads
+8 threads
+
+102
+
+open questions in future work enabled by Propaq,
+and make it freely and openly available to the
+community for use.
+
+16 threads
+32 threads
+64 threads
+Ideal
+
+101
+
+Acknowledgments
+We acknowledge the use of generative AI for assistance writing some parts of the code in Propaq,
+and for creating Fig. 3. We acknowledge [38] for
+making plots.
+
+100
+
+10−1
+
+10−2
+
+8
+
+9
+
+10
+
+11
+
+12
+
+13
+
+14
+
+15
+
+16
+
+Trotter steps
+
+References
+
+Figure 11: Propagation wall-clock time vs. Trotter step
+count for Propaq running on 1–64 threads on a 2D 6 × 6
+TFIM, compared to ideal linear scaling.
+
+[1] Ryan LaRose. A brief history of quantum vs classical computational advantage.
+Quantum, 10:2198, 2026. arXiv:2412.14703
+[quant-ph].
+[2] Daniel Gottesman. The Heisenberg Representation of Quantum Computers, July
+1998.
+[3] Guifré Vidal.
+Efficient Classical Simulation of Slightly Entangled Quantum
+Computations.
+Physical Review Letters,
+91(14):147902, October 2003.
+[4] Xun Gao and Luming Duan. Efficient classical simulation of noisy quantum computation, October 2018.
+arXiv:1810.03176
+[quant-ph].
+[5] Dorit Aharonov, Xun Gao, Zeph Landau,
+Yunchao Liu, and Umesh Vazirani.
+A
+polynomial-time classical algorithm for noisy
+random circuit sampling. In Proceedings of
+the 55th Annual ACM Symposium on Theory
+of Computing, STOC 2023, page 945–957,
+New York, NY, USA, 2023. Association for
+Computing Machinery.
+[6] Thomas Schuster, Chao Yin, Xun Gao, and
+Norman Y. Yao. A polynomial-time classical
+algorithm for noisy quantum circuits, October 2024.
+[7] Jon Nelson, Joel Rajakumar, Dominik
+Hangleiter, and Michael J. Gullans.
+Polynomial-time classical simulation of
+noisy quantum circuits with naturally
+fault-tolerant gates.
+(arXiv:2411.02535),
+January 2026. arXiv:2411.02535 [quant-ph].
+[8] Youngseok Kim, Andrew Eddins, Sajant
+Anand, Ken Xuan Wei, Ewout van den Berg,
+Sami Rosenblatt, Hasan Nayfeh, Yantao Wu,
+Michael Zaletel, Kristan Temme, and Abhinav Kandala. Evidence for the utility of
+
+the Pauli and the Majorana basis. We expect to
+see the arbitrary basis support in Propaq enable
+much more efficient simulations for certain applications, both in terms of memory and runtime,
+and seek to explore these applications in future
+work.
+Additionally, we study how performance scales
+with the number of threads. To do so, we record
+the wall-clock time to compute the energy of
+a two-dimensional 6 × 6 transverse-field Ising
+model vs the number of Trotter steps. These results, shown in Fig. 11, demonstrate that multiple threads can result in significant speedups.
+Indeed, we roughly see a 10-20x speedup from
+one to 64 threads in this example. Additional
+threads on a single CPU, or on multiple CPUs,
+can further improve performance.
+
+7 Conclusion
+We introduced Propaq, a highly general and flexible package for Heisenberg propagation. We
+showed that Propaq performs as good or better than state-of-the-art Heisenberg simulation
+packages in terms of both runtime and memory.
+Because Propaq contains multiple features that
+stand out from current software, we expect it to
+be useful for both quantum software developers
+and researchers. Notably, several of these features
+open the possibility for tackling open research
+questions, for example choosing the optimal basis for Heisenberg propagation and choosing the
+best circuit partitioning for hybrid SchrödingerHeisenberg simulation. We seek to tackle these
+20
+
+gitta Whaley, Martin Head-Gordon, and
+James Shee. Bridging physical intuition and
+hardware efficiency for correlated electronic
+states: The local unitary cluster Jastrow
+ansatz for electronic structure. Chemical Science, 14(40):11213–11227, 2023.
+[21] Kristan Temme, Sergey Bravyi, and Jay M.
+Gambetta. Error mitigation for short-depth
+quantum circuits. Physical Review Letters,
+119(18):180509, November 2017.
+[22] Tudor Giurgica-Tiron, Yousef Hindy, Ryan
+LaRose, Andrea Mari, and William J. Zeng.
+Digital zero noise extrapolation for quantum error mitigation. 2020 IEEE International Conference on Quantum Computing
+and Engineering (QCE), pages 306–316, October 2020. arXiv: 2005.10921.
+[23] Alberto Peruzzo, Jarrod McClean, Peter
+Shadbolt, Man-Hong Yung, Xiao-Qi Zhou,
+Peter J. Love, Alán Aspuru-Guzik, and
+Jeremy L. O’Brien. A variational eigenvalue
+solver on a quantum processor. Nature Communications, 5(1), December 2014. arXiv:
+1304.3061.
+[24] Edward Farhi, Jeffrey Goldstone, and
+Sam Gutmann. A Quantum Approximate
+Optimization Algorithm, November 2014.
+arXiv:1411.4028.
+[25] Sumeet Khatri, Ryan LaRose, Alexander
+Poremba, Lukasz Cincio, Andrew T. Sornborger, and Patrick J. Coles. Quantumassisted quantum compiling.
+Quantum,
+3:140, May 2019.
+[26] Ryan LaRose, Arkin Tikku, Étude O’NeelJudy, Lukasz Cincio, and Patrick J. Coles.
+Variational quantum state diagonalization.
+npj Quantum Information, 5(1):1–10, June
+2019.
+[27] Carlos
+Bravo-Prieto,
+Ryan
+LaRose,
+M. Cerezo, Yigit Subasi, Lukasz Cincio, and Patrick J. Coles.
+Variational
+Quantum Linear Solver. Quantum, 7:1188,
+November 2023.
+[28] M. Cerezo, Andrew Arrasmith, Ryan Babbush, Simon C. Benjamin, Suguru Endo,
+Keisuke Fujii, Jarrod R. McClean, Kosuke
+Mitarai, Xiao Yuan, Lukasz Cincio, and
+Patrick J. Coles. Variational quantum algorithms. Nature Reviews Physics, 3(9):625–
+644, September 2021.
+[29] Scott Aaronson and Daniel Gottesman. Im-
+
+quantum computing before fault tolerance.
+Nature, 618(7965):500–505, June 2023.
+[9] Tomislav Begušić, Johnnie Gray, and Garnet Kin-Lic Chan. Fast and converged classical simulations of evidence for the utility of
+quantum computing before fault tolerance.
+Science Advances, 10(3):eadk4321, January
+2024.
+[10] Tomislav Begušić and Garnet Kin-Lic Chan.
+Real-time operator evolution in two and
+three dimensions via sparse pauli dynamics. PRX Quantum, 6(2):020302, April 2025.
+arXiv:2409.03097 [quant-ph].
+[11] Manuel S. Rudolph, Tyson Jones, Yanting Teng, Armando Angrisani, and Zoë
+Holmes. Pauli Propagation: A Computational Framework for Simulating Quantum
+Systems, May 2025.
+[12] Aaron Miller, Joachim Favre, Zoë Holmes,
+Özlem Salehi, Rahul Chakraborty, Anton
+Nykänen, Zoltán Zimborás, Adam Glos,
+and Guillermo García-Pérez. Simulation of
+Fermionic circuits using Majorana Propagation, December 2025.
+[13] Matteo D’Anna, Jannes Nys, and Juan Carrasquilla. Majorana string simulation of
+nonequilibrium dynamics in two-dimensional
+lattice fermion systems. https://arxiv.
+org/abs/2511.02809, 2025.
+[14] Qiskit addons team. Pauli prop. https:
+//github.com/Qiskit/pauli-prop, 2025.
+[15] zeFresk. pyrauli GitHub. https://github.
+com/zeFresk/pyrauli, August 2026.
+[16] Simulation of fermionic circuits using majorana propagation. https://github.com/
+algorithmiq/monoprop, March 2025.
+[17] Bryce Fuller, Minh C. Tran, Danylo
+Lykov, Caleb Johnson, Max Rossmannek,
+Ken Xuan Wei, Andre He, Youngseok Kim,
+DinhDuy Vu, Kunal Sharma, Yuri Alexeev, Abhinav Kandala, and Antonio Mezzacapo. Improved Quantum Computation
+using Operator Backpropagation, February
+2025. arXiv:2502.01897 [quant-ph].
+[18] Anna Krasznai, Sergei Rutkevich, and Gábor Takács. Confinement in the three-state
+Potts quantum spin chain in extreme ferromagnetic limit, April 2026.
+[19] Craig Gidney. Stim: a fast stabilizer circuit
+simulator. Quantum, 5:497, July 2021.
+[20] Mario Motta, Kevin J. Sung, K. Bir21
+
+Zhang, and Ryan Babbush. OpenFermion:
+The Electronic Structure Package for Quantum Computers. arXiv:1710.07629 [physics,
+physics:quant-ph], October 2017. arXiv:
+1710.07629.
+[34] Johnnie Gray. quimb: A python package for
+quantum information and many-body calculations. Journal of Open Source Software,
+3(29):819, September 2018.
+[35] Hrishikesh Belagali and Ryan LaRose.
+Propaq GitHub.
+https://github.com/
+hkbelagali/propaq,
+September 2026.
+original-date: 2026-05-20T23:03:52Z.
+[36] Ryan LaRose, Andrea Mari, Sarah Kaiser,
+Peter J. Karalekas, Andre A. Alves, Piotr
+Czarnik, Mohamed El Mandouh, Max H.
+Gordon, Yousef Hindy, Aaron Robertson, Purva Thakre, Misty Wahl, Danny
+Samuel, Rahul Mistri, Maxime Tremblay,
+Nick Gardner, Nathaniel T. Stemen, Nathan
+Shammah, and William J. Zeng. Mitiq:
+A software package for error mitigation on
+noisy quantum computers. Quantum, 6:774,
+August 2022. arXiv:2009.04417 [quant-ph].
+[37] Cristina Cirstoiu, Silas Dilkes, Daniel Mills,
+Seyon Sivarajah, and Ross Duncan. Volumetric Benchmarking of Error Mitigation
+with Qermit. Quantum, 7:1059, July 2023.
+arXiv:2204.09725 [quant-ph].
+[38] John D. Garrett. SciencePlots GitHub.
+https://doi.org/10.5281/zenodo.
+4106649, September 2021.
+
+proved Simulation of Stabilizer Circuits.
+Physical Review A, 70(5):052328, November
+2004.
+[30] Manuel S. Rudolph, Tyson Jones, Yanting Teng, Armando Angrisani, and Zoë
+Holmes. Pauli Propagation: A Computational Framework for Simulating Quantum
+Systems, May 2026.
+[31] Ryan LaRose. Overview and Comparison
+of Gate Level Quantum Software Platforms.
+Quantum, 3:130, March 2019.
+[32] Kevin J. Sung, Inho Choi, Mirko Amico, Bartholomew Andrews, Esra Ayantuna,
+Yukio Kawashima, Wan-Hsuan Lin, David
+Omanovic, Samuele Piccinelli, Javier Robledo Moreno, Abdullah Ash Saki, James
+Shee, Soyoung Shin, Minh C. Tran, Kento
+Ueda, Haimeng Zhang, and Mario Motta. ffsim: Faster simulation of fermionic quantum
+circuits, May 2026. arXiv:2605.03123 [quantph].
+[33] Jarrod R. McClean, Ian D. Kivlichan,
+Kevin J. Sung, Damian S. Steiger, Yudong
+Cao, Chengyu Dai, E. Schuyler Fried, Craig
+Gidney, Brendan Gimby, Thomas Häner,
+Tarini Hardikar, Vojtěch Havlíček, Cupjin
+Huang, Zhang Jiang, Matthew Neeley,
+Thomas O’Brien, Isil Ozfidan, Maxwell D.
+Radin, Jhonathan Romero, Nicholas Rubin, Nicolas P. D. Sawaya, Kanav Setia,
+Sukin Sim, Mark Steudtner, Wei Sun, Fang
+
+22
+
+A Weyl-Heisenberg propagation
+In this section, we describe Heisenberg propagation in the Weyl-Heisenberg basis, which is a generalization of the Pauli basis to qudits. We provide the algebraic relations for the Weyl-Heisenberg
+operators and code snippets subclassing Propaq’s classes to implement Weyl-Heisenberg propagation.
+
+A.1 Weyl-Heisenberg Algebra
+On one qudit of dimension d, the Weyl-Heisenberg operators are defined by the following relations:
+X|j⟩ := |j + 1
+
+Z|j⟩ := ω j |j⟩,
+
+mod d⟩,
+
+ω := e2πi/d
+
+(57)
+
+obeying X d = Z d = I and ZX = ωXZ. Then, a Weyl-Heisenberg string on n qudits can be represented
+using two exponent vectors a, b ∈ Znd as
+W (a, b) := τ a·b X a Z b ,
+
+X a Z b :=
+
+O
+
+X ak Z bk
+
+(58)
+
+k
+
+The prefactor τ is a phase factor, for which we will fix the convention
+(
+
+τ :=
+
+ω (d+1)/2
+eiπ/d
+
+d odd
+d even
+
+(59)
+
+Note that for d = 2, these relations reduce to the Pauli algebra. Computing the product of two
+Weyl-Heisenberg strings W (u) and W (v) yields
+W (v) W (u) = τ E(v,u) W s̄, t̄ ,
+
+
+s̄ = va + ua mod d
+
+(60)
+
+t̄ = vb + ub mod d
+
+where the exponent E(v, u) is given by
+E(v, u) = va ·vb + ua ·ub + 2 ua ·vb − s̄ · t̄
+
+(mod 2d)
+
+(61)
+
+This means that the commutation relations of Weyl-Heisenberg strings are as follows:
+W (u)W (v) = ω σ(v,u) W (v)W (u)
+
+σ(v, u) = va · ub − ua · vb
+
+(mod d)
+
+(62)
+
+where σ is the symplectic form over Zd . Finally, we will need the overlap of a Weyl-Heisenberg string
+with a bitstring state |f ⟩ = |f1 , f2 , . . . , fn ⟩, which is given by
+⟨f |W (a, b)|f ⟩ = δa,0 ω b·f
+
+(63)
+
+We now have all the necessary relations to set up the term representation for Weyl-Heisenberg strings.
+Listing A.1. Subclassing Propaq to implement Weyl-Heisenberg strings.
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+
+from propaq.datatypes import AbstractTerm
+def tau_pow(d: int, e: int) -> complex:
+"""
+Compute the phase factor τ e
+"""
+# Determine k based on the parity of d
+k = 1 if d % 2 == 0 else d+1
+return cmath.exp(1j * math.pi * k * (e % (2*d)) / d)
+def omega_pow(d: int, e: int) -> complex:
+
+23
+
+Listing A.1. (continued)
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+
+"""
+Compute the phase factor ω e
+"""
+return cmath.exp(2j * math.pi * (e % d) / d)
+@dataclass(frozen=True)
+class WeylString(AbstractTerm):
+"""W (a, b) = τ a·b X a Z b """
+a: tuple[int, ...] # exponent vector for X, a ∈ Zn
+d
+b: tuple[int, ...] # exponent vector for Z, b ∈ Zn
+d
+d: int
+@property
+def n_units(self) -> int:
+return len(self.a)
+@property
+def weight(self) -> int:
+return sum(1 for ai, bi in zip(self.a, self.b) if ai or bi)
+def __matmul__(self, other: "WeylString") -> tuple[complex, "WeylString"]:
+d, e, na, nb = self.d, 0, [], []
+for va, vb, ua, ub in zip(self.a, self.b, other.a, other.b):
+s, t = (va + ua) % d, (vb + ub) % d
+e += va * vb + ua * ub + 2 * ua * vb - s * t # (Eq 61)
+na.append(s)
+nb.append(t)
+return tau_pow(d, e), WeylString(tuple(na), tuple(nb), d) # (Eq 60)
+def dagger(self) -> tuple[complex, "WeylString"]:
+inv = WeylString(
+tuple((-x) % self.d for x in self.a), tuple((-x) % self.d for x in self.b), self.d
+)
+phase, _ = self @ inv
+return 1 / phase, inv
+def symplectic(self, other: "WeylString") -> int:
+return sum(
+va * ub - ua * vb for va, vb, ua, ub in zip(self.a, self.b, other.a, other.b)
+) % self.d # (Eq 62)
+def commutes_with(self, other: "WeylString") -> bool:
+return self.symplectic(other) == 0
+def trace_with_diag_state(self, diag_state: int | tuple[int, ...]) -> complex:
+if any(self.a):
+return 0j
+if isinstance(diag_state, int):
+diag_state = tuple((diag_state // self.d**k) % self.d for k in range(self.n_units))
+return omega_pow(self.d, sum(bi * fi for bi, fi in zip(self.b, diag_state))) # (Eq 63)
+def to_bytes(self) -> bytes:
+return bytes(self.a) + bytes(self.b) + bytes([self.d])
+@classmethod
+def from_bytes(cls, data: bytes, n_units: int) -> "WeylString":
+a, b, d = data[:n_units], data[n_units : 2 * n_units], data[-1]
+return cls(tuple(a), tuple(b), d)
+def __hash__(self) -> int:
+return hash((self.a, self.b))
+def __eq__(self, other: object) -> bool:
+return (
+isinstance(other, WeylString) and self.a == other.a and self.b == other.b
+)
+
+79
+80
+81
+
+def identity(n: int, d: int) -> WeylString:
+
+24
+
+Listing A.1. (continued)
+82
+
+return WeylString((0,) * n, (0,) * n, d)
+
+83
+84
+85
+86
+87
+88
+89
+
+def single(n: int, d: int, k: int, ai: int, bi: int) -> WeylString:
+"""X ai Z bi acting on site ``k`` alone."""
+a, b = [0] * n, [0] * n
+a[k], b[k] = ai % d, bi % d
+return WeylString(tuple(a), tuple(b), d)
+
+A.2 Weyl-Heisenberg Gates
+A Weyl-Heisenberg string is not generally Hermitian for d > 2. We’ll consider only the Hermitian
+component of the Weyl-Heisenberg strings as unitary gate generators:
+1
+Hg = (Wg + Wg† )
+2
+
+θ
+Ug (θ) = exp −i Hg
+2
+
+
+
+
+(64)
+
+Note that for d = 2, we have Wg = Wg† and therefore U = exp(−iθWg ), which is the usual Pauli gate.
+P
+Because Wgd = I, we can write the eigenprojectors of Wg as Πk = d1 m ω −km Wgm for k = 0, . . . , d − 1.
+Then, we can write the unitary gate as a linear combination of the eigenprojectors, where the coefficients
+are given by:
+
+
+d−1
+X
+X
+θ
+1 d−1
+exp −i cos(2πk/d) ω −km
+(65)
+Ug (θ) =
+cm Wgm ,
+cm =
+d k=0
+2
+m=0
+Once again, note that for d = 2 we recover the familiar c0 = cos(θ/2) and c1 = −i sin(θ/2). Let s =
+σ(v, g), so Wgj W (v) = ω js W (v)Wgj ∀j as in Eq. (62). We are now equipped to derive the propagation
+rule for a Weyl-Heisenberg gate’s action:
+Ug† W (v)Ug =
+
+X
+
+′
+
+c̄m′ cm Wg−m W (v)Wgm =
+
+m,m′
+
+X
+
+′
+
+c̄m′ cm ω −m s W (v)Wgm−m
+
+′
+
+(66)
+
+m,m′
+
+and allowing j = m − m′ , we have
+†
+
+Ug (θ) W (v)Ug (θ) =
+
+d−1
+X
+
+Λs [j]W (v)Wgj
+
+Λs [j] =
+
+d−1
+X
+
+c̄m cm+j ω −ms
+
+(67)
+
+m=0
+
+j=0
+
+Therefore, the propagation of a Weyl-Heisenberg string through a gate can result in up to d branches.
+Λ is a d × d table dependent on the gate, and each term in the sum contributes its symplectic form s
+to the phase factor.
+Consider the equation for d = 2. Then, we have c0 = cos(θ/2), and c1 = −i sin(θ/2). Since
+we operate over Z2 , we have s = 0, or s = 1. When s = 0, we have
+Λ0 [0] = c̄0 c0 + c̄1 c1 = cos2 (θ/2) + sin2 (θ/2) = 1
+
+(68)
+
+Λ0 [1] = c̄0 c1 + c̄1 c0 = −i cos(θ/2) sin(θ/2) + i sin(θ/2) cos(θ/2) = 0
+
+(69)
+
+When s = 1, we have
+Λ1 [0] = cos2 (θ/2) − sin2 (θ/2) = cos(θ)
+
+(70)
+
+Λ1 [1] = −i cos(θ/2) sin(θ/2) − i sin(θ/2) cos(θ/2) = −i sin(θ)
+
+(71)
+
+This corresponds exactly to the Pauli propagation rule. We can now implement the Weyl-Heisenberg
+generator parameterization:
+
+25
+
+Listing A.2. Weyl-Heisenberg generator parameterization.
+1
+2
+3
+4
+5
+6
+
+@lru_cache(maxsize=None)
+def _gate_coefficients(d: int,
+P theta: mfloat) -> tuple[complex, ...]:
+"""cm such that Ug (θ) =
+c W ."""
+m m g
+k = np.arange(d)
+eigs = np.exp(-0.5j * theta * np.cos(2 * np.pi * k / d))
+return tuple(np.sum(eigs * np.exp(-2j * np.pi * k * m / d)) / d for m in range(d)) # (Eq 65)
+
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+
+class WeylRotation:
+"""
+A unitary gate generated by the Hermitian component of a Weyl string.
+"""
+def __init__(self, generator: WeylString, angle: float):
+d, n = generator.d, generator.n_units
+self.generator, self.angle = generator, angle
+powers = [(1 + 0j, identity(n, d))]
+for _ in range(d - 1):
+phase, key = powers[-1]
+step_phase, step_key = key @ generator
+powers.append((phase * step_phase, step_key))
+phase, key = powers[-1]
+step_phase, step_key = key @ generator
+if step_key != identity(n, d) or abs(phase * step_phase - 1) > 1e-12:
+raise ValueError("generator does not satisfy W^d = 1")
+self.powers = powers
+c = np.asarray(_gate_coefficients(d, angle))
+omega = np.array([[omega_pow(d, -m * s) for m in range(d)] for s in range(d)])
+# Λs [j], (Eq 67)
+self.table = np.array(
+[[np.sum(np.conj(c) * np.roll(c, -j) * omega[s]) for j in range(d)] for s in range(d)]
+)
+def conjugate(key: WeylString, coeff: complex, rot: WeylRotation):
+"""Yield the (child, coefficient) pairs of one term under one gate."""
+row = rot.table[key.symplectic(rot.generator)]
+for j in range(key.d):
+weight = row[j]
+if weight == 0:
+continue
+power_phase, power_key = rot.powers[j]
+phase, child = key @ power_key
+yield child, coeff * weight * power_phase * phase
+
+Now, we have everything required to implement the Weyl-Heisenberg propagator. We will subclass
+AbstractPropagator and write small wrappers around the truncation and noise policies to make them
+compatible with the Weyl-Heisenberg term representation.
+Listing A.3. Subclassing Propaq to implement Weyl-Heisenberg propagation.
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+
+from propaq.propagators import AbstractPropagator
+from propaq.datatypes import DictTermSum
+class WeylTermSum(DictTermSum[WeylString]):
+term_type = WeylString # enables file I/O
+class WeylPropagator(AbstractPropagator):
+"""Heisenberg propagation of Weyl-Heisenberg observables through qudit circuits."""
+term_sum_type = WeylTermSum
+def apply_gate(self, term: WeylString, coeff: complex, rotation: "WeylRotation"):
+"""Yield the (child, coefficient) pairs of one term under one gate."""
+return conjugate(term, coeff, rotation)
+
+We have provided an example implementation of this Weyl-Heisenberg propagator on Propaq’s
+26
+
+website, extensively validating the implementation against density matrix propagation and validating
+against known analytical results for the Potts model. We also demonstrate the out-of-box use of
+zero noise extrapolation. This can be found at https://hkbelagali.github.io/propaq/examples/
+usage/11_custom_basis_qudit_weyl/.
+
+B Custom noise plugin implementation in C
+Listing B.1. Implementing uniform depolarizing noise in C for Propaq.
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+
+// uniform_noise.c
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#define PROPAQ_NOISE_ABI_VERSION 1u // ABI version 1.0
+typedef struct {
+double damping;
+} Ctx;
+uint32_t propaq_noise_abi_version(void) {
+return PROPAQ_NOISE_ABI_VERSION; // Return the ABI version of the plugin for compatibility checks
+}
+
+16
+17
+18
+19
+20
+
+// Parse a JSON string to extract the model parameters
+static double parse_damping(const char* config_json) {
+if (config_json == NULL) return 0.0; // Default damping if no config is provided
+const char* key = strstr(config_json, "\"damping\"");
+
+21
+
+if (key == NULL) return 0.0; // Default damping if key not found
+
+22
+23
+24
+25
+26
+27
+
+}
+
+const char* colon = strchr(key, ':');
+if (colon == NULL) return 0.0;
+return atof(colon + 1);
+
+28
+29
+30
+31
+32
+33
+34
+
+// Create a new noise model context
+void* propaq_noise_create(const char* config_json) {
+Ctx* ctx = (Ctx*)malloc(sizeof(Ctx));
+ctx->damping = parse_damping(config_json);
+return ctx;
+}
+
+35
+36
+37
+
+// Free alloc for model
+void propaq_noise_destroy(void* ctx) { free(ctx); }
+
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+
+// Implement the noise application
+// Args:
+// ctx: pointer to the noise model context
+// basis_kind: the enum for the basis (Pauli, Majorana, etc.)
+// words: pointer to the array of strings
+// n_words: number of words in the array
+// n_units: number of units (qubits, fermions, etc.)
+// weight: the weight of the operator
+// layer_index: the index of the current layer in the circuit
+// n_layers: the total number of layers in the circuit
+double propaq_noise_factor(void* ctx, uint32_t basis_kind, const uint64_t* words, size_t n_words,
+uint32_t n_units, uint32_t weight, uint32_t layer_index,
+uint32_t n_layers) {
+(void)basis_kind; (void)words; (void)n_words; (void)n_units;
+(void)layer_index; (void)n_layers;
+double damping = ((Ctx*)ctx)->damping;
+return exp(-damping * (double)weight); // exp(damping * w[P])
+}
+
+27
+
+
