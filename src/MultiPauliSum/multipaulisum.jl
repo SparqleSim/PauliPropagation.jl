@@ -19,6 +19,9 @@
 The Pauli strings that a gate creates for other zones are collected in an outbox and picked up by the owning zone in a second pass, rather than written into a zone that another thread owns.
 Every zone is thus read and written by one thread only, and no operation on a zone needs to be thread-safe.
 
+`propagate!()` keeps a worker task on every thread for the whole circuit and hands it the same zones on every gate (see `withzoneworkers()`), so a zone stays on the thread, and on the memory, where it started.
+With `thread=false` the zones are worked one after the other.
+
 Splitting a `PauliSum` gives zones of `PauliSum`s and splitting a `VectorPauliSum` gives zones of `VectorPauliSum`s, and the type of the zones determines how they are propagated.
 
 `n_zones` must be a power of two, which makes the zone assignment linear in the Pauli string and lets `PauliRotation` and the other gates that branch by a fixed bitmask take a faster path.

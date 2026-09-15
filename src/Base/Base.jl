@@ -107,6 +107,7 @@ export
     withzones,
     defaultnzones,
     zonecaches,
+    withzoneworkers,
     outboxes,
     nzones,
     zonesizes,

@@ -77,9 +77,11 @@ function _branchpasses!(passfunc::F, prop_cache::AbstractPropagationCache, mask;
         passfunc(source)
     end
 
-    _collectbranch!(prop_cache, mask; thread)
+    _eachzone(prop_cache, thread) do owner
+        _collectbranch!(prop_cache, owner, mask, sorted_zones; kwargs...)
+    end
 
-    return _mergebranch!(zonestorage(prop_cache), prop_cache, mask, sorted_zones; thread, kwargs...)
+    return _syncsums!(prop_cache)
 end
 
 
@@ -142,18 +144,8 @@ function _collectzones!(prop_cache::AbstractPropagationCache; thread::Bool=true)
     return prop_cache
 end
 
-# The gate permutes the zones, so every zone has a single zone to collect from.
-function _collectbranch!(prop_cache::AbstractPropagationCache, mask; thread::Bool=true)
-    zone_map = zonemap(prop_cache)
-    _eachzone(prop_cache, thread) do owner
-        box = _branchbox(prop_cache, _xortarget(zone_map, owner, mask))
-        _deliver!(zonestorage(prop_cache), zonecaches(prop_cache)[owner], (box,))
-    end
-    return prop_cache
-end
 
-
-### Merging what a gate that branches by a fixed mask appended
+### Merging in what a gate that branches by a fixed mask parked
 
 # A zone that is sorted throughout hands its terms to a single other zone in ascending order, so the
 # tail that zone takes delivery of is `mask ⊻ ascending` and sorts by XOR passes instead of by
@@ -163,20 +155,25 @@ _sortedzones(::StorageType, prop_cache::AbstractPropagationCache) = nothing
 _sortedzones(::ArrayStorage, prop_cache::AbstractPropagationCache) =
     [sortedprefix(mainsum(zonecache)) == activesize(zonecache) for zonecache in zonecaches(prop_cache)]
 
-_mergebranch!(::StorageType, prop_cache::AbstractPropagationCache, mask, sorted_zones; kwargs...) = prop_cache
+# The gate permutes the zones, so this zone has a single zone to collect from and touches no zone but
+# those two. The box it collects is its tail already, in the parent order of the zone that made it,
+# so an array zone sorts it in from where it is instead of taking delivery first.
+function _collectbranch!(prop_cache::AbstractPropagationCache, owner::Int, mask, sorted_zones; kwargs...)
+    zone_storage = zonestorage(prop_cache)
+    zonecache = zonecaches(prop_cache)[owner]
+    source = _xortarget(zonemap(prop_cache), owner, mask)
 
-function _mergebranch!(::ArrayStorage, prop_cache::AbstractPropagationCache,
-    mask, sorted_zones; thread::Bool=true, kwargs...)
+    _mergebox!(zone_storage, zonecache, _branchbox(prop_cache, source), mask, sorted_zones, source; kwargs...)
 
-    zone_map = zonemap(prop_cache)
-    _eachzone(prop_cache, thread) do owner
-        source = _xortarget(zone_map, owner, mask)
-        xorsortedtailmerge!(zonecaches(prop_cache)[owner], mask, @inbounds sorted_zones[source];
-            thread=false, kwargs...)
-    end
-
-    return _syncsums!(prop_cache)
+    return
 end
+
+# a dict zone merges as it takes delivery, where an array zone sorts the box in and merges it
+_mergebox!(zone_storage::StorageType, zonecache, box, mask, sorted_zones, source::Int; kwargs...) =
+    _deliver!(zone_storage, zonecache, (box,))
+
+_mergebox!(::ArrayStorage, zonecache, box, mask, sorted_zones, source::Int; kwargs...) =
+    xorsortedboxmerge!(zonecache, box, mask, (@inbounds sorted_zones[source]); thread=false, kwargs...)
 
 
 ### Zone-local storage handling
@@ -199,7 +196,10 @@ function _deliver!(::ArrayStorage, zonecache, boxes)
     n_new = n_old + sum(length, boxes)
     n_new == n_old && return
 
-    capacity(zonecache) < n_new && resize!(zonecache, n_new + n_new >> 1)
+    # the merge that follows takes its scratch from the room beyond the delivered terms, so a zone
+    # that is only grown to hold them makes the merge allocate a tail of its own on every gate
+    n_room = n_new + (n_new - n_old)
+    capacity(zonecache) < n_room && resize!(zonecache, n_room + n_room >> 1)
     zone_terms, zone_coeffs = terms(mainsum(zonecache)), coefficients(mainsum(zonecache))
 
     pos = n_old + 1
