@@ -13,59 +13,45 @@ respect to `params`, in one paired forward and backward sweep costing O(length(c
 The only parametrized gates can be `PauliRotation`s. 
 All other gates must not be parametrized or frozen via `freeze(gate, param)` before inputting to `rewindgradient`.
 Noise channels are not supported, frozen or not, because the backward sweep cannot undo them.
-`overlapfunc` must be linear in the coefficients of the `VectorPauliSum` it is handed, e.g. any of
+`overlapfunc` must be linear in the coefficients of the Pauli sum it is handed, e.g. any of
 `overlapwithzero`, `overlapwithplus`, `overlapwithcomputational`, `overlapwithmaxmixed`, or
 `overlapwithpaulisum`.
+Both sweeps run with the gate implementations of the type of `psum`, so a `MultiPauliSum` runs them zone by zone.
 `kwargs` are passed on to `applymergetruncate!` in the forward sweep and the operator side of the
 backward sweep.
 Returns `(expec, grad)`.
+
+This design is adapted from the publication ``Backpropagating Pauli Propagation'' by Lin et al. (arXiv:2607.15184).
 """
 function rewindgradient(circuit, psum::AbstractPauliSum, params, overlapfunc; kwargs...)
-    return rewindgradient!(circuit, VectorPauliSum(psum), params, overlapfunc; kwargs...)
-end
-
-function rewindgradient(circuit, psum::VectorPauliSum, params, overlapfunc; kwargs...)
     return rewindgradient!(circuit, deepcopy(psum), params, overlapfunc; kwargs...)
 end
 
 """
-    rewindgradient!(circuit, psum::VectorPauliSum, params, overlapfunc; kwargs...)
+    rewindgradient!(circuit, psum::AbstractPauliSum, params, overlapfunc; kwargs...)
+    rewindgradient!(circuit, prop_cache::AbstractPauliPropagationCache, params, overlapfunc; kwargs...)
 
-In-place version of `rewindgradient`. Only allows the Pauli sum to be a `VectorPauliSum`.
+In-place version of `rewindgradient`, which leaves the propagated operator in `psum` or `prop_cache`.
 """
-function rewindgradient!(circuit, psum::VectorPauliSum, params, overlapfunc; kwargs...)
+function rewindgradient!(circuit, psum::AbstractPauliSum, params, overlapfunc; kwargs...)
     return rewindgradient!(circuit, PropagationCache(psum), params, overlapfunc; kwargs...)
 end
 
-function rewindgradient!(circuit, forward_cache::VectorPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
+function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
     # check that the only parameterized gates are PauliRotations
     @assert all(gate -> isa(gate, StaticGate) || gate isa PauliRotation, circuit) "All parameterized gates must be PauliRotations."
     @assert all(_isrewindable, circuit) "Noise channels are not supported because they cannot be undone."
-
-    nq = nqubits(forward_cache)
 
     # forward sweep: ordinary Heisenberg propagation, exactly as in `propagate`.
     propagate!(circuit, forward_cache, params; thread, kwargs...)
     expec = overlapfunc(activesum(forward_cache))
 
-    # seed the operator sum directly from the final operator
-    # and the dual sum from overlapfunc applied to each of its Pauli strings individually.
-    dual_terms = copy(activeterms(forward_cache))
-    dual_coeffs = Vector{ComplexF64}(undef, length(forward_cache))
-    # fill in the coefficients
-    AK.foreachindex(dual_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
-        dual_coeffs[ii] = overlapfunc(_singletonvectorpaulisum(nq, dual_terms[ii]))
-    end
-    dual_sum = VectorPauliSum(nq, dual_terms, dual_coeffs, length(dual_terms))
-
-    reverse_cache = forward_cache
-    dual_cache = PropagationCache(dual_sum)
+    # the dual sum starts from the final operator, with overlapfunc applied to each of its Pauli strings individually
+    dual_cache = PropagationCache(_dualsum(forward_cache, overlapfunc; thread))
 
     # backward sweep: undo gates in the circuit's own original order
     undo_circuit, undo_params = _preparecircuit(circuit, params, false)
-
-    commutator_buffer = Vector{ComplexF64}(undef, length(forward_cache))
-    state = _BackwardSweepState(reverse_cache, dual_cache, nq, zeros(length(params)), 0, commutator_buffer)
+    state = _BackwardSweepState(forward_cache, dual_cache, zeros(length(params)), 0)
     PropagationBase._propagate!(_undostep!, undo_circuit, state, undo_params; thread, kwargs...)
 
     return expec, state.grad
@@ -79,34 +65,26 @@ _isrewindable(gate::ParametrizedNoiseChannel) = false
 _isrewindable(gate::FrozenGate) = _isrewindable(gate.gate)
 
 
-# A length-1 VectorPauliSum for a single Pauli string, for feeding into `overlapfunc`.
-function _singletonvectorpaulisum(nq::Int, term, coeff=1.0)
-    return VectorPauliSum(nq, [term], [ComplexF64(coeff)])
-end
-
-
 # State propagated through the backward sweep
 # carries everything it needs to compute the gradient on the fly
 mutable struct _BackwardSweepState{OC,DC}
     op_cache::OC
     dual_cache::DC
-    nq::Int
     grad::Vector{Float64}
     k::Int
-    commutator_buffer::Vector{ComplexF64}
 end
 
-# the backward sweep is carried by this state instead of a cache, so count the operator sum
+# the backward sweep is carried by this state instead of a cache, so the operator sum is what is
+# counted and what keeps its zone workers up
 PropagationBase._termcount(state::_BackwardSweepState) = length(state.op_cache)
+PropagationBase._withworkers(f::F, state::_BackwardSweepState, thread::Bool) where {F} =
+    PropagationBase._withworkers(f, state.op_cache, thread)
 
 # Records the gradient component for PauliRotation
 function _undostep!(gate::PauliRotation, state::_BackwardSweepState, theta; thread::Bool=true, kwargs...)
-    gate_mask = symboltoint(state.nq, gate.symbols, gate.qinds)
+    gate_mask = symboltoint(paulitype(state.op_cache), gate.symbols, gate.qinds)
 
-    grad_contribution = _generatorcommutatordot(
-        gate_mask, activeterms(state.op_cache), activecoeffs(state.op_cache),
-        activeterms(state.dual_cache), activecoeffs(state.dual_cache), state.commutator_buffer; thread,
-    )
+    grad_contribution = _generatorcommutatordot(gate_mask, state.op_cache, state.dual_cache; thread)
     state.k += 1
     state.grad[state.k] = real(0.5im * grad_contribution)
 
@@ -131,46 +109,110 @@ function _undostep!(gate::StaticGate, state::_BackwardSweepState; thread::Bool=t
 end
 
 
-# Gradient contribution for one gate: real((i/2) * dual_sum(commutator(generator, op_sum))). 
-# For every operator term that anticommutes with the generator, the commutator sends it to exactly one new Pauli string,
-# so this is a single parallel pass over the operator's terms, each doing one bit-level commutator
-# and one binary search into the (sorted) dual sum's active terms
-function _generatorcommutatordot(gate_mask::TT, op_terms, op_coeffs, dual_terms_sorted, dual_coeffs_sorted, buffer; thread::Bool=true) where TT
-    n = length(op_terms)
-    if n == 0
-        return zero(ComplexF64)
-    end
-    n_dual = length(dual_terms_sorted)
-    # the operator's active size does not always shrink monotonically going backward 
-    # merges cancancel terms out of order along the trajectory
-    # so we need to check for resizes
-    if n > length(buffer)
-        resize!(buffer, n)
-    end
-    partial = @view buffer[1:n]
+# The three operations below that are not gate applications are written once per storage, like
+# the term sum interface in `PropagationBase`. A multi sum hands each of them to its zones.
 
-    AK.foreachindex(op_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
-        term = op_terms[ii]
-        if commutes(term, gate_mask)
-            partial[ii] = zero(ComplexF64)
-        else
-            new_term, comm_coeff = commutator(gate_mask, term)
-            idx = searchsortedfirst(dual_terms_sorted, new_term)
-            if idx <= n_dual && dual_terms_sorted[idx] == new_term
-                partial[ii] = comm_coeff * op_coeffs[ii] * dual_coeffs_sorted[idx]
-            else
-                partial[ii] = zero(ComplexF64)
-            end
-        end
-    end
+# The dual sum of `prop_cache`: the same Pauli strings, each with the overlap it has on its own.
+_dualsum(prop_cache::AbstractPropagationCache, overlapfunc; thread::Bool=true) =
+    _dualsum(StorageType(prop_cache), prop_cache, overlapfunc; thread)
 
-    return AK.mapreduce(identity, +, partial; init=zero(ComplexF64), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+function _dualsum(::PropagationBase.DictStorage, prop_cache, overlapfunc; thread::Bool=true)
+    nq = nqubits(prop_cache)
+    dual_sum = PauliSum(nq, Dict{termtype(prop_cache),ComplexF64}())
+    for (term, _) in mainsum(prop_cache)
+        set!(dual_sum, term, overlapfunc(_singletonvectorpaulisum(nq, term)))
+    end
+    return dual_sum
 end
 
+function _dualsum(::PropagationBase.ArrayStorage, prop_cache, overlapfunc; thread::Bool=true)
+    nq = nqubits(prop_cache)
+    dual_terms = copy(activeterms(prop_cache))
+    dual_coeffs = Vector{ComplexF64}(undef, length(dual_terms))
+    AK.foreachindex(dual_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
+        dual_coeffs[ii] = overlapfunc(_singletonvectorpaulisum(nq, dual_terms[ii]))
+    end
+    return VectorPauliSum(nq, dual_terms, dual_coeffs, length(dual_terms))
+end
+
+# the dual sum shares the zone assignment, so a Pauli string sits in the same zone of both sums
+_dualsum(::MultiSumStorage, prop_cache, overlapfunc; thread::Bool=true) =
+    withzones(mainsum(prop_cache), map(zonecache -> _dualsum(zonecache, overlapfunc; thread), zonecaches(prop_cache)))
+
+# A length-1 VectorPauliSum for a single Pauli string, for feeding into `overlapfunc`.
+function _singletonvectorpaulisum(nq::Int, term, coeff=1.0)
+    return VectorPauliSum(nq, [term], [ComplexF64(coeff)])
+end
+
+
+# Gradient contribution for one gate: real((i/2) * dual_sum(commutator(generator, op_sum))).
+# Every operator term that anticommutes with the generator commutes to exactly one Pauli string,
+# so this is a single pass over the operator's terms, each looking its commutator up in the dual sum.
+_generatorcommutatordot(gate_mask, op_cache, dual_cache; thread::Bool=true) =
+    _generatorcommutatordot(StorageType(op_cache), gate_mask, op_cache, dual_cache; thread)
+
+function _generatorcommutatordot(::PropagationBase.DictStorage, gate_mask, op_cache, dual_cache; thread::Bool=true)
+    dual_sum = mainsum(dual_cache)
+    total = zero(ComplexF64)
+    for (term, coeff) in mainsum(op_cache)
+        commutes(term, gate_mask) && continue
+        new_term, comm_coeff = commutator(gate_mask, term)
+        total += comm_coeff * coeff * getcoeff(dual_sum, new_term)
+    end
+    return total
+end
+
+# the dual sum is sorted here, so the lookup is a binary search
+function _generatorcommutatordot(::PropagationBase.ArrayStorage, gate_mask, op_cache, dual_cache; thread::Bool=true)
+    op_terms, op_coeffs = activeterms(op_cache), activecoeffs(op_cache)
+    dual_terms_sorted, dual_coeffs_sorted = activeterms(dual_cache), activecoeffs(dual_cache)
+    n_dual = length(dual_terms_sorted)
+
+    task_partitioner, n_tasks = PropagationBase._preparetasks(length(op_terms), thread)
+    partials = zeros(ComplexF64, n_tasks)
+
+    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+        total = zero(ComplexF64)
+        @inbounds for ii in task_partitioner[task_id]
+            term = op_terms[ii]
+            commutes(term, gate_mask) && continue
+            new_term, comm_coeff = commutator(gate_mask, term)
+            idx = searchsortedfirst(dual_terms_sorted, new_term)
+            (idx <= n_dual && dual_terms_sorted[idx] == new_term) || continue
+            total += comm_coeff * op_coeffs[ii] * dual_coeffs_sorted[idx]
+        end
+        partials[task_id] = total
+    end
+
+    return sum(partials)
+end
+
+# the commutators of an operator zone all sit in the one dual zone the generator's mask sends it to
+function _generatorcommutatordot(::MultiSumStorage, gate_mask, op_cache, dual_cache; thread::Bool=true)
+    partials = zeros(ComplexF64, nzones(op_cache))
+    PropagationBase._eachzone(op_cache, thread) do zone
+        dual_zone = PropagationBase._xortarget(zonemap(op_cache), zone, gate_mask)
+        partials[zone] = _generatorcommutatordot(gate_mask, zonecaches(op_cache)[zone], zonecaches(dual_cache)[dual_zone]; thread=false)
+    end
+    return sum(partials)
+end
+
+
 # Caps dual_cache's support down to op_cache's (already truncated) support.
+function _intersectfilter!(dual_cache, op_cache; thread::Bool=true)
+    _intersectfilter!(StorageType(dual_cache), dual_cache, op_cache; thread)
+    return dual_cache
+end
+
+function _intersectfilter!(::PropagationBase.DictStorage, dual_cache, op_cache; thread::Bool=true)
+    op_terms = storage(mainsum(op_cache))
+    filter!(term_and_coeff -> haskey(op_terms, first(term_and_coeff)), storage(mainsum(dual_cache)))
+    return
+end
+
 # Both sides are sorted and duplicate-free at this point, so this is a merge-join of the two term
 # arrays, sliced across tasks the same way `_mergesortedhead!` slices its own two-pointer merge
-function _intersectfilter!(dual_cache, op_cache; thread::Bool=true)
+function _intersectfilter!(::PropagationBase.ArrayStorage, dual_cache, op_cache; thread::Bool=true)
     dual_terms_sorted = activeterms(dual_cache)
     op_terms_sorted = activeterms(op_cache)
     flags = activeflags(dual_cache)
@@ -184,7 +226,15 @@ function _intersectfilter!(dual_cache, op_cache; thread::Bool=true)
 
     filterviaflags!(dual_cache; thread)
 
-    return dual_cache
+    return
+end
+
+function _intersectfilter!(::MultiSumStorage, dual_cache, op_cache; thread::Bool=true)
+    PropagationBase._eachzone(dual_cache, thread) do zone
+        _intersectfilter!(zonecaches(dual_cache)[zone], zonecaches(op_cache)[zone]; thread=false)
+    end
+    PropagationBase._syncsums!(dual_cache)
+    return
 end
 
 # flags the dual terms in [lo, hi] that also occur in op_terms_sorted
