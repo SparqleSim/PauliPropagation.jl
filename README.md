@@ -9,7 +9,8 @@ Unlike traditional simulators which simulate a circuit $\mathcal{E}$ evolving th
 
 Pauli propagation is related to the so-called (extended) stabilizer simulation, but is fundamentally different from, for example, tensor networks. It offers a distinct approach that can handle different regimes of quantum dynamics.
 
-Implemented in Julia, `PauliPropagation.jl` combines high-performance computation (using features such as multiple dispatch) with an accessible and high-level interface.  
+Implemented in Julia, `PauliPropagation.jl` combines high-performance computation (using features such as multiple dispatch) with an accessible and high-level interface. 
+To get the most performance out of this library, read the *Performance Considerations* section below and study the [advanced performance notebook](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/advanced_performance.ipynb). 
 
 ## Installation
 
@@ -136,7 +137,7 @@ A few tips to get the most performance out of PauliPropagation.jl, in particular
 - When propagating gate by gate or layer by layer, consider using the in-place `propagate!(...)` function that mutates the incoming `PauliSum`/`VectorPauliSum`.
 - For maximal performance that may yield slightly different results to default behavior, you can import our `PauliPropagation.Performance` module and run `Performance.propagate!(...)`.
 
-Take a look at the `examples/advanced_performance.ipynb` notebook for more details.
+Take a look at the `examples/advanced_performance.ipynb` notebook for more details ([link](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/advanced_performance.ipynb)).
  
 
 ## Important Notes and Caveats
