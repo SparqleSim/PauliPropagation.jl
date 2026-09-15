@@ -207,6 +207,13 @@ end
     @test_throws ArgumentError propagate(gate, wpstr; max_sins=rand(1:10))
     @test_throws ArgumentError propagate(gate, wpstr; max_freq=rand(1:10), max_sins=rand(1:10))
 
+    # only a PauliSum keeps the counters, wrapped coefficients or not
+    wpsum = wrapcoefficients(PauliSum(pstr), PauliFreqTracker)
+    for psum in (VectorPauliSum(pstr), VectorPauliSum(wpsum), MultiPauliSum(pstr), MultiPauliSum(wpsum))
+        @test_throws ArgumentError propagate(gate, psum; max_freq=rand(1:10))
+        @test_throws ArgumentError propagate(gate, psum; max_sins=rand(1:10))
+    end
+
 end
 
 @testset "Test automatic conversion" begin

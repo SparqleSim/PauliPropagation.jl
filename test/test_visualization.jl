@@ -33,6 +33,19 @@ using Test
         @test contains(formatted, "X") || contains(formatted, "Y") || contains(formatted, "Z")
     end
 
+    @testset "Tree Tracking Inputs" begin
+        pstr = PauliString(3, :Z, 2)
+        circ = [PauliRotation(:X, 2), CliffordGate(:CNOT, [1, 2])]
+        thetas = [0.3]
+
+        reset_tree!()
+        propagate_with_tree_tracking(circ, PauliSum(pstr), thetas)
+        @test !isempty(EVOLUTION_EDGES)
+
+        @test_throws ArgumentError propagate_with_tree_tracking(circ, VectorPauliSum(pstr), thetas)
+        @test_throws ArgumentError propagate_with_tree_tracking(circ, MultiPauliSum(pstr), thetas)
+    end
+
     @testset "Visualization Functions" begin
         # Test that print_tree_summary doesn't throw errors
         @test_nowarn print_tree_summary()
