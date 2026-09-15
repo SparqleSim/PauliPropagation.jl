@@ -103,25 +103,20 @@ _reserve!(::ArrayStorage, zonecache, n_new::Int) = resize!(zonecache, n_new)
 
 # Every zone is read and written by one thread only, so all parallelism comes from the zones. A
 # sum below one task's worth of terms is worked in turn: a round costs tens of microseconds and
-# more with every thread, where a zone that small takes one. Otherwise the zones go to the zone
-# workers of the propagation in progress (`zoneworkers.jl`), or to a task per zone outside one.
+# more with every thread, where a zone that small takes one.
 function _eachzone(zonefunc::F, prop_cache::AbstractPropagationCache, thread::Bool) where {F}
     if !thread || length(prop_cache) < _MIN_ELEMS_PER_TASK
         for zone_id in 1:nzones(prop_cache)
             zonefunc(zone_id)
         end
-    elseif (workers = _currentzoneworkers()) !== nothing
-        _eachzoneworker(zonefunc, workers, nzones(prop_cache))
     else
-        @threads for zone_id in 1:nzones(prop_cache)
-            zonefunc(zone_id)
-        end
+        _eachtask(zonefunc, nzones(prop_cache))
     end
     return prop_cache
 end
 
-# a propagation over a multi sum keeps its zone workers up from the first gate to the last
-_withzoneworkers(::MultiSumStorage, f::F) where {F} = withzoneworkers(f)
+# a propagation over a multi sum keeps its workers up from the first gate to the last
+_withworkers(::MultiSumStorage, f::F) where {F} = withworkers(f)
 
 # a zone cache swaps its sums as it works, so the multi sum's zones follow it
 function _syncsums!(prop_cache::AbstractPropagationCache)

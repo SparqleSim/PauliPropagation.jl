@@ -75,7 +75,7 @@ function _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_c
 
         # dry run: each task counts its own merged output size (unknown ahead of time due to collisions)
         merged_counts_per_task = Vector{Int}(undef, n_tasks)
-        AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+        _eachtask(n_tasks) do task_id
             head_range = task_partitioner[task_id]
             merged_counts_per_task[task_id] = _tailmerge_write!(aux_terms, aux_coeffs, 1,
                 main_terms, main_coeffs, head_range.start, head_range.stop,
@@ -87,7 +87,7 @@ function _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_c
         merged_count = write_offsets_per_task[end] - 1
 
         # real pass: each task redoes the same merge, now writing directly into its final position
-        AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+        _eachtask(n_tasks) do task_id
             head_range = task_partitioner[task_id]
             _tailmerge_write!(aux_terms, aux_coeffs, write_offsets_per_task[task_id],
                 main_terms, main_coeffs, head_range.start, head_range.stop,

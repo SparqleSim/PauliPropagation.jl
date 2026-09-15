@@ -141,7 +141,7 @@ function _taskedbranchwrite!(prop_cache, n_old::Int, task_partitioner, n_tasks::
     new_counts = Vector{Int}(undef, n_tasks)
 
     # dry run: each task counts the products it will append, without writing
-    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+    PropagationBase._eachtask(n_tasks) do task_id
         rng = task_partitioner[task_id]
         new_counts[task_id] = _fusedbranchwrite!(main_terms, main_coeffs, 1, main_terms, main_coeffs, rng.start, rng.stop,
             gate_mask, kept_val, new_val, max_weight, gatetype, Val(false))
@@ -161,7 +161,7 @@ function _taskedbranchwrite!(prop_cache, n_old::Int, task_partitioner, n_tasks::
     end
 
     # real pass: scale the branching coefficients in place, append each task's products at its offset
-    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+    PropagationBase._eachtask(n_tasks) do task_id
         rng = task_partitioner[task_id]
         _fusedbranchwrite!(main_terms, main_coeffs, n_old + new_offsets[task_id], main_terms, main_coeffs, rng.start, rng.stop,
             gate_mask, kept_val, new_val, max_weight, gatetype, Val(true))
@@ -275,7 +275,7 @@ function _fusedapplytruncatenoise!(prop_cache::PauliPropagation.VectorPauliPropa
     sorted_kept_counts = Vector{Int}(undef, n_tasks)
 
     # dry run: each task counts its own surviving output size, without writing
-    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+    PropagationBase._eachtask(n_tasks) do task_id
         rng = task_partitioner[task_id]
         kept_counts[task_id], sorted_kept_counts[task_id] = _noisewrite!(aux_terms, aux_coeffs, 1,
             main_terms, main_coeffs, rng.start, rng.stop, gate, qind, lambda, truncfunc, old_sortedprefix, Val(false))
@@ -287,7 +287,7 @@ function _fusedapplytruncatenoise!(prop_cache::PauliPropagation.VectorPauliPropa
     new_sortedprefix = sum(sorted_kept_counts)
 
     # real pass: redo the same walk, now writing each task's output directly into its final position
-    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+    PropagationBase._eachtask(n_tasks) do task_id
         rng = task_partitioner[task_id]
         _noisewrite!(aux_terms, aux_coeffs, kept_offsets[task_id],
             main_terms, main_coeffs, rng.start, rng.stop, gate, qind, lambda, truncfunc, old_sortedprefix, Val(true))

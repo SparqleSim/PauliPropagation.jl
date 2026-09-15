@@ -5,7 +5,10 @@ const AK = AcceleratedKernels
 using Base.Threads
 
 include("./utils.jl")
-export tonumber, maxtasks
+export tonumber
+
+include("./threading_utils.jl")
+export maxtasks, withworkers
 
 include("./termsum.jl")
 export
@@ -107,7 +110,6 @@ export
     withzones,
     defaultnzones,
     zonecaches,
-    withzoneworkers,
     outboxes,
     nzones,
     zonesizes,

@@ -42,7 +42,10 @@ function xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sor
 
     groups = (sorted_before && n_old > 0 && n_tail >= _MIN_XOR_TAIL) ? _xorplan(xor_mask, main_terms) : nothing
     if groups === nothing
-        return merge!(prop_cache; thread, truncfunc, kwargs...)
+        # the generic merge sorts through AcceleratedKernels, which starts tasks of its own
+        return _dozingworkers() do
+            merge!(prop_cache; thread, truncfunc, kwargs...)
+        end
     end
 
     # ping-pong pair A: the appended tail, in place at the end of the main arrays
@@ -139,7 +142,7 @@ function _xorpass!(dst_terms, dst_coeffs, src_terms, src_coeffs, group, above; t
     if n_tasks < _MIN_XOR_PASS_TASKS
         _xorpassall!(dst_terms, dst_coeffs, src_terms, src_coeffs, group, above)
     else
-        AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+        _eachtask(n_tasks) do task_id
             chunk = task_partitioner[task_id]
             _xorpasschunk!(dst_terms, dst_coeffs, src_terms, src_coeffs, group, above, chunk.start, chunk.stop)
         end
