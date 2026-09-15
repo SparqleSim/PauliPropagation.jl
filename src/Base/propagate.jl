@@ -53,20 +53,29 @@ function _propagate!(stepfunc::F, circuit, target, params=nothing; kwargs...) wh
     # A useful iteration tool
     parameter_iterator = Iterators.Stateful(params)
 
-    for gate in circuit
-        if isa(gate, ParametrizedGate)
-            param = popfirst!(parameter_iterator)
-            stepfunc(gate, target, param; kwargs...)
-        else
-            stepfunc(gate, target; kwargs...)
-        end
+    _withzoneworkers(target, get(kwargs, :thread, true)) do
+        for gate in circuit
+            if isa(gate, ParametrizedGate)
+                param = popfirst!(parameter_iterator)
+                stepfunc(gate, target, param; kwargs...)
+            else
+                stepfunc(gate, target; kwargs...)
+            end
 
-        # free unless `@countpaulis` or `@peakpaulis` installed a counter
-        _recordsize!(target)
+            # free unless `@countpaulis` or `@peakpaulis` installed a counter
+            _recordsize!(target)
+        end
     end
 
     return target
 end
+
+# A cache split over zones keeps a worker on every thread for the whole loop (see
+# `MultiSum/zoneworkers.jl`); any other target runs the loop as it is.
+_withzoneworkers(f::F, target, thread::Bool) where {F} = f()
+_withzoneworkers(f::F, target::AbstractPropagationCache, thread::Bool) where {F} =
+    thread ? _withzoneworkers(StorageType(target), f) : f()
+_withzoneworkers(::StorageType, f::F) where {F} = f()
 
 """
     applymergetruncate!(gate, prop_cache::AbstractPropagationCache; kwargs...)

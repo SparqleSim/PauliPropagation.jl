@@ -2,6 +2,9 @@
 # with an owning zone per term.
 include("multisum.jl")
 
+# zoneworkers.jl keeps a task pinned to every thread for the whole of a propagation.
+include("zoneworkers.jl")
+
 # propagationcache.jl carries one propagation cache per zone and one outbox per zone.
 include("propagationcache.jl")
 
