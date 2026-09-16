@@ -9,7 +9,7 @@ using CUDA
 
 # TODO: export utilities
 const CUDAVectorPauliSum = VectorPauliSum{<:CuArray,<:CuArray}
-const CUDAVectorPauliPropagationCache = VectorPauliPropagationCache{CUDAVectorPauliSum,<:CuArray,<:CuArray}
+const CUDAVectorPauliPropagationCache = PP.VectorPauliPropagationCache{CUDAVectorPauliSum,<:CuArray,<:CuArray}
 
 # sortedtailmerge!'s scalar merge loop and CPU task-spawning have no GPU equivalent; routing
 # CuArray-backed caches away from it keeps them on the portable AcceleratedKernels-based merge.
@@ -23,12 +23,12 @@ function CUDA.cu(psum::VectorPauliSum; unified=_UNIFIED)
     return VectorPauliSum(nqubits(psum), cu_paulis, cu_coeffs)
 end
 
-function CUDA.cu(prop_cache::VectorPauliPropagationCache; unified=_UNIFIED)
+function CUDA.cu(prop_cache::PP.VectorPauliPropagationCache; unified=_UNIFIED)
     cu_mainsum = cu(mainsum(prop_cache); unified)
     cu_auxsum = cu(auxsum(prop_cache); unified)
     cu_flags = cu(PP.flags(prop_cache); unified)
     cu_indices = cu(PP.indices(prop_cache); unified)
-    return VectorPauliPropagationCache(cu_mainsum, cu_auxsum, cu_flags, cu_indices, PP.activesize(prop_cache))
+    return PP.VectorPauliPropagationCache(cu_mainsum, cu_auxsum, cu_flags, cu_indices, PP.activesize(prop_cache))
 end
 
 function Base.collect(psum::VectorPauliSum)
