@@ -64,26 +64,32 @@ end
 
 
 """
-    maxabscoeff(term_sum::AbstractTermSum)
-    maxabscoeff(prop_cache::AbstractPropagationCache)
+    mapreducecoeffs(f, op, term_sum::AbstractTermSum; init, thread=true)
+    mapreducecoeffs(f, op, prop_cache::AbstractPropagationCache; init, thread=true)
+
+Reduce `f(coeff)` with `op` over the coefficients of `term_sum`, or of the active view of `prop_cache`, like `mapreduce(f, op, coefficients(thing); init)`.
+`init` defaults to the zero of the real coefficient type. `thread=false` reduces on the calling thread alone.
+"""
+function mapreducecoeffs(f::F, op::O, thing::Union{AbstractTermSum,AbstractPropagationCache}; init=zero(real(numcoefftype(thing))), thread::Bool=true) where {F,O}
+    return _mapreducecoeffs(StorageType(thing), f, op, thing; init, thread)
+end
+
+_mapreducecoeffs(::DictStorage, f::F, op::O, thing; init, thread::Bool) where {F,O} =
+    mapreduce(f, op, coefficients(thing); init)
+
+# every task starts from the zero of `init`, which serves `+` and, over non-negative values, `max`
+_mapreducecoeffs(::ArrayStorage, f::F, op::O, thing; init, thread::Bool) where {F,O} =
+    AK.mapreduce(f, op, coefficients(thing); init, neutral=zero(init), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+
+"""
+    maxabscoeff(term_sum::AbstractTermSum; thread=true)
+    maxabscoeff(prop_cache::AbstractPropagationCache; thread=true)
 
 Returns the maximum absolute coefficient currently present in `term_sum`, or in the active
-view of `prop_cache`.
+view of `prop_cache`. `thread=false` reduces on the calling thread alone.
 """
-function maxabscoeff(thing::Union{AbstractTermSum,AbstractPropagationCache})
-    return _maxabscoeff(StorageType(thing), thing)
-end
-
-function _maxabscoeff(::DictStorage, thing::Union{AbstractTermSum,AbstractPropagationCache})
-    return mapreduce(coeff -> abs(tonumber(coeff)), max, coefficients(thing); init=zero(real(numcoefftype(thing))))
-end
-
-function _maxabscoeff(::ArrayStorage, thing::Union{AbstractTermSum,AbstractPropagationCache})
-    RT = real(numcoefftype(thing))
-    # `neutral` must be given explicitly since AK's default (typemin) is undefined for RT here;
-    # zero is a valid neutral element for `max` since all mapped values (abs(...)) are >= 0
-    return AK.mapreduce(coeff -> abs(tonumber(coeff)), max, coefficients(thing); init=zero(RT), neutral=zero(RT))
-end
+maxabscoeff(thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
+    mapreducecoeffs(coeff -> abs(tonumber(coeff)), max, thing; thread)
 
 
 # Truncations on unsuitable coefficient types defaults to false.

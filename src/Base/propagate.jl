@@ -53,20 +53,30 @@ function _propagate!(stepfunc::F, circuit, target, params=nothing; kwargs...) wh
     # A useful iteration tool
     parameter_iterator = Iterators.Stateful(params)
 
-    for gate in circuit
-        if isa(gate, ParametrizedGate)
-            param = popfirst!(parameter_iterator)
-            stepfunc(gate, target, param; kwargs...)
-        else
-            stepfunc(gate, target; kwargs...)
-        end
+    _withworkers(target, get(kwargs, :thread, true)) do
+        for gate in circuit
+            if isa(gate, ParametrizedGate)
+                param = popfirst!(parameter_iterator)
+                stepfunc(gate, target, param; kwargs...)
+            else
+                stepfunc(gate, target; kwargs...)
+            end
 
-        # free unless `@countpaulis` or `@peakpaulis` installed a counter
-        _recordsize!(target)
+            # free unless `@countpaulis` or `@peakpaulis` installed a counter
+            _recordsize!(target)
+        end
     end
 
     return target
 end
+
+# A cache held in arrays or split over zones keeps a worker on every thread for the whole loop
+# (see `threading_utils.jl`); any other target runs the loop as it is.
+_withworkers(f::F, target, thread::Bool) where {F} = f()
+_withworkers(f::F, target::AbstractPropagationCache, thread::Bool) where {F} =
+    thread ? _withworkers(StorageType(target), f) : f()
+_withworkers(::StorageType, f::F) where {F} = f()
+_withworkers(::ArrayStorage, f::F) where {F} = withworkers(f)
 
 """
     applymergetruncate!(gate, prop_cache::AbstractPropagationCache; kwargs...)
@@ -79,8 +89,13 @@ Truncations are performed after merging.
 This function can be overwritten for a custom gate if the lower-level functions `applytoall!`, and `apply` are not sufficient.
 """
 function applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args...; kwargs...)
-    return _applymergetruncate!(gate, prop_cache, args...; kwargs...)
+    apply_merge_truncate!() = _applymergetruncate!(gate, prop_cache, args...; kwargs...)
+    return _with_threads_freed_for(apply_merge_truncate!, StorageType(prop_cache))
 end
+
+# the array kernels of AcceleratedKernels start tasks of their own, which the workers make room for
+_with_threads_freed_for(f::F, ::StorageType) where {F} = f()
+_with_threads_freed_for(f::F, ::ArrayStorage) where {F} = _with_threads_freed_for(f)
 
 function _applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args...; kwargs...)
     # args is usually expected to be empty or contain a parameter for the gate

@@ -42,7 +42,9 @@ function xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sor
 
     groups = (sorted_before && n_old > 0 && n_tail >= _MIN_XOR_TAIL) ? _xorplan(xor_mask, main_terms) : nothing
     if groups === nothing
-        return merge!(prop_cache; thread, truncfunc, kwargs...)
+        # the generic merge sorts through AcceleratedKernels, which starts tasks of its own
+        merge_generically!() = merge!(prop_cache; thread, truncfunc, kwargs...)
+        return _with_threads_freed_for(merge_generically!)
     end
 
     # ping-pong pair A: the appended tail, in place at the end of the main arrays
@@ -56,8 +58,62 @@ function xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sor
 
     tail_terms, tail_coeffs = _xorsorttail!(groups, a_terms, a_coeffs, b_terms, b_coeffs; thread)
 
+    # the tail is `head ⊻ mask` over a duplicate-free head, so it holds no duplicates of its own
     return _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs,
-        n_old, tail_terms, tail_coeffs, n_tail, truncfunc, thread)
+        n_old, tail_terms, tail_coeffs, n_tail, truncfunc, thread, Val(true))
+end
+
+
+"""
+    xorsortedboxmerge!(prop_cache::AbstractPropagationCache, box, xor_mask, sorted_before::Bool; thread=true, truncfunc=nothing, kwargs...)
+
+`xorsortedtailmerge!` for a tail that is still in `box`, a term sum of the same array type, in the
+parent order of whichever sum made it. The XOR passes read the box where it is and ping-pong
+between it and the room past the active terms, so the tail is moved by the sort alone instead of
+being copied in first, and the box serves as the sort's scratch. The box is empty afterwards.
+"""
+function xorsortedboxmerge!(prop_cache::AbstractPropagationCache, box, xor_mask, sorted_before::Bool;
+    thread::Bool=true, truncfunc=nothing, kwargs...)
+
+    n_tail = length(box)
+    n_tail == 0 && return prop_cache
+
+    n_old = activesize(prop_cache)
+    main_sorted = sortedprefix(mainsum(prop_cache)) == n_old
+
+    groups = (sorted_before && main_sorted && n_old > 0 && n_tail >= _MIN_XOR_TAIL) ?
+             _xorplan(xor_mask, terms(mainsum(prop_cache))) : nothing
+    if groups === nothing
+        add!(prop_cache, box)
+        empty!(box)
+        return merge!(prop_cache; thread, truncfunc, kwargs...)
+    end
+
+    # the head keeps its place, the sorted tail lands past it or stays in the box, and the merge
+    # writes both into aux: room for all of them in main and aux alike, and half as much again
+    n_new = n_old + n_tail
+    if capacity(prop_cache) < n_new
+        n_room = n_new + n_tail
+        resize!(prop_cache, n_room + n_room >> 1)
+    end
+    main_terms, main_coeffs, aux_terms, aux_coeffs = _mainauxarrays(prop_cache)
+
+    # ping-pong pair A: the box, in place
+    a_terms = view(terms(box), 1:n_tail)
+    a_coeffs = view(coefficients(box), 1:n_tail)
+
+    # ping-pong pair B: past the active terms of the main arrays
+    b_terms = view(main_terms, n_old+1:n_new)
+    b_coeffs = view(main_coeffs, n_old+1:n_new)
+
+    tail_terms, tail_coeffs = _xorsorttail!(groups, a_terms, a_coeffs, b_terms, b_coeffs; thread)
+
+    _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs,
+        n_old, tail_terms, tail_coeffs, n_tail, truncfunc, thread, Val(true))
+
+    empty!(box)
+
+    return prop_cache
 end
 
 
@@ -86,7 +142,7 @@ function _xorpass!(dst_terms, dst_coeffs, src_terms, src_coeffs, group, above; t
     if n_tasks < _MIN_XOR_PASS_TASKS
         _xorpassall!(dst_terms, dst_coeffs, src_terms, src_coeffs, group, above)
     else
-        AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
+        _eachtask(n_tasks) do task_id
             chunk = task_partitioner[task_id]
             _xorpasschunk!(dst_terms, dst_coeffs, src_terms, src_coeffs, group, above, chunk.start, chunk.stop)
         end

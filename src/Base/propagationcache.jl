@@ -37,7 +37,9 @@ coefficients(prop_cache::AbstractPropagationCache) = _coefficients(StorageType(p
 _coefficients(::DictStorage, prop_cache::AbstractPropagationCache) = coefficients(mainsum(prop_cache))
 _coefficients(::ArrayStorage, prop_cache::AbstractPropagationCache) = activecoeffs(prop_cache)
 
-function termtype(prop_cache::AbstractPropagationCache)
+termtype(prop_cache::AbstractPropagationCache) = _termtype(StorageType(prop_cache), prop_cache)
+
+function _termtype(::StorageType, prop_cache::AbstractPropagationCache)
     mainTT = termtype(mainsum(prop_cache))
     auxTT = termtype(auxsum(prop_cache))
     if mainTT != auxTT
@@ -46,7 +48,9 @@ function termtype(prop_cache::AbstractPropagationCache)
     return mainTT
 end
 
-function coefftype(prop_cache::AbstractPropagationCache)
+coefftype(prop_cache::AbstractPropagationCache) = _coefftype(StorageType(prop_cache), prop_cache)
+
+function _coefftype(::StorageType, prop_cache::AbstractPropagationCache)
     mainCT = coefftype(mainsum(prop_cache))
     auxCT = coefftype(auxsum(prop_cache))
     if mainCT != auxCT
@@ -55,7 +59,9 @@ function coefftype(prop_cache::AbstractPropagationCache)
     return mainCT
 end
 
-function numcoefftype(prop_cache::AbstractPropagationCache)
+numcoefftype(prop_cache::AbstractPropagationCache) = _numcoefftype(StorageType(prop_cache), prop_cache)
+
+function _numcoefftype(::StorageType, prop_cache::AbstractPropagationCache)
     mainNCT = numcoefftype(mainsum(prop_cache))
     auxNCT = numcoefftype(auxsum(prop_cache))
     if mainNCT != auxNCT
@@ -68,7 +74,9 @@ end
 # An optional interface for returning the mainsum when it is safe to return it as a whole or as a view.
 # Should leave the sum linked to the cache, and the cache unperturbed.
 # This is concrete type dependent.
-function activesum(prop_cache::AbstractPropagationCache)
+activesum(prop_cache::AbstractPropagationCache) = _activesum(StorageType(prop_cache), prop_cache)
+
+function _activesum(::StorageType, prop_cache::AbstractPropagationCache)
     _thrownotimplemented(prop_cache, :activesum)
 end
 
@@ -131,6 +139,10 @@ end
 
 Base.isempty(prop_cache::AbstractPropagationCache) = length(prop_cache) == 0
 
+# a cache iterates over the terms it actively holds, in the same shape as the sum it carries
+@inline Base.iterate(prop_cache::AbstractPropagationCache, args...) = _iterate(StorageType(prop_cache), prop_cache, args...)
+@inline _iterate(::DictStorage, prop_cache::AbstractPropagationCache, args...) = iterate(mainsum(prop_cache), args...)
+
 function capacity(prop_cache::AbstractPropagationCache)
     return _capacity(StorageType(prop_cache), prop_cache)
 end
@@ -167,9 +179,60 @@ function mult!(prop_cache::AbstractPropagationCache, scalar::Number)
     return prop_cache
 end
 
-function Base.resize!(prop_cache::AbstractPropagationCache, new_size::Int)
-    _thrownotimplemented(prop_cache, :resize!)
+"""
+    add!(prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum)
+
+Add the terms of `term_sum` to the active terms of `prop_cache`.
+A dict-based cache merges them in as it goes, while an array-based one appends them unmerged past its active terms and leaves the merging to `merge!`.
+"""
+add!(prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum) = _add!(StorageType(prop_cache), prop_cache, term_sum)
+
+_add!(::DictStorage, prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum) =
+    (add!(mainsum(prop_cache), term_sum); prop_cache)
+
+function _add!(::ArrayStorage, prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum)
+    n_old = activesize(prop_cache)
+    n_new = n_old + length(term_sum)
+    n_new == n_old && return prop_cache
+
+    # the merge that follows takes its scratch from the room beyond the appended terms, so a cache
+    # that is only grown to hold them makes the merge allocate a tail of its own on every gate
+    n_room = n_new + (n_new - n_old)
+    capacity(prop_cache) < n_room && resize!(prop_cache, n_room + n_room >> 1)
+
+    copyto!(terms(mainsum(prop_cache)), n_old + 1, terms(term_sum), 1, length(term_sum))
+    copyto!(coefficients(mainsum(prop_cache)), n_old + 1, coefficients(term_sum), 1, length(term_sum))
+    setactivesize!(prop_cache, n_new)
+
+    return prop_cache
 end
+
+# emptying keeps the capacity, so the cache is ready to be filled again
+Base.empty!(prop_cache::AbstractPropagationCache) = _empty!(StorageType(prop_cache), prop_cache)
+_empty!(::DictStorage, prop_cache::AbstractPropagationCache) = (empty!(mainsum(prop_cache)); prop_cache)
+_empty!(::ArrayStorage, prop_cache::AbstractPropagationCache) =
+    (setactivesize!(prop_cache, 0); setsortedprefix!(mainsum(prop_cache), 0); prop_cache)
+
+"""
+    resize!(prop_cache::AbstractPropagationCache, n::Int)
+
+Give `prop_cache` room for `n` terms.
+A dict-based cache takes this as a size hint, while an array-based one resizes its arrays to `n`, which is its capacity, and keeps at most `n` terms active.
+"""
+Base.resize!(prop_cache::AbstractPropagationCache, n::Int) = _resize!(StorageType(prop_cache), prop_cache, n)
+
+_resize!(::DictStorage, prop_cache::AbstractPropagationCache, n::Int) = (sizehint!(storage(mainsum(prop_cache)), n); prop_cache)
+
+function _resize!(::ArrayStorage, prop_cache::AbstractPropagationCache, n::Int)
+    resize!(mainsum(prop_cache), n)
+    resize!(auxsum(prop_cache), n)
+    resize!(flags(prop_cache), n)
+    resize!(indices(prop_cache), n)
+    setactivesize!(prop_cache, min(activesize(prop_cache), n))
+    return prop_cache
+end
+
+_resize!(::StorageType, prop_cache::AbstractPropagationCache, n::Int) = _thrownotimplemented(prop_cache, :resize!)
 
 ## Back-conversions 
 

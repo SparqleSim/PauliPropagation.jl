@@ -174,6 +174,13 @@ end
         @test expec_cache ≈ expec_vec
         @test grad_cache ≈ grad_vec
 
+        # a multi sum runs both sweeps zone by zone, with either kind of zone
+        for msum in (MultiPauliSum(dict_psum, 4), MultiPauliSum(vec_psum, 4))
+            expec_multi, grad_multi = rewindgradient(circuit, msum, params, overlapwithzero; min_abs_coeff=0.0)
+            @test expec_multi ≈ expec_vec
+            @test grad_multi ≈ grad_vec
+        end
+
         # the non-mutating entry point must leave the caller's Pauli sums untouched
         @test vec_psum == VectorPauliSum(dict_psum)
     end

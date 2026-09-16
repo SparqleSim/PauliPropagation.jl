@@ -293,7 +293,7 @@ Convenience function that wraps coefficients in PauliTreeTracker and runs propag
 Returns both the result and exports the tree visualization.
 Supports both PauliString and PauliSum inputs.
 """
-function propagate_with_tree_tracking(circ, input, thetas=nothing;
+function propagate_with_tree_tracking(circ, input::Union{PauliString,PauliSum}, thetas=nothing;
     reset_tree_first::Bool=true,
     kwargs...)
 
@@ -321,4 +321,13 @@ function propagate_with_tree_tracking(circ, input, thetas=nothing;
     # Run propagation
     result = propagate(circ, tracked_input, thetas; kwargs...)
     return unwrapcoefficients(result)
+end
+
+# only the gates on a `PauliSum` record the tree, so any other Pauli sum is refused
+function propagate_with_tree_tracking(circ, input, thetas=nothing; kwargs...)
+    throw(ArgumentError(
+        "Tree tracking is only supported for a `PauliSum`, not for a `$(nameof(typeof(input)))`. " *
+        "To support it, overload `applytoall!` for every gate and `merge!` on its propagation cache with `PauliTreeTracker` coefficients, 
+        as done for `PauliPropagationCache` in `treetracker.jl`.")
+    )
 end

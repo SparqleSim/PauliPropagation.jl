@@ -131,12 +131,3 @@ function Base.show(io::IO, prop_cache::VectorPauliPropagationCache)
         println(io, prop_cache.psum.coeffs[i], " * $(pauli_string)")
     end
 end
-
-
-function Base.resize!(prop_cache::VectorPauliPropagationCache, n_new::Int)
-    resize!(prop_cache.psum, n_new)
-    resize!(prop_cache.aux_psum, n_new)
-    resize!(prop_cache.flags, n_new)
-    resize!(prop_cache.indices, n_new)
-    return prop_cache
-end

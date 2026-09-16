@@ -73,15 +73,13 @@ Fused overload that truncates during gate application by walking and mutating th
 through its internal slot array. Only used when `fused=true`; otherwise falls through unchanged to
 stock `applymergetruncate!`.
 """
-function PauliPropagation.applymergetruncate!(gate::PauliRotation, prop_cache::PauliPropagationCache, theta;
+function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotation, prop_cache::PauliPropagation.PauliPropagationCache, theta;
     fused::Bool=false,
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing, kwargs...)
 
     # invoke function from library
     if !fused
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliRotation,PauliPropagation.AbstractPauliPropagationCache,typeof(theta)},
-            gate, prop_cache, theta;
+        return _invokedefault(gate, prop_cache, theta;
             min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, kwargs...)
     end
 

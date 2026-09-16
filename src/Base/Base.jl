@@ -5,7 +5,10 @@ const AK = AcceleratedKernels
 using Base.Threads
 
 include("./utils.jl")
-export tonumber, maxtasks
+export tonumber
+
+include("./threading_utils.jl")
+export maxtasks, withworkers
 
 include("./termsum.jl")
 export
@@ -23,9 +26,11 @@ export
     nsites,
     add!,
     mult!,
+    mapcoeffs!,
     set!,
     empty!,
     similar,
+    emptylike,
     capacity,
     sortedprefix,
     setsortedprefix!
@@ -76,7 +81,7 @@ include("./merge.jl")
 export merge, merge!, mergefunc
 
 include("./truncate.jl")
-export truncate, truncate!, maxabscoeff
+export truncate, truncate!, maxabscoeff, mapreducecoeffs
 
 
 include("./vectorbackend.jl")
@@ -105,8 +110,27 @@ export
     mcapplytoall!,
     resample,
     resample!,
+    mapslots!,
     multinomial_resample!,
     systematic_resample!,
     semideterministic_systematic_resample!
+
+include("./MultiSum/MultiSum.jl")
+export
+    MultiSumStorage,
+    ZoneMap,
+    zones,
+    zonemap,
+    zonestorage,
+    defaultnzones,
+    zonecaches,
+    outboxes,
+    nzones,
+    zonesizes,
+    zoneof,
+    staysinzone,
+    applytoallzones!,
+    applyxorbranch!,
+    applyxorbranchzones!
 
 end

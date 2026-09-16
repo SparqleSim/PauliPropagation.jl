@@ -40,7 +40,8 @@ Defaults to a no-op for all `AbstractTermSum` types.
 """
 setsortedprefix!(term_sum::AbstractTermSum, n::Int) = term_sum
 
-Base.length(term_sum::AbstractTermSum) = length(terms(term_sum))
+Base.length(term_sum::AbstractTermSum) = _length(StorageType(term_sum), term_sum)
+_length(::StorageType, term_sum::AbstractTermSum) = length(terms(term_sum))
 
 nsites(term_sum::TS) where TS<:AbstractTermSum = _thrownotimplemented(TS, :nsites)
 
@@ -57,8 +58,11 @@ _coefficients(::ArrayStorage, term_sum::AbstractTermSum) = storage(term_sum)[2]
 coeffs(term_sum::AbstractTermSum) = coefficients(term_sum)
 
 # receives the object
-termtype(term_sum::TS) where TS<:AbstractTermSum = eltype(terms(term_sum))
-coefftype(term_sum::TS) where TS<:AbstractTermSum = eltype(coefficients(term_sum))
+termtype(term_sum::AbstractTermSum) = _termtype(StorageType(term_sum), term_sum)
+_termtype(::StorageType, term_sum::AbstractTermSum) = eltype(terms(term_sum))
+
+coefftype(term_sum::AbstractTermSum) = _coefftype(StorageType(term_sum), term_sum)
+_coefftype(::StorageType, term_sum::AbstractTermSum) = eltype(coefficients(term_sum))
 
 # this is used to determine type-stable return values for numerical operations
 numcoefftype(term_sum::TS) where TS<:AbstractTermSum = numcoefftype(coefftype(term_sum))
@@ -157,9 +161,9 @@ end
 end
 
 
-@inline function _iterate(::StorageType, term_sum::AbstractTermSum)
+@inline function _iterate(::StorageType, thing)
     # 1. Create the iterator we are delegating to
-    iter = zip(terms(term_sum), coefficients(term_sum))
+    iter = zip(terms(thing), coefficients(thing))
 
     # 2. Start its iteration
     next = iterate(iter)
@@ -169,7 +173,7 @@ end
     return next === nothing ? nothing : (next[1], (iter, next[2]))
 end
 
-@inline function _iterate(::StorageType, term_sum::AbstractTermSum, state)
+@inline function _iterate(::StorageType, thing, state)
     # 1. Unpack the state tuple
     (iter, inner_state) = state
 
@@ -189,7 +193,9 @@ Calls `LinearAlgebra.norm(coefficients(psum))`.
 If `psum` contains duplicate terms, the coefficients are NOT merged before hand
 and the norm value will be affected.
 """
-function LinearAlgebra.norm(psum::AbstractTermSum, L::Real=2)
+LinearAlgebra.norm(psum::AbstractTermSum, L::Real=2) = _norm(StorageType(psum), psum, L)
+
+function _norm(::StorageType, psum::AbstractTermSum, L::Real)
     if length(psum) == 0
         return zero(numcoefftype(psum))
     end
@@ -266,7 +272,9 @@ end
 end
 
 
-function add!(term_sum1::AbstractTermSum, term_sum2::AbstractTermSum)
+add!(term_sum1::AbstractTermSum, term_sum2::AbstractTermSum) = _add!(StorageType(term_sum1), term_sum1, term_sum2)
+
+function _add!(::StorageType, term_sum1::AbstractTermSum, term_sum2::AbstractTermSum)
     for (term, coeff) in term_sum2
         add!(term_sum1, term, coeff)
     end
@@ -324,38 +332,43 @@ end
 end
 
 """
+    mapcoeffs!(f, term_sum::AbstractTermSum)
+
+Replace every coefficient of `term_sum` by `f(coeff)`, leaving the terms as they are.
+Calls `_mapcoeffs!(StorageType(term_sum), f, term_sum)` internally.
+For custom behavior, overload `storage()` and/or `_mapcoeffs!` for the specific TermSum type.
+"""
+mapcoeffs!(f::F, term_sum::AbstractTermSum) where {F} = _mapcoeffs!(StorageType(term_sum), f, term_sum)
+
+_mapcoeffs!(::DictStorage, f::F, term_sum::AbstractTermSum) where {F} = (map!(f, values(storage(term_sum))); term_sum)
+_mapcoeffs!(::ArrayStorage, f::F, term_sum::AbstractTermSum) where {F} = (map!(f, coefficients(term_sum), coefficients(term_sum)); term_sum)
+
+# super slow default
+function _mapcoeffs!(::StorageType, f::F, term_sum::AbstractTermSum) where {F}
+    for (term, coeff) in term_sum
+        set!(term_sum, term, f(coeff))
+    end
+    return term_sum
+end
+
+"""
     mult!(term_sum::AbstractTermSum, scalar::Number)
 
 Multiply all coefficients in `term_sum` by `scalar`.
-Calls `mult!(StorageType(term_sum), term_sum, scalar)` internally.
-For custom behavior, overload `storage()` and/or `mult!` for the specific TermSum type.
 """
 function mult!(term_sum::AbstractTermSum, scalar::Number)
-    return _mult!(StorageType(term_sum), term_sum, scalar)
+    scale(coeff) = coeff * scalar
+    return mapcoeffs!(scale, term_sum)
 end
 
+"""
+    conj!(term_sum::AbstractTermSum)
+    conj(term_sum::AbstractTermSum)
 
-function _mult!(::DictStorage, term_sum::AbstractTermSum, scalar::Number)
-    dict_storage = storage(term_sum)
-    for (term, coeff) in dict_storage
-        dict_storage[term] = coeff * scalar
-    end
-    return term_sum
-end
-
-function _mult!(::ArrayStorage, term_sum::AbstractTermSum, scalar::Number)
-    terms_vec, coeffs_vec = storage(term_sum)
-    coeffs_vec .*= scalar
-    return term_sum
-end
-
-# super slow default
-function _mult!(::StorageType, term_sum::AbstractTermSum, scalar::Number)
-    for (term, coeff) in zip(terms(term_sum), coefficients(term_sum))
-        set!(term_sum, term, coeff * scalar)
-    end
-    return term_sum
-end
+Conjugate all coefficients in `term_sum`, in place or on a copy.
+"""
+Base.conj!(term_sum::AbstractTermSum) = mapcoeffs!(conj, term_sum)
+Base.conj(term_sum::AbstractTermSum) = coefftype(term_sum) <: Real ? deepcopy(term_sum) : conj!(deepcopy(term_sum))
 
 function Base.delete!(term_sum::AbstractTermSum, term)
     _delete!(StorageType(term_sum), term_sum, term)
@@ -416,10 +429,61 @@ function _empty!(::StorageType, term_sum::AbstractTermSum)
 end
 
 
-function Base.similar(term_sum::AbstractTermSum)
+"""
+    push!(term_sum::AbstractTermSum, term, coeff)
+
+Append `term` with coefficient `coeff` without checking whether `term_sum` already contains `term`.
+An array-based term sum then holds the term twice until it is merged, while a dict-based one merges immediately, because its terms are the keys.
+"""
+Base.push!(term_sum::AbstractTermSum, term, coeff) = _push!(StorageType(term_sum), term_sum, term, coeff)
+
+@inline _push!(::DictStorage, term_sum, term, coeff) = add!(term_sum, term, coeff)
+
+@inline function _push!(::ArrayStorage, term_sum, term, coeff)
+    push!(terms(term_sum), term)
+    push!(coefficients(term_sum), coeff)
+    return term_sum
+end
+
+
+"""
+    sizehint!(term_sum::AbstractTermSum, n)
+
+Hint to `term_sum` to reserve space for `n` terms, without changing the terms it contains.
+"""
+Base.sizehint!(term_sum::AbstractTermSum, n) = _sizehint!(StorageType(term_sum), term_sum, n)
+_sizehint!(::DictStorage, term_sum::AbstractTermSum, n) = (sizehint!(storage(term_sum), n); term_sum)
+_sizehint!(::ArrayStorage, term_sum::AbstractTermSum, n) =
+    (sizehint!(terms(term_sum), n); sizehint!(coefficients(term_sum), n); term_sum)
+
+
+Base.similar(term_sum::AbstractTermSum) = _similar(StorageType(term_sum), term_sum)
+
+function _similar(::StorageType, term_sum::AbstractTermSum)
     similar_term_sum = deepcopy(term_sum)
     empty!(similar_term_sum)
     return similar_term_sum
+end
+
+
+"""
+    emptylike(term_sum::AbstractTermSum)
+
+Create an empty term sum of the same type as `term_sum`, including its term type.
+This differs from `similar()`, which may keep the length of `term_sum` and leave its entries undefined.
+The default implementations assume the constructor `TS(nsites, storage...)` and can be overloaded for types that carry more than that.
+"""
+emptylike(term_sum::AbstractTermSum) = _emptylike(StorageType(term_sum), term_sum)
+_emptylike(::DictStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(storage(term_sum)))
+_emptylike(::ArrayStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(terms(term_sum)), empty(coefficients(term_sum)))
+
+# a term sum of one type is built from one of any other by pushing every term into an empty one
+function (::Type{TS})(term_sum::AbstractTermSum) where {TS<:AbstractTermSum}
+    new_sum = TS(coefftype(term_sum), nsites(term_sum))
+    for (term, coeff) in term_sum
+        push!(new_sum, term, coeff)
+    end
+    return new_sum
 end
 
 

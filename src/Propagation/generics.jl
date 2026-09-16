@@ -45,7 +45,7 @@ In `propagate()` the Pauli sum `psum` is deepcopied and passed into the in-place
 Parameters for the parametrized gates in `circ` are given by `thetas`, and need to be passed as if the circuit was applied as written in the Schrödinger picture.
 If thetas are not passed, the circuit must contain only non-parametrized `StaticGates`.
 Default truncations are `min_abs_coeff`, `max_weight`, `max_freq`, and `max_sins`.
-`max_freq`, and `max_sins` will lead to automatic conversion if the coefficients are not already wrapped in suitable `PathProperties` objects.
+`max_freq`, and `max_sins` are only supported for a `PauliSum` and will lead to automatic conversion if the coefficients are not already wrapped in suitable `PathProperties` objects.
 A custom truncation function can be passed as `customtruncfunc` with the signature customtruncfunc(pstr::PauliStringType, coefficient)::Bool.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread,
 allowing efficient multi-threading on a higher level (e.g. `Threads.@threads for _ in 1:10; propagate(...; thread=false); end`).
@@ -169,23 +169,6 @@ function PropagationBase.mcsample!(circuit, tsum::AbstractPauliSum, params=nothi
     circuit, params = _preparecircuit(circuit, params, heisenberg)
     return PropagationBase._propagate!(PropagationBase.mcapplytoall!, circuit, tsum, params; kwargs...)
 end
-
-"""
-    resample(psum::PauliSum, target_size::Integer; resample_func=nothing, squared=false, thread=true, kwargs...)
-
-Resampling of a `PauliSum` (see `resample`).
-`psum` is converted into a `VectorPauliSum` and converted back on return, leaving `psum` unchanged.
-"""
-function PropagationBase.resample(psum::PauliSum, target_size::Integer, resample_args...; kwargs...)
-    vpsum = resample!(VectorPauliSum(psum), target_size, resample_args...; kwargs...)
-    return PauliSum(vpsum)
-end
-
-
-function PropagationBase.resample!(psum::PauliSum, target_size::Integer, resample_args...; kwargs...)
-    throw(ArgumentError("`resample!` is not defined for `PauliSum`. Use the out-of-place `resample`, or convert via `VectorPauliSum(psum)`."))
-end
-
 
 # Shared prelude for the Pauli-specific `propagate!`/`mcpropagate!`/`mcsample!` methods
 # promote a single gate/param into a list, 
