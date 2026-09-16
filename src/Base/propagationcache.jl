@@ -139,6 +139,10 @@ end
 
 Base.isempty(prop_cache::AbstractPropagationCache) = length(prop_cache) == 0
 
+# a cache iterates over the terms it actively holds, in the same shape as the sum it carries
+@inline Base.iterate(prop_cache::AbstractPropagationCache, args...) = _iterate(StorageType(prop_cache), prop_cache, args...)
+@inline _iterate(::DictStorage, prop_cache::AbstractPropagationCache, args...) = iterate(mainsum(prop_cache), args...)
+
 function capacity(prop_cache::AbstractPropagationCache)
     return _capacity(StorageType(prop_cache), prop_cache)
 end

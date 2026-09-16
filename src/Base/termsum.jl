@@ -161,9 +161,9 @@ end
 end
 
 
-@inline function _iterate(::StorageType, term_sum::AbstractTermSum)
+@inline function _iterate(::StorageType, thing)
     # 1. Create the iterator we are delegating to
-    iter = zip(terms(term_sum), coefficients(term_sum))
+    iter = zip(terms(thing), coefficients(thing))
 
     # 2. Start its iteration
     next = iterate(iter)
@@ -173,7 +173,7 @@ end
     return next === nothing ? nothing : (next[1], (iter, next[2]))
 end
 
-@inline function _iterate(::StorageType, term_sum::AbstractTermSum, state)
+@inline function _iterate(::StorageType, thing, state)
     # 1. Unpack the state tuple
     (iter, inner_state) = state
 
@@ -272,7 +272,9 @@ end
 end
 
 
-function add!(term_sum1::AbstractTermSum, term_sum2::AbstractTermSum)
+add!(term_sum1::AbstractTermSum, term_sum2::AbstractTermSum) = _add!(StorageType(term_sum1), term_sum1, term_sum2)
+
+function _add!(::StorageType, term_sum1::AbstractTermSum, term_sum2::AbstractTermSum)
     for (term, coeff) in term_sum2
         add!(term_sum1, term, coeff)
     end
@@ -423,16 +425,16 @@ end
 
 
 """
-    pushterm!(term_sum::AbstractTermSum, term, coeff)
+    push!(term_sum::AbstractTermSum, term, coeff)
 
 Append `term` with coefficient `coeff` without checking whether `term_sum` already contains `term`.
 An array-based term sum then holds the term twice until it is merged, while a dict-based one merges immediately, because its terms are the keys.
 """
-pushterm!(term_sum::AbstractTermSum, term, coeff) = _pushterm!(StorageType(term_sum), term_sum, term, coeff)
+Base.push!(term_sum::AbstractTermSum, term, coeff) = _push!(StorageType(term_sum), term_sum, term, coeff)
 
-@inline _pushterm!(::DictStorage, term_sum, term, coeff) = add!(term_sum, term, coeff)
+@inline _push!(::DictStorage, term_sum, term, coeff) = add!(term_sum, term, coeff)
 
-@inline function _pushterm!(::ArrayStorage, term_sum, term, coeff)
+@inline function _push!(::ArrayStorage, term_sum, term, coeff)
     push!(terms(term_sum), term)
     push!(coefficients(term_sum), coeff)
     return term_sum
@@ -469,6 +471,15 @@ The default implementations assume the constructor `TS(nsites, storage...)` and 
 emptylike(term_sum::AbstractTermSum) = _emptylike(StorageType(term_sum), term_sum)
 _emptylike(::DictStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(storage(term_sum)))
 _emptylike(::ArrayStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(terms(term_sum)), empty(coefficients(term_sum)))
+
+# a term sum of one type is built from one of any other by pushing every term into an empty one
+function (::Type{TS})(term_sum::AbstractTermSum) where {TS<:AbstractTermSum}
+    new_sum = TS(coefftype(term_sum), nsites(term_sum))
+    for (term, coeff) in term_sum
+        push!(new_sum, term, coeff)
+    end
+    return new_sum
+end
 
 
 ### Short out-of-place algebra
