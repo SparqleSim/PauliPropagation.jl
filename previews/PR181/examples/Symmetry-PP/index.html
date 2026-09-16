@@ -28,7 +28,9 @@ println(&quot;The representative integer is &quot;, rep_int)
 println(&quot;The representative Pauli string is XII: &quot;, PauliString(nq, :X, 1).term)</code></pre><pre><code class="nohighlight hljs">Integer representation of PauliString(nqubits: 3, 1.0 * IXI)
 
  is 4
-The representative integer is 1
+The representative integer is 
+
+1
 The representative Pauli string is XII: 1</code></pre><pre><code class="language-julia hljs"># To get the effective representation of the original Pauli string, we can do:
 translationmerge(p)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 3, 1 Pauli term: 
  3.0 * XII
@@ -69,9 +71,7 @@ pstr3 = PauliString(nq, [:Z, :X, :Y], [4, 6, 2])
 println(&quot;The integer representation of &quot;, pstr3, &quot; is &quot;, pstr3.term)
 println(&quot;The 2d visualization of &quot;, pstr3, &quot; is:&quot; )
 println(inttostring(pstr3.term, nx, ny))</code></pre><pre><code class="nohighlight hljs">The integer representation of PauliString(nqubits: 6, 1.0 * IXIYIZ) is 3204
-The 2d visualization of 
-
-PauliString(nqubits: 6, 1.0 * IXIYIZ) is:
+The 2d visualization of PauliString(nqubits: 6, 1.0 * IXIYIZ) is:
 IX
 IY
 IZ
@@ -89,7 +89,7 @@ IX</code></pre><pre><code class="language-julia hljs"># Turns out for 2d finding
 psum = PauliSum([pstr, pstr2, pstr3])
 rep_int_2d = translationmerge(psum, nx, ny)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 6, 1 Pauli term: 
  3.0 * YIZIXI
-)</code></pre><h4 id="You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*"><a class="docs-heading-anchor" href="#You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*">You can also define the merging function for your own symmetry. Let&#39;s see an example of this using <em>permutation symmetry</em></a><a id="You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*-1"></a><a class="docs-heading-anchor-permalink" href="#You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*" title="Permalink"></a></h4><p>We can define the representative of Paulis under permutation symmetry by counting the number of Pauli <span>$X, Y, Z$</span></p><pre><code class="language-julia hljs">function _permutationcanonicalform(pstr::PauliStringType)
+)</code></pre><h4 id="You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*"><a class="docs-heading-anchor" href="#You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*">You can also define the merging function for your own symmetry. Let&#39;s see an example of this using <em>permutation symmetry</em></a><a id="You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*-1"></a><a class="docs-heading-anchor-permalink" href="#You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*" title="Permalink"></a></h4><p>We can define the representative of Paulis under permutation symmetry by counting the number of Pauli <span>$X, Y, Z$</span></p><pre><code class="language-julia hljs">function _permutationcanonicalform(pstr::Integer)
     if pstr == 0
         return pstr
     end
@@ -278,4 +278,4 @@ for l in layers
     overlap_sublayer = filter(r -&gt; r.merging == :sublayer &amp;&amp; r.layer == l, results)[1].overlap
     @assert isapprox(overlap_none, overlap_full)
     @assert isapprox(overlap_none, overlap_sublayer)
-end</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../PP-Surrogate/">« The Pauli Propagation Surrogate</a><a class="docs-footer-nextpage" href="../visualization_example/">Pauli Evolution Visualization Examples »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Wednesday 16 September 2026 10:18">Wednesday 16 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+end</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../PP-Surrogate/">« The Pauli Propagation Surrogate</a><a class="docs-footer-nextpage" href="../visualization_example/">Pauli Evolution Visualization Examples »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Wednesday 16 September 2026 12:30">Wednesday 16 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
