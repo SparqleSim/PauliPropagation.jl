@@ -1,107 +1,51 @@
 # MultiPauliSum
 
-A Pauli sum split over `n_zones` work zones, each a Pauli sum of the type it carries that one thread
-owns. Every operation on a zone is single-threaded; parallelism comes from the zones alone. This is
-the multi-node scheme of the data structure appendix, run over threads on one node.
+`MultiPauliSum` is the way to get the most out of multithreading in `PauliPropagation.jl`. It takes an ordinary `PauliSum` or `VectorPauliSum` and splits it into *work zones*, each of which is a Pauli sum of that same type owned by a single thread. Everything else stays the same: you build it from the observable you already have, hand it to `propagate()` as usual, and read expectation values off it directly.
 
-The machinery is basis-agnostic and lives in `PropagationBase` under `Base/MultiSum`, behind the
-`MultiSumStorage` storage trait. This directory holds what is specific to the Pauli basis: the type
-itself, its propagation cache, and the gates.
+```julia
+using PauliPropagation
 
-## The idea
+nqubits = 32
+observable = PauliString(nqubits, :Z, 16)
+circuit = tfitrottercircuit(nqubits, 32)
+parameters = ones(countparameters(circuit)) * 0.1
 
-A fixed assignment sends each term to one zone, so all copies of a term reach the same owner and
-deduplication never has to look outside a zone. A gate makes terms that belong to other zones; a
-thread parks those in an outbox instead of writing into a zone it does not own, and the owner picks
-them up in a second pass. No zone is written by two threads and no operation on a zone needs to be
-thread-safe.
+msum = MultiPauliSum(VectorPauliSum(observable))
+psum = propagate(circuit, msum, parameters; min_abs_coeff=1e-4)
 
-Each bit of the assignment is a parity of the term under a fixed mask. Balance comes for free:
-parities of fixed pseudo-random masks spread the terms evenly no matter how the sum is shaped. Zone
-sizes scatter like the square root of their size, so the largest and smallest of 8 zones differ by 2%
-over 19k terms, and by less as the sum grows.
+overlapwithzero(psum)
+```
 
-The parity bits are the zone index itself, which makes the assignment linear over GF(2):
+Start Julia with several threads (`julia -t 8`, for example) and the zones are worked in parallel. On a single thread, a `MultiPauliSum` simply behaves like the Pauli sum it wraps.
 
-    zoneof(t ⊻ m) - 1 == (zoneof(t) - 1) ⊻ (zoneof(m) - 1)
+## Why zones
 
-A Pauli rotation moves every term it branches by the same `⊻ m`, so it permutes the zones: each zone
-sends all of its terms to exactly one other zone and receives from exactly one. An owner therefore
-has a single outbox to take delivery of, and that outbox is `parent ⊻ m` over a sorted, duplicate-free
-zone -- exactly the input `xorsortedtailmerge!` wants.
+`VectorPauliSum` is already multithreaded, but it threads by splitting every gate application across all threads, which means the threads have to coordinate on the same Pauli sum and only pays off once the sum is large. A `MultiPauliSum` threads differently. Every Pauli string belongs to exactly one zone, decided by a fixed rule that spreads the strings evenly over the zones no matter what the sum looks like. Because all copies of a Pauli string land in the same zone, merging duplicates never has to look outside a zone, and because each zone is worked by one thread, no two threads ever write to the same place.
 
-The zone count is therefore a power of two, and `ZoneMap` rejects any other. Nothing about the
-assignment depends on the gate: whether a gate takes the fast path is the gate's own business.
+When a gate creates Pauli strings that belong to another zone, the thread does not reach into that zone but leaves them in an outbox, and the owner collects them afterwards. That is the whole coordination between threads: one hand-off per gate. The result is parallelism that helps at all sizes, not only at the largest ones.
 
-## How a gate is applied
+## Using it
 
-Two zone-parallel passes, separated by a barrier:
+The constructors accept whatever you would otherwise pass to `propagate()`. The type of the Pauli sum you pass in is the type of the zones, so `MultiPauliSum(PauliSum(observable))` gives dictionary-backed zones and `MultiPauliSum(VectorPauliSum(observable))` gives array-backed ones. For performance, prefer `VectorPauliSum` zones.
 
-1. Every zone applies the gate to its own terms. A gate that branches by a fixed `⊻ m` parks the
-   terms it makes in a single box of its outbox; any other gate routes what it makes term by term
-   and empties the zone.
-2. Every zone appends what the outboxes hold for it -- from the one zone that sends to it if the
-   gate branched by a fixed mask, from all of them otherwise. `merge!` and `truncate!` then run zone
-   by zone, which is the library's own `applytoall!`-`merge!`-`truncate!` order.
+```julia
+MultiPauliSum(observable)                       # PauliSum zones, one per thread
+MultiPauliSum(VectorPauliSum(observable))       # VectorPauliSum zones
+MultiPauliSum(VectorPauliSum(observable), 16)   # over 16 zones
+MultiPauliSum(nqubits)                          # an empty sum with PauliSum zones
+```
 
-A box is emptied by the zone that takes delivery, so every box is empty when a gate picks it up and
-the fast path never has to clear the boxes it does not use. A gate that branches by a fixed mask
-always parks in the same box, the first, rather than in the box of the zone it happens to send to:
-which zone that is moves with the mask, and parking by it would leave every box of every outbox grown
-to the size of a zone.
+The number of zones defaults to one per thread and has to be a power of two, which is what lets the Pauli rotations move terms between zones cheaply. If your thread count is not a power of two, the default picks a larger zone count so that no thread sits idle.
 
-An outbox is itself a `MultiPauliSum`, so parking a term is the same routing as adding one. A gate that
-leaves every term where it is -- `staysinzone(gate)`, as for `PauliNoise` -- skips both passes and
-runs inside the zones instead.
+A `MultiPauliSum` works with the rest of the library the way any other Pauli sum does:
 
-A `MultiPauliSum` carries the `MultiSumStorage` trait, which routes the term sum interface, `merge!`
-and `truncate!` through the owning zone. The trait carries the storage of the zones in turn, so a
-`MultiPauliSum` of `PauliSum`s and one of `VectorPauliSum`s share the same code.
+- `propagate()` and the in-place `propagate!()`, with all coefficient and weight truncations.
+- `Performance.propagate()` for the fused single-pass application inside every zone. This needs `VectorPauliSum` zones; with `PauliSum` zones it falls back to the ordinary application.
+- `PropagationCache` and `resize!`, to size the memory up front for the peak number of terms.
+- `mcpropagate()` and its resampling strategies.
+- `rewindgradient()` for gradients.
+- `overlapwithzero()`, `overlapwithplus()`, `getcoeff()`, iteration, `length`, and the other functions you would use to inspect a Pauli sum.
 
-Gate application dispatches on the cache instead. A `MultiPauliPropagationCache` is an
-`AbstractPauliPropagationCache`, so it inherits `propagate!` and everything above the gate, and every
-gate reaches `applytoallzones!` or, if it branches by a fixed mask, `applyxorbranch!`.
+To get a plain Pauli sum back, call `PauliSum(msum)` or `VectorPauliSum(msum)`. `nzones(msum)` and `zonesizes(msum)` tell you how the terms are distributed.
 
-## Capacity
-
-`resize!(prop_cache, n)` gives the zones room for `n` terms between them. Sizing for the terms that
-survive is not enough: a zone holds the terms addressed to it next to the terms it already has, so
-its share has to cover that peak, and a hint that only covers the result still reallocates near the
-end of a run.
-
-## What it buys
-
-A 24-qubit circuit of six Rx-Rz-CNOT-Rzz layers, run out to 9.1M terms over 8 zones on 8 threads,
-against the same sum over a single zone: 5.1x for `PauliSum` zones and 2.9x for `VectorPauliSum`
-zones, the latter 2.0x over a `VectorPauliSum` propagated with the library's own threading.
-
-A 36-qubit tilted-field Ising circuit run out to 6.9M terms on 8 threads, against a `PauliSum`
-propagated single-threaded: 9.6x over 8 `VectorPauliSum` zones, and 18.8x with the fused application
-inside the zones. The fused zones are 1.4x the fused `VectorPauliSum` the library threads itself,
-which is otherwise the fastest way to run that circuit.
-
-Zone count and thread count are separate choices, and a power of two is worth giving up threads for:
-it is what keeps the assignment linear, and an assignment that is not costs 3-6% for `PauliSum`
-zones, which route every term they make in any case, and 29-34% for `VectorPauliSum` zones, which
-lose the XOR tail sort with it.
-
-## Fused application
-
-`Performance.propagate` runs the fused single-pass application inside every zone: a zone writes what
-it branches straight into its box, and the truncations that read the coefficient are paid in the merge
-that takes delivery, rather than in a pass of their own. `applyxorbranchzones!` is
-`applyxorbranch!` with the first pass handed to the caller, so both share the delivery and the merge.
-
-Fusing asks more of the zones than the default does: a zone writes its products contiguously into
-the one box it owns, so the zones have to be array-backed. Dict zones fall back to the default
-application.
-
-## Not here yet
-
-A gate that routes its terms leaves every zone holding a concatenation of runs, each of them a sorted
-zone under a fixed `⊻`: one run per zone that sent to it, and for a Clifford gate one more per Pauli
-the gate maps on its qubits. Sorting the runs by XOR passes and merging them, rather than re-sorting
-the zone, would cover the Clifford gates, which pay a full sort per gate as it is.
-
-Monte Carlo propagation (`mcpropagate`, `mcsample`, `resample`) does not take a `MultiPauliSum`,
-because resampling weighs the whole sum at once.
+The [advanced performance notebook](../../examples/advanced_performance.ipynb) walks through this in context, together with the other performance tricks in the library.
