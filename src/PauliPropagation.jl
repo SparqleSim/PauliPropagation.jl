@@ -19,13 +19,20 @@ export
     nqubits,
     paulis,
     coefficients,
-    norm,
     paulitype,
     coefftype,
     numcoefftype,
     getcoeff,
     topaulistrings,
-    convertcoefftype
+    convertcoefftype,
+    norm,
+    add!,
+    set!,
+    push!,
+    mult!,
+    empty!,
+    emptylike,
+    similar
 
 include("./PauliAlgebra/PauliAlgebra.jl")
 export
@@ -119,6 +126,7 @@ export
     auxsum,
     capacity,
     propagate,
+    extractsum!,
     propagate!,
     applymergetruncate!,
     applytoall!,

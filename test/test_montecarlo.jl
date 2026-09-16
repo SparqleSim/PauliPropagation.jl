@@ -1,6 +1,6 @@
 using Test
 using PauliPropagation
-using PauliPropagation.PropagationBase
+const PP = PauliPropagation
 using Random
 
 
@@ -293,22 +293,22 @@ end
     term_tol = 3
 
     prop_cache = PropagationCache(deepcopy(psum))
-    total_before = sum(activecoeffs(prop_cache))
-    resample!(prop_cache, target_size; resample_func=systematic_resample!)
-    @test abs(activesize(prop_cache) - target_size) <= term_tol
-    @test isapprox(sum(activecoeffs(prop_cache)), total_before; atol=term_tol * total_before / target_size)
+    total_before = sum(PP.activecoeffs(prop_cache))
+    resample!(prop_cache, target_size; resample_func=PP.systematic_resample!)
+    @test abs(PP.activesize(prop_cache) - target_size) <= term_tol
+    @test isapprox(sum(PP.activecoeffs(prop_cache)), total_before; atol=term_tol * total_before / target_size)
 
     # target_size equal to the current size is allowed, only exceeding it is an error
     same_size_cache = PropagationCache(deepcopy(psum))
-    resample!(same_size_cache, n; resample_func=systematic_resample!)
-    @test abs(activesize(same_size_cache) - n) <= term_tol
+    resample!(same_size_cache, n; resample_func=PP.systematic_resample!)
+    @test abs(PP.activesize(same_size_cache) - n) <= term_tol
 
     over_cache = PropagationCache(deepcopy(psum))
     @test_throws ArgumentError resample!(over_cache, n + 1)
 
     # out-of-place resample leaves the input psum untouched
     original = deepcopy(psum)
-    result = resample(psum, target_size; resample_func=systematic_resample!)
+    result = resample(psum, target_size; resample_func=PP.systematic_resample!)
     @test psum == original
     @test abs(length(result) - target_size) <= term_tol
 end
@@ -342,13 +342,13 @@ end
 
     # multinomial_resample! keeps every term drawn, so at most target_size terms survive
     cache = PropagationCache(deepcopy(base_psum))
-    resample!(cache, target_size; resample_func=multinomial_resample!)
-    @test 1 <= activesize(cache) <= target_size
+    resample!(cache, target_size; resample_func=PP.multinomial_resample!)
+    @test 1 <= PP.activesize(cache) <= target_size
 
-    for f in (systematic_resample!, semideterministic_systematic_resample!)
+    for f in (PP.systematic_resample!, PP.semideterministic_systematic_resample!)
         cache = PropagationCache(deepcopy(base_psum))
         resample!(cache, target_size; resample_func=f)
-        @test 1 <= activesize(cache) <= target_size + term_tol
+        @test 1 <= PP.activesize(cache) <= target_size + term_tol
     end
 end
 
@@ -363,15 +363,15 @@ end
 
     # multinomial_resample! keeps every term drawn, so at most target_size terms survive
     cache = PropagationCache(deepcopy(base_psum))
-    resample!(cache, target_size; resample_func=multinomial_resample!)
-    @test 1 <= activesize(cache) <= target_size
+    resample!(cache, target_size; resample_func=PP.multinomial_resample!)
+    @test 1 <= PP.activesize(cache) <= target_size
 
     # the deduplicating variants' comb step is quantized, so the survivor count can land a
     # few terms above target_size, and may also land well below it if many terms deduplicate
-    for f in (systematic_resample!, semideterministic_systematic_resample!)
+    for f in (PP.systematic_resample!, PP.semideterministic_systematic_resample!)
         cache = PropagationCache(deepcopy(base_psum))
         resample!(cache, target_size; resample_func=f)
-        @test 1 <= activesize(cache) <= target_size + term_tol
+        @test 1 <= PP.activesize(cache) <= target_size + term_tol
     end
 end
 
@@ -404,8 +404,8 @@ end
     # 2-norm, |coeff|^2 = n_draws * sum(abs2) / target_size, which conserves that norm. If squared were
     # dropped on the way to the resampler, the 1-norm would be conserved instead.
     cache = PropagationCache(deepcopy(base_psum))
-    resample!(cache, target_size; resample_func=multinomial_resample!, squared=true)
-    @test sum(abs2, activecoeffs(cache)) ≈ sum(abs2, coefficients(base_psum))
+    resample!(cache, target_size; resample_func=PP.multinomial_resample!, squared=true)
+    @test sum(abs2, PP.activecoeffs(cache)) ≈ sum(abs2, coefficients(base_psum))
 end
 
 
@@ -451,23 +451,23 @@ end
         msum = MultiPauliSum(seed, 4)
 
         # the comb of the systematic strategies conserves the total weight, and only keeps terms of the sum
-        for f in (semideterministic_systematic_resample!, systematic_resample!, multinomial_resample!)
+        for f in (PP.semideterministic_systematic_resample!, PP.systematic_resample!, PP.multinomial_resample!)
             cache = PropagationCache(deepcopy(msum))
             resample!(cache, target_size; resample_func=f, thread)
             @test 1 <= length(cache) <= target_size + term_tol
             @test sum(abs, coefficients(cache)) ≈ total_weight rtol = 0.01
-            @test all(sign(coeff) == sign(getcoeff(psum, term)) for (term, coeff) in zip(terms(cache), coefficients(cache)))
+            @test all(sign(coeff) == sign(getcoeff(psum, term)) for (term, coeff) in zip(paulis(cache), coefficients(cache)))
         end
 
         # the resampled coefficients conserve the squared 2-norm when resampling squared
         squared_norm = sum(abs2, coefficients(psum))
-        for f in (systematic_resample!, multinomial_resample!)
+        for f in (PP.systematic_resample!, PP.multinomial_resample!)
             cache = PropagationCache(deepcopy(msum))
             resample!(cache, target_size; resample_func=f, squared=true, thread)
             @test sum(abs2, coefficients(cache)) ≈ squared_norm rtol = 0.01
         end
         cache = PropagationCache(deepcopy(msum))
-        @test_throws ArgumentError resample!(cache, target_size; squared=true, resample_func=semideterministic_systematic_resample!)
+        @test_throws ArgumentError resample!(cache, target_size; squared=true, resample_func=PP.semideterministic_systematic_resample!)
 
         # out-of-place resampling leaves the input untouched and returns the same type
         result = resample(msum, target_size)
@@ -480,10 +480,10 @@ end
     cache = PropagationCache(MultiPauliSum(VectorPauliSum(psum), 4))
     merge!(cache)
     resample!(cache, target_size)
-    @test all(sortedprefix(mainsum(zonecache)) == activesize(zonecache) for zonecache in zonecaches(cache))
+    @test all(PP.sortedprefix(mainsum(zonecache)) == PP.activesize(zonecache) for zonecache in PP.zonecaches(cache))
 
     # every zone keeps only what it owns
-    for (zone_id, zone) in enumerate(zones(activesum(cache)))
+    for (zone_id, zone) in enumerate(zones(PP.activesum(cache)))
         @test all(zoneof(mainsum(cache), term) == zone_id for term in paulis(zone))
     end
 end

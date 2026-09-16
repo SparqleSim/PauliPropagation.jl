@@ -1,5 +1,7 @@
 using PauliPropagation
-using PauliPropagation.PropagationBase
+const PP = PauliPropagation
+import PauliPropagation.PropagationBase
+const PB = PauliPropagation.PropagationBase
 using Test
 using Random
 

@@ -1,6 +1,7 @@
 # Test file for the MultiPauliSum type, which splits a term sum over work zones.
 using Test
 using Random
+const PP = PauliPropagation
 
 # largest deviation between two Pauli sums, over the terms of either
 function maxdeviation(psum1, psum2)
@@ -177,10 +178,10 @@ end
     @test length(msum) == 3
     @test !isempty(msum)
     @test nqubits(msum) == nq
-    @test nsites(msum) == nq
-    @test termtype(msum) == paulitype(vpsum)
+    @test nqubits(msum) == nq
+    @test paulitype(msum) == paulitype(vpsum)
     @test coefftype(msum) == Float64
-    @test sort(collect(terms(msum))) == sort(collect(paulis(vpsum)))
+    @test sort(collect(paulis(msum))) == sort(collect(paulis(vpsum)))
     @test sum(coeff for (_, coeff) in msum) == 0.0
     @test length(topaulistrings(msum)) == 3
     @test norm(msum) ≈ norm(vpsum)
@@ -189,7 +190,7 @@ end
     @test getcoeff(msum, [:X, :Y], [1, 2]) == 0.5
     @test getcoeff(msum, PauliString(nq, :Z, 3)) == 0.25
     @test getcoeff(msum, symboltoint(nq, [:Y, :Y], [4, 5])) == -0.75
-    @test getmergedcoeff(msum, symboltoint(nq, [:Y, :Y], [4, 5])) == -0.75
+    @test PP.getmergedcoeff(msum, symboltoint(nq, [:Y, :Y], [4, 5])) == -0.75
 
     @test overlapwithzero(msum) == overlapwithzero(vpsum)
     @test overlapwithmaxmixed(msum) == 0.0
@@ -235,7 +236,7 @@ end
     # the zones are printed in turn, so the terms come out in no particular order
     printed = sprint(show, msum)
     @test occursin("over 4 zones", printed)
-    @test all(occursin(inttostring(pstr, nq), printed) for pstr in terms(vpsum))
+    @test all(occursin(inttostring(pstr, nq), printed) for pstr in paulis(vpsum))
 
     @test conj(convertcoefftype(ComplexF64, msum)) == convertcoefftype(ComplexF64, msum)
     @test conj(mult!(convertcoefftype(ComplexF64, msum), im)) == mult!(convertcoefftype(ComplexF64, msum), -im)
@@ -259,7 +260,7 @@ end
     @test PauliSum(copy!(deepcopy(msum), msum)) == PauliSum(vpsum)
 
     # `emptylike` keeps the very type it was handed, zone type included
-    empty_msum = emptylike(msum)
+    empty_msum = PP.emptylike(msum)
     @test isempty(empty_msum) && nzones(empty_msum) == 4 && eltype(zones(empty_msum)) == typeof(vpsum)
 
     # the zone accessors are for multi sums alone
@@ -272,8 +273,8 @@ end
     add!(psum, [:Z], [3], 0.25)
     vpsum = VectorPauliSum(psum)
 
-    @test nzones(MultiPauliSum(psum)) == defaultnzones()
-    @test ispow2(defaultnzones())
+    @test nzones(MultiPauliSum(psum)) == PP.defaultnzones()
+    @test ispow2(PP.defaultnzones())
     @test_throws ArgumentError MultiPauliSum(psum, 0)
     @test_throws ArgumentError MultiPauliSum(psum, 6)
 
@@ -307,7 +308,7 @@ end
 
     @test length(prop_cache) == 1
     @test mainsum(prop_cache) === msum
-    @test length(activesum(prop_cache)) == 1
+    @test length(PP.activesum(prop_cache)) == 1
     @test maxabscoeff(prop_cache) == 1.0
     @test numcoefftype(prop_cache) == Float64
     @test overlapwithzero(prop_cache) == overlapwithzero(vpsum)
@@ -318,7 +319,7 @@ end
     propagate!(rotations, prop_cache, randn(countparameters(rotations)); min_abs_coeff=1e-8)
 
     # the cache hands back the very sum it was built from, sized to what it holds
-    @test extractsum!(prop_cache) === msum
+    @test PP.extractsum!(prop_cache) === msum
     @test length(msum) == length(PauliSum(msum))
 
     # out-of-place propagation leaves the sum it was given alone
@@ -336,8 +337,8 @@ end
         msum = propagate(mixed, MultiPauliSum(seed, n_zones), [gate isa ParametrizedNoiseChannel ? 0.05 : 0.3 for gate in mixed if gate isa ParametrizedGate]; min_abs_coeff=1e-8)
 
         # every term sits in the zone that owns it, and no zone holds a term twice
-        @test all(all(zoneof(msum, term) == zone_id for term in terms(zone)) for (zone_id, zone) in enumerate(msum.zones))
-        @test all(length(zone) == length(unique(terms(zone))) for zone in msum.zones)
+        @test all(all(zoneof(msum, term) == zone_id for term in paulis(zone)) for (zone_id, zone) in enumerate(msum.zones))
+        @test all(length(zone) == length(unique(paulis(zone))) for zone in msum.zones)
 
         # parities of fixed masks spread the terms evenly, whatever the sum looks like
         @test maximum(zonesizes(msum)) < 1.5 * length(msum) / nzones(msum)
@@ -350,5 +351,5 @@ end
                          for (term, mask) in terms_and_masks)
 
     @test all(islinear(MultiPauliSum(psum, n_zones)) for n_zones in (1, 2, 4, 8))
-    @test zonemap(MultiPauliSum(psum, 8)) isa ZoneMap
+    @test PP.zonemap(MultiPauliSum(psum, 8)) isa PP.ZoneMap
 end
