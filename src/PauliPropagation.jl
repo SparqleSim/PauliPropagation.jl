@@ -122,6 +122,7 @@ export
 include("Propagation/Propagation.jl")
 export
     PropagationCache,
+    AbstractPauliPropagationCache,
     mainsum,
     auxsum,
     capacity,
