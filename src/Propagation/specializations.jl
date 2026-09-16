@@ -127,7 +127,7 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::AbstractPau
 end
 
 # a Clifford gate maps distinct Pauli strings to distinct Pauli strings
-PropagationBase.requiresmerging(::CliffordGate) = false
+PropagationBase.requiresmerging(::CliffordGate, ::AbstractPauliPropagationCache) = false
 
 function PropagationBase.apply(gate::CliffordGate, pstr, coeff, lookup_map; kwargs...)
     # the lookup array carries the new Paulis + sign for every occuring old Pauli combination
@@ -203,7 +203,7 @@ function _damping(gate::PauliNoise, lambda)
     return damp
 end
 
-PropagationBase.requiresmerging(::PauliNoise) = false
+PropagationBase.requiresmerging(::PauliNoise, ::AbstractPauliPropagationCache) = false
 
 ### Amplitude damping noise
 

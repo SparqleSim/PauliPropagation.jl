@@ -104,7 +104,7 @@ function _applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args..
 
     # usually this merges from some auxillary term sum into the main term sum
     # for vector-based caches, it deduplicates within the main term sum
-    if requiresmerging(gate)
+    if requiresmerging(gate, prop_cache)
         merge!(prop_cache; kwargs...)
     end
 
@@ -114,13 +114,14 @@ function _applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args..
 end
 
 """
-    requiresmerging(gate)::Bool
+    requiresmerging(gate, prop_cache::AbstractPropagationCache)::Bool
 
-Helper function that indicates whether merging is required after applying a gate.
-Can be overloaded for custom gates.
+Helper function that indicates whether merging is required after applying `gate` to `prop_cache`.
 Defaults to `true`.
+Overload it to return `false` for a gate and cache whose `applytoall!` never creates duplicate terms.
+Such an `applytoall!` must then leave all terms in `mainsum(prop_cache)` and `auxsum(prop_cache)` empty, because nothing is moved back afterwards.
 """
-requiresmerging(gate) = true
+requiresmerging(gate, prop_cache::AbstractPropagationCache) = true
 
 """
     applytoall!(gate, prop_cache::AbstractPropagationCache; kwargs...)
@@ -128,7 +129,8 @@ requiresmerging(gate) = true
 
 1st-level function below `propagate!` that applies one gate to all terms in the main term sum `term_sum = mainsum(prop_cache)`, 
 potentially using an auxiliary term sum `aux_term_sum = auxsum(prop_cache)` in the process. 
-After this functions, all terms remaining in `term_sum` and `aux_term_sum` are merged.
+After this function, all terms remaining in `term_sum` and `aux_term_sum` are merged, unless `requiresmerging(gate, prop_cache)` is `false`,
+in which case all terms must be left in `term_sum` and `aux_term_sum` must be empty.
 This function can be overwritten for a custom gate if the lower-level function `apply()` is not sufficient.
 In particular, this function can be used to manipulate both `term_sum` and `aux_term_sum` at the same time to reduce memory movement.
 Note that manipulating `term_sum` on anything other than the current term will likely lead to errors.
