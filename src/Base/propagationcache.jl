@@ -171,7 +171,10 @@ indices(prop_cache::AbstractPropagationCache) = _thrownotimplemented(prop_cache,
 activeflags(prop_cache::AbstractPropagationCache) = view(flags(prop_cache), 1:activesize(prop_cache))
 activeindices(prop_cache::AbstractPropagationCache) = view(indices(prop_cache), 1:activesize(prop_cache))
 # callers read this as "number of flagged terms" (last prefix-sum value), which is 0 when nothing is active
-lastactiveindex(prop_cache::AbstractPropagationCache) = activesize(prop_cache) == 0 ? 0 : activeindices(prop_cache)[end]
+@inline function lastactiveindex(prop_cache::AbstractPropagationCache)
+    active_size = activesize(prop_cache)
+    return active_size == 0 ? 0 : @inbounds(indices(prop_cache)[active_size])
+end
 
 
 function mult!(prop_cache::AbstractPropagationCache, scalar::Number)

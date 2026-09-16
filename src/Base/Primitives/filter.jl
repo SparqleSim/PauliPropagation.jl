@@ -42,3 +42,41 @@ end
 
 _filter!(::StorageType, keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
     _thrownotimplemented(thing, :filter!)
+
+
+"""
+    filterterms(keep, term_sum::AbstractTermSum; thread=true)
+    filterterms(keep, prop_cache::AbstractPropagationCache; thread=true)
+
+Keep active terms for which `keep(term)` returns `true`, returning a copy.
+"""
+filterterms(keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
+    filterterms!(keep, deepcopy(thing); thread)
+
+"""
+    filterterms!(keep, term_sum::AbstractTermSum; thread=true)
+    filterterms!(keep, prop_cache::AbstractPropagationCache; thread=true)
+
+Remove active terms for which `keep(term)` returns `false`.
+"""
+filterterms!(keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
+    Base.filter!((term, coefficient) -> keep(term), thing; thread)
+
+
+"""
+    filtercoeffs(keep, term_sum::AbstractTermSum; thread=true)
+    filtercoeffs(keep, prop_cache::AbstractPropagationCache; thread=true)
+
+Keep active coefficients for which `keep(coefficient)` returns `true`, returning a copy.
+"""
+filtercoeffs(keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
+    filtercoeffs!(keep, deepcopy(thing); thread)
+
+"""
+    filtercoeffs!(keep, term_sum::AbstractTermSum; thread=true)
+    filtercoeffs!(keep, prop_cache::AbstractPropagationCache; thread=true)
+
+Remove active coefficients for which `keep(coefficient)` returns `false`.
+"""
+filtercoeffs!(keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
+    Base.filter!((term, coefficient) -> keep(coefficient), thing; thread)

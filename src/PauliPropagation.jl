@@ -38,6 +38,10 @@ export
     sortterms!,
     sortcoeffs,
     sortcoeffs!,
+    filterterms,
+    filterterms!,
+    filtercoeffs,
+    filtercoeffs!,
     empty!,
     emptylike,
     similar

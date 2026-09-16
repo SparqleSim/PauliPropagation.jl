@@ -42,10 +42,13 @@ function _map!(::ArrayStorage, transform, term_sum::AbstractTermSum; thread::Boo
     source_terms = terms(term_sum)
     source_coefficients = coefficients(term_sum)
 
+    @assert length(source_terms) == length(source_coefficients)
     AK.foreachindex(source_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
-        term, coefficient = transform(source_terms[index], source_coefficients[index])
-        source_terms[index] = term
-        source_coefficients[index] = coefficient
+        @inbounds begin
+            term, coefficient = transform(source_terms[index], source_coefficients[index])
+            source_terms[index] = term
+            source_coefficients[index] = coefficient
+        end
     end
 
     setsortedprefix!(term_sum, 0)
@@ -56,10 +59,13 @@ function _map!(::ArrayStorage, transform, prop_cache::AbstractPropagationCache; 
     source_terms = terms(prop_cache)
     source_coefficients = coefficients(prop_cache)
 
+    @assert length(source_terms) == length(source_coefficients)
     AK.foreachindex(source_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
-        term, coefficient = transform(source_terms[index], source_coefficients[index])
-        source_terms[index] = term
-        source_coefficients[index] = coefficient
+        @inbounds begin
+            term, coefficient = transform(source_terms[index], source_coefficients[index])
+            source_terms[index] = term
+            source_coefficients[index] = coefficient
+        end
     end
 
     setsortedprefix!(mainsum(prop_cache), 0)
@@ -132,7 +138,7 @@ end
 function _mapactivecoeffs!(transform, thing; thread::Bool=true)
     active_coefficients = coefficients(thing)
     AK.foreachindex(active_coefficients; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
-        active_coefficients[index] = transform(active_coefficients[index])
+        @inbounds active_coefficients[index] = transform(active_coefficients[index])
     end
     return thing
 end

@@ -70,6 +70,10 @@ export
     sortterms!,
     sortcoeffs,
     sortcoeffs!,
+    filterterms,
+    filterterms!,
+    filtercoeffs,
+    filtercoeffs!,
     mapreducecoeffs,
     maxabscoeff
 
