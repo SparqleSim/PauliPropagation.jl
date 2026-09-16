@@ -43,6 +43,7 @@ A `MultiPauliSum` works with the rest of the library the way any other Pauli sum
 - `Performance.propagate()` for the fused single-pass application inside every zone. This needs `VectorPauliSum` zones; with `PauliSum` zones it falls back to the ordinary application.
 - `PropagationCache` and `resize!`, to size the memory up front for the peak number of terms.
 - `mcpropagate()` and its resampling strategies.
+- `mcsample()`, which gathers the sum into a `VectorPauliSum` and splits the result back.
 - `rewindgradient()` for gradients.
 - `overlapwithzero()`, `overlapwithplus()`, `getcoeff()`, iteration, `length`, and the other functions you would use to inspect a Pauli sum.
 

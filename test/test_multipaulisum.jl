@@ -147,6 +147,25 @@ end
     @test PauliSum(filter((pauli, coeff) -> coeff > 0, MultiPauliSum(psum, 4))) == filter((pauli, coeff) -> coeff > 0, psum)
 end
 
+@testset "MultiPauliSum Monte Carlo sampling" begin
+    Random.seed!(42)
+    thetas = randn(countparameters(rotations))
+
+    # one walker keeps one branch per gate, and squared sampling keeps its squared coefficient
+    for seed in (PauliSum(pstr), VectorPauliSum(pstr))
+        msum = MultiPauliSum(seed, 4)
+        sampled = mcsample(rotations, msum, thetas; squared=true)
+
+        @test sampled isa MultiPauliSum{typeof(seed)}
+        @test nzones(sampled) == 4
+        @test length(sampled) == 1
+        @test sum(abs2, coefficients(sampled)) ≈ 1.0
+        @test PauliSum(msum) == PauliSum(pstr)
+    end
+
+    @test_throws ArgumentError mcsample!(rotations, MultiPauliSum(pstr, 4), thetas)
+end
+
 @testset "MultiPauliSum interface" begin
     vpsum = VectorPauliSum(nq)
     add!(vpsum, [:X, :Y], [1, 2], 0.5)
