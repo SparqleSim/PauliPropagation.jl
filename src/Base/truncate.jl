@@ -43,13 +43,8 @@ function _truncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPropagatio
         return prop_cache
     end
 
-    # flag the indices that we keep
     keepfunc(pstr, coeff) = !truncfunc(pstr, coeff)
-    flag!(keepfunc, prop_cache; thread)
-
-    filterviaflags!(prop_cache; thread)
-
-    return prop_cache
+    return filter!(keepfunc, prop_cache; thread)
 end
 
 function _truncate!(::ArrayStorage, truncfunc::F, term_sum::AbstractTermSum; kwargs...) where F<:Function
@@ -61,36 +56,6 @@ function _truncate!(::ArrayStorage, truncfunc::F, term_sum::AbstractTermSum; kwa
     # extracts the original input term sum
     return extractsum!(prop_cache, term_sum)
 end
-
-
-"""
-    mapreducecoeffs(f, op, term_sum::AbstractTermSum; init, thread=true)
-    mapreducecoeffs(f, op, prop_cache::AbstractPropagationCache; init, thread=true)
-
-Reduce `f(coeff)` with `op` over the coefficients of `term_sum`, or of the active view of `prop_cache`, like `mapreduce(f, op, coefficients(thing); init)`.
-`init` defaults to the zero of the real coefficient type. `thread=false` reduces on the calling thread alone.
-"""
-function mapreducecoeffs(f::F, op::O, thing::Union{AbstractTermSum,AbstractPropagationCache}; init=zero(real(numcoefftype(thing))), thread::Bool=true) where {F,O}
-    return _mapreducecoeffs(StorageType(thing), f, op, thing; init, thread)
-end
-
-_mapreducecoeffs(::DictStorage, f::F, op::O, thing; init, thread::Bool) where {F,O} =
-    mapreduce(f, op, coefficients(thing); init)
-
-# every task starts from the zero of `init`, which serves `+` and, over non-negative values, `max`
-_mapreducecoeffs(::ArrayStorage, f::F, op::O, thing; init, thread::Bool) where {F,O} =
-    AK.mapreduce(f, op, coefficients(thing); init, neutral=zero(init), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-
-"""
-    maxabscoeff(term_sum::AbstractTermSum; thread=true)
-    maxabscoeff(prop_cache::AbstractPropagationCache; thread=true)
-
-Returns the maximum absolute coefficient currently present in `term_sum`, or in the active
-view of `prop_cache`. `thread=false` reduces on the calling thread alone.
-"""
-maxabscoeff(thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
-    mapreducecoeffs(coeff -> abs(tonumber(coeff)), max, thing; thread)
-
 
 # Truncations on unsuitable coefficient types defaults to false.
 function truncatemincoeff(coeff, min_abs_coeff)

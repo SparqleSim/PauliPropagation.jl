@@ -76,7 +76,7 @@ function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; thread::B
 
     # fallback: sort everything
     # TODO: allow sorting kwargs?
-    sortbyterm!(prop_cache; thread)
+    sortterms!(prop_cache; thread)
 
     _deduplicate!(prop_cache; thread, truncfunc)
 
@@ -158,5 +158,4 @@ function _mergegroups!(prop_cache::AbstractPropagationCache; thread::Bool=true)
 
     return prop_cache
 end
-
 

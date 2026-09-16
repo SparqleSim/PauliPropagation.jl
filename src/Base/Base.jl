@@ -60,7 +60,7 @@ export
     lastactiveindex,
     resize!
 
-include("./primitives.jl")
+include("./Primitives/Primitives.jl")
 export
     mapterms,
     mapterms!,
@@ -69,7 +69,20 @@ export
     sortterms,
     sortterms!,
     sortcoeffs,
-    sortcoeffs!
+    sortcoeffs!,
+    mapreducecoeffs,
+    maxabscoeff
+
+include("./vectorbackend.jl")
+export
+    flag!,
+    flagterms!,
+    flagcoeffs!,
+    flagstoindices!,
+    permuteviaindices!,
+    filterviaflags!,
+    coeffcumsum,
+    coeffcumsum!
 
 include("./gates.jl")
 export
@@ -92,20 +105,8 @@ include("./merge.jl")
 export merge, merge!, mergefunc
 
 include("./truncate.jl")
-export truncate, truncate!, maxabscoeff, mapreducecoeffs
+export truncate, truncate!
 
-
-include("./vectorbackend.jl")
-export
-    sortbyterm!,
-    flag!,
-    flagterms!,
-    flagcoeffs!,
-    flagstoindices!,
-    permuteviaindices!,
-    filterviaflags!,
-    coeffcumsum,
-    coeffcumsum!
 
 include("./sortedtailmerge.jl")
 
