@@ -33,11 +33,9 @@ function _filter!(::ArrayStorage, keep, term_sum::AbstractTermSum; thread::Bool=
     return extractsum!(prop_cache, term_sum)
 end
 
-function _filter!(::ArrayStorage, keep, prop_cache::AbstractPropagationCache; thread::Bool=true)
-    isempty(prop_cache) && return prop_cache
-
-    flag!(keep, prop_cache; thread)
-    return filterviaflags!(prop_cache; thread)
+function _filter!(::ArrayStorage, keep::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+    keep_or_drop(term, coefficient) = keep(term, coefficient) ? coefficient : nothing
+    return mapcoeffsbypair!(keep_or_drop, prop_cache; thread)
 end
 
 _filter!(::StorageType, keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =

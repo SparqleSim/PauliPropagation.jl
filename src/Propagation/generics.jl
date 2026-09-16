@@ -202,7 +202,12 @@ A custom truncation function can be passed as `customtruncfunc` with the signatu
 
 This function combines all truncation criteria into a single truncation function `truncfunc()` calls PropagationBase.truncate!(truncfunc, prop_cache).
 """
-function PropagationBase.truncate!(
+function PropagationBase.truncate!(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache}; kwargs...)
+    return truncate!(_truncationfunction(pobj; kwargs...), pobj; kwargs...)
+end
+
+# The truncation function of `truncate!`, from the keyword arguments of `propagate`.
+function _truncationfunction(
     pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing,
     customtruncfunc=nothing, kwargs...
@@ -229,5 +234,5 @@ function PropagationBase.truncate!(
         return is_truncated
     end
 
-    return truncate!(truncfunc, pobj; kwargs...)
+    return truncfunc
 end

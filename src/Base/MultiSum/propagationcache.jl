@@ -81,6 +81,12 @@ function _mapcoeffs!(::MultiSumStorage, transform, prop_cache::AbstractPropagati
     return _syncsums!(prop_cache)
 end
 
+function _mapcoeffsbypair!(::MultiSumStorage, transform::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+    map_zone!(zone_id) = mapcoeffsbypair!(transform, zonecaches(prop_cache)[zone_id]; thread=false)
+    _eachzone(map_zone!, prop_cache, thread)
+    return _syncsums!(prop_cache)
+end
+
 function _filter!(::MultiSumStorage, keep, prop_cache::AbstractPropagationCache; thread::Bool=true)
     filter_zone!(zone_id) = filter!(keep, zonecaches(prop_cache)[zone_id]; thread=false)
     _eachzone(filter_zone!, prop_cache, thread)

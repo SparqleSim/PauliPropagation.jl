@@ -34,6 +34,7 @@ export
     mapterms!,
     mapcoeffs,
     mapcoeffs!,
+    mapcoeffsbypair!,
     sortterms,
     sortterms!,
     sortcoeffs,

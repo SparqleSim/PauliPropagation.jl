@@ -67,7 +67,7 @@ Assignment of terms of type `TermType` to one of `n_zones` zones, where `n_zones
 Each bit of the zone index is the parity of the term under a fixed mask, which reads every site and spreads the terms evenly over the zones.
 This makes the assignment linear over GF(2), that is `zoneof(t ⊻ m) - 1 == (zoneof(t) - 1) ⊻ (zoneof(m) - 1)`.
 A gate that moves all of the terms it branches by the same `⊻ m` therefore permutes the zones, with each zone sending to and receiving from exactly one other zone.
-This is what `applyxorbranch!()` relies on.
+This is what `xorbranch!()` relies on.
 """
 struct ZoneMap{TT}
     masks::Vector{TT}
@@ -172,6 +172,9 @@ end
 
 _mapcoeffs!(::MultiSumStorage, transform, msum::AbstractTermSum; thread::Bool=true) =
     (foreach(zone -> mapcoeffs!(transform, zone; thread), zones(msum)); msum)
+
+_mapcoeffsbypair!(::MultiSumStorage, transform::F, msum::AbstractTermSum; thread::Bool=true) where {F} =
+    (foreach(zone -> mapcoeffsbypair!(transform, zone; thread), zones(msum)); msum)
 
 function _filter!(::MultiSumStorage, keep, msum::AbstractTermSum; thread::Bool=true)
     prop_cache = PropagationCache(msum)

@@ -133,7 +133,10 @@ This function can be overwritten for a custom gate if the lower-level function `
 In particular, this function can be used to manipulate both `term_sum` and `aux_term_sum` at the same time to reduce memory movement.
 Note that manipulating `term_sum` on anything other than the current term will likely lead to errors.
 """
-function applytoall!(gate, prop_cache::AbstractPropagationCache, args...; kwargs...)
+applytoall!(gate, prop_cache::AbstractPropagationCache, args...; kwargs...) =
+    _applytoall!(StorageType(prop_cache), gate, prop_cache, args...; kwargs...)
+
+function _applytoall!(::StorageType, gate, prop_cache::AbstractPropagationCache, args...; kwargs...)
     term_sum = mainsum(prop_cache)
     aux_term_sum = auxsum(prop_cache)
 

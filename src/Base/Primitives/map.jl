@@ -27,14 +27,14 @@ end
 
 function _map!(::DictStorage, transform, prop_cache::AbstractPropagationCache; thread::Bool=true)
     output_sum = auxsum(prop_cache)
-    empty!(output_sum)
-    sizehint!(output_sum, length(prop_cache))
+    isempty(output_sum) || empty!(output_sum)
 
     for (term, coefficient) in prop_cache
         mapped_term, mapped_coefficient = transform(term, coefficient)
         add!(output_sum, mapped_term, mapped_coefficient)
     end
 
+    empty!(mainsum(prop_cache))
     return swapsums!(prop_cache)
 end
 
@@ -152,3 +152,138 @@ end
 
 _mapcoeffs!(::StorageType, transform, prop_cache::AbstractPropagationCache; thread::Bool=true) =
     _thrownotimplemented(prop_cache, :mapcoeffs!)
+
+
+"""
+    mapcoeffsbypair!(transform, term_sum::AbstractTermSum; thread=true)
+    mapcoeffsbypair!(transform, prop_cache::AbstractPropagationCache; thread=true)
+
+Replace every active coefficient by `transform(term, coefficient)`, leaving terms unchanged.
+Returning `nothing` drops the term. This operation updates coefficients in place; sorted terms stay
+sorted and dictionaries are updated in place.
+"""
+mapcoeffsbypair!(transform, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
+    _mapcoeffsbypair!(StorageType(thing), transform, thing; thread)
+
+_mapcoeffsbypair!(::DictStorage, transform::F, term_sum::AbstractTermSum; thread::Bool=true) where {F} =
+    (_mapcoeffsbypairdict!(transform, storage(term_sum)); term_sum)
+
+_mapcoeffsbypair!(::DictStorage, transform::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F} =
+    (mapcoeffsbypair!(transform, mainsum(prop_cache); thread); prop_cache)
+
+# Coefficients are updated while iterating, as `map!` on the values of a dictionary does, and the
+# dropped terms are deleted afterwards, as `filter!` on a dictionary does.
+function _mapcoeffsbypairdict!(transform::F, dict::AbstractDict) where {F}
+    dropped = Vector{keytype(dict)}()
+
+    for (term, coefficient) in dict
+        mapped = transform(term, coefficient)
+
+        if mapped === nothing
+            push!(dropped, term)
+        elseif mapped !== coefficient
+            dict[term] = mapped
+        end
+    end
+
+    for term in dropped
+        delete!(dict, term)
+    end
+
+    return dict
+end
+
+function _mapcoeffsbypair!(::ArrayStorage, transform::F, term_sum::AbstractTermSum; thread::Bool=true) where {F}
+    prop_cache = PropagationCache(term_sum)
+    mapcoeffsbypair!(transform, prop_cache; thread)
+    return extractsum!(prop_cache, term_sum)
+end
+
+# The kept terms are compacted in the order they had, so the sorted prefix survives as the number of
+# kept terms it held.
+function _mapcoeffsbypair!(::ArrayStorage, transform::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+    isempty(prop_cache) && return prop_cache
+
+    if _iscpuarray(terms(mainsum(prop_cache)))
+        return _mapcoeffsbypaircpu!(transform, prop_cache; thread)
+    end
+
+    return _mapcoeffsbypairflagged!(transform, prop_cache; thread)
+end
+
+# One task compacts in place, since it writes at or behind the term it just read. Several tasks
+# first count what each of them keeps, then write their parts into the auxiliary arrays.
+function _mapcoeffsbypaircpu!(transform::F, prop_cache; thread::Bool=true) where {F}
+    n = activesize(prop_cache)
+    n_sorted = sortedprefix(mainsum(prop_cache))
+    task_partitioner, n_tasks = _preparetasks(n, thread)
+    main_terms, main_coefficients, aux_terms, aux_coefficients = _mainauxarrays(prop_cache)
+
+    if n_tasks == 1
+        n_kept, n_sorted_kept = _mapcoeffsbypairwrite!(transform, main_terms, main_coefficients, 1, main_terms, main_coefficients, 1, n, n_sorted, Val(true))
+        setactivesize!(prop_cache, n_kept)
+        setsortedprefix!(mainsum(prop_cache), n_sorted_kept)
+        return prop_cache
+    end
+
+    kept_counts = Vector{Int}(undef, n_tasks)
+    sorted_kept_counts = Vector{Int}(undef, n_tasks)
+
+    function count_kept!(task_id)
+        chunk = task_partitioner[task_id]
+        kept_counts[task_id], sorted_kept_counts[task_id] =
+            _mapcoeffsbypairwrite!(transform, aux_terms, aux_coefficients, 1, main_terms, main_coefficients, chunk.start, chunk.stop, n_sorted, Val(false))
+    end
+    _eachtask(count_kept!, n_tasks)
+
+    offsets = _offsetsfromcounts(kept_counts)
+
+    function write_kept!(task_id)
+        chunk = task_partitioner[task_id]
+        _mapcoeffsbypairwrite!(transform, aux_terms, aux_coefficients, offsets[task_id], main_terms, main_coefficients, chunk.start, chunk.stop, n_sorted, Val(true))
+    end
+    _eachtask(write_kept!, n_tasks)
+
+    return _commitwrite!(prop_cache, offsets[end] - 1, sum(sorted_kept_counts))
+end
+
+# Walks terms[lo:hi] under `transform`, writing every kept term from `write_start` on into the output arrays,
+# or only counting on a dry run (`DoWrite` false). Returns the number of kept terms and how many of
+# them came from the first `n_sorted`.
+@inline function _mapcoeffsbypairwrite!(transform::F, output_terms, output_coefficients, write_start,
+    terms, coefficients, lo, hi, n_sorted, ::Val{DoWrite}) where {F,DoWrite}
+
+    write_pos = write_start
+    n_sorted_kept = 0
+
+    @inbounds for ii in lo:hi
+        mapped = transform(terms[ii], coefficients[ii])
+        mapped === nothing && continue
+
+        write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos, terms[ii], mapped, Val(DoWrite))
+        ii <= n_sorted && (n_sorted_kept += 1)
+    end
+
+    return write_pos - write_start, n_sorted_kept
+end
+
+# Every pass is an array kernel, so the arrays may live anywhere: the coefficients are mapped in
+# place, and the flags then compact the kept terms.
+function _mapcoeffsbypairflagged!(transform::F, prop_cache; thread::Bool=true) where {F}
+    active_flags = activeflags(prop_cache)
+    active_terms = activeterms(prop_cache)
+    active_coefficients = activecoeffs(prop_cache)
+
+    AK.foreachindex(active_flags; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
+        @inbounds begin
+            mapped = transform(active_terms[ii], active_coefficients[ii])
+            active_flags[ii] = mapped !== nothing
+            mapped === nothing || (active_coefficients[ii] = mapped)
+        end
+    end
+
+    return filterviaflags!(prop_cache; thread)
+end
+
+_mapcoeffsbypair!(::StorageType, transform::F, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) where {F} =
+    _thrownotimplemented(thing, :mapcoeffs!)

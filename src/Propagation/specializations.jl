@@ -1,58 +1,36 @@
 ###
 ##
-# This file contains specialized functions for some of our gates.
-# We overload `applytoall!()` to reduce unnecessarily moving Pauli strings between `psum` and `aux_psum`.
-# This usually also fixes potential type-instabilities in `apply()`.
-# Both functions can be overloaded if needed.
+# The gates of the library, written once for every propagation cache. A gate that branches by a fixed
+# Pauli string is a rule for `xorbranch!`, one that only rescales coefficients a function for
+# `mapcoeffsbypair!`, and one with a single output per input a transform for `map!`.
+# The storage decides how each of them runs.
 ##
 ###
 
-### PAULI GATES
-"""
-    applytoall!(gate::PauliRotation, theta, psum, aux_psum; kwargs...)
+### Pauli rotations
 
-Overload of `applytoall!` for `PauliRotation` gates and a propagating `PauliSum`.
-It fixes the type-instability of the `apply()` function and reduces moving Pauli strings between `psum` and `aux_psum`.
-`psum` and `aux_psum` are merged later.
 """
-function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropagationCache, theta; kwargs...)
+    applytoall!(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta; thread=true, kwargs...)
+
+Overload of `applytoall!` for `PauliRotation` gates.
+A Pauli string that anticommutes with the generator keeps a factor of cos(θ) and branches into its product with the generator,
+which gets a factor of sin(θ).
+"""
+function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
-    
-    # unpack the pauli sums
-    psum = mainsum(prop_cache)
-    aux_psum = auxsum(prop_cache)
 
-    # get the bitmask of the Pauli generator
-    # this allows for faster operations
     gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
-
-    # pre-compute the sine and cosine values because the are used for every Pauli string that does not commute with the gate
     cos_val = cos(theta)
     sin_val = sin(theta)
-    # loop over all Pauli strings and their coefficients in the Pauli sum
-    for (pstr, coeff) in psum
 
-        if commutes(gate_mask, pstr)
-            # if the gate commutes with the pauli string, do nothing
-            continue
-        end
-
-        # else we know the gate will split the Pauli string into two
-        coeff1 = coeff * cos_val
-        new_pstr, sign = paulirotationproduct(gate_mask, pstr)
-        coeff2 = coeff * sin_val * sign
-
-        # set the coefficient of the original Pauli string
-        set!(psum, pstr, coeff1)
-
-        # set the coefficient of the new Pauli string in the aux_psum
-        # we can set the coefficient because PauliRotations create non-overlapping new Pauli strings
-        set!(aux_psum, new_pstr, coeff2)
+    function rotate(pstr, coeff)
+        commutes(gate_mask, pstr) && return nothing
+        _, sign = paulirotationproduct(gate_mask, pstr)
+        return (coeff * cos_val, coeff * sin_val * sign)
     end
 
-    return prop_cache
+    return xorbranch!(rotate, prop_cache, gate_mask; thread)
 end
-
 
 function paulirotationproduct(gate::PauliRotation, pstr::TT) where TT
     gate_mask = symboltoint(TT, gate.symbols, gate.qinds)
@@ -73,7 +51,8 @@ function paulirotationproduct(gate_mask::TT, pstr::TT) where TT
     return new_pstr, sign
 end
 
-### Imaginary Pauli Rotation
+### Imaginary Pauli rotations
+
 """
     applymergetruncate!(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau; normalize_coeffs=true, kwargs...)
 
@@ -106,66 +85,49 @@ function PropagationBase.applymergetruncate!(gate::ImaginaryPauliRotation, prop_
     return
 end
 
-function PauliPropagation.applytoall!(gate::ImaginaryPauliRotation, prop_cache::PauliPropagationCache, tau; kwargs...)
+"""
+    applytoall!(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau; thread=true, kwargs...)
+
+Like the `PauliRotation` method, except that an imaginary Pauli rotation branches the Pauli strings that commute with its generator,
+with factors of cosh(τ) and sinh(τ).
+"""
+function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
-    
-    # unpack the pauli sums
-    psum = mainsum(prop_cache)
-    aux_psum = auxsum(prop_cache)
 
-    # get the bitmask of the Pauli generator
-    # this allows for faster operations
     gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
-
-    # pre-compute the sinh and cosh values because they are used for every Pauli string that does not commute with the gate
     cosh_val = cosh(tau)
     sinh_val = sinh(tau)
-    # loop over all Pauli strings and their coefficients in the Pauli sum
-    for (pstr, coeff) in psum
 
-        if !commutes(gate_mask, pstr)
-            # imaginary Pauli rotations branch upon commutation
-            continue
-        end
-
-        coeff1 = coeff * cosh_val
-        # paulirotationproduct's sign formula also gives the correct minus sign here:
-        # e^{-τ/2 P} Q e^{-τ/2 P} = cosh(τ) Q - sinh(τ) PQ for commuting P, Q
-        new_pstr, sign = paulirotationproduct(gate_mask, pstr)
-        coeff2 = coeff * sinh_val * sign
-
-        # set the coefficient of the original Pauli string
-        set!(psum, pstr, coeff1)
-
-        # set the coefficient of the new Pauli string in the aux_psum
-        # we can set the coefficient because PauliRotations create non-overlapping new Pauli strings
-        set!(aux_psum, new_pstr, coeff2)
+    # the sign of paulirotationproduct is also the minus sign in
+    # e^{-τ/2 P} Q e^{-τ/2 P} = cosh(τ) Q - sinh(τ) PQ for commuting P and Q
+    function rotate(pstr, coeff)
+        commutes(gate_mask, pstr) || return nothing
+        _, sign = paulirotationproduct(gate_mask, pstr)
+        return (coeff * cosh_val, coeff * sinh_val * sign)
     end
 
-    return
+    return xorbranch!(rotate, prop_cache, gate_mask; thread)
 end
-
 
 ### Clifford gates
 
 """
-    applytoall!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
+    applytoall!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache; thread=true, kwargs...)
 
-Overload of `applytoall!` for `CliffordGate`s with a propagating `PauliSum`.
-Provides the Clifford lookup map to the default `applytoall!`, and `apply` functions.
+Apply a Clifford gate in place to a propagation cache. Clifford gates have exactly one output per
+input, so the pair transformation is handled by `map!`.
 """
-function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache, ; kwargs...)
+function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    # greedy overload for Clifford gates
-    # this is the most concrete function for them, but with an additional arg it will go into the generic applytoall!
-    # there the apply function will receive the lookup map directly
     lookup_map = clifford_map[gate.symbol]
+    transform(term, coefficient) = only(apply(gate, term, coefficient, lookup_map))
 
-    applytoall!(gate, prop_cache, lookup_map; kwargs...)
-
-    return
+    return map!(transform, prop_cache; thread)
 end
+
+# a Clifford gate maps distinct Pauli strings to distinct Pauli strings
+PropagationBase.requiresmerging(::CliffordGate) = false
 
 function PropagationBase.apply(gate::CliffordGate, pstr, coeff, lookup_map; kwargs...)
     # the lookup array carries the new Paulis + sign for every occuring old Pauli combination
@@ -188,129 +150,91 @@ function PropagationBase.apply(gate::CliffordGate, pstr, coeff, lookup_map; kwar
     return ((pstr, coeff),)
 end
 
-### Pauli Noise
-"""
-    applytoall!(gate::PauliNoise, prop_cache::PauliPropagationCache, lambda; kwargs...)
+### Pauli noise
 
-Overload of `applytoall!` for `PauliNoise` gates with noise strength `lambda` and a propagating `PauliSum`.
 """
-function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::PauliPropagationCache, lambda; kwargs...)
+    applytoall!(gate::PauliNoise, prop_cache::AbstractPauliPropagationCache, lambda; thread=true, kwargs...)
+
+Overload of `applytoall!` for `PauliNoise` gates with noise strength `lambda`.
+The Pauli strings that `isdamped` selects are damped by a factor of `1 - lambda`.
+"""
+function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::AbstractPauliPropagationCache, lambda; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qind)
-
-    # unpack the main pauli sum, aux is not needed
-    psum = mainsum(prop_cache)
-
-    # check that the noise strength is in the correct range
     _check_noise_strength(PauliNoise, lambda)
 
-    # loop over all Pauli strings and their coefficients in the Pauli sum
-    for (pstr, coeff) in psum
-
-        # the Pauli on the site that the noise acts on
-        pauli = getpauli(pstr, gate.qind)
-
-        # `isdamped` is defined in noisechannels.jl for each Pauli noise channel
-        # I Paulis are never damped, but the others vary
-        if !isdamped(gate, pauli)
-            continue
-        end
-
-        new_coeff = coeff * (1 - lambda)
-        # change the coefficient in psum, don't move anything to aux_psum
-        set!(psum, pstr, new_coeff)
-    end
-
-    return prop_cache
+    return mapcoeffsbypair!(_damping(gate, lambda), prop_cache; thread)
 end
 
 """
-    applymergetruncate!(gate::PauliNoise, prop_cache::PauliPropagationCache, lambda; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, kwargs...)
+    applymergetruncate!(gate::PauliNoise, prop_cache::AbstractPauliPropagationCache, lambda; kwargs...)
 
-Overload of `applymergetruncate!` for `PauliNoise` gates and a propagating `PauliSum`.
-`PauliNoise` never merges and never changes which Pauli string a term is (only its coefficient), so this
-rescales and truncates every term in a single pass, instead of the generic apply-then-truncate two-pass
-default.
+Overload of `applymergetruncate!` for `PauliNoise` gates.
+The gate only rescales coefficients, so it and the truncation are one pass over the Pauli sum.
 """
-function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::PauliPropagationCache, lambda;
-    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing, kwargs...)
+function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::AbstractPauliPropagationCache, lambda;
+    thread::Bool=true, min_rel_coeff=nothing, kwargs...)
 
     _check_qind_range(nqubits(prop_cache), gate.qind)
     _check_noise_strength(PauliNoise, lambda)
 
-    psum = mainsum(prop_cache)
+    # a relative threshold reads the largest coefficient after the gate
+    if !isnothing(min_rel_coeff)
+        applytoall!(gate, prop_cache, lambda; thread)
+        return truncate!(prop_cache; thread, min_rel_coeff, kwargs...)
+    end
+
+    damp = _damping(gate, lambda)
+    truncfunc = _truncationfunction(prop_cache; kwargs...)
+
+    function damp_or_drop(pstr, coeff)
+        new_coeff = damp(pstr, coeff)
+        return truncfunc(pstr, new_coeff) ? nothing : new_coeff
+    end
+
+    return mapcoeffsbypair!(damp_or_drop, prop_cache; thread)
+end
+
+# the coefficient a Pauli string keeps under the noise
+function _damping(gate::PauliNoise, lambda)
     qind = gate.qind
+    damp_val = 1 - lambda
 
-    for (pstr, coeff) in psum
-        isdamped(gate, getpauli(pstr, qind)) || continue
-
-        new_coeff = coeff * (1 - lambda)
-
-        is_truncated = truncateweight(pstr, max_weight) ||
-                       truncatemincoeff(new_coeff, min_abs_coeff) ||
-                       truncatefrequency(new_coeff, max_freq) ||
-                       truncatesins(new_coeff, max_sins) ||
-                       (!isnothing(customtruncfunc) && customtruncfunc(pstr, new_coeff))
-
-        if is_truncated
-            delete!(psum, pstr)
-        else
-            set!(psum, pstr, new_coeff)
-        end
-    end
-
-    return prop_cache
+    damp(pstr, coeff) = isdamped(gate, getpauli(pstr, qind)) ? coeff * damp_val : coeff
+    return damp
 end
 
-### Amplitude Damping Noise
-"""
-    applytoall!(gate::AmplitudeDampingNoise, prop_cache::PauliPropagationCache, gamma; kwargs...)
+PropagationBase.requiresmerging(::PauliNoise) = false
 
-Overload of `applytoall!` for `AmplitudeDampingNoise` gates and a propagating `PauliSum`.
+### Amplitude damping noise
+
 """
-function PropagationBase.applytoall!(gate::AmplitudeDampingNoise, prop_cache::PauliPropagationCache, gamma; kwargs...)
+    applytoall!(gate::AmplitudeDampingNoise, prop_cache::AbstractPauliPropagationCache, gamma; thread=true, kwargs...)
+
+Overload of `applytoall!` for `AmplitudeDampingNoise` gates with noise strength `gamma`.
+On the damped qubit, X and Y are damped by a factor of sqrt(1 - gamma),
+and Z keeps a factor of 1 - gamma and branches into the identity with a factor of gamma.
+"""
+function PropagationBase.applytoall!(gate::AmplitudeDampingNoise, prop_cache::AbstractPauliPropagationCache, gamma; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qind)
-
-    # unpack the pauli sums
-    psum = mainsum(prop_cache)
-    aux_psum = auxsum(prop_cache)
-
-    # check that the noise strength is in the correct range
     _check_noise_strength(AmplitudeDampingNoise, gamma)
 
-    # loop over all Pauli strings and their coefficients in the Pauli sum
-    for (pstr, coeff) in psum
-        pauli = getpauli(pstr, gate.qind)
-        if pauli == 0
-            # Pauli is I, so the gate does not do anything
-            continue
+    qind = gate.qind
+    damp_val = sqrt(1 - gamma)
 
-        elseif pauli == 1 || pauli == 2
-            # Pauli is X or Y, so the gate will give a sqrt(1-gamma) prefactor
-            new_coeff = sqrt(1 - gamma) * coeff
-            # set the coefficient of the Pauli string in the psum to the new coefficient
-            set!(psum, pstr, new_coeff)
-
-        else
-            # Pauli is Z, so the gate will split the Pauli string 
-
-            # else we know the gate will split th Pauli string into two
-            new_pstr = setpauli(pstr, 0, gate.qind)
-            coeff1 = (1 - gamma) * coeff
-            coeff2 = gamma * coeff
-
-            # set the coefficient of the original Pauli string
-            set!(psum, pstr, coeff1)
-
-            # add the coefficient of the new Pauli string in the aux_psum
-            add!(aux_psum, new_pstr, coeff2)
-
-        end
+    function damp(pstr, coeff)
+        pauli = getpauli(pstr, qind)
+        pauli == 0 && return nothing
+        pauli == 3 && return ((1 - gamma) * coeff, gamma * coeff)
+        return damp_val * coeff
     end
 
-    return prop_cache
+    # Z ⊻ Z is the identity on that qubit
+    z_mask = symboltoint(paulitype(prop_cache), :Z, qind)
+    return xorbranch!(damp, prop_cache, z_mask; thread)
 end
 
-## T Gate
+### T gate
+
 """
     applytoall!(gate::TGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
 
@@ -321,7 +245,8 @@ function PropagationBase.applytoall!(gate::TGate, prop_cache::AbstractPauliPropa
     return applytoall!(PauliRotation(:Z, gate.qind), prop_cache, π / 4; kwargs...)
 end
 
-## TransferMapGate
+### Transfer map gates
+
 """
     apply(gate::TransferMapGate, pstr, coeff)
 
@@ -344,7 +269,8 @@ end
     return (pstr & ~mask) | TT(shifted_pstr)
 end
 
-### Frozen Gates
+### Frozen gates
+
 """
     applymergetruncate!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
 

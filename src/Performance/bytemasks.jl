@@ -116,13 +116,13 @@ _bytesof(terms, gate_mask) = terms
 
 """
     _gatecommutes(gate_mask, terms, bytes, ii)
-    _gateproduct(gate_mask, pstr, bytes, ii)
+    _gatesign(gate_mask, terms, bytes, ii)
 
-Commutation check and rotation product for the Pauli string at index `ii`, where `bytes` is `_bytesof(terms, gate_mask)`.
+Commutation check and rotation sign for the Pauli string at index `ii`, where `bytes` is `_bytesof(terms, gate_mask)`.
 Any mask that is neither a `ByteMask` nor a `WordMask` falls back to reading the whole Pauli string.
 """
 @inline _gatecommutes(gate_mask, terms, bytes, ii) = PauliPropagation.commutes(gate_mask, (@inbounds terms[ii]))
-@inline _gateproduct(gate_mask, pstr, bytes, ii) = PauliPropagation.paulirotationproduct(gate_mask, pstr)
+@inline _gatesign(gate_mask, terms, bytes, ii) = last(PauliPropagation.paulirotationproduct(gate_mask, (@inbounds terms[ii])))
 
 # the words anticommute independently, so the string commutes when they do so an even number of times
 @inline function _gatecommutes(m::WordMask{TT,N}, terms, words, ii) where {TT,N}
@@ -134,11 +134,11 @@ Any mask that is neither a `ByteMask` nor a `WordMask` falls back to reading the
 end
 
 # the words contribute independent factors of im, so their exponents add
-@inline function _gateproduct(m::WordMask{TT,N}, pstr, words, ii) where {TT,N}
+@inline function _gatesign(m::WordMask{TT,N}, terms, words, ii) where {TT,N}
     exponent = sum(ntuple(k -> PauliPropagation._calculatesignexponent(m.words[k], _wordat(words, ii, m, k)), Val(N)))
 
     # as in `paulirotationproduct`: sign == real(im * im^exponent)
-    return pstr ⊻ m.mask, (exponent & 2) - 1
+    return (exponent & 2) - 1
 end
 
 # two bytes commute overall when they anticommute in the same number of places, so when they agree
@@ -148,10 +148,10 @@ end
 end
 
 # the two bytes contribute independent factors of im, so their exponents add
-@inline function _gateproduct(m::ByteMask, pstr, bytes, ii)
+@inline function _gatesign(m::ByteMask, terms, bytes, ii)
     exponent = PauliPropagation._calculatesignexponent(m.bytes[1], _byteat(bytes, ii, m, 1)) +
                PauliPropagation._calculatesignexponent(m.bytes[2], _byteat(bytes, ii, m, 2))
 
     # as in `paulirotationproduct`: sign == real(im * im^exponent)
-    return pstr ⊻ m.mask, (exponent & 2) - 1
+    return (exponent & 2) - 1
 end

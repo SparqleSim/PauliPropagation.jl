@@ -237,6 +237,12 @@ end
 
 _resize!(::StorageType, prop_cache::AbstractPropagationCache, n::Int) = _thrownotimplemented(prop_cache, :resize!)
 
+# room for at least `n` terms, grown in geometric steps so that growing stays rare
+function _growto!(prop_cache::AbstractPropagationCache, n::Int)
+    capacity(prop_cache) < n && resize!(prop_cache, n + n >> 1)
+    return prop_cache
+end
+
 ## Back-conversions 
 
 # effectively a out-of-place version of extractsum!()

@@ -2,6 +2,7 @@
 ##
 # Applying a gate to a multi sum in two passes: every zone makes its terms and parks them with their
 # owners, then every zone takes delivery of the terms addressed to it and merges them in.
+# A gate that branches by a fixed mask takes the second pass of `xorbranch!` below instead.
 ##
 ###
 
@@ -12,6 +13,10 @@ Whether `gate` leaves every term in the zone that owns it, in which case every z
 Defaults to `false`, and can be overloaded for custom gates that only rescale coefficients.
 """
 staysinzone(gate) = false
+
+# a multi sum applies a gate zone by zone
+_applytoall!(::MultiSumStorage, gate, prop_cache::AbstractPropagationCache, args...; kwargs...) =
+    applytoallzones!(gate, prop_cache, args...; kwargs...)
 
 """
     applytoallzones!(gate, prop_cache, args...; thread=true, kwargs...)
@@ -38,78 +43,6 @@ function applytoallzones!(gate, prop_cache::AbstractPropagationCache, args...;
     return prop_cache
 end
 
-"""
-    applyxorbranch!(branchfunc, prop_cache, mask; thread=true, kwargs...)
-
-Apply a gate that moves every term it branches by the same `⊻ mask`.
-For every term, `branchfunc(term, coeff)` returns `nothing` to leave the term untouched, or `(kept_coeff, new_coeff, branches)`, where the term keeps `kept_coeff` and, if `branches`, the term `term ⊻ mask` is collected with `new_coeff`.
-Because the zone assignment is linear in the term, the gate permutes the zones, so that every zone writes into a single box of its outbox and receives from a single zone.
-"""
-function applyxorbranch!(branchfunc::F, prop_cache::AbstractPropagationCache, mask;
-    thread::Bool=true, kwargs...) where {F<:Function}
-
-    branch_zone!(source) = _branchzone!(branchfunc, prop_cache, source, mask)
-    return _branchpasses!(branch_zone!, prop_cache, mask; thread, kwargs...)
-end
-
-"""
-    applyxorbranchzones!(zonefunc, prop_cache, mask; thread=true, kwargs...)
-
-Version of `applyxorbranch!()` with the first pass left to the caller.
-`zonefunc(zonecache, box)` applies the gate to one entire zone and writes the terms it branches into `box`, instead of being handed one term at a time.
-The zone that owns those terms then collects the box and merges it in.
-Further `kwargs` are passed on to the merge, including `truncfunc`.
-"""
-function applyxorbranchzones!(zonefunc::F, prop_cache::AbstractPropagationCache, mask;
-    thread::Bool=true, kwargs...) where {F<:Function}
-
-    branch_zone!(source) = zonefunc(zonecaches(prop_cache)[source], _branchbox(prop_cache, source))
-    return _branchpasses!(branch_zone!, prop_cache, mask; thread, kwargs...)
-end
-
-# every zone makes its terms and parks them, then every zone takes delivery and merges
-function _branchpasses!(passfunc::F, prop_cache::AbstractPropagationCache, mask;
-    thread::Bool=true, kwargs...) where {F<:Function}
-
-    sorted_zones = _sortedzones(zonestorage(prop_cache), prop_cache)
-
-    _eachzone(passfunc, prop_cache, thread)
-
-    # The gate permutes the zones, so every zone collects from a single zone and touches no zone but
-    # those two. The box it collects is its tail already, in the parent order of the zone that made
-    # it, so an array zone sorts it in from where it is instead of taking delivery first.
-    function collect_branch!(owner)
-        source = _xortarget(zonemap(prop_cache), owner, mask)
-        _mergebox!(zonestorage(prop_cache), zonecaches(prop_cache)[owner], _branchbox(prop_cache, source), mask, sorted_zones, source; kwargs...)
-    end
-    _eachzone(collect_branch!, prop_cache, thread)
-
-    return _syncsums!(prop_cache)
-end
-
-
-### The two passes
-
-# A fixed ⊻ mask moves every term of a zone into one and the same zone, so the gate has a single box
-# to park in and never routes a term. A branching term keeps its own term and has only its
-# coefficient rescaled, so it stays in this zone.
-function _branchzone!(branchfunc::F, prop_cache::AbstractPropagationCache, source::Int, mask) where {F}
-    zone_storage = zonestorage(prop_cache)
-    zonecache = zonecaches(prop_cache)[source]
-    box = _branchbox(prop_cache, source)
-
-    for (ii, (term, coeff)) in enumerate(zonecache)
-        branched = branchfunc(term, coeff)
-        isnothing(branched) && continue
-
-        kept_coeff, new_coeff, branches = branched
-        _setcoeff!(zone_storage, zonecache, ii, term, kept_coeff)
-        branches && _push!(zone_storage, box, term ⊻ mask, new_coeff)
-    end
-
-    return
-end
-
 # Every term this zone holds is moved to whichever zone owns the terms the gate makes from it.
 function _movezone!(gate, prop_cache::AbstractPropagationCache, source::Int, args...; kwargs...)
     outbox = outboxes(prop_cache)[source]
@@ -126,6 +59,44 @@ function _movezone!(gate, prop_cache::AbstractPropagationCache, source::Int, arg
     return
 end
 
+### Branching by a fixed mask
+
+# Because the zone assignment is linear in the term, `⊻ mask` permutes the zones: every zone writes
+# the terms it creates into a single box, and takes delivery from a single zone.
+function _xorbranch!(::MultiSumStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
+    zone_storage = zonestorage(prop_cache)
+    sorted_zones = _sortedzones(zone_storage, prop_cache)
+
+    branch_zone!(zone_id) = _branchzone!(zone_storage, rule, zonecaches(prop_cache)[zone_id], _branchbox(prop_cache, zone_id), mask)
+    _eachzone(branch_zone!, prop_cache, thread)
+
+    # The box a zone collects is its tail already, in the parent order of the zone that made it, so
+    # an array zone sorts it in from where it is instead of taking delivery first.
+    function collect_branch!(owner)
+        source = _xortarget(zonemap(prop_cache), owner, mask)
+        _mergebox!(zone_storage, zonecaches(prop_cache)[owner], _branchbox(prop_cache, source), mask, sorted_zones, source; truncfunc)
+    end
+    _eachzone(collect_branch!, prop_cache, thread)
+
+    return _syncsums!(prop_cache)
+end
+
+# a dict zone keeps its terms where they are and sets the new ones in its box
+_branchzone!(::StorageType, rule::F, zonecache, box, mask) where {F} = _branchdict!(rule, mainsum(zonecache), box, mask)
+
+# an array zone writes the new terms straight into its box, in the order of their parents
+function _branchzone!(::ArrayStorage, rule::F, zonecache, box, mask) where {F}
+    n_old = activesize(zonecache)
+
+    # a term makes at most one new term, so the zone's size bounds what the box has to hold
+    length(box) < n_old && resize!(box, n_old)
+    n_new = _branchwrite!(rule, terms(box), coefficients(box), 1,
+        terms(mainsum(zonecache)), coefficients(mainsum(zonecache)), 1, n_old, mask, Val(true))
+    resize!(box, n_new)
+
+    return zonecache
+end
+
 
 ### Merging in what a gate that branches by a fixed mask parked
 
@@ -138,11 +109,14 @@ _sortedzones(::ArrayStorage, prop_cache::AbstractPropagationCache) =
     [sortedprefix(mainsum(zonecache)) == activesize(zonecache) for zonecache in zonecaches(prop_cache)]
 
 # a dict zone merges as it takes delivery, where an array zone sorts the box in and merges it
-_mergebox!(::StorageType, zonecache, box, mask, sorted_zones, source::Int; kwargs...) =
+function _mergebox!(::StorageType, zonecache, box, mask, sorted_zones, source::Int; truncfunc=nothing)
     _deliver!(zonecache, box)
+    truncfunc === nothing || truncate!(truncfunc, zonecache; thread=false)
+    return zonecache
+end
 
-_mergebox!(::ArrayStorage, zonecache, box, mask, sorted_zones, source::Int; kwargs...) =
-    xorsortedboxmerge!(zonecache, box, mask, (@inbounds sorted_zones[source]); thread=false, kwargs...)
+_mergebox!(::ArrayStorage, zonecache, box, mask, sorted_zones, source::Int; truncfunc=nothing) =
+    xorsortedboxmerge!(zonecache, box, mask, (@inbounds sorted_zones[source]); thread=false, truncfunc)
 
 
 ### Zone-local storage handling
@@ -159,8 +133,3 @@ _mergebox!(::ArrayStorage, zonecache, box, mask, sorted_zones, source::Int; kwar
 
 # a box is emptied by the zone that takes delivery, so every box is empty when a gate picks it up
 _deliver!(zonecache, box) = (add!(zonecache, box); empty!(box); zonecache)
-
-# one loop serves both storages, so it hands over what either of them writes by: a dict the term,
-# an array the index
-@inline _setcoeff!(::DictStorage, zonecache, ii::Int, term, coeff) = set!(mainsum(zonecache), term, coeff)
-@inline _setcoeff!(::ArrayStorage, zonecache, ii::Int, term, coeff) = (coefficients(mainsum(zonecache))[ii] = coeff)

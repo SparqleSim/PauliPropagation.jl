@@ -27,6 +27,7 @@ export
     add!,
     mult!,
     mapcoeffs!,
+    mapcoeffsbypair!,
     set!,
     empty!,
     similar,
@@ -66,6 +67,7 @@ export
     mapterms!,
     mapcoeffs,
     mapcoeffs!,
+    mapcoeffsbypair!,
     sortterms,
     sortterms!,
     sortcoeffs,
@@ -75,7 +77,9 @@ export
     filtercoeffs,
     filtercoeffs!,
     mapreducecoeffs,
-    maxabscoeff
+    maxabscoeff,
+    xorbranch,
+    xorbranch!
 
 include("./vectorbackend.jl")
 export
@@ -114,8 +118,6 @@ export truncate, truncate!
 
 include("./sortedtailmerge.jl")
 
-include("./xortailmerge.jl")
-
 include("./MonteCarlo/MonteCarlo.jl")
 export
     mcpropagate,
@@ -145,8 +147,6 @@ export
     zonesizes,
     zoneof,
     staysinzone,
-    applytoallzones!,
-    applyxorbranch!,
-    applyxorbranchzones!
+    applytoallzones!
 
 end

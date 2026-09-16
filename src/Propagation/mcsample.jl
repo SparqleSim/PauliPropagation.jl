@@ -1,7 +1,7 @@
 ###
 ##
 # mcapplytoall! specializations for the VectorPauliSum type, the Monte Carlo analogue of
-# applytoall! in vectorspecializations.jl: instead of branching a term into two, randomly
+# applytoall! in specializations.jl: instead of branching a term into two, randomly
 # keep one branch, reweighted so that the result stays unbiased in expectation.
 ##
 ###
