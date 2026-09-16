@@ -11,9 +11,9 @@ for i in 1:nq
     add!(p, :X, i)
 end
 println(&quot;Initial Pauli string: &quot;, p)</code></pre><pre><code class="nohighlight hljs">Initial Pauli string: PauliSum(nqubits: 3, 3 Pauli terms:
+ 1.0 * XII
  1.0 * IXI
  1.0 * IIX
- 1.0 * XII
 )</code></pre><p>First we discuss how to find the representatives. </p><p>Consider the translation symmetru in <span>$1d$</span>, we adopt representatives that are  given by the lowest integers. </p><pre><code class="language-julia hljs"># To find the representative, we define a function that maps a Pauli string to an integer.
 # Consider the second Pauli string:
 pstr = PauliString(nq, :X, 2)
@@ -28,7 +28,9 @@ println(&quot;The representative integer is &quot;, rep_int)
 println(&quot;The representative Pauli string is XII: &quot;, PauliString(nq, :X, 1).term)</code></pre><pre><code class="nohighlight hljs">Integer representation of PauliString(nqubits: 3, 1.0 * IXI)
 
  is 4
-The representative integer is 1
+The representative integer is 
+
+1
 The representative Pauli string is XII: 1</code></pre><pre><code class="language-julia hljs"># To get the effective representation of the original Pauli string, we can do:
 translationmerge(p)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 3, 1 Pauli term: 
  3.0 * XII
@@ -87,7 +89,7 @@ IX</code></pre><pre><code class="language-julia hljs"># Turns out for 2d finding
 psum = PauliSum([pstr, pstr2, pstr3])
 rep_int_2d = translationmerge(psum, nx, ny)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 6, 1 Pauli term: 
  3.0 * YIZIXI
-)</code></pre><h4 id="You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*"><a class="docs-heading-anchor" href="#You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*">You can also define the merging function for your own symmetry. Let&#39;s see an example of this using <em>permutation symmetry</em></a><a id="You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*-1"></a><a class="docs-heading-anchor-permalink" href="#You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*" title="Permalink"></a></h4><p>We can define the representative of Paulis under permutation symmetry by counting the number of Pauli <span>$X, Y, Z$</span></p><pre><code class="language-julia hljs">function _permutationcanonicalform(pstr::PauliStringType)
+)</code></pre><h4 id="You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*"><a class="docs-heading-anchor" href="#You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*">You can also define the merging function for your own symmetry. Let&#39;s see an example of this using <em>permutation symmetry</em></a><a id="You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*-1"></a><a class="docs-heading-anchor-permalink" href="#You-can-also-define-the-merging-function-for-your-own-symmetry.-Let&#39;s-see-an-example-of-this-using-*permutation-symmetry*" title="Permalink"></a></h4><p>We can define the representative of Paulis under permutation symmetry by counting the number of Pauli <span>$X, Y, Z$</span></p><pre><code class="language-julia hljs">function _permutationcanonicalform(pstr::Integer)
     if pstr == 0
         return pstr
     end
@@ -224,10 +226,10 @@ Initial Pauli string: PauliString(nqubits: 11, 1.0 * IIIIIZIIIII)
 Layer 3 with merging type: none
 Layer 5 with merging type: none</code></pre><pre><code class="language-julia hljs"># Check the results:
 results</code></pre><pre><code class="nohighlight hljs">4-element Vector{Any}:
- (merging = :full, layer = 3, nterms = 1422, overlap = 0.7309034078384146)
- (merging = :full, layer = 5, nterms = 12172, overlap = 0.5258230815192094)
- (merging = :none, layer = 3, nterms = 1972, overlap = 0.7309034078384142)
- (merging = :none, layer = 5, nterms = 34617, overlap = 0.5258230802947047)</code></pre><pre><code class="language-julia hljs"># verify that the expectatin values of symmetry merged Pauli strings are the same as those without merging
+ (merging = :full, layer = 3, nterms = 1422, overlap = 0.7309034078384145)
+ (merging = :full, layer = 5, nterms = 12172, overlap = 0.5258230815192095)
+ (merging = :none, layer = 3, nterms = 1972, overlap = 0.7309034078384143)
+ (merging = :none, layer = 5, nterms = 34617, overlap = 0.5258230802947046)</code></pre><pre><code class="language-julia hljs"># verify that the expectatin values of symmetry merged Pauli strings are the same as those without merging
 for l in layers
     overlap_none = filter(r -&gt; r.merging == :none &amp;&amp; r.layer == l, results)[1].overlap
     overlap_full = filter(r -&gt; r.merging == :full &amp;&amp; r.layer == l, results)[1].overlap
@@ -266,16 +268,16 @@ for l in collect(1:maximum(layers))
     
     end
 end            </code></pre><pre><code class="nohighlight hljs">Initial Pauli string: PauliString(nqubits: 11, 1.0 * IIIIIZIIIII)</code></pre><pre><code class="language-julia hljs">results</code></pre><pre><code class="nohighlight hljs">6-element Vector{Any}:
- (merging = :full, layer = 3, nterms = 1422, overlap = 0.7309034078384146)
- (merging = :full, layer = 5, nterms = 12172, overlap = 0.5258230815192094)
- (merging = :none, layer = 3, nterms = 1972, overlap = 0.7309034078384142)
- (merging = :none, layer = 5, nterms = 34617, overlap = 0.5258230802947047)
+ (merging = :full, layer = 3, nterms = 1422, overlap = 0.7309034078384145)
+ (merging = :full, layer = 5, nterms = 12172, overlap = 0.5258230815192095)
+ (merging = :none, layer = 3, nterms = 1972, overlap = 0.7309034078384143)
+ (merging = :none, layer = 5, nterms = 34617, overlap = 0.5258230802947046)
  (merging = :sublayer, layer = 3, nterms = 300, overlap = 0.7309034078384145)
- (merging = :sublayer, layer = 5, nterms = 6753, overlap = 0.5258230815192095)</code></pre><p>! Interestingly merging every sublayers reduce the number of Pauli terms even further!</p><pre><code class="language-julia hljs"># verify that the expectatin values of symmetry merged Pauli strings are the same as those without merging
+ (merging = :sublayer, layer = 5, nterms = 6753, overlap = 0.5258230815192094)</code></pre><p>! Interestingly merging every sublayers reduce the number of Pauli terms even further!</p><pre><code class="language-julia hljs"># verify that the expectatin values of symmetry merged Pauli strings are the same as those without merging
 for l in layers
     overlap_none = filter(r -&gt; r.merging == :none &amp;&amp; r.layer == l, results)[1].overlap
     overlap_full = filter(r -&gt; r.merging == :full &amp;&amp; r.layer == l, results)[1].overlap
     overlap_sublayer = filter(r -&gt; r.merging == :sublayer &amp;&amp; r.layer == l, results)[1].overlap
     @assert isapprox(overlap_none, overlap_full)
     @assert isapprox(overlap_none, overlap_sublayer)
-end</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../PP-Surrogate/">« The Pauli Propagation Surrogate</a><a class="docs-footer-nextpage" href="../visualization_example/">Pauli Evolution Visualization Examples »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Friday 4 September 2026 14:13">Friday 4 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+end</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../PP-Surrogate/">« The Pauli Propagation Surrogate</a><a class="docs-footer-nextpage" href="../visualization_example/">Pauli Evolution Visualization Examples »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Wednesday 16 September 2026 12:51">Wednesday 16 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

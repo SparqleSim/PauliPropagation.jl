@@ -95,33 +95,33 @@ PauliSum(nqubits: 32, 1 Pauli term:
 )</code></pre><pre><code class="language-julia hljs">coefficients(result_psum2)</code></pre><pre><code class="nohighlight hljs">ValueIterator for a Dict{UInt64, CliffordWeightTracker} with 1 entry. Values:
   CliffordWeightTracker(coeff=1.3, reduced=0, unchanged=0, increased=1)</code></pre><p>It seems to work! </p><p>Let&#39;s run an actual circuit.</p><pre><code class="language-julia hljs"># 3 layers of the `efficientsu2` circuit, which contains CNOT gates
 circuit = efficientsu2circuit(nq, 3);
-thetas = randn(countparameters(circuit))</code></pre><pre><code class="language-julia hljs">@time result_psum = propagate(circuit, cwt_pstr, thetas)</code></pre><pre><code class="nohighlight hljs">  0.956200 seconds (496.65 k allocations: 58.841 MiB, 2.05% gc time, 81.21% compilation time)
+thetas = randn(countparameters(circuit))</code></pre><pre><code class="language-julia hljs">@time result_psum = propagate(circuit, cwt_pstr, thetas)</code></pre><pre><code class="nohighlight hljs">  0.814923 seconds (384.37 k allocations: 55.082 MiB, 10.26% gc time, 70.41% compilation time)
 
 
 
 
 
-PauliSum(nqubits: 32, 128090 Pauli terms:
- CliffordWeightTracker(-1.3789e-7) * IIIIIIIIIIIIIIYXIYIY...
- CliffordWeightTracker(6.5207e-6) * IIIIIIIIIIIIXZIXXYIZ...
- CliffordWeightTracker(0.0050576) * IIIIIIIIIIIIIIZYIIXY...
- CliffordWeightTracker(-6.9382e-7) * IIIIIIIIIIIIZXXYXZZX...
- CliffordWeightTracker(0.00011196) * IIIIIIIIIIIIZZXZXXXX...
- CliffordWeightTracker(4.544e-5) * IIIIIIIIIIIIZXZYIXXY...
- CliffordWeightTracker(5.2794e-5) * IIIIIIIIIIIIZZXIYXYX...
- CliffordWeightTracker(0.00013285) * IIIIIIIIIIIIXZXYIXXZ...
- CliffordWeightTracker(2.3856e-5) * IIIIIIIIIIIIXZZZYXZX...
- CliffordWeightTracker(-0.00074789) * IIIIIIIIIIIIZZIZIYXY...
- CliffordWeightTracker(3.2988e-7) * IIIIIIIIIIIIXXXZYZZZ...
- CliffordWeightTracker(-1.2698e-6) * IIIIIIIIIIIIZXZIYYZI...
- CliffordWeightTracker(0.0013337) * IIIIIIIIIIIIIIZZXZXX...
- CliffordWeightTracker(-1.485e-5) * IIIIIIIIIIIIZXXXXIXX...
- CliffordWeightTracker(-9.7553e-5) * IIIIIIIIIIIIZZXIXZXI...
- CliffordWeightTracker(-0.00052229) * IIIIIIIIIIIIZZZIIZXY...
- CliffordWeightTracker(-1.9801e-5) * IIIIIIIIIIIIXXZXXIYZ...
- CliffordWeightTracker(-0.00084545) * IIIIIIIIIIIIIIXYYIXX...
- CliffordWeightTracker(-1.379e-9) * IIIIIIIIIIIIIIXIXYXZ...
- CliffordWeightTracker(-2.1814e-6) * IIIIIIIIIIIIZXZZIXYI...
+PauliSum(nqubits: 32, 130708 Pauli terms:
+ CliffordWeightTracker(9.4421e-6) * IIIIIIIIIIIIXXXYIXXY...
+ CliffordWeightTracker(0.0012458) * IIIIIIIIIIIIZZIXYXZX...
+ CliffordWeightTracker(-3.6605e-6) * IIIIIIIIIIIIZZIXZZXI...
+ CliffordWeightTracker(1.0483e-6) * IIIIIIIIIIIIIIIXZYZI...
+ CliffordWeightTracker(1.1412e-7) * IIIIIIIIIIIIXXIXZZZI...
+ CliffordWeightTracker(-0.01671) * IIIIIIIIIIIIIIYXZIZY...
+ CliffordWeightTracker(-8.383e-8) * IIIIIIIIIIIIIIIZIIYX...
+ CliffordWeightTracker(0.00054254) * IIIIIIIIIIIIZXIZIYZX...
+ CliffordWeightTracker(-9.0819e-5) * IIIIIIIIIIIIZZZXYZYI...
+ CliffordWeightTracker(1.4708e-9) * IIIIIIIIIIIIXXZZXZIX...
+ CliffordWeightTracker(0.0028469) * IIIIIIIIIIIIXXIYYZZZ...
+ CliffordWeightTracker(8.4778e-6) * IIIIIIIIIIIIZXZIZYIY...
+ CliffordWeightTracker(4.9422e-5) * IIIIIIIIIIIIIIXIIZYI...
+ CliffordWeightTracker(0.007001) * IIIIIIIIIIIIXZIZYIYI...
+ CliffordWeightTracker(-1.0654e-5) * IIIIIIIIIIIIIIZZXYIX...
+ CliffordWeightTracker(2.4955e-5) * IIIIIIIIIIIIZXIYYIXI...
+ CliffordWeightTracker(-1.3798e-6) * IIIIIIIIIIIIXZZZXIZI...
+ CliffordWeightTracker(-0.0024427) * IIIIIIIIIIIIIIXYXIXX...
+ CliffordWeightTracker(1.5631e-8) * IIIIIIIIIIIIXZZZZYXY...
+ CliffordWeightTracker(0.0037654) * IIIIIIIIIIIIZXZIXIYI...
   ⋮)</code></pre><p>Make a nice plot from it:</p><pre><code class="language-julia hljs">reduced = 0
 unchanged = 0
 increased = 0
@@ -135,7 +135,89 @@ end
 n_terms = length(result_psum)
 reduced /= n_terms
 unchanged /= n_terms
-increased /= n_terms</code></pre><pre><code class="language-julia hljs">using Plots</code></pre><pre><code class="language-julia hljs">bar([reduced, unchanged, increased], label=&quot;&quot;, xticks=([1, 2, 3], [&quot;reduced&quot;, &quot;unchanged&quot;, &quot;increased&quot;]), ylabel=&quot;Count&quot;)</code></pre><p><img src="../7-custom-pathproperties_files/7-custom-pathproperties_43_0.svg" alt="svg"/></p><p>I worked! But a few notes on the result:</p><p>First, why is &quot;unchanged&quot; dominating? Because we start with a local Z Pauli with Identity on all but one site. This means that the behavior is dominated by commutations, i.e., CNOT gates that don&#39;t contribute at all. We can quickly fix this:</p><pre><code class="language-julia hljs">@inline function PauliPropagation.apply(gate::CliffordGate, pstr, path_prop::CliffordWeightTracker, lookup_map; kwargs...)
+increased /= n_terms</code></pre><pre><code class="language-julia hljs">using Plots</code></pre><pre><code class="nohighlight hljs">[36m[1m[ [22m[39m[36m[1mInfo: [22m[39mWaiting for another process (pid: 4750) to finish precompiling Plots [91a5bcdd-55d7-5caf-9e0b-520d859cae80]. Pidfile: /home/runner/.julia/compiled/v1.13/Plots/ld3vC_e67vQ.ji.pidfile
+
+
+[36m[1m[ [22m[39m[36m[1mInfo: [22m[39mWaiting for another process (pid: 4750) to finish precompiling IJuliaExt [388d8a6b-6fe4-50b5-a981-2e7a5d676f34]. Pidfile: /home/runner/.julia/compiled/v1.13/IJuliaExt/bAMj0_e67vQ.ji.pidfile
+
+
+[36m[1m[ [22m[39m[36m[1mInfo: [22m[39mWaiting for another process (pid: 5105) to finish precompiling IJuliaExt [388d8a6b-6fe4-50b5-a981-2e7a5d676f34]. Pidfile: /home/runner/.julia/compiled/v1.13/IJuliaExt/bAMj0_e67vQ.ji.pidfile
+
+
+[36m[1m[ [22m[39m[36m[1mInfo: [22m[39mWaiting for another process (pid: 4782) to finish precompiling IJuliaExt [388d8a6b-6fe4-50b5-a981-2e7a5d676f34]. Pidfile: /home/runner/.julia/compiled/v1.13/IJuliaExt/bAMj0_e67vQ.ji.pidfile
+
+
+[36m[1m[ [22m[39m[36m[1mInfo: [22m[39mPrecompiling IJuliaExt [388d8a6b-6fe4-50b5-a981-2e7a5d676f34]
+
+
+[32m[1mPrecompiling[22m[39m 
+
+packages...
+
+
+[91m[1mERROR: [22m[39mLoadError: ArgumentError: Path to conda environment is not valid: /home/runner/.julia/conda/3/x86_64
+Stacktrace:
+  [1] [0m[1mprefix[22m[0m[1m([22m[90mpath[39m::[0mString[0m[1m)[22m
+ [90m   @[39m [35mConda[39m [90m~/.julia/packages/Conda/05AVg/src/[39m[90m[4mConda.jl:52[24m[39m
+  [2] top-level scope
+ [90m   @[39m [90m~/.julia/packages/Conda/05AVg/src/[39m[90m[4mConda.jl:57[24m[39m
+  [3] [0m[1minclude[22m[0m[1m([22m[90mmod[39m::[0mModule, [90m_path[39m::[0mString[0m[1m)[22m
+ [90m   @[39m [90mBase[39m [90m./[39m[90m[4mBase.jl:309[24m[39m
+  [4] [0m[1minclude_package_for_output[22m[0m[1m([22m[90mpkg[39m::[0mBase.PkgId, [90minput[39m::[0mString, [90mdepot_path[39m::[0mVector[90m{String}[39m, [90mdl_load_path[39m::[0mVector[90m{String}[39m, [90mload_path[39m::[0mVector[90m{String}[39m, [90mconcrete_deps[39m::[0mVector[90m{Pair{Base.PkgId, UInt128}}[39m, [90msource[39m::[0mNothing[0m[1m)[22m
+ [90m   @[39m [90mBase[39m [90m./[39m[90m[4mloading.jl:3177[24m[39m
+  [5] top-level scope
+ [90m   @[39m [90m[4mstdin:5[24m[39m
+  [6] [0m[1meval[22m[0m[1m([22m[90mm[39m::[0mModule, [90me[39m::[0mAny[0m[1m)[22m
+ [90m   @[39m [90mCore[39m [90m./[39m[90m[4mboot.jl:489[24m[39m
+  [7] [0m[1minclude_string[22m[0m[1m([22m[90mmapexpr[39m::[0mtypeof(identity), [90mmod[39m::[0mModule, [90mcode[39m::[0mString, [90mfilename[39m::[0mString[0m[1m)[22m
+ [90m   @[39m [90mBase[39m [90m./[39m[90m[4mloading.jl:3016[24m[39m
+  [8] [0m[1minclude_string[22m
+ [90m   @[39m [90m./[39m[90m[4mloading.jl:3026[24m[39m[90m [inlined][39m
+  [9] [0m[1mexec_options[22m[0m[1m([22m[90mopts[39m::[0mBase.JLOptions[0m[1m)[22m
+ [90m   @[39m [90mBase[39m [90m./[39m[90m[4mclient.jl:342[24m[39m
+ [10] [0m[1m_start[22m[0m[1m([22m[0m[1m)[22m
+ [90m   @[39m [90mBase[39m [90m./[39m[90m[4mclient.jl:577[24m[39m
+in expression starting at /home/runner/.julia/packages/Conda/05AVg/src/Conda.jl:1
+in expression starting at stdin:5
+[36m[1m┌ [22m[39m[36m[1mInfo: [22m[39mSkipping precompilation due to precompilable error. Importing IJuliaExt [388d8a6b-6fe4-50b5-a981-2e7a5d676f34].
+[36m[1m└ [22m[39m  exception = Error when precompiling module, potentially caused by a __precompile__(false) declaration in the module.
+[36m[1m[ [22m[39m[36m[1mInfo: [22m[39mPrecompiling IJuliaExt [6e0e26ac-fb43-584e-b323-fdbabcf95812]
+
+
+[32m[1mPrecompiling[22m[39m 
+
+packages...
+    Conda[36m Being precompiled by another process (pid: 5468, pidfile: /home/runner/.julia/compiled/v1.13/Conda/WZE3U_e67vQ.ji.pidfile)[39m
+
+
+[91m[1mERROR: [22m[39mLoadError: ArgumentError: Path to conda environment is not valid: /home/runner/.julia/conda/3/x86_64
+Stacktrace:
+  [1] [0m[1mprefix[22m[0m[1m([22m[90mpath[39m::[0mString[0m[1m)[22m
+ [90m   @[39m [35mConda[39m [90m~/.julia/packages/Conda/05AVg/src/[39m[90m[4mConda.jl:52[24m[39m
+  [2] top-level scope
+ [90m   @[39m [90m~/.julia/packages/Conda/05AVg/src/[39m[90m[4mConda.jl:57[24m[39m
+  [3] [0m[1minclude[22m[0m[1m([22m[90mmod[39m::[0mModule, [90m_path[39m::[0mString[0m[1m)[22m
+ [90m   @[39m [90mBase[39m [90m./[39m[90m[4mBase.jl:309[24m[39m
+  [4] [0m[1minclude_package_for_output[22m[0m[1m([22m[90mpkg[39m::[0mBase.PkgId, [90minput[39m::[0mString, [90mdepot_path[39m::[0mVector[90m{String}[39m, [90mdl_load_path[39m::[0mVector[90m{String}[39m, [90mload_path[39m::[0mVector[90m{String}[39m, [90mconcrete_deps[39m::[0mVector[90m{Pair{Base.PkgId, UInt128}}[39m, [90msource[39m::[0mNothing[0m[1m)[22m
+ [90m   @[39m [90mBase[39m [90m./[39m[90m[4mloading.jl:3177[24m[39m
+  [5] top-level scope
+ [90m   @[39m [90m[4mstdin:5[24m[39m
+  [6] [0m[1meval[22m[0m[1m([22m[90mm[39m::[0mModule, [90me[39m::[0mAny[0m[1m)[22m
+ [90m   @[39m [90mCore[39m [90m./[39m[90m[4mboot.jl:489[24m[39m
+  [7] [0m[1minclude_string[22m[0m[1m([22m[90mmapexpr[39m::[0mtypeof(identity), [90mmod[39m::[0mModule, [90mcode[39m::[0mString, [90mfilename[39m::[0mString[0m[1m)[22m
+ [90m   @[39m [90mBase[39m [90m./[39m[90m[4mloading.jl:3016[24m[39m
+  [8] [0m[1minclude_string[22m
+ [90m   @[39m [90m./[39m[90m[4mloading.jl:3026[24m[39m[90m [inlined][39m
+  [9] [0m[1mexec_options[22m[0m[1m([22m[90mopts[39m::[0mBase.JLOptions[0m[1m)[22m
+ [90m   @[39m [90mBase[39m [90m./[39m[90m[4mclient.jl:342[24m[39m
+ [10] [0m[1m_start[22m[0m[1m([22m[0m[1m)[22m
+ [90m   @[39m [90mBase[39m [90m./[39m[90m[4mclient.jl:577[24m[39m
+in expression starting at /home/runner/.julia/packages/Conda/05AVg/src/Conda.jl:1
+in expression starting at stdin:5
+
+
+[36m[1m┌ [22m[39m[36m[1mInfo: [22m[39mSkipping precompilation due to precompilable error. Importing IJuliaExt [6e0e26ac-fb43-584e-b323-fdbabcf95812].
+[36m[1m└ [22m[39m  exception = Error when precompiling module, potentially caused by a __precompile__(false) declaration in the module.</code></pre><pre><code class="language-julia hljs">bar([reduced, unchanged, increased], label=&quot;&quot;, xticks=([1, 2, 3], [&quot;reduced&quot;, &quot;unchanged&quot;, &quot;increased&quot;]), ylabel=&quot;Count&quot;)</code></pre><p><img src="../7-custom-pathproperties_files/7-custom-pathproperties_43_0.png" alt="png"/></p><p>I worked! But a few notes on the result:</p><p>First, why is &quot;unchanged&quot; dominating? Because we start with a local Z Pauli with Identity on all but one site. This means that the behavior is dominated by commutations, i.e., CNOT gates that don&#39;t contribute at all. We can quickly fix this:</p><pre><code class="language-julia hljs">@inline function PauliPropagation.apply(gate::CliffordGate, pstr, path_prop::CliffordWeightTracker, lookup_map; kwargs...)
 
     # normal Clifford logic here
     new_pstr, new_coeff = only(apply(gate, pstr, path_prop.coeff, lookup_map; kwargs...))
@@ -155,7 +237,7 @@ increased /= n_terms</code></pre><pre><code class="language-julia hljs">using Pl
 
     # same return format as the Clifford apply() function
     return ((new_pstr, path_prop),)
-end</code></pre><pre><code class="language-julia hljs">@time result_psum = propagate(circuit, cwt_pstr, thetas)</code></pre><pre><code class="nohighlight hljs">  0.539206 seconds (52.41 k allocations: 36.693 MiB, 8.92% gc time, 42.72% compilation time: 100% of which was recompilation)</code></pre><p>Plot it up:</p><pre><code class="language-julia hljs">reduced = 0
+end</code></pre><pre><code class="language-julia hljs">@time result_psum = propagate(circuit, cwt_pstr, thetas)</code></pre><pre><code class="nohighlight hljs">  0.478802 seconds (41.27 k allocations: 36.456 MiB, 7.26% gc time, 39.87% compilation time: 100% of which was recompilation)</code></pre><p>Plot it up:</p><pre><code class="language-julia hljs">reduced = 0
 unchanged = 0
 increased = 0
 for cliff_weight_tracker in coefficients(result_psum)
@@ -168,14 +250,14 @@ end
 n_terms = length(result_psum)
 reduced /= n_terms
 unchanged /= n_terms
-increased /= n_terms</code></pre><pre><code class="language-julia hljs">bar([reduced, unchanged, increased], label=&quot;&quot;, xticks=([1, 2, 3], [&quot;reduced&quot;, &quot;unchanged&quot;, &quot;increased&quot;]), ylabel=&quot;Count&quot;, title=&quot;Removing commutation&quot;)</code></pre><p><img src="../7-custom-pathproperties_files/7-custom-pathproperties_49_0.svg" alt="svg"/></p><p>Great, this is fixed. But now, why are the counts so low? This brings us to the second point:</p><p>-&gt; By default, merging paths calls <code>+</code> between two <code>PathProperties</code> objects. We have defined <code>+</code> so that it adds the <code>coeff</code> fields together, but takes the minimum of the other fields over the two summands. This current behavior makes sense if you want to truncate based on your recorded properties, and higher values are associated with higher computational resources. This is the case, for example, for the <code>PauliFreqTracker</code> with the <code>max_freq</code> and <code>max_sins</code> truncations. After merging, both objects propagate at the cost of one, so we choose the one that is furthest from being truncated. The huge caveat is that this assumes that <strong>incrementing the fields brings them closer to being truncated</strong>.</p><p>Let&#39;s for example define a <code>+</code> operation for <code>CliffordWeightTracker</code> that takes the maximum, just to show how it would work.</p><pre><code class="language-julia hljs">function PauliPropagation.:+(path_prop1::CliffordWeightTracker, path_prop2::CliffordWeightTracker)
+increased /= n_terms</code></pre><pre><code class="language-julia hljs">bar([reduced, unchanged, increased], label=&quot;&quot;, xticks=([1, 2, 3], [&quot;reduced&quot;, &quot;unchanged&quot;, &quot;increased&quot;]), ylabel=&quot;Count&quot;, title=&quot;Removing commutation&quot;)</code></pre><p><img src="../7-custom-pathproperties_files/7-custom-pathproperties_49_0.png" alt="png"/></p><p>Great, this is fixed. But now, why are the counts so low? This brings us to the second point:</p><p>-&gt; By default, merging paths calls <code>+</code> between two <code>PathProperties</code> objects. We have defined <code>+</code> so that it adds the <code>coeff</code> fields together, but takes the minimum of the other fields over the two summands. This current behavior makes sense if you want to truncate based on your recorded properties, and higher values are associated with higher computational resources. This is the case, for example, for the <code>PauliFreqTracker</code> with the <code>max_freq</code> and <code>max_sins</code> truncations. After merging, both objects propagate at the cost of one, so we choose the one that is furthest from being truncated. The huge caveat is that this assumes that <strong>incrementing the fields brings them closer to being truncated</strong>.</p><p>Let&#39;s for example define a <code>+</code> operation for <code>CliffordWeightTracker</code> that takes the maximum, just to show how it would work.</p><pre><code class="language-julia hljs">function PauliPropagation.:+(path_prop1::CliffordWeightTracker, path_prop2::CliffordWeightTracker)
     return CliffordWeightTracker(
         path_prop1.coeff + path_prop2.coeff,
         max(path_prop1.reduced, path_prop2.reduced),
         max(path_prop1.unchanged, path_prop2.unchanged),
         max(path_prop1.increased, path_prop2.increased)
     )
-end</code></pre><pre><code class="language-julia hljs">@time result_psum = propagate(circuit, cwt_pstr, thetas)</code></pre><pre><code class="nohighlight hljs">  0.794200 seconds (153.96 k allocations: 41.457 MiB, 6.69% gc time, 59.14% compilation time: 100% of which was recompilation)</code></pre><p>Plot it up:</p><pre><code class="language-julia hljs">reduced = 0
+end</code></pre><pre><code class="language-julia hljs">@time result_psum = propagate(circuit, cwt_pstr, thetas)</code></pre><pre><code class="nohighlight hljs">  0.698285 seconds (122.12 k allocations: 40.892 MiB, 9.50% gc time, 50.86% compilation time: 100% of which was recompilation)</code></pre><p>Plot it up:</p><pre><code class="language-julia hljs">reduced = 0
 unchanged = 0
 increased = 0
 for cliff_weight_tracker in coefficients(result_psum)
@@ -188,4 +270,4 @@ end
 n_terms = length(result_psum)
 reduced /= n_terms
 unchanged /= n_terms
-increased /= n_terms</code></pre><pre><code class="language-julia hljs">bar([reduced, unchanged, increased], label=&quot;&quot;, xticks=([1, 2, 3], [&quot;reduced&quot;, &quot;unchanged&quot;, &quot;increased&quot;]), ylabel=&quot;Count&quot;, title=&quot;Custom `+` function&quot;)</code></pre><p><img src="../7-custom-pathproperties_files/7-custom-pathproperties_55_0.svg" alt="svg"/></p><p>This now tells you that there exist Pauli strings that had their weight increased 10 times, but none that had their weight reduced 10 times (or even 4 times). Enjoy recording custom path properties!</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../6-numerical-certificate/">« 6. Numerical Certificates</a><a class="docs-footer-nextpage" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Friday 4 September 2026 14:13">Friday 4 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+increased /= n_terms</code></pre><pre><code class="language-julia hljs">bar([reduced, unchanged, increased], label=&quot;&quot;, xticks=([1, 2, 3], [&quot;reduced&quot;, &quot;unchanged&quot;, &quot;increased&quot;]), ylabel=&quot;Count&quot;, title=&quot;Custom `+` function&quot;)</code></pre><p><img src="../7-custom-pathproperties_files/7-custom-pathproperties_55_0.png" alt="png"/></p><p>This now tells you that there exist Pauli strings that had their weight increased 10 times, but none that had their weight reduced 10 times (or even 4 times). Enjoy recording custom path properties!</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../6-numerical-certificate/">« 6. Numerical Certificates</a><a class="docs-footer-nextpage" href="../8-automatic-differentiation/">8. An example of Automatic Differentiation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Wednesday 16 September 2026 12:51">Wednesday 16 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

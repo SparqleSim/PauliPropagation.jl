@@ -48,18 +48,18 @@ println(&quot;Paulis before: &quot;, psum)
 
 swapped_psum = propagate(g, psum)
 println(&quot;Paulis after: &quot;, swapped_psum)</code></pre><pre><code class="nohighlight hljs">Paulis before: PauliSum(nqubits: 3, 4 Pauli terms:
- 0.2 * IXI
- 0.3 * ZZI
  0.4 * IYX
  0.1 * XII
+ 0.2 * IXI
+ 0.3 * ZZI
 )
 
 
 Paulis after: PauliSum(nqubits: 3, 4 Pauli terms:
- 0.3 * ZIZ
+ 0.1 * XII
  0.2 * IIX
  0.4 * IXY
- 0.1 * XII
+ 0.3 * ZIZ
 )</code></pre><p>This works! You can now freely plug such a gate into a circuit and let it swap your qubits.</p><p>Consider a simple more wholistic example where we insert a layer of SWAP gates at the beginning of the circuit, which means at the end of the backpropagation.</p><pre><code class="language-julia hljs">nq = 6
 
 # some initial observable
@@ -111,27 +111,27 @@ ourSWAP_circuit = [ourSWAPs..., circuit...]</code></pre><pre><code class="nohigh
  PauliRotation([:Z, :Z], [5, 6])
  PauliRotation([:Z, :Z], [2, 3])
  PauliRotation([:Z, :Z], [4, 5])</code></pre><p>Propagate through the circuit and overlap with the zero state:</p><pre><code class="language-julia hljs">our_psum = propagate(ourSWAP_circuit, pstr, thetas)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 6, 81 Pauli terms:
- 0.0056441 * IYYIZX
- -0.18621 * IZZIIY
- -0.093178 * IIXIYY
- 0.021738 * IIZIZY
- 0.012669 * IYXIZX
- -0.077652 * IIXIZY
- -0.022844 * IZXIZZ
- 0.095416 * IYXIIX
- -0.056601 * IIZIIY
- -0.060448 * IYZIYY
- 0.016621 * IYYIIY
- 0.010874 * IZYIYY
- 0.51708 * IIXIIX
- 0.087206 * IIXIZZ
- 0.0090624 * IZYIZY
+ 0.026499 * IZYIIZ
+ 0.068656 * IIXIZX
+ -0.018666 * IYYIIZ
+ -0.023063 * IIZIYX
+ -0.075872 * IZZIYX
+ 0.0080548 * IIYIIZ
+ 0.05948 * IZXIIZ
  -0.1473 * IYZIIZ
- -0.027412 * IZXIYZ
- 0.071515 * IZZIZY
- -0.050376 * IYZIZY
- -0.0071724 * IIYIIY
-  ⋮)</code></pre><pre><code class="language-julia hljs">overlapwithzero(our_psum)</code></pre><pre><code class="nohighlight hljs">0.16795162488187168</code></pre><p>This looks okay, but is it correct? One thing you may have noticed is that <code>SWAP</code> is a <code>Clifford</code> operation, i.e., one that takes one Pauli to exactly one other Pauli. We actually have that in our package so we can easily compare.</p><pre><code class="language-julia hljs">cliffordSWAPs = Gate[]
+ 0.012669 * IYXIZX
+ -0.0096145 * IZYIYX
+ -0.0029225 * IIYIYX
+ 0.053445 * IYZIYX
+ -0.22706 * IIXIIZ
+ 0.021738 * IIZIZY
+ -0.0024355 * IIYIZX
+ -0.017985 * IZXIZX
+ 0.04454 * IYZIZX
+ 0.082383 * IIXIYX
+ 0.0067726 * IYYIYX
+ 0.20911 * IZZIIZ
+  ⋮)</code></pre><pre><code class="language-julia hljs">overlapwithzero(our_psum)</code></pre><pre><code class="nohighlight hljs">0.16795162488187165</code></pre><p>This looks okay, but is it correct? One thing you may have noticed is that <code>SWAP</code> is a <code>Clifford</code> operation, i.e., one that takes one Pauli to exactly one other Pauli. We actually have that in our package so we can easily compare.</p><pre><code class="language-julia hljs">cliffordSWAPs = Gate[]
 # insert swaps flipping the order of qubits 4 to 6
 # 4 5 6 -&gt; 5 4 6
 push!(cliffordSWAPs, CliffordGate(:SWAP, (4, 5)))
@@ -160,27 +160,27 @@ cliffordSWAP_circuit = [cliffordSWAPs..., circuit...]</code></pre><pre><code cla
  PauliRotation([:Z, :Z], [5, 6])
  PauliRotation([:Z, :Z], [2, 3])
  PauliRotation([:Z, :Z], [4, 5])</code></pre><pre><code class="language-julia hljs">clifford_psum = propagate(cliffordSWAP_circuit, pstr, thetas)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 6, 81 Pauli terms:
- 0.0056441 * IYYIZX
- -0.18621 * IZZIIY
- -0.093178 * IIXIYY
- 0.021738 * IIZIZY
- 0.012669 * IYXIZX
- -0.077652 * IIXIZY
- -0.022844 * IZXIZZ
- 0.095416 * IYXIIX
- -0.056601 * IIZIIY
- -0.060448 * IYZIYY
- 0.016621 * IYYIIY
- 0.010874 * IZYIYY
- 0.51708 * IIXIIX
- 0.087206 * IIXIZZ
- 0.0090624 * IZYIZY
+ 0.026499 * IZYIIZ
+ 0.068656 * IIXIZX
+ -0.018666 * IYYIIZ
+ -0.023063 * IIZIYX
+ -0.075872 * IZZIYX
+ 0.0080548 * IIYIIZ
+ 0.05948 * IZXIIZ
  -0.1473 * IYZIIZ
- -0.027412 * IZXIYZ
- 0.071515 * IZZIZY
- -0.050376 * IYZIZY
- -0.0071724 * IIYIIY
-  ⋮)</code></pre><p>And these produce the same Pauli sum and consequently the same expectation!</p><pre><code class="language-julia hljs">our_psum == clifford_psum</code></pre><pre><code class="nohighlight hljs">true</code></pre><pre><code class="language-julia hljs">overlapwithzero(clifford_psum)</code></pre><pre><code class="nohighlight hljs">0.16795162488187168</code></pre><h3 id="A-parametrized-custom-noise-channel"><a class="docs-heading-anchor" href="#A-parametrized-custom-noise-channel">A parametrized custom noise channel</a><a id="A-parametrized-custom-noise-channel-1"></a><a class="docs-heading-anchor-permalink" href="#A-parametrized-custom-noise-channel" title="Permalink"></a></h3><p>The above example was not only a Clifford gate mapping one Pauli string to one Pauli string, but it was also not parametrized. We will now implement a funky custom and parametrized noise gate. Note that it may technically not be a valid quantum channel, but we can still define it and have it be part of the simulation.</p><pre><code class="language-julia hljs">struct FunkyNoise &lt;: ParametrizedGate
+ 0.012669 * IYXIZX
+ -0.0096145 * IZYIYX
+ -0.0029225 * IIYIYX
+ 0.053445 * IYZIYX
+ -0.22706 * IIXIIZ
+ 0.021738 * IIZIZY
+ -0.0024355 * IIYIZX
+ -0.017985 * IZXIZX
+ 0.04454 * IYZIZX
+ 0.082383 * IIXIYX
+ 0.0067726 * IYYIYX
+ 0.20911 * IZZIIZ
+  ⋮)</code></pre><p>And these produce the same Pauli sum and consequently the same expectation!</p><pre><code class="language-julia hljs">our_psum == clifford_psum</code></pre><pre><code class="nohighlight hljs">true</code></pre><pre><code class="language-julia hljs">overlapwithzero(clifford_psum)</code></pre><pre><code class="nohighlight hljs">0.16795162488187165</code></pre><h3 id="A-parametrized-custom-noise-channel"><a class="docs-heading-anchor" href="#A-parametrized-custom-noise-channel">A parametrized custom noise channel</a><a id="A-parametrized-custom-noise-channel-1"></a><a class="docs-heading-anchor-permalink" href="#A-parametrized-custom-noise-channel" title="Permalink"></a></h3><p>The above example was not only a Clifford gate mapping one Pauli string to one Pauli string, but it was also not parametrized. We will now implement a funky custom and parametrized noise gate. Note that it may technically not be a valid quantum channel, but we can still define it and have it be part of the simulation.</p><pre><code class="language-julia hljs">struct FunkyNoise &lt;: ParametrizedGate
     qinds::Tuple{Int, Int}  # say it acts on 2 qubits
 end</code></pre><p>Say we want to define a noise gate with strength <code>p</code> that behaves in the following way:</p><pre><code class="nohighlight hljs">XX -&gt; (1 - 2p) * XX + p * IX + p * XI
 YY -&gt; (1 - 2p) * YY + p * IY + p * YI
@@ -229,9 +229,9 @@ println(&quot;Pauli sum after: &quot;, funky_noise_psum)</code></pre><pre><code 
 Pauli sum after: 
 
 PauliSum(nqubits: 2, 3 Pauli terms:
+ 0.1 * XI
  0.8 * XX
  0.1 * IX
- 0.1 * XI
 )</code></pre><pre><code class="language-julia hljs"># and this branches
 pstr = PauliString(nq, [:Y, :Y], [1, 2])
 
@@ -245,8 +245,8 @@ println(&quot;Pauli sum after: &quot;, funky_noise_psum)</code></pre><pre><code 
 )
 Pauli sum after: PauliSum(nqubits: 2, 3 Pauli terms:
  0.1 * YI
- 0.8 * YY
  0.1 * IY
+ 0.8 * YY
 )</code></pre><pre><code class="language-julia hljs"># and this branches
 pstr = PauliString(nq, [:Z, :Z], [1, 2])
 
@@ -259,9 +259,9 @@ println(&quot;Pauli sum after: &quot;, funky_noise_psum)</code></pre><pre><code 
  1.0 * ZZ
 )
 Pauli sum after: PauliSum(nqubits: 2, 3 Pauli terms:
+ 0.1 * ZI
  0.8 * ZZ
  0.1 * IZ
- 0.1 * ZI
 )</code></pre><pre><code class="language-julia hljs"># but not this
 pstr = PauliString(nq, [:Y, :Z], [1, 2])
 
@@ -397,6 +397,8 @@ for pauli in [:I, :X, :Y, :Z]
 end</code></pre><pre><code class="nohighlight hljs">Paulis before: PauliSum(nqubits: 1, 1 Pauli term: 
  1.0 * I
 )
+
+
 Paulis after: 
 
 PauliSum(nqubits: 1, 1 Pauli term: 
@@ -444,4 +446,4 @@ Vector{Float64}[90m (alias for [39m[90mArray{Float64, 1}[39m[90m)[39m</cod
 # for type-stability consider typing it a bit more concretely like `Union{Float64, Vector{Float64}}[randn(), pvec]`
 thetas = [randn(), pvec]</code></pre><pre><code class="nohighlight hljs">2-element Vector{Any}:
  1.128502633232417
-  [0.1, 0.2, 0.3]</code></pre><hr/><p>This is how you can implement custom gates - by defining their action on Pauli strings (in the Heisenberg picture).</p><p>The branching noise gate, for example, could be implemented more efficiently via some lower level details, but this certainly works. This way of defining <code>apply()</code> for a gate that either branches into three or remains as one Pauli string is also usually not optimal because the compiler cannot infer from the input types whether the output will be a length 3 tuple or a length 1 tuple. This is related to type-stability (<a href="https://docs.julialang.org/en/v1/manual/performance-tips/#Write-%22type-stable%22-functions">some Julia docs</a>) and a topic of a more advanced example notebook.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../4-pauli-transfer-matrix/">« 4. Pauli Transfer Matrix</a><a class="docs-footer-nextpage" href="../6-numerical-certificate/">6. Numerical Certificates »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Friday 4 September 2026 14:13">Friday 4 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+  [0.1, 0.2, 0.3]</code></pre><hr/><p>This is how you can implement custom gates - by defining their action on Pauli strings (in the Heisenberg picture).</p><p>The branching noise gate, for example, could be implemented more efficiently via some lower level details, but this certainly works. This way of defining <code>apply()</code> for a gate that either branches into three or remains as one Pauli string is also usually not optimal because the compiler cannot infer from the input types whether the output will be a length 3 tuple or a length 1 tuple. This is related to type-stability (<a href="https://docs.julialang.org/en/v1/manual/performance-tips/#Write-%22type-stable%22-functions">some Julia docs</a>) and a topic of a more advanced example notebook.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../4-pauli-transfer-matrix/">« 4. Pauli Transfer Matrix</a><a class="docs-footer-nextpage" href="../6-numerical-certificate/">6. Numerical Certificates »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Wednesday 16 September 2026 12:51">Wednesday 16 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
