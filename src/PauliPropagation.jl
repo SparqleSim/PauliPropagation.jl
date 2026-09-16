@@ -13,12 +13,9 @@ using .PropagationBase
 
 include("./PauliDataTypes/PauliDataTypes.jl")
 export
-    PauliStringType,
-    PauliType,
-    PauliSum,
     PauliString,
+    PauliSum,
     VectorPauliSum,
-    VectorPauliPropagationCache,
     nqubits,
     paulis,
     coefficients,
@@ -28,13 +25,6 @@ export
     numcoefftype,
     getcoeff,
     topaulistrings,
-    mult!,
-    add!,
-    set!,
-    pushterm!,
-    mult!,
-    empty!,
-    similar,
     convertcoefftype
 
 include("./PauliAlgebra/PauliAlgebra.jl")
@@ -124,9 +114,6 @@ export
 
 include("Propagation/Propagation.jl")
 export
-    AbstractPauliPropagationCache,
-    PauliPropagationCache,
-    VectorPauliPropagationCache,
     PropagationCache,
     mainsum,
     auxsum,
