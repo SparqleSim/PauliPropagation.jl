@@ -3,7 +3,8 @@
 # Resampling: reduces the number of terms in a TermSum by randomly sampling from the coefficient distribution
 ##
 ###
-# TODO: Resampling currently only works for array-based TermSums
+# Every strategy lays teeth on the cumulative weight of the terms and keeps each term with the weight
+# of the teeth that fall into its slot, so all it asks of the storage is `mapreducecoeffs` and `mapslots!`.
 
 ## RE-SAMPLING
 """
@@ -44,13 +45,12 @@ function resample!(prop_cache::AbstractPropagationCache, target_size, resample_a
             # but not compatible with 2-norm sampling
             resample_func = semideterministic_systematic_resample!
         else
-            # likely we just draw one sample
-            # and probably we don't want coefficients to be pre-merged
+            # 2-norm sampling usually draws a few independent samples
             resample_func = multinomial_resample!
         end
     end
 
-    _checktargetsize(resample_func, activesize(prop_cache), target_size)
+    _checktargetsize(resample_func, length(prop_cache), target_size)
 
     resample_func(prop_cache, target_size, resample_args...; squared, resample_kwargs...)
 
@@ -66,66 +66,28 @@ function _checktargetsize(resample_func, active_size, target_size)
     return
 end
 
-# the auxsum's raw arrays (write destination) and the cache's active terms/coeffs (read source)
-_resamplearrays(prop_cache::AbstractPropagationCache) = (terms(auxsum(prop_cache)), coefficients(auxsum(prop_cache)),
-    activeterms(prop_cache), activecoeffs(prop_cache))
+"""
+    multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread=true)
 
-# a real-valued scratch buffer of length(coeffs) for cumulative weights
-# always real, even for complex coeffs. 
-# Reuses `dst`'s memory if possible, else allocates a new array
-function _realweightbuffer(dst, coeffs)
-    if eltype(coeffs) <: Real
-        return view(dst, 1:length(coeffs))
-    else
-        return similar(coeffs, real(eltype(coeffs)))
-    end
-end
+Draws `target_size` terms with replacement, each with probability proportional to its weight, and keeps every term drawn with the weight of all of its draws.
+The terms stay where they are, so at most `target_size` of them survive and a sorted sum stays sorted.
+`thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
+"""
+function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, thread::Bool=true, kwargs...)
+    weight_func = squared ? abs2 : abs
+    total_weight = mapreducecoeffs(weight_func, +, prop_cache; thread)
+    weight_per_draw = total_weight / target_size
 
-## This the naive resampling where one draw's a random number per sample.
-function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread::Bool=true, kwargs...)
-    if target_size > capacity(prop_cache)
-        resize!(prop_cache, target_size)
-    end
+    # the draws are teeth at random positions, in ascending order so that a slot counts its draws by two searches
+    sorted_draws = sort!(rand(typeof(total_weight), target_size) .* total_weight)
+    new_coeff_func(coeff, slot_start, slot_end) = _compute_new_coeff(_count_draws(sorted_draws, slot_start, slot_end), weight_per_draw, coeff, squared)
 
-    dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
-
-    _multinomial_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared, thread)
-
-    swapsums!(prop_cache)
-    setactivesize!(prop_cache, target_size)
-    # draws are i.i.d. samples from the source distribution, so the result carries no sorted order
-    setsortedprefix!(mainsum(prop_cache), 0)
-
-    return prop_cache
+    mapslots!(weight_func, new_coeff_func, prop_cache; thread)
+    return truncate!(prop_cache; min_abs_coeff=eps(), thread)
 end
 
 # draws are independent of the incoming terms, so any target_size is reachable
 _checktargetsize(::typeof(multinomial_resample!), active_size, target_size) = nothing
-
-function _multinomial_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool, thread::Bool)
-    power = squared ? 2 : 1
-
-    # Compute the cumulative distribution
-    # TODO: make non-allocating
-    cum_probs = coeffcumsum(coeffs, power; thread)
-    total_weight = cum_probs[end]
-
-    dst_terms_view = view(dst_terms, 1:target_size)
-    AK.foreachindex(dst_terms_view; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do i
-        # Sample a random number in [0, total_weight)
-        r = rand() * total_weight
-
-        # we don't parallelize this because we are already threading over the outer loop
-        idx = searchsortedfirst(cum_probs, r)
-
-        dst_terms[i] = terms[idx]
-        # for power=2 (squared=true) this is the sqrt of the weight share, so that |dst_coeff|^2
-        # (not |dst_coeff|) equals the assigned share and the squared 2-norm is what's conserved
-        dst_coeffs[i] = (total_weight / target_size)^(1 / power) * sign(coeffs[idx])^power
-    end
-
-    return nothing
-end
 
 """
     systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, calibrate=true, rtol=0.01, atol=0, thread=true)
@@ -136,86 +98,32 @@ See `calibrate`/`rtol`/`atol` for tuning how closely the comb step is chosen to 
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, calibrate=true, rtol=0.01, atol=0, thread::Bool=true, kwargs...)
-    dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
+    weight_func = squared ? abs2 : abs
+    total_weight = mapreducecoeffs(weight_func, +, prop_cache; thread)
 
-    _systematic_resample!(dst_terms, dst_coeffs, src_terms, src_coeffs, target_size; squared, calibrate, rtol, atol, thread)
+    # a step of total_weight / target_size generally keeps fewer than target_size unique terms, so the step is scaled toward that many
+    comb_step = calibrate ? _calibrate_prob_step(weight_func, prop_cache, total_weight, target_size; rtol, atol, thread) : total_weight / target_size
+    comb_offset = rand() * comb_step
+    new_coeff_func(coeff, slot_start, slot_end) = _compute_new_coeff(_count_combteeth(comb_step, comb_offset, slot_start, slot_end), comb_step, coeff, squared)
 
-    swapsums!(prop_cache)
-    # active size does not need to be changed.
-
-    # dst_terms[i] = src_terms[i] for every i (only coefficients change)
-    # old sorted prefix is still the new prefix
-    setsortedprefix!(mainsum(prop_cache), sortedprefix(auxsum(prop_cache)))
-
-    # now filter out the exactly 0.0 and set active size
-    truncate!(prop_cache; min_abs_coeff=eps(), thread)
-
-    return prop_cache
+    mapslots!(weight_func, new_coeff_func, prop_cache; thread)
+    return truncate!(prop_cache; min_abs_coeff=eps(), thread)
 end
 
-function _systematic_resample!(dst_terms, dst_coeffs, terms, coeffs, target_size; squared::Bool, calibrate, rtol, atol, thread::Bool)
-    power = squared ? 2 : 1
+# scales the comb step toward keeping `target_size` unique terms; when resampling we can overshoot if rtol is small
+function _calibrate_prob_step(weight_func::W, prop_cache::AbstractPropagationCache, total_weight, target_size; rtol::Real, atol::Real, thread::Bool) where {W}
+    # the weights and tolerances are always real, also for complex coefficients
+    RT = typeof(total_weight)
 
-    # cumulative weights are always real; reuses dst_coeffs's memory when possible (see _realweightbuffer)
-    cum_probs = _realweightbuffer(dst_coeffs, coeffs)
-    AK.map!(c -> abs(c)^power, cum_probs, coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-    AK.accumulate!(+, cum_probs; init=zero(eltype(cum_probs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-    total_weight = cum_probs[end]
-
-    # Normally: step = total_weight / target_size
-    # but this will generally produce less unique terms
-    # scale the step to go toward target_size many unique terms
-    if calibrate
-        step = _calibrate_prob_step(coeffs, total_weight, target_size; power, rtol, atol, thread)
-    else
-        step = total_weight / target_size
-    end
-
-    # the source of randomness shifting the comb
-    offset = rand() * step
-
-
-    # We iterate over INPUT terms. Each term is processed once.
-    # The "let" block is necessary because otherwise "step" get boxed (wow again)
-    let step=step, offset=offset, power=power
-        AK.foreachindex(terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do i
-
-            # c_start is technically stoch_cum_probs[i-1],
-            # but we thread, so need to recompute from coeff
-            c_end = cum_probs[i]
-            c_start = c_end - abs(coeffs[i])^power
-
-            # Calculate how many "comb teeth" fall into [c_start, c_end)
-            lower_idx = floor((c_start - offset) / step)
-            upper_idx = floor((c_end - offset) / step)
-            n_copies = upper_idx - lower_idx
-
-            dst_terms[i] = terms[i]
-            # write one entry with the combined weight
-            # n_copies can be 0, and it will be filtered later
-            dst_coeffs[i] = (n_copies * step)^(1 / power) * sign(coeffs[i])^power
-        end
-    end
-
-    return nothing
-end
-
-
-function _calibrate_prob_step(coeffs, total_weight, target_size; power, rtol::Real, atol::Real, thread::Bool)
-    # coeffs may be complex, but the sums/tolerances computed here are always real
-    RT = real(eltype(coeffs))
-
-    # this function estimates the mean number of unique samples (or something close to it)
-    # when resampling we can overshoot if rtol is small
-    getcurrentsum(cs, inv_s) = AK.mapreduce(c -> min(1.0, abs(c)^power * inv_s), +, cs; init=zero(RT), neutral=zero(RT), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    # a comb of step `1 / inv_step` keeps a term with probability `min(1, weight * inv_step)`, so these sum to the
+    # mean number of unique samples (or something close to it); `inv_step` is an argument since it changes below
+    expected_n_unique(inv_step) = mapreducecoeffs(coeff -> min(1.0, weight_func(coeff) * inv_step), +, prop_cache; thread)
 
     inv_step = target_size / total_weight
 
     tolsatisfied(r) = ((1.0 - rtol) * target_size - atol) / target_size <= r <= 1.0 - eps(RT)
     for i in 1:5
-        current_sum = getcurrentsum(coeffs, inv_step)
-
-        ratio = current_sum / target_size
+        ratio = expected_n_unique(inv_step) / target_size
 
         if tolsatisfied(ratio)
             return 1 / inv_step
@@ -225,8 +133,6 @@ function _calibrate_prob_step(coeffs, total_weight, target_size; power, rtol::Re
     end
     return 1 / inv_step
 end
-
-
 
 """
     semideterministic_systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread=true)
@@ -241,71 +147,83 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
         throw(ArgumentError("semideterministic_systematic_resample! does not support squared=true."))
     end
 
-    @assert 0 < target_size <= activesize(prop_cache) "target_size must be between 1 and activesize(prop_cache)"
+    @assert 0 < target_size <= length(prop_cache) "target_size must be between 1 and length(prop_cache)"
 
-    dst_terms, dst_coeffs, src_terms, src_coeffs = _resamplearrays(prop_cache)
-    # src_coeffs may be complex; weights/counts computed below are always real
-    RT = real(eltype(src_coeffs))
+    # a term above the average weight per slot is kept as it is, and takes no slot on the comb that runs over the rest
+    keep_threshold = mapreducecoeffs(abs, +, prop_cache; thread) / target_size
+    is_kept(coeff) = abs(coeff) > keep_threshold
+    weight_func(coeff) = is_kept(coeff) ? zero(keep_threshold) : abs(coeff)
 
-    # compute the average weight capacity of the resampled terms
-    # if a term is above this threshold, it is always kept, otherwise it is resampled
-    total_weight = AK.mapreduce(abs, +, src_coeffs; init=zero(RT), neutral=zero(RT), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-    threshold = total_weight / target_size
+    n_comb_slots = target_size - mapreducecoeffs(is_kept, +, prop_cache; init=0, thread)
+    comb_step = n_comb_slots > 0 ? mapreducecoeffs(weight_func, +, prop_cache; thread) / n_comb_slots : zero(keep_threshold)
+    comb_offset = rand() * comb_step
+    new_coeff_func(coeff, slot_start, slot_end) = is_kept(coeff) ? coeff : _compute_new_coeff(_count_combteeth(comb_step, comb_offset, slot_start, slot_end), comb_step, coeff, squared)
 
-    # how many terms are taken deterministically
-    n_det = AK.mapreduce(c -> abs(c) > threshold, +, src_coeffs; init=0, neutral=0, max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    mapslots!(weight_func, new_coeff_func, prop_cache; thread)
+    return truncate!(prop_cache; min_abs_coeff=eps(), thread)
+end
 
-    # how many slots are left for the stochastic part
-    n_stoch = target_size - n_det
+# how many teeth of a comb of `comb_step`, shifted by `comb_offset`, fall into `[slot_start, slot_end)`; a step of zero lays no teeth
+function _count_combteeth(comb_step, comb_offset, slot_start, slot_end)
+    iszero(comb_step) && return zero(comb_step)
+    return floor((slot_end - comb_offset) / comb_step) - floor((slot_start - comb_offset) / comb_step)
+end
 
-    # cumulative weights are always real; reuses dst_coeffs's memory when possible (see _realweightbuffer)
-    stoch_cum_probs = _realweightbuffer(dst_coeffs, src_coeffs)
-    AK.map!(c -> abs(c) > threshold ? zero(eltype(stoch_cum_probs)) : abs(c), stoch_cum_probs, src_coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-    AK.accumulate!(+, stoch_cum_probs; init=zero(eltype(stoch_cum_probs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-    total_stoch_weight = stoch_cum_probs[end]
+# how many of the ascending `sorted_draws` fall into `[slot_start, slot_end)`
+_count_draws(sorted_draws, slot_start, slot_end) = searchsortedfirst(sorted_draws, slot_end) - searchsortedfirst(sorted_draws, slot_start)
 
-    # step and offset of the comb for systematic resampling; step is only meaningful if there
-    # are stochastic slots left to fill
-    step = n_stoch > 0 ? total_stoch_weight / n_stoch : zero(total_stoch_weight)
-    offset = rand() * step
+# the coefficient a term keeps for `n_teeth` teeth worth `weight_per_tooth` each, with the sign it had;
+# when resampling squared, the weight is the absolute square of the coefficient
+_compute_new_coeff(n_teeth, weight_per_tooth, coeff, squared::Bool) =
+    squared ? sqrt(n_teeth * weight_per_tooth) * sign(coeff)^2 : n_teeth * weight_per_tooth * sign(coeff)
 
-    # single pass: each term is either kept deterministically or assigned its comb share
-    let step = step, offset = offset, threshold = threshold, n_stoch = n_stoch
-        AK.foreachindex(src_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do i
-            coeff = src_coeffs[i]
-            abs_coeff = abs(coeff)
-            dst_terms[i] = src_terms[i]
 
-            if abs_coeff > threshold
-                dst_coeffs[i] = coeff
-            elseif n_stoch == 0
-                # no stochastic slots left, so every sub-threshold term is dropped
-                dst_coeffs[i] = zero(eltype(src_coeffs))
-            else
-                # c_start is technically stoch_cum_probs[i-1],
-                # but we thread, so need to recompute from coeff
-                c_end = stoch_cum_probs[i]
-                c_start = c_end - abs_coeff
+## SLOTS ON THE CUMULATIVE WEIGHT
+"""
+    mapslots!(weight_func, new_coeff_func, prop_cache::AbstractPropagationCache; thread=true)
 
-                lower_idx = floor((c_start - offset) / step)
-                upper_idx = floor((c_end - offset) / step)
-                n_copies = upper_idx - lower_idx
+Every term takes a slot as wide as `weight_func(coeff)` on the cumulative weight, in the order of the terms,
+and is given the coefficient `new_coeff_func(coeff, slot_start, slot_end)` in place.
+`thread=false` runs on the calling thread alone.
+"""
+mapslots!(weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F} =
+    _mapslots!(StorageType(prop_cache), weight_func, new_coeff_func, prop_cache; thread)
 
-                dst_coeffs[i] = n_copies * step * sign(coeff)
-            end
-        end
+function _mapslots!(::DictStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; kwargs...) where {W,F}
+    main_sum = mainsum(prop_cache)
+
+    slot_end = zero(real(numcoefftype(prop_cache)))
+    for (term, coeff) in main_sum
+        slot_start = slot_end
+        slot_end += weight_func(coeff)
+        set!(main_sum, term, new_coeff_func(coeff, slot_start, slot_end))
     end
 
-    swapsums!(prop_cache)
-    # active size does not need to be changed.
+    return prop_cache
+end
 
-    # dst_terms[i] = src_terms[i] for every i (only coefficients change)
-    # old sorted prefix is still the new prefix
-    setsortedprefix!(mainsum(prop_cache), sortedprefix(auxsum(prop_cache)))
+function _mapslots!(::ArrayStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F}
+    active_coeffs = activecoeffs(prop_cache)
 
-    # now filter out the exactly 0.0
-    truncate!(prop_cache; min_abs_coeff=eps(), thread)
+    # the slot ends are the cumulative weights, in the auxiliary coefficients when those are real
+    slot_ends = _realweightbuffer(coefficients(auxsum(prop_cache)), active_coeffs)
+    AK.map!(weight_func, slot_ends, active_coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    AK.accumulate!(+, slot_ends; init=zero(eltype(slot_ends)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
+    AK.foreachindex(active_coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do term_index
+        coeff = active_coeffs[term_index]
+        slot_end = slot_ends[term_index]
+        active_coeffs[term_index] = new_coeff_func(coeff, slot_end - weight_func(coeff), slot_end)
+    end
 
     return prop_cache
+end
+
+# a real-valued buffer of length(coeffs), in the memory of `dst` when the coefficients are real
+function _realweightbuffer(dst, coeffs)
+    if eltype(coeffs) <: Real
+        return view(dst, 1:length(coeffs))
+    else
+        return similar(coeffs, real(eltype(coeffs)))
+    end
 end

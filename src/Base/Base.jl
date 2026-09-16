@@ -81,7 +81,7 @@ include("./merge.jl")
 export merge, merge!, mergefunc
 
 include("./truncate.jl")
-export truncate, truncate!, maxabscoeff
+export truncate, truncate!, maxabscoeff, mapreducecoeffs
 
 
 include("./vectorbackend.jl")
@@ -99,6 +99,21 @@ export
 include("./sortedtailmerge.jl")
 
 include("./xortailmerge.jl")
+
+include("./MonteCarlo/MonteCarlo.jl")
+export
+    mcpropagate,
+    mcpropagate!,
+    applymergetruncateresample!,
+    mcsample,
+    mcsample!,
+    mcapplytoall!,
+    resample,
+    resample!,
+    mapslots!,
+    multinomial_resample!,
+    systematic_resample!,
+    semideterministic_systematic_resample!
 
 include("./MultiSum/MultiSum.jl")
 export
@@ -118,19 +133,5 @@ export
     applytoallzones!,
     applyxorbranch!,
     applyxorbranchzones!
-
-include("./MonteCarlo/MonteCarlo.jl")
-export
-    mcpropagate,
-    mcpropagate!,
-    applymergetruncateresample!,
-    mcsample,
-    mcsample!,
-    mcapplytoall!,
-    resample,
-    resample!,
-    multinomial_resample!,
-    systematic_resample!,
-    semideterministic_systematic_resample!
 
 end

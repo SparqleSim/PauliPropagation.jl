@@ -27,8 +27,8 @@ Splitting a `PauliSum` gives zones of `PauliSum`s and splitting a `VectorPauliSu
 `n_zones` must be a power of two, which makes the zone assignment linear in the Pauli string and lets `PauliRotation` and the other gates that branch by a fixed bitmask take a faster path.
 See `ZoneMap`.
 
-Monte Carlo propagation (`mcpropagate()`, `mcsample()`, `resample()`) does not take a `MultiPauliSum`.
-`rewindgradient()` does, and runs both of its sweeps zone by zone.
+`mcpropagate()` and `resample()` take a `MultiPauliSum` and resample it zone by zone; `mcsample()` does not take one yet.
+`rewindgradient()` runs both of its sweeps zone by zone.
 
 # Examples
 ```julia

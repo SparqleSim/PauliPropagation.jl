@@ -43,9 +43,8 @@ function xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sor
     groups = (sorted_before && n_old > 0 && n_tail >= _MIN_XOR_TAIL) ? _xorplan(xor_mask, main_terms) : nothing
     if groups === nothing
         # the generic merge sorts through AcceleratedKernels, which starts tasks of its own
-        return _dozingworkers() do
-            merge!(prop_cache; thread, truncfunc, kwargs...)
-        end
+        merge_generically!() = merge!(prop_cache; thread, truncfunc, kwargs...)
+        return _with_threads_freed_for(merge_generically!)
     end
 
     # ping-pong pair A: the appended tail, in place at the end of the main arrays

@@ -184,7 +184,8 @@ function _truncate!(::MultiSumStorage, truncfunc::F, msum::AbstractTermSum; kwar
     return msum
 end
 
-_maxabscoeff(::MultiSumStorage, msum::AbstractTermSum; thread::Bool=true) = maximum(zone -> maxabscoeff(zone; thread), zones(msum))
+_mapreducecoeffs(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, thread::Bool) where {F,O} =
+    mapreduce(zone -> mapreducecoeffs(f, op, zone; init=zero(init), thread), op, zones(msum); init)
 
 # the zones are iterated one after the other, which carries neither a length nor an element type
 _length(::MultiSumStorage, msum::AbstractTermSum) = sum(length, zones(msum))

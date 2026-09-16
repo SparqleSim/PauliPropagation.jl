@@ -23,8 +23,8 @@
 #
 # An idle worker spins for a bounded time and then sleeps on a condition, so that a task started
 # elsewhere in the process gets a thread within that time. A stretch in which the owner starts
-# tasks of its own (the kernels of AcceleratedKernels do) is wrapped in `_dozingworkers`, which
-# sends the idle workers to sleep at once: a spinning worker never yields its thread to another
+# tasks of its own (the kernels of AcceleratedKernels do) is wrapped in `_with_threads_freed_for`,
+# which sends the idle workers to sleep at once: a spinning worker never yields its thread to another
 # task, so those tasks would otherwise queue up on the owner's thread until the spin window ran out.
 ##
 ###
@@ -79,7 +79,7 @@ mutable struct Workers
     @atomic round::Int          # bumped once per round; a worker runs when it sees it move
     @atomic pending::Int        # workers that have not finished the current round
     @atomic stop::Bool
-    @atomic doze::Bool          # sends the idle workers to sleep instead of spinning, see `_dozingworkers`
+    @atomic sleep_when_idle::Bool   # idle workers sleep instead of spinning, see `_with_threads_freed_for`
     job::Any                    # (f, n_tasks) of the current round
     error::Any                  # an exception a worker hit, rethrown by the owner
     tasks::Vector{Task}
@@ -172,16 +172,16 @@ function _stopworkers!(workers::Workers)
     return
 end
 
-# Run `f()` with the idle workers asleep, for a stretch in which the owner starts tasks of its own
+# Run `f()` with the idle workers asleep, so that the tasks `f` starts of its own get the threads
 # (see the file header). The next round wakes the workers again.
-function _dozingworkers(f::F) where {F}
+function _with_threads_freed_for(f::F) where {F}
     workers = _currentworkers()
     workers === nothing && return f()
-    @atomic :release workers.doze = true
+    @atomic :release workers.sleep_when_idle = true
     try
         return f()
     finally
-        @atomic :release workers.doze = false
+        @atomic :release workers.sleep_when_idle = false
     end
 end
 
@@ -273,7 +273,7 @@ function _awaitround(workers::Workers, seen::Int)
         spins += 1
         if spins == 64
             spins = 0
-            (time_ns() - t_start > _WORKER_SPIN_NS || (@atomic :acquire workers.doze)) && break
+            (time_ns() - t_start > _WORKER_SPIN_NS || (@atomic :acquire workers.sleep_when_idle)) && break
         end
     end
 

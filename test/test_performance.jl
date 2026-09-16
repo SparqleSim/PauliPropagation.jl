@@ -48,6 +48,15 @@ end
     for (term, coeff) in zip(paulis(mc_vec), coefficients(mc_vec))
         @test coeff == getcoeff(fused_vec, term)
     end
+
+    # a multi sum of vector zones fuses inside every zone, and resamples zone by zone once max_size is hit
+    mc_multi = Performance.mcpropagate(circuit, MultiPauliSum(VectorPauliSum(pstr), 4), thetas; min_abs_coeff, fused=true, max_size=10^9)
+    @test length(mc_multi) == length(fused_vec)
+    @test all(coeff == getcoeff(fused_vec, term) for (term, coeff) in mc_multi)
+
+    max_size = 20
+    bounded = Performance.mcpropagate(circuit, MultiPauliSum(VectorPauliSum(pstr), 4), thetas; min_abs_coeff, fused=true, max_size)
+    @test 0 < length(bounded) <= max_size
 end
 
 @testset "fused Dict, fused Vector and stock propagation agree exactly without coefficient truncation" begin

@@ -44,8 +44,10 @@ Like `applymergetruncate!`, but afterwards resamples `prop_cache` down to `resam
 function applymergetruncateresample!(gate, prop_cache::AbstractPropagationCache, args...; max_size::Real, resampling_size::Integer=round(Int, max_size / 2), resample_func=nothing, thread::Bool=true, kwargs...)
     applymergetruncate!(gate, prop_cache, args...; thread, kwargs...)
 
-    if activesize(prop_cache) > max_size
-        resample!(prop_cache, resampling_size; resample_func, thread, kwargs...)
+    # the array kernels of the strategies start tasks of their own, which the workers make room for
+    if length(prop_cache) > max_size
+        resample_cache!() = resample!(prop_cache, resampling_size; resample_func, thread, kwargs...)
+        _with_threads_freed_for(resample_cache!, StorageType(prop_cache))
     end
 
     return prop_cache

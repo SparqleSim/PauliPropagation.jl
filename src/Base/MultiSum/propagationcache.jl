@@ -53,12 +53,9 @@ _resize!(::MultiSumStorage, prop_cache::AbstractPropagationCache, n_new::Int) =
     _resizezones!(prop_cache, n_new)
 
 # each zone is reduced on its own thread, with no tasks started inside a zone
-function _maxabscoeff(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true)
-    maxima = zeros(real(numcoefftype(prop_cache)), nzones(prop_cache))
-    _eachzone(prop_cache, thread) do zone_id
-        maxima[zone_id] = maxabscoeff(zonecaches(prop_cache)[zone_id]; thread=false)
-    end
-    return maximum(maxima)
+function _mapreducecoeffs(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, thread::Bool) where {F,O}
+    reduce_zone(zonecache) = mapreducecoeffs(f, op, zonecache; init=zero(init), thread=false)
+    return reduce(op, _zonevalues(reduce_zone, typeof(init), prop_cache, thread); init)
 end
 
 function _extractsum!(::MultiSumStorage, prop_cache::AbstractPropagationCache)
@@ -81,6 +78,24 @@ function _truncate!(::MultiSumStorage, truncfunc::F, prop_cache::AbstractPropaga
     end
 
     return _syncsums!(prop_cache)
+end
+
+# the slots of a zone follow those of the zones before it
+function _mapslots!(::MultiSumStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F}
+    total_zone_weight(zonecache) = mapreducecoeffs(weight_func, +, zonecache; thread=false)
+    zone_weights = _zonevalues(total_zone_weight, real(numcoefftype(prop_cache)), prop_cache, thread)
+    zone_slot_starts = pushfirst!(cumsum(zone_weights), zero(eltype(zone_weights)))
+
+    map_zone_slots!(zone_id) = _map_shifted_slots!(weight_func, new_coeff_func, zonecaches(prop_cache)[zone_id], zone_slot_starts[zone_id])
+    _eachzone(map_zone_slots!, prop_cache, thread)
+
+    return prop_cache
+end
+
+# `mapslots!` on one zone, with its slots starting at `zone_slot_start` instead of at zero
+function _map_shifted_slots!(weight_func::W, new_coeff_func::F, zonecache, zone_slot_start) where {W,F}
+    shifted_new_coeff_func(coeff, slot_start, slot_end) = new_coeff_func(coeff, zone_slot_start + slot_start, zone_slot_start + slot_end)
+    return mapslots!(weight_func, shifted_new_coeff_func, zonecache; thread=false)
 end
 
 """
@@ -113,6 +128,14 @@ function _eachzone(zonefunc::F, prop_cache::AbstractPropagationCache, thread::Bo
         _eachtask(zonefunc, nzones(prop_cache))
     end
     return prop_cache
+end
+
+# one value of type `T` per zone, each computed on the zone's own thread
+function _zonevalues(zonefunc::F, ::Type{T}, prop_cache::AbstractPropagationCache, thread::Bool) where {F,T}
+    values = Vector{T}(undef, nzones(prop_cache))
+    store_zone_value!(zone_id) = (values[zone_id] = zonefunc(zonecaches(prop_cache)[zone_id]))
+    _eachzone(store_zone_value!, prop_cache, thread)
+    return values
 end
 
 # a propagation over a multi sum keeps its workers up from the first gate to the last
