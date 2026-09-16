@@ -266,11 +266,13 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::PauliPropag
         set!(aux_psum, new_pstr, new_child)
     end
 
-    # Empty the original psum since everything was moved to aux_psum
+    # Clifford gates are not merged afterwards, so the transformed sum takes the place of the original
     empty!(psum)
+    swapsums!(prop_cache)
 
     return
 end
+
 """
     applytoall!(gate::PauliNoise, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, p; kwargs...) where {TT<:PauliStringType,T<:Number}
 
