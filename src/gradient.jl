@@ -136,8 +136,10 @@ function _dualsum(::PropagationBase.ArrayStorage, prop_cache, overlapfunc; threa
 end
 
 # the dual sum shares the zone assignment, so a Pauli string sits in the same zone of both sums
-_dualsum(::MultiSumStorage, prop_cache, overlapfunc; thread::Bool=true) =
-    withzones(mainsum(prop_cache), map(zonecache -> _dualsum(zonecache, overlapfunc; thread), zonecaches(prop_cache)))
+function _dualsum(::MultiSumStorage, prop_cache, overlapfunc; thread::Bool=true)
+    dual_zones = map(zonecache -> _dualsum(zonecache, overlapfunc; thread), zonecaches(prop_cache))
+    return Base.typename(typeof(mainsum(prop_cache))).wrapper(nsites(prop_cache), dual_zones, zonemap(prop_cache))
+end
 
 # A length-1 VectorPauliSum for a single Pauli string, for feeding into `overlapfunc`.
 function _singletonvectorpaulisum(nq::Int, term, coeff=1.0)

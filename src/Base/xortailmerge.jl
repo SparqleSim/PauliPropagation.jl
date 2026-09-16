@@ -84,7 +84,8 @@ function xorsortedboxmerge!(prop_cache::AbstractPropagationCache, box, xor_mask,
     groups = (sorted_before && main_sorted && n_old > 0 && n_tail >= _MIN_XOR_TAIL) ?
              _xorplan(xor_mask, terms(mainsum(prop_cache))) : nothing
     if groups === nothing
-        _deliver!(StorageType(prop_cache), prop_cache, (box,))
+        add!(prop_cache, box)
+        empty!(box)
         return merge!(prop_cache; thread, truncfunc, kwargs...)
     end
 

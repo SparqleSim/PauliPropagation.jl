@@ -45,5 +45,5 @@ Pages = ["src/PauliDataTypes/abstractpaulisum.jl"]
 ```@autodocs
 Modules = [PauliPropagation.PropagationBase]
 Pages = ["src/Base/termsum.jl"]
-Filter = t -> t in (PauliPropagation.pushterm!, PauliPropagation.PropagationBase.emptylike)
+Filter = t -> t in (Base.push!, PauliPropagation.PropagationBase.emptylike)
 ```

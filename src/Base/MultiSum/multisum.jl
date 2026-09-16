@@ -11,7 +11,7 @@
 
 Storage type of a term sum that is split over work zones, each of which is a term sum of the carried type that one thread owns.
 `zonestorage` is the storage type of the zones, on which all zone-local operations dispatch.
-A term sum carries this storage type by returning its zones from `storage()`, and additionally needs to define `zonemap()` and `withzones()`.
+A term sum carries this storage type by returning its zones from `storage()` and its `ZoneMap` from `zonemap()`, and is constructed as `TS(nsites, zones, zonemap)` wherever a sum of its type is built around new zones, in the same way that `emptylike()` constructs the other storages.
 """
 struct MultiSumStorage{ST<:StorageType} <: StorageType
     zonestorage::ST
@@ -42,15 +42,6 @@ Get the `ZoneMap` that assigns each term to the zone that owns it.
 Defaults to the `zonemap` field of `msum`.
 """
 zonemap(msum::AbstractTermSum) = msum.zonemap
-
-"""
-    withzones(msum::AbstractTermSum, new_zones)
-
-Return `msum` with its zones replaced by `new_zones` and everything else carried over.
-This is the only function that needs to know the concrete type of a multi sum.
-The zone-wise `similar()`, `emptylike()` and `activesum()` are built on it.
-"""
-withzones(msum::TS, new_zones) where {TS<:AbstractTermSum} = _thrownotimplemented(TS, :withzones)
 
 """
     nzones(msum::AbstractTermSum)
@@ -162,9 +153,18 @@ _getmergedcoeff(::MultiSumStorage, msum::AbstractTermSum, trm) = getmergedcoeff(
 
 @inline _add!(::MultiSumStorage, msum::AbstractTermSum, term, coeff) = (add!(_zone(msum, term), term, coeff); msum)
 @inline _set!(::MultiSumStorage, msum::AbstractTermSum, term, coeff) = (set!(_zone(msum, term), term, coeff); msum)
+@inline _push!(::MultiSumStorage, msum::AbstractTermSum, term, coeff) = (push!(_zone(msum, term), term, coeff); msum)
 _delete!(::MultiSumStorage, msum::AbstractTermSum, term) = (delete!(_zone(msum, term), term); msum)
 
-_mult!(::MultiSumStorage, msum::AbstractTermSum, scalar::Number) = (foreach(zone -> mult!(zone, scalar), zones(msum)); msum)
+# the terms are appended to the zones that own them and merged once, instead of being looked up one at a time
+function _add!(::MultiSumStorage, msum::AbstractTermSum, other::AbstractTermSum)
+    for (term, coeff) in other
+        push!(msum, term, coeff)
+    end
+    return merge!(msum)
+end
+
+_mapcoeffs!(::MultiSumStorage, f::F, msum::AbstractTermSum) where {F} = (foreach(zone -> mapcoeffs!(f, zone), zones(msum)); msum)
 _empty!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(empty!, zones(msum)); msum)
 function _copy!(::MultiSumStorage, dst_msum::AbstractTermSum, src_msum::AbstractTermSum)
     # a zone only holds the terms it owns, so copying across differing assignments loses ownership
@@ -194,7 +194,7 @@ _coefftype(::MultiSumStorage, msum::AbstractTermSum) = coefftype(first(zones(msu
 
 # an empty multi sum of the same type is exactly what `emptylike` builds
 _similar(::MultiSumStorage, msum::AbstractTermSum) = emptylike(msum)
-_emptylike(::MultiSumStorage, msum::AbstractTermSum) = withzones(msum, map(emptylike, zones(msum)))
+_emptylike(::MultiSumStorage, msum::TS) where {TS} = Base.typename(TS).wrapper(nsites(msum), map(emptylike, zones(msum)), zonemap(msum))
 
 # the zone assignment is a hash, so the zones take equal shares of the hint
 _sizehint!(::MultiSumStorage, msum::AbstractTermSum, n) =
@@ -202,11 +202,4 @@ _sizehint!(::MultiSumStorage, msum::AbstractTermSum, n) =
 
 # a p-norm over the zones' p-norms is the p-norm over all coefficients
 _norm(::MultiSumStorage, msum::AbstractTermSum, L::Real) = LinearAlgebra.norm((norm(zone, L) for zone in zones(msum)), L)
-
-
-### Parking terms with their owners
-
-# Appends the term to the zone that owns it. The storage trait is passed rather than derived, since
-# every zone of a multi sum carries the same one.
-@inline _park!(msum::AbstractTermSum, term, coeff) = _pushterm!(zonestorage(msum), _zone(msum, term), term, coeff)
 

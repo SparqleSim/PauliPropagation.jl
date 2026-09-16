@@ -11,7 +11,7 @@ using Random
     pstr = PauliString(nq, :Z, 1)
 
     # mcsample! only mutates the active view in place: sums are never swapped or resized
-    prop_cache = VectorPauliPropagationCache(VectorPauliSum(pstr))
+    prop_cache = PropagationCache(VectorPauliSum(pstr))
     main_before, aux_before = mainsum(prop_cache), auxsum(prop_cache)
     @test mcsample!(gate, prop_cache, theta) === prop_cache
     @test mainsum(prop_cache) === main_before
@@ -292,18 +292,18 @@ end
     # count and the weight it carries land close to, but not always exactly at, their targets
     term_tol = 3
 
-    prop_cache = VectorPauliPropagationCache(deepcopy(psum))
+    prop_cache = PropagationCache(deepcopy(psum))
     total_before = sum(activecoeffs(prop_cache))
     resample!(prop_cache, target_size; resample_func=systematic_resample!)
     @test abs(activesize(prop_cache) - target_size) <= term_tol
     @test isapprox(sum(activecoeffs(prop_cache)), total_before; atol=term_tol * total_before / target_size)
 
     # target_size equal to the current size is allowed, only exceeding it is an error
-    same_size_cache = VectorPauliPropagationCache(deepcopy(psum))
+    same_size_cache = PropagationCache(deepcopy(psum))
     resample!(same_size_cache, n; resample_func=systematic_resample!)
     @test abs(activesize(same_size_cache) - n) <= term_tol
 
-    over_cache = VectorPauliPropagationCache(deepcopy(psum))
+    over_cache = PropagationCache(deepcopy(psum))
     @test_throws ArgumentError resample!(over_cache, n + 1)
 
     # out-of-place resample leaves the input psum untouched
@@ -341,12 +341,12 @@ end
     term_tol = 3
 
     # multinomial_resample! keeps every term drawn, so at most target_size terms survive
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
+    cache = PropagationCache(deepcopy(base_psum))
     resample!(cache, target_size; resample_func=multinomial_resample!)
     @test 1 <= activesize(cache) <= target_size
 
     for f in (systematic_resample!, semideterministic_systematic_resample!)
-        cache = VectorPauliPropagationCache(deepcopy(base_psum))
+        cache = PropagationCache(deepcopy(base_psum))
         resample!(cache, target_size; resample_func=f)
         @test 1 <= activesize(cache) <= target_size + term_tol
     end
@@ -362,14 +362,14 @@ end
     term_tol = 3
 
     # multinomial_resample! keeps every term drawn, so at most target_size terms survive
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
+    cache = PropagationCache(deepcopy(base_psum))
     resample!(cache, target_size; resample_func=multinomial_resample!)
     @test 1 <= activesize(cache) <= target_size
 
     # the deduplicating variants' comb step is quantized, so the survivor count can land a
     # few terms above target_size, and may also land well below it if many terms deduplicate
     for f in (systematic_resample!, semideterministic_systematic_resample!)
-        cache = VectorPauliPropagationCache(deepcopy(base_psum))
+        cache = PropagationCache(deepcopy(base_psum))
         resample!(cache, target_size; resample_func=f)
         @test 1 <= activesize(cache) <= target_size + term_tol
     end
@@ -403,7 +403,7 @@ end
     # under squared=true, multinomial_resample! gives every survivor its draws' share of the *squared*
     # 2-norm, |coeff|^2 = n_draws * sum(abs2) / target_size, which conserves that norm. If squared were
     # dropped on the way to the resampler, the 1-norm would be conserved instead.
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
+    cache = PropagationCache(deepcopy(base_psum))
     resample!(cache, target_size; resample_func=multinomial_resample!, squared=true)
     @test sum(abs2, activecoeffs(cache)) ≈ sum(abs2, coefficients(base_psum))
 end

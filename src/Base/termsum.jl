@@ -332,38 +332,43 @@ end
 end
 
 """
+    mapcoeffs!(f, term_sum::AbstractTermSum)
+
+Replace every coefficient of `term_sum` by `f(coeff)`, leaving the terms as they are.
+Calls `_mapcoeffs!(StorageType(term_sum), f, term_sum)` internally.
+For custom behavior, overload `storage()` and/or `_mapcoeffs!` for the specific TermSum type.
+"""
+mapcoeffs!(f::F, term_sum::AbstractTermSum) where {F} = _mapcoeffs!(StorageType(term_sum), f, term_sum)
+
+_mapcoeffs!(::DictStorage, f::F, term_sum::AbstractTermSum) where {F} = (map!(f, values(storage(term_sum))); term_sum)
+_mapcoeffs!(::ArrayStorage, f::F, term_sum::AbstractTermSum) where {F} = (map!(f, coefficients(term_sum), coefficients(term_sum)); term_sum)
+
+# super slow default
+function _mapcoeffs!(::StorageType, f::F, term_sum::AbstractTermSum) where {F}
+    for (term, coeff) in term_sum
+        set!(term_sum, term, f(coeff))
+    end
+    return term_sum
+end
+
+"""
     mult!(term_sum::AbstractTermSum, scalar::Number)
 
 Multiply all coefficients in `term_sum` by `scalar`.
-Calls `mult!(StorageType(term_sum), term_sum, scalar)` internally.
-For custom behavior, overload `storage()` and/or `mult!` for the specific TermSum type.
 """
 function mult!(term_sum::AbstractTermSum, scalar::Number)
-    return _mult!(StorageType(term_sum), term_sum, scalar)
+    scale(coeff) = coeff * scalar
+    return mapcoeffs!(scale, term_sum)
 end
 
+"""
+    conj!(term_sum::AbstractTermSum)
+    conj(term_sum::AbstractTermSum)
 
-function _mult!(::DictStorage, term_sum::AbstractTermSum, scalar::Number)
-    dict_storage = storage(term_sum)
-    for (term, coeff) in dict_storage
-        dict_storage[term] = coeff * scalar
-    end
-    return term_sum
-end
-
-function _mult!(::ArrayStorage, term_sum::AbstractTermSum, scalar::Number)
-    terms_vec, coeffs_vec = storage(term_sum)
-    coeffs_vec .*= scalar
-    return term_sum
-end
-
-# super slow default
-function _mult!(::StorageType, term_sum::AbstractTermSum, scalar::Number)
-    for (term, coeff) in zip(terms(term_sum), coefficients(term_sum))
-        set!(term_sum, term, coeff * scalar)
-    end
-    return term_sum
-end
+Conjugate all coefficients in `term_sum`, in place or on a copy.
+"""
+Base.conj!(term_sum::AbstractTermSum) = mapcoeffs!(conj, term_sum)
+Base.conj(term_sum::AbstractTermSum) = coefftype(term_sum) <: Real ? deepcopy(term_sum) : conj!(deepcopy(term_sum))
 
 function Base.delete!(term_sum::AbstractTermSum, term)
     _delete!(StorageType(term_sum), term_sum, term)

@@ -47,10 +47,14 @@ _coefftype(::MultiSumStorage, prop_cache::AbstractPropagationCache) = coefftype(
 _numcoefftype(::MultiSumStorage, prop_cache::AbstractPropagationCache) = numcoefftype(mainsum(prop_cache))
 
 _activesum(::MultiSumStorage, prop_cache::AbstractPropagationCache) =
-    withzones(mainsum(prop_cache), map(activesum, zonecaches(prop_cache)))
+    Base.typename(typeof(mainsum(prop_cache))).wrapper(nsites(prop_cache), map(activesum, zonecaches(prop_cache)), zonemap(prop_cache))
 
-_resize!(::MultiSumStorage, prop_cache::AbstractPropagationCache, n_new::Int) =
-    _resizezones!(prop_cache, n_new)
+# the zone assignment spreads the terms evenly, so the zones take equal shares of the room
+function _resize!(::MultiSumStorage, prop_cache::AbstractPropagationCache, n_new::Int)
+    per_zone = cld(n_new, nzones(prop_cache))
+    foreach(zonecache -> resize!(zonecache, per_zone), zonecaches(prop_cache))
+    return prop_cache
+end
 
 # each zone is reduced on its own thread, with no tasks started inside a zone
 function _mapreducecoeffs(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, thread::Bool) where {F,O}
@@ -64,18 +68,16 @@ function _extractsum!(::MultiSumStorage, prop_cache::AbstractPropagationCache)
 end
 
 function _merge!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
-    _eachzone(prop_cache, thread) do zone_id
-        merge!(zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
-    end
+    merge_zone!(zone_id) = merge!(zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
+    _eachzone(merge_zone!, prop_cache, thread)
     return _syncsums!(prop_cache)
 end
 
 function _truncate!(::MultiSumStorage, truncfunc::F, prop_cache::AbstractPropagationCache;
     thread::Bool=true, kwargs...) where {F<:Function}
 
-    _eachzone(prop_cache, thread) do zone_id
-        truncate!(truncfunc, zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
-    end
+    truncate_zone!(zone_id) = truncate!(truncfunc, zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
+    _eachzone(truncate_zone!, prop_cache, thread)
 
     return _syncsums!(prop_cache)
 end
@@ -97,21 +99,6 @@ function _map_shifted_slots!(weight_func::W, new_coeff_func::F, zonecache, zone_
     shifted_new_coeff_func(coeff, slot_start, slot_end) = new_coeff_func(coeff, zone_slot_start + slot_start, zone_slot_start + slot_end)
     return mapslots!(weight_func, shifted_new_coeff_func, zonecache; thread=false)
 end
-
-"""
-    _resizezones!(prop_cache::AbstractPropagationCache, n_new::Int)
-
-Give the zones room for `n_new` terms between them, in equal shares because the zone assignment spreads the terms evenly.
-Each zone holds the terms it receives next to the terms it already has, so its share has to cover that peak and not only the terms that survive the gate.
-"""
-function _resizezones!(prop_cache::AbstractPropagationCache, n_new::Int)
-    per_zone = cld(n_new, nzones(prop_cache))
-    foreach(zonecache -> _reserve!(zonestorage(prop_cache), zonecache, per_zone), zonecaches(prop_cache))
-    return prop_cache
-end
-
-_reserve!(::DictStorage, zonecache, n_new::Int) = sizehint!(storage(mainsum(zonecache)), n_new)
-_reserve!(::ArrayStorage, zonecache, n_new::Int) = resize!(zonecache, n_new)
 
 
 ### Working the zones

@@ -213,22 +213,6 @@ PropagationBase.set!
 # TODO: in-place pauliprod()
 
 
-function Base.conj(psum::AbstractPauliSum)
-    CT = coefftype(psum)
-    if CT <: Real
-        return deepcopy(psum)
-    end
-
-    return conj!(deepcopy(psum))
-end
-
-function Base.conj!(psum::AbstractPauliSum)
-    for (pstr, coeff) in psum
-        set!(psum, pstr, conj(coeff))
-    end
-    return psum
-end
-
 """
     filter!(filterfunc::Function, psum::AbstractPauliSum)
 

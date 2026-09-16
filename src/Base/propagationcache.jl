@@ -179,12 +179,60 @@ function mult!(prop_cache::AbstractPropagationCache, scalar::Number)
     return prop_cache
 end
 
-Base.resize!(prop_cache::AbstractPropagationCache, new_size::Int) =
-    _resize!(StorageType(prop_cache), prop_cache, new_size)
+"""
+    add!(prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum)
 
-function _resize!(::StorageType, prop_cache::AbstractPropagationCache, new_size::Int)
-    _thrownotimplemented(prop_cache, :resize!)
+Add the terms of `term_sum` to the active terms of `prop_cache`.
+A dict-based cache merges them in as it goes, while an array-based one appends them unmerged past its active terms and leaves the merging to `merge!`.
+"""
+add!(prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum) = _add!(StorageType(prop_cache), prop_cache, term_sum)
+
+_add!(::DictStorage, prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum) =
+    (add!(mainsum(prop_cache), term_sum); prop_cache)
+
+function _add!(::ArrayStorage, prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum)
+    n_old = activesize(prop_cache)
+    n_new = n_old + length(term_sum)
+    n_new == n_old && return prop_cache
+
+    # the merge that follows takes its scratch from the room beyond the appended terms, so a cache
+    # that is only grown to hold them makes the merge allocate a tail of its own on every gate
+    n_room = n_new + (n_new - n_old)
+    capacity(prop_cache) < n_room && resize!(prop_cache, n_room + n_room >> 1)
+
+    copyto!(terms(mainsum(prop_cache)), n_old + 1, terms(term_sum), 1, length(term_sum))
+    copyto!(coefficients(mainsum(prop_cache)), n_old + 1, coefficients(term_sum), 1, length(term_sum))
+    setactivesize!(prop_cache, n_new)
+
+    return prop_cache
 end
+
+# emptying keeps the capacity, so the cache is ready to be filled again
+Base.empty!(prop_cache::AbstractPropagationCache) = _empty!(StorageType(prop_cache), prop_cache)
+_empty!(::DictStorage, prop_cache::AbstractPropagationCache) = (empty!(mainsum(prop_cache)); prop_cache)
+_empty!(::ArrayStorage, prop_cache::AbstractPropagationCache) =
+    (setactivesize!(prop_cache, 0); setsortedprefix!(mainsum(prop_cache), 0); prop_cache)
+
+"""
+    resize!(prop_cache::AbstractPropagationCache, n::Int)
+
+Give `prop_cache` room for `n` terms.
+A dict-based cache takes this as a size hint, while an array-based one resizes its arrays to `n`, which is its capacity, and keeps at most `n` terms active.
+"""
+Base.resize!(prop_cache::AbstractPropagationCache, n::Int) = _resize!(StorageType(prop_cache), prop_cache, n)
+
+_resize!(::DictStorage, prop_cache::AbstractPropagationCache, n::Int) = (sizehint!(storage(mainsum(prop_cache)), n); prop_cache)
+
+function _resize!(::ArrayStorage, prop_cache::AbstractPropagationCache, n::Int)
+    resize!(mainsum(prop_cache), n)
+    resize!(auxsum(prop_cache), n)
+    resize!(flags(prop_cache), n)
+    resize!(indices(prop_cache), n)
+    setactivesize!(prop_cache, min(activesize(prop_cache), n))
+    return prop_cache
+end
+
+_resize!(::StorageType, prop_cache::AbstractPropagationCache, n::Int) = _thrownotimplemented(prop_cache, :resize!)
 
 ## Back-conversions 
 
