@@ -60,6 +60,17 @@ export
     lastactiveindex,
     resize!
 
+include("./primitives.jl")
+export
+    mapterms,
+    mapterms!,
+    mapcoeffs,
+    mapcoeffs!,
+    sortterms,
+    sortterms!,
+    sortcoeffs,
+    sortcoeffs!
+
 include("./gates.jl")
 export
     Gate,

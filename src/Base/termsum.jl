@@ -332,26 +332,6 @@ end
 end
 
 """
-    mapcoeffs!(f, term_sum::AbstractTermSum)
-
-Replace every coefficient of `term_sum` by `f(coeff)`, leaving the terms as they are.
-Calls `_mapcoeffs!(StorageType(term_sum), f, term_sum)` internally.
-For custom behavior, overload `storage()` and/or `_mapcoeffs!` for the specific TermSum type.
-"""
-mapcoeffs!(f::F, term_sum::AbstractTermSum) where {F} = _mapcoeffs!(StorageType(term_sum), f, term_sum)
-
-_mapcoeffs!(::DictStorage, f::F, term_sum::AbstractTermSum) where {F} = (map!(f, values(storage(term_sum))); term_sum)
-_mapcoeffs!(::ArrayStorage, f::F, term_sum::AbstractTermSum) where {F} = (map!(f, coefficients(term_sum), coefficients(term_sum)); term_sum)
-
-# super slow default
-function _mapcoeffs!(::StorageType, f::F, term_sum::AbstractTermSum) where {F}
-    for (term, coeff) in term_sum
-        set!(term_sum, term, f(coeff))
-    end
-    return term_sum
-end
-
-"""
     mult!(term_sum::AbstractTermSum, scalar::Number)
 
 Multiply all coefficients in `term_sum` by `scalar`.

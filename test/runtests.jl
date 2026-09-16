@@ -43,6 +43,8 @@ using Random
 
     include("test_inplace.jl")
 
+    include("test_primitives.jl")
+
     include("test_gradient.jl")
 
     include("test_xortailmerge.jl")

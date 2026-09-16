@@ -164,7 +164,33 @@ function _add!(::MultiSumStorage, msum::AbstractTermSum, other::AbstractTermSum)
     return merge!(msum)
 end
 
-_mapcoeffs!(::MultiSumStorage, f::F, msum::AbstractTermSum) where {F} = (foreach(zone -> mapcoeffs!(f, zone), zones(msum)); msum)
+function _map!(::MultiSumStorage, transform, msum::AbstractTermSum; thread::Bool=true)
+    prop_cache = PropagationCache(msum)
+    map!(transform, prop_cache; thread)
+    return extractsum!(prop_cache, msum)
+end
+
+_mapcoeffs!(::MultiSumStorage, transform, msum::AbstractTermSum; thread::Bool=true) =
+    (foreach(zone -> mapcoeffs!(transform, zone; thread), zones(msum)); msum)
+
+function _filter!(::MultiSumStorage, keep, msum::AbstractTermSum; thread::Bool=true)
+    prop_cache = PropagationCache(msum)
+    filter!(keep, prop_cache; thread)
+    return extractsum!(prop_cache, msum)
+end
+
+function _sortterms!(::MultiSumStorage, msum::AbstractTermSum; kwargs...)
+    prop_cache = PropagationCache(msum)
+    sortterms!(prop_cache; kwargs...)
+    return extractsum!(prop_cache, msum)
+end
+
+function _sortcoeffs!(::MultiSumStorage, msum::AbstractTermSum; kwargs...)
+    prop_cache = PropagationCache(msum)
+    sortcoeffs!(prop_cache; kwargs...)
+    return extractsum!(prop_cache, msum)
+end
+
 _empty!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(empty!, zones(msum)); msum)
 function _copy!(::MultiSumStorage, dst_msum::AbstractTermSum, src_msum::AbstractTermSum)
     # a zone only holds the terms it owns, so copying across differing assignments loses ownership
@@ -202,4 +228,3 @@ _sizehint!(::MultiSumStorage, msum::AbstractTermSum, n) =
 
 # a p-norm over the zones' p-norms is the p-norm over all coefficients
 _norm(::MultiSumStorage, msum::AbstractTermSum, L::Real) = LinearAlgebra.norm((norm(zone, L) for zone in zones(msum)), L)
-
