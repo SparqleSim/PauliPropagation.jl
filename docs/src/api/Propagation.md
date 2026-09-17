@@ -15,20 +15,6 @@ Modules = [PauliPropagation]
 Pages = ["src/Propagation/specializations.jl"]
 ```
 
-## Vector Specializations
-
-```@autodocs
-Modules = [PauliPropagation]
-Pages = ["src/Propagation/vectorspecializations.jl"]
-```
-
-## MultiPauliSum Specializations
-
-```@autodocs
-Modules = [PauliPropagation]
-Pages = ["src/MultiPauliSum/gates.jl"]
-```
-
 ## Counting Pauli Strings
 
 ```@autodocs

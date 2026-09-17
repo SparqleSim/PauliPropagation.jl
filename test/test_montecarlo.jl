@@ -179,6 +179,41 @@ end
 end
 
 
+@testset "mcapplytoall! is written for every Pauli sum" begin
+    nq = 3
+    gate = PauliRotation([:X, :X], [1, 2])
+    gate_mask = symboltoint(nq, [:X, :X], [1, 2])
+    theta = 0.7
+    terms = [symboltoint(nq, :Z, 1), symboltoint(nq, :Z, 3), symboltoint(nq, [:Y, :Z], [2, 3])]
+    branches = Set(vcat(terms, [first(PP.paulirotationproduct(gate_mask, term)) for term in terms]))
+
+    # every term keeps one of its two branches, with unit weight when sampling squared coefficients
+    for psum in (PauliSum(nq, Dict(term => 1.0 for term in terms)), VectorPauliSum(nq, copy(terms), ones(3)))
+        sampled = mcapplytoall!(gate, psum, theta; squared=true, thread=false)
+        @test length(sampled) == 3
+        @test all(term in branches for (term, _) in sampled)
+        @test all(abs(coeff) ≈ 1 for coeff in coefficients(sampled))
+    end
+
+    # path properties count the branch a term keeps, and a Clifford gate counts nothing
+    Random.seed!(7)
+    plain = mcapplytoall!(gate, VectorPauliSum(nq, copy(terms), ones(3)), theta; thread=false)
+    Random.seed!(7)
+    tracked = mcapplytoall!(gate, VectorPauliSum(nq, copy(terms), PauliFreqTracker.(ones(3))), theta; thread=false)
+
+    @test paulis(tracked) == paulis(plain)
+    @test [coeff.coeff for coeff in coefficients(tracked)] ≈ coefficients(plain)
+    for (term, coeff) in zip(terms, coefficients(tracked))
+        @test coeff.freq == coeff.nsins + coeff.ncos == !commutes(gate_mask, term)
+    end
+
+    counts = [(coeff.nsins, coeff.ncos, coeff.freq) for coeff in coefficients(tracked)]
+    mcapplytoall!(CliffordGate(:H, 1), plain; thread=false)
+    mcapplytoall!(CliffordGate(:H, 1), tracked; thread=false)
+    @test [coeff.coeff for coeff in coefficients(tracked)] ≈ coefficients(plain)
+    @test [(coeff.nsins, coeff.ncos, coeff.freq) for coeff in coefficients(tracked)] == counts
+end
+
 @testset "mcsample converts PauliString and PauliSum inputs" begin
     nq = 3
     circuit = efficientsu2circuit(nq, 1)

@@ -33,9 +33,9 @@ Pages = ["src/Propagation/generics.jl"]
 Filter = t -> t in (PauliPropagation.mcsample, PauliPropagation.mcsample!)
 ```
 
-### VectorPauliSum Specialization
+### Specializations
 
 ```@autodocs
 Modules = [PauliPropagation]
-Pages = ["src/Propagation/vectormontecarlo.jl"]
+Pages = ["src/Propagation/mcsample.jl"]
 ```
