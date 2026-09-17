@@ -10,17 +10,8 @@
 # This is particularly useful for overlaps with stabilizer states.
 # An example `orthogonalfunc` is `containsXorY` which returns true if a Pauli string contains an X or Y Pauli.
 function overlapbyorthogonality(orthogonalfunc::F, psum) where {F<:Function}
-    if length(psum) == 0
-        return 0.0
-    end
-
-    val = zero(numcoefftype(psum))
-    for (pstr, coeff) in zip(paulis(psum), coefficients(psum))
-        if overlapbyorthogonality(orthogonalfunc, pstr)
-            val += tonumber(coeff)
-        end
-    end
-    return val
+    overlap_term(pstr, coeff) = overlapbyorthogonality(orthogonalfunc, pstr) * tonumber(coeff)
+    return mapreduce(overlap_term, +, psum; init=zero(numcoefftype(psum)))
 end
 
 
@@ -29,7 +20,7 @@ function overlapbyorthogonality(orthogonalfunc::F, pstr::PauliString) where {F<:
 end
 
 
-function overlapbyorthogonality(orthogonalfunc::F, pstr::PauliStringType) where {F<:Function}
+function overlapbyorthogonality(orthogonalfunc::F, pstr) where {F<:Function}
     return !orthogonalfunc(pstr)
 end
 
@@ -66,15 +57,8 @@ If |x><x| is a computational basis state, it we compute Tr[psum * |x><x|] = <x|p
 For example, `overlapwithcomputational(psum, [1,2,4])` returns the overlap with `|1101000...>`.
 """
 function overlapwithcomputational(psum, onebitinds)
-    if length(psum) == 0
-        return zero(numcoefftype(psum))
-    end
-
-    val = zero(numcoefftype(psum))
-    for (pstr, coeff) in zip(paulis(psum), coefficients(psum))
-        val += tonumber(coeff) * _calcsignwithones(pstr, onebitinds)
-    end
-    return val
+    signed_coeff(pstr, coeff) = tonumber(coeff) * _calcsignwithones(pstr, onebitinds)
+    return mapreduce(signed_coeff, +, psum; init=zero(numcoefftype(psum)))
 end
 
 
@@ -83,7 +67,7 @@ function overlapwithcomputational(pstr::PauliString, onebitinds)
 end
 
 
-function _calcsignwithones(pstr::PauliStringType, onebitinds)
+function _calcsignwithones(pstr, onebitinds)
 
     # factor is zero unless pstr is entirely I and Z
     if containsXorY(pstr)
@@ -147,23 +131,13 @@ function scalarproduct(psum1::AbstractPauliSum, psum2::AbstractPauliSum)
 end
 
 function _scalarproduct(lookup_psum, loop_psum)
-
     _checknumberofqubits(lookup_psum, loop_psum)
 
     CType = promote_type(numcoefftype(lookup_psum), numcoefftype(loop_psum))
-
-    val = float(zero(CType))
-
-    if length(lookup_psum) == 0 || length(loop_psum) == 0
-        return val
-    end
+    coeff_product(pstr, coeff) = tonumber(getcoeff(lookup_psum, pstr)) * tonumber(coeff)
 
     # looping over the iter psum because we are only looking for collisions
-    for (pstr, coeff) in zip(paulis(loop_psum), coefficients(loop_psum))
-        val += tonumber(getcoeff(lookup_psum, pstr)) * tonumber(coeff)
-    end
-    return val
-
+    return mapreduce(coeff_product, +, loop_psum; init=float(zero(CType)))
 end
 
 
@@ -197,28 +171,28 @@ end
 
 Return a filtered Pauli sum with only Pauli strings that are not orthogonal to the zero state |0><0|.
 """
-zerofilter(psum) = truncate!((pstr, coeff) -> containsXorY(pstr), deepcopy(psum))
+zerofilter(psum) = filterterms(!containsXorY, psum)
 
 """
     zerofilter!(psum)
 
 Filter a Pauli sum in-place with only Pauli strings that are not orthogonal to the zero state |0><0|.
 """
-zerofilter!(psum) = truncate!((pstr, coeff) -> containsXorY(pstr), psum)
+zerofilter!(psum) = filterterms!(!containsXorY, psum)
 
 """
     plusfilter(psum)
 
 Return a filtered Pauli sum with only Pauli strings that are not orthogonal to the plus state |+><+|.
 """
-plusfilter(psum) = truncate!((pstr, coeff) -> containsYorZ(pstr), deepcopy(psum))
+plusfilter(psum) = filterterms(!containsYorZ, psum)
 
 """
-    zerofilter!(psum)
+    plusfilter!(psum)
 
 Filter a Pauli sum in-place with only Pauli strings that are not orthogonal to the plus state |+><+|.
 """
-plusfilter!(psum) = truncate!((pstr, coeff) -> containsYorZ(pstr), psum)
+plusfilter!(psum) = filterterms!(!containsYorZ, psum)
 
 
 
