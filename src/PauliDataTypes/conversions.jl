@@ -130,7 +130,7 @@ convertcoefftype(Float64, psum)
 ```
 """
 function convertcoefftype(::Type{CT1}, psum::PauliSum{TT,CT2}) where {TT,CT1,CT2}
-    return PauliSum(psum.nqubits, convert(Dict{TT,CT1}, psum.terms))
+    return PauliSum(psum.nqubits, Dict{TT,CT1}(psum.terms))
 end
 
 """
@@ -145,7 +145,7 @@ convertcoefftype(Float64, vpsum)
 ```
 """
 function convertcoefftype(::Type{CT1}, vpsum::VectorPauliSum) where {CT1}
-    return VectorPauliSum(vpsum.nqubits, copy(vpsum.terms), convert(Vector{CT1}, vpsum.coeffs), vpsum._terms_sorted)
+    return VectorPauliSum(vpsum.nqubits, copy(vpsum.terms), Vector{CT1}(vpsum.coeffs), vpsum._terms_sorted)
 end
 
 
