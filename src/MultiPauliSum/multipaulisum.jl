@@ -27,9 +27,6 @@ Splitting a `PauliSum` gives zones of `PauliSum`s and splitting a `VectorPauliSu
 `n_zones` must be a power of two, which makes the zone assignment linear in the Pauli string and lets `PauliRotation` and the other gates that branch by a fixed bitmask take a faster path.
 See `ZoneMap`.
 
-`mcpropagate()` and `resample()` take a `MultiPauliSum` and resample it zone by zone; `mcsample()` gathers it into a `VectorPauliSum` and splits the result back.
-`rewindgradient()` runs both of its sweeps zone by zone.
-
 # Examples
 ```julia
 MultiPauliSum(4)                                # empty, on 4 qubits, over as many zones as threads
@@ -86,17 +83,3 @@ end
 Base.convert(::Type{PauliSum}, msum::MultiPauliSum) = PauliSum(msum)
 Base.convert(::Type{VectorPauliSum}, msum::MultiPauliSum) = VectorPauliSum(msum)
 
-"""
-    mcsample(circuit, msum::MultiPauliSum, params=nothing; squared=false, heisenberg=true, thread=true, kwargs...)
-
-Monte Carlo path sampling of a `MultiPauliSum` (see `mcsample`).
-`msum` is gathered into a `VectorPauliSum` and split back over the same zones on return, leaving `msum` unchanged.
-"""
-function PropagationBase.mcsample(circuit, msum::MultiPauliSum, params=nothing; kwargs...)
-    vpsum = mcsample!(circuit, VectorPauliSum(msum), params; kwargs...)
-    return add!(emptylike(msum), vpsum)
-end
-
-function PropagationBase.mcsample!(circuit, msum::MultiPauliSum, params=nothing; kwargs...)
-    throw(ArgumentError("`mcsample!` is not defined for `MultiPauliSum`. Use the out-of-place `mcsample`, or convert via `VectorPauliSum(msum)`."))
-end
