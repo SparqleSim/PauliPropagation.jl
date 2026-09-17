@@ -20,7 +20,7 @@ function overlapbyorthogonality(orthogonalfunc::F, pstr::PauliString) where {F<:
 end
 
 
-function overlapbyorthogonality(orthogonalfunc::F, pstr) where {F<:Function}
+function overlapbyorthogonality(orthogonalfunc::F, pstr::Integer) where {F<:Function}
     return !orthogonalfunc(pstr)
 end
 
