@@ -36,33 +36,15 @@ PropagationBase.numcoefftype(::Type{PauliFreqTracker{T}}) where {T<:Number} = T
 
 # Overload of `applytoall!` for `PauliRotation` gates acting onto Pauli sums with `PathProperties` coefficients. 
 function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropagationCache{PauliSum{TT,PProp}}, theta; kwargs...) where {TT,PProp<:PathProperties}
-
-    psum = mainsum(prop_cache)
-    aux_psum = auxsum(prop_cache)
-
-    # compute the bitmask of the gate generator for faster operations
     gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
 
-    # loop over all Pauli strings and their coefficients in the Pauli sum
-    for (pstr, coeff) in psum
-
-        if commutes(gate_mask, pstr)
-            # if the gate commutes with the pauli string, do nothing
-            continue
-        end
-
-        # else we know the gate will split th Pauli string into two
-        pstr, coeff1, new_pstr, coeff2 = splitapply(gate_mask, pstr, coeff, theta; kwargs...)
-
-        # set the coefficient of the original Pauli string
-        set!(psum, pstr, coeff1)
-
-        # set the coefficient of the new Pauli string in the aux_psum
-        # we can set the coefficient because PauliRotations create non-overlapping new Pauli strings
-        set!(aux_psum, new_pstr, coeff2)
+    function rotate(pstr, coeff)
+        commutes(gate_mask, pstr) && return nothing
+        _, kept_coeff, _, new_coeff = splitapply(gate_mask, pstr, coeff, theta; kwargs...)
+        return (kept_coeff, new_coeff)
     end
 
-    return prop_cache
+    return xorbranch!(rotate, prop_cache, gate_mask; thread=get(kwargs, :thread, true))
 end
 
 ## Specializations for PauliRotations that increment the nsins, ncos, and freq
