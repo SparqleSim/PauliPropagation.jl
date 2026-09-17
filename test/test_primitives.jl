@@ -1,3 +1,15 @@
+function test_reducers(thing)
+    @test mapreducecoeffs(identity, *, thing; init=1.0) == -24.0
+    @test mapreducecoeffs(identity, min, thing; init=Inf) == -2.0
+    @test mapreduce((term, coefficient) -> term + coefficient, max, thing; init=-Inf) == 7.0
+
+    add_reducer = (left, right) -> left + right
+    @test_throws ErrorException mapreducecoeffs(abs, add_reducer, thing; init=0.0)
+    @test mapreducecoeffs(abs, add_reducer, thing; init=0.0, neutral=0.0) == 9.0
+end
+
+const REDUCTION_SUM = PauliSum(2, Dict{UInt8,Float64}(0x01 => -2.0, 0x02 => 3.0, 0x03 => 4.0))
+
 @testset "Term sum primitives" begin
     dict_sum = PauliSum(2, Dict{UInt8,Float64}(0x01 => 1.0, 0x02 => -2.0, 0x03 => 3.0))
 
@@ -12,6 +24,8 @@
     @test mapreducecoeffs(abs, +, dict_sum) == 4.0
     @test mapreduce((term, coefficient) -> term * coefficient, +, dict_sum) == 10.0
 
+    test_reducers(REDUCTION_SUM)
+
     filtered_terms = filterterms(term -> term != 0x01, dict_sum)
     @test length(filtered_terms) == 1
     @test getcoeff(filtered_terms, 0x03) == 3.0
@@ -21,6 +35,12 @@
     @test collect(PauliPropagation.PropagationBase.terms(vector_sum)) == UInt8[0x01, 0x02, 0x03]
     @test PauliPropagation.PropagationBase.sortedprefix(vector_sum) == 3
     @test getcoeff(vector_sum, 0x02) == 2.0
+    test_reducers(VectorPauliSum(REDUCTION_SUM))
+    test_reducers(MultiPauliSum(VectorPauliSum(REDUCTION_SUM), 2))
+
+    # More than two chunks with eight threads: every chunk must start from `one`, not `zero(init)`.
+    parallel_product = VectorPauliSum(2, fill(UInt8(0x01), 32_769), ones(32_769))
+    @test mapreducecoeffs(identity, *, parallel_product; init=2.0, thread=true) == 2.0
 
     duplicated_sum = VectorPauliSum(2, UInt8[0x03, 0x01, 0x02, 0x01], [3.0, 1.0, 2.0, 1.0])
     sortterms!(duplicated_sum)
@@ -61,6 +81,7 @@ end
     @test collect(coefficients(cache)) == [3.0, 2.0]
     @test mapreducecoeffs(abs, +, cache) == 5.0
     @test mapreduce((term, coefficient) -> (term + 1) * coefficient, +, cache) == 7.0
+    test_reducers(PropagationCache(VectorPauliSum(REDUCTION_SUM)))
 
     multi_cache = PropagationCache(MultiPauliSum(
         VectorPauliSum(2, UInt8[0x01, 0x02, 0x03], [1.0, -2.0, 3.0]), 2))
@@ -71,6 +92,8 @@ end
 
     @test length(multi_cache) == 2
     @test mapreduce((term, coefficient) -> (term + 1) * coefficient, +, multi_cache) == 7.0
+    test_reducers(PropagationCache(MultiPauliSum(VectorPauliSum(REDUCTION_SUM), 2)))
+    @test mapreducecoeffs(identity, *, VectorPauliSum(2); init=3.0) == 3.0
     @test all(
         all(
             term -> PauliPropagation.PropagationBase.zoneof(multi_cache, term) == zone_id,

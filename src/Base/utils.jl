@@ -12,6 +12,7 @@ end
 
 # for CPU-only code using Threads.@spawn
 # GPU extensions override this for their array for fallback functionality
+# TODO: Use AK method to check whether an array is on GPU.
 _iscpuarray(::AbstractArray) = true
 
 function _thrownotimplemented(::Type{T}, func_name::Symbol) where T

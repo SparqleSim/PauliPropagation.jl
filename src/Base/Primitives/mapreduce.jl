@@ -1,17 +1,22 @@
 """
-    mapreduce(mapper, reducer, term_sum::AbstractTermSum; init, thread=true)
-    mapreduce(mapper, reducer, prop_cache::AbstractPropagationCache; init, thread=true)
+    mapreduce(mapper, reducer, term_sum::AbstractTermSum; init, neutral, thread=true)
+    mapreduce(mapper, reducer, prop_cache::AbstractPropagationCache; init, neutral, thread=true)
 
 Reduce `mapper(term, coefficient)` with `reducer` over the `(term, coefficient)` pairs of `term_sum`,
 or over the active pairs of `prop_cache`. `init` defaults to the zero of the real coefficient type.
+`neutral` is the identity used to reduce independent chunks. It is inferred for the standard
+reductions supported by `AcceleratedKernels`; pass it explicitly for a custom reducer. `init` is
+applied exactly once, after those chunks have been combined.
 """
 function Base.mapreduce(mapper, reducer, thing::Union{AbstractTermSum,AbstractPropagationCache};
-    init=zero(real(numcoefftype(thing))), thread::Bool=true)
+    init=zero(real(numcoefftype(thing))), neutral=_DEFAULT_REDUCTION_NEUTRAL, thread::Bool=true)
 
-    return _mapreduce(StorageType(thing), mapper, reducer, thing; init, thread)
+    mappedtype = Base.promote_op(mapper, termtype(thing), coefftype(thing))
+    neutral = _reductionneutral(neutral, reducer, mappedtype)
+    return _mapreduce(StorageType(thing), mapper, reducer, thing; init, neutral, thread)
 end
 
-function _mapreduce(::DictStorage, mapper::F, reducer::O, thing; init, thread::Bool) where {F,O}
+function _mapreduce(::DictStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O}
     accumulated = init
     for (term, coefficient) in thing
         accumulated = reducer(accumulated, @inline mapper(term, coefficient))
@@ -20,27 +25,29 @@ function _mapreduce(::DictStorage, mapper::F, reducer::O, thing; init, thread::B
 end
 
 # The pairs are reduced by index, so the backend of the arrays has to be named.
-function _mapreduce(::ArrayStorage, mapper::F, reducer::O, thing; init, thread::Bool) where {F,O}
+function _mapreduce(::ArrayStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O}
     active_terms = terms(thing)
     active_coefficients = coefficients(thing)
 
     if _iscpuarray(active_terms)
-        return _mapreducecpu(mapper, reducer, active_terms, active_coefficients; init, thread)
+        return _mapreducecpu(mapper, reducer, active_terms, active_coefficients; init, neutral, thread)
     end
 
     map_index(index) = @inbounds @inline mapper(active_terms[index], active_coefficients[index])
     return AK.mapreduce(map_index, reducer, eachindex(active_coefficients), AK.get_backend(active_coefficients);
-        init, neutral=zero(init), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+        init, neutral, max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 end
 
-# Every task reduces its part from `zero(init)` on the workers of the propagation in progress.
-function _mapreducecpu(mapper::F, reducer::O, terms, coefficients; init, thread::Bool) where {F,O}
+# Every task reduces its part from the reducer's identity on the workers of the propagation in progress.
+function _mapreducecpu(mapper::F, reducer::O, terms, coefficients; init, neutral, thread::Bool) where {F,O}
     task_partitioner, n_tasks = _preparetasks(length(terms), thread)
-    partials = Vector{typeof(init)}(undef, n_tasks)
+    mappedtype = Base.promote_op(mapper, eltype(terms), eltype(coefficients))
+    partialtype = Base.promote_op(reducer, typeof(neutral), mappedtype)
+    partials = Vector{partialtype}(undef, n_tasks)
 
     function reduce_chunk!(task_id)
         chunk = task_partitioner[task_id]
-        partials[task_id] = _mapreducerange(mapper, reducer, terms, coefficients, chunk.start, chunk.stop, zero(init))
+        partials[task_id] = _mapreducerange(mapper, reducer, terms, coefficients, chunk.start, chunk.stop, neutral)
     end
     _eachtask(reduce_chunk!, n_tasks)
 
@@ -56,23 +63,37 @@ end
 
 
 """
-    mapreducecoeffs(mapper, reducer, term_sum::AbstractTermSum; init, thread=true)
-    mapreducecoeffs(mapper, reducer, prop_cache::AbstractPropagationCache; init, thread=true)
+    mapreducecoeffs(mapper, reducer, term_sum::AbstractTermSum; init, neutral, thread=true)
+    mapreducecoeffs(mapper, reducer, prop_cache::AbstractPropagationCache; init, neutral, thread=true)
 
 Reduce `mapper(coefficient)` with `reducer` over the coefficients of `term_sum`, or over the active
 coefficients of `prop_cache`. `init` defaults to the zero of the real coefficient type.
+`neutral` follows the same rules as [`mapreduce`](@ref): it is the identity used for independent
+chunks, while `init` is applied once to the completed reduction.
 """
 function mapreducecoeffs(mapper, reducer, thing::Union{AbstractTermSum,AbstractPropagationCache};
-    init=zero(real(numcoefftype(thing))), thread::Bool=true)
+    init=zero(real(numcoefftype(thing))), neutral=_DEFAULT_REDUCTION_NEUTRAL, thread::Bool=true)
 
-    return _mapreducecoeffs(StorageType(thing), mapper, reducer, thing; init, thread)
+    mappedtype = Base.promote_op(mapper, coefftype(thing))
+    neutral = _reductionneutral(neutral, reducer, mappedtype)
+    return _mapreducecoeffs(StorageType(thing), mapper, reducer, thing; init, neutral, thread)
 end
 
-_mapreducecoeffs(::DictStorage, mapper, reducer, thing; init, thread::Bool) =
+_mapreducecoeffs(::DictStorage, mapper, reducer, thing; init, neutral, thread::Bool) =
     mapreduce(mapper, reducer, coefficients(thing); init)
 
-# Every task starts from `zero(init)`, which serves addition and maximum reductions over
-# non-negative mapped coefficients.
-_mapreducecoeffs(::ArrayStorage, mapper, reducer, thing; init, thread::Bool) =
-    AK.mapreduce(mapper, reducer, coefficients(thing); init, neutral=zero(init),
+# `AcceleratedKernels` handles CPU and accelerator arrays here; both need the same chunk identity.
+_mapreducecoeffs(::ArrayStorage, mapper, reducer, thing; init, neutral, thread::Bool) =
+    AK.mapreduce(mapper, reducer, coefficients(thing); init, neutral,
         max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+
+
+struct _DefaultReductionNeutral end
+const _DEFAULT_REDUCTION_NEUTRAL = _DefaultReductionNeutral()
+
+# AcceleratedKernels supplies the identities required to reduce chunks, including typemax(T) for
+# min and typemin(T) for max. Its fallback asks callers to provide a neutral for a custom reducer.
+_reductionneutral(::_DefaultReductionNeutral, reducer, mappedtype) =
+    AK.neutral_element(reducer, mappedtype)
+
+_reductionneutral(neutral, reducer, mappedtype) = neutral
