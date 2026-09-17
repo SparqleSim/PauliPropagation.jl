@@ -123,7 +123,8 @@ function mcapplytoalltruncateinplace!(gate, psum::VectorPauliSum, args...; squar
         return is_truncated
     end
 
-    zero_if_truncated(pstr, coeff) = istruncated(pstr, coeff) ? zero(coeff) : coeff
+    zero_coeff = zero(coefftype(psum))
+    zero_if_truncated(pstr, coeff) = istruncated(pstr, coeff) ? zero_coeff : coeff
     mapcoeffsbypair!(zero_if_truncated, psum)
 
     return psum
