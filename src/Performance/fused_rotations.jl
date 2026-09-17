@@ -25,6 +25,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotati
             min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
+    _checkunusedkwargs(kwargs)
     return _fusedrotation!(gate, prop_cache, cos(theta), sin(theta), false;
         min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
 end
@@ -45,6 +46,7 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
             normalize_coeffs, min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
+    _checkunusedkwargs(kwargs)
     _fusedrotation!(gate, prop_cache, cosh(tau), sinh(tau), true;
         min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
 
@@ -54,6 +56,12 @@ function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPa
     end
 
     return prop_cache
+end
+
+# the fused path truncates in one pass, so an option it does not implement must not be silently dropped
+function _checkunusedkwargs(kwargs)
+    isempty(kwargs) && return
+    throw(ArgumentError("keyword arguments $(join(keys(kwargs), ", ")) are not supported by Performance.propagate"))
 end
 
 # Both rotations branch by the gate's Pauli string: a `PauliRotation` the terms that anticommute
