@@ -121,7 +121,10 @@ Defaults to `true`.
 Overload it to return `false` for a gate and cache whose `applytoall!` never creates duplicate terms.
 Such an `applytoall!` must then leave all terms in `mainsum(prop_cache)` and `auxsum(prop_cache)` empty, because nothing is moved back afterwards.
 """
-requiresmerging(gate, prop_cache::AbstractPropagationCache) = true
+requiresmerging(gate, prop_cache::AbstractPropagationCache) = requiresmerging(gate)
+
+# one-argument fallback so gate-only overloads keep working
+requiresmerging(gate) = true
 
 """
     applytoall!(gate, prop_cache::AbstractPropagationCache; kwargs...)
