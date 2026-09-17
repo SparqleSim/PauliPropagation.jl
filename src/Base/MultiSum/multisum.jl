@@ -204,14 +204,9 @@ function _copy!(::MultiSumStorage, dst_msum::AbstractTermSum, src_msum::Abstract
     return dst_msum
 end
 
-# a term sum merges and truncates without a `thread` argument, so these run the zones in turn and let
-# each zone thread inside. The zone-parallel versions are the ones on the propagation cache.
+# a term sum merges without a `thread` argument, so this runs the zones in turn and lets each zone
+# thread inside. The zone-parallel version is the one on the propagation cache.
 _merge!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(merge!, zones(msum)); msum)
-
-function _truncate!(::MultiSumStorage, truncfunc::F, msum::AbstractTermSum; kwargs...) where {F<:Function}
-    foreach(zone -> truncate!(truncfunc, zone; kwargs...), zones(msum))
-    return msum
-end
 
 _mapreducecoeffs(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, thread::Bool) where {F,O} =
     mapreduce(zone -> mapreducecoeffs(f, op, zone; init=zero(init), thread), op, zones(msum); init)

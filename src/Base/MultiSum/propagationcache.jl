@@ -129,15 +129,6 @@ function _merge!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread
     return _syncsums!(prop_cache)
 end
 
-function _truncate!(::MultiSumStorage, truncfunc::F, prop_cache::AbstractPropagationCache;
-    thread::Bool=true, kwargs...) where {F<:Function}
-
-    truncate_zone!(zone_id) = truncate!(truncfunc, zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
-    _eachzone(truncate_zone!, prop_cache, thread)
-
-    return _syncsums!(prop_cache)
-end
-
 # the slots of a zone follow those of the zones before it
 function _mapslots!(::MultiSumStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F}
     total_zone_weight(zonecache) = mapreducecoeffs(weight_func, +, zonecache; thread=false)

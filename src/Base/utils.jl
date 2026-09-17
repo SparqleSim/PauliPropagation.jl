@@ -1,7 +1,5 @@
 tonumber(x::Number) = x
 
-_invertfunc(func::F) where {F<:Function} = args -> !func(args...)
-
 # the positions of the set bits of `mask`, ascending
 function _masksetbits(mask::TT) where {TT}
     bits = Int[]
