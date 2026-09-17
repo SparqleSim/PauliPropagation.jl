@@ -91,3 +91,55 @@ end
     # sanity check: matching dimensions do not throw
     @test translationmerge(input_psum, 2, 3) isa PauliSum
 end
+
+@testset "symmetrymerge takes the map first and works on every backend" begin
+    nq = 6
+    input_psum = get_psum(nq)
+    expected_psum = translationmerge(input_psum)
+    mapfunc = pstr -> PauliPropagation._translatetolowestinteger(pstr, nq)
+
+    @test symmetrymerge(mapfunc, input_psum) == expected_psum
+    @test PauliSum(symmetrymerge(mapfunc, VectorPauliSum(input_psum))) == expected_psum
+    @test PauliSum(symmetrymerge(mapfunc, MultiPauliSum(input_psum, 4))) == expected_psum
+    @test PauliSum(symmetrymerge(mapfunc, MultiPauliSum(VectorPauliSum(input_psum), 4))) == expected_psum
+    @test PauliSum(symmetrymerge(mapfunc, PropagationCache(VectorPauliSum(input_psum)))) == expected_psum
+end
+
+@testset "translationmerge! merges in place and returns its input" begin
+    nq = 6
+    nx, ny = 3, 2
+    expected_1d = translationmerge(get_psum(nq))
+    expected_2d = translationmerge(get_psum(nq), nx, ny)
+
+    for tosum in (identity, VectorPauliSum, psum -> MultiPauliSum(psum, 4))
+        psum_1d = tosum(get_psum(nq))
+        @test translationmerge!(psum_1d) === psum_1d
+        @test PauliSum(psum_1d) == expected_1d
+
+        psum_2d = tosum(get_psum(nq))
+        @test translationmerge!(psum_2d, nx, ny) === psum_2d
+        @test PauliSum(psum_2d) == expected_2d
+    end
+
+    prop_cache = PropagationCache(VectorPauliSum(get_psum(nq)))
+    @test translationmerge!(prop_cache) === prop_cache
+    @test PauliSum(prop_cache) == expected_1d
+end
+
+@testset "translationmerge! on a propagated cache" begin
+    # propagate! leaves a full sorted prefix behind, which remapping the terms must invalidate
+    # so that merge! deduplicates instead of taking the sorted-tail path
+    nq = 6
+    circuit = [PauliRotation([:X, :X], [1, 2]), PauliRotation([:Y, :Y], [3, 4])]
+    thetas = [0.3, 0.7]
+    expected = translationmerge!(propagate(circuit, get_psum(nq), thetas; min_abs_coeff=0.0))
+
+    for psum in (get_psum(nq), VectorPauliSum(get_psum(nq)), MultiPauliSum(get_psum(nq), 4))
+        prop_cache = PropagationCache(psum)
+        propagate!(circuit, prop_cache, thetas; min_abs_coeff=0.0)
+        translationmerge!(prop_cache)
+
+        @test PauliSum(prop_cache) == expected
+        @test length(prop_cache) == length(expected)
+    end
+end
