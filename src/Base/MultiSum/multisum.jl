@@ -208,6 +208,9 @@ end
 # thread inside. The zone-parallel version is the one on the propagation cache.
 _merge!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(merge!, zones(msum)); msum)
 
+_mapreduce(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, thread::Bool) where {F,O} =
+    mapreduce(zone -> mapreduce(f, op, zone; init=zero(init), thread), op, zones(msum); init)
+
 _mapreducecoeffs(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, thread::Bool) where {F,O} =
     mapreduce(zone -> mapreducecoeffs(f, op, zone; init=zero(init), thread), op, zones(msum); init)
 

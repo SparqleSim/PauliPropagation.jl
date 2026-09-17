@@ -113,6 +113,11 @@ function _resize!(::MultiSumStorage, prop_cache::AbstractPropagationCache, n_new
 end
 
 # each zone is reduced on its own thread, with no tasks started inside a zone
+function _mapreduce(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, thread::Bool) where {F,O}
+    reduce_zone(zonecache) = mapreduce(f, op, zonecache; init=zero(init), thread=false)
+    return reduce(op, _zonevalues(reduce_zone, typeof(init), prop_cache, thread); init)
+end
+
 function _mapreducecoeffs(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, thread::Bool) where {F,O}
     reduce_zone(zonecache) = mapreducecoeffs(f, op, zonecache; init=zero(init), thread=false)
     return reduce(op, _zonevalues(reduce_zone, typeof(init), prop_cache, thread); init)
