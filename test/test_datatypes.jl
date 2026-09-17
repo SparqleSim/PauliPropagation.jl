@@ -371,25 +371,37 @@ end
     @test sortedprefix(vpsum3) == 0
 end
 
-@testset "getmergedcoeff sortedprefix speedup" begin
+@testset "getcoeff sortedprefix speedup" begin
     nq = 6
-    pstrs = [createpaulistring(nq) for _ in 1:8]
-    vpsum = VectorPauliSum(pstrs)
-    sort!(vpsum)  # dedup isn't needed here, just a valid ascending order for the sorted view
+    terms = UInt16[0x01, 0x03, 0x05, 0x07]
+    coeffs = [1.0, -2.0, 3.0, -4.0]
+    vpsum = VectorPauliSum(nq, terms, coeffs)
 
     n = length(vpsum)
     linearscan(term_sum, trm) = begin
-        i = findfirst(==(trm), PauliPropagation.paulis(term_sum))
-        isnothing(i) ? zero(PauliPropagation.coefftype(term_sum)) : PauliPropagation.coefficients(term_sum)[i]
+        val = zero(PauliPropagation.coefftype(term_sum))
+        for (term, coeff) in term_sum
+            if term == trm
+                val += coeff
+            end
+        end
+        return val
     end
 
     # every present term, from every possible split point between "sorted head" and "unsorted tail"
     for n_sorted in 0:n
         PauliPropagation.setsortedprefix!(vpsum, n_sorted)
         for trm in PauliPropagation.paulis(vpsum)
-            @test PauliPropagation.getmergedcoeff(vpsum, trm) == linearscan(vpsum, trm)
+            @test PauliPropagation.getcoeff(vpsum, trm) == linearscan(vpsum, trm)
         end
-        # and a term guaranteed absent (identity, assuming none of the random strings are trivial)
-        @test PauliPropagation.getmergedcoeff(vpsum, zero(PauliPropagation.paulitype(vpsum))) == linearscan(vpsum, zero(PauliPropagation.paulitype(vpsum)))
+        # and a term guaranteed absent (the identity)
+        @test PauliPropagation.getcoeff(vpsum, zero(PauliPropagation.paulitype(vpsum))) == linearscan(vpsum, zero(PauliPropagation.paulitype(vpsum)))
     end
+
+    @test PauliPropagation.getmergedcoeff(vpsum, terms[2]) == coeffs[2]
+    PauliPropagation.setsortedprefix!(vpsum, n - 1)
+    @test_throws AssertionError PauliPropagation.getmergedcoeff(vpsum, terms[2])
+
+    push!(vpsum, terms[2], 0.5)
+    @test PauliPropagation.getcoeff(vpsum, terms[2]) == coeffs[2] + 0.5
 end

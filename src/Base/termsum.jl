@@ -94,17 +94,18 @@ end
 # binary-search the known-sorted (and thus dedup) prefix for at most one match, then
 # linear-scan the remaining tail summing all matches (duplicates may still be present there)
 function _getcoeff(::ArrayStorage, term_sum::AbstractTermSum, trm)
-    terms_vec, coeffs_vec = storage(term_sum)
     n_sorted = sortedprefix(term_sum)
+    if n_sorted == length(term_sum)
+        return getmergedcoeff(term_sum, trm)
+    end
+
+    terms_vec, coeffs_vec = storage(term_sum)
 
     val = zero(coefftype(term_sum))
 
-    if n_sorted > 0
-        sorted_view = view(terms_vec, 1:n_sorted)
-        i = searchsortedfirst(sorted_view, trm)
-        if i <= n_sorted && sorted_view[i] == trm
-            val += coeffs_vec[i]
-        end
+    i = searchsortedfirst(terms_vec, trm, 1, n_sorted, Base.Order.Forward)
+    if i <= n_sorted && terms_vec[i] == trm
+        val += coeffs_vec[i]
     end
 
     for i in (n_sorted+1):length(terms_vec)
@@ -127,8 +128,7 @@ function _lookupcost(::ArrayStorage, term_sum::AbstractTermSum)
     return length(term_sum) - n_sorted + ndigits(n_sorted; base=2)
 end
 
-# this assumes everything is merged and de-duplicated
-# may result in wrong results if not
+# this requires every term to be merged and de-duplicated
 function getmergedcoeff(term_sum::AbstractTermSum, trm)
     return _getmergedcoeff(StorageType(term_sum), term_sum, trm)
 end
@@ -138,23 +138,14 @@ function _getmergedcoeff(::DictStorage, term_sum::AbstractTermSum, trm)
     return _getcoeff(DictStorage(), term_sum, trm)
 end
 
-# binary-search the known-sorted prefix, linear-scan only the remainder
+# binary-search a fully sorted, duplicate-free sum
 function _getmergedcoeff(::ArrayStorage, term_sum::AbstractTermSum, trm)
+    @assert sortedprefix(term_sum) == length(term_sum) "getmergedcoeff requires a fully sorted term sum"
     terms_vec, coeffs_vec = storage(term_sum)
-    n_sorted = sortedprefix(term_sum)
 
-    if n_sorted > 0
-        sorted_view = view(terms_vec, 1:n_sorted)
-        i = searchsortedfirst(sorted_view, trm)
-        if i <= n_sorted && sorted_view[i] == trm
-            return coeffs_vec[i]
-        end
-    end
-
-    for i in (n_sorted+1):length(terms_vec)
-        if terms_vec[i] == trm
-            return coeffs_vec[i]
-        end
+    i = searchsortedfirst(terms_vec, trm)
+    if i <= length(terms_vec) && terms_vec[i] == trm
+        return coeffs_vec[i]
     end
 
     return zero(coefftype(term_sum))
