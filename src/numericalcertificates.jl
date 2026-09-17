@@ -109,8 +109,6 @@ end
 function mcapplytoalltruncateinplace!(gate, psum::VectorPauliSum, args...; squared=true, max_weight=Inf, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing)
     mcapplytoall!(gate, psum, args...; squared=squared)
 
-    terms, coeffs = paulis(psum), coefficients(psum)
-
     function istruncated(pstr, coeff)
         is_truncated = false
         if truncateweight(pstr, max_weight)
@@ -125,12 +123,8 @@ function mcapplytoalltruncateinplace!(gate, psum::VectorPauliSum, args...; squar
         return is_truncated
     end
 
-    AK.foreachindex(terms) do i
-        term, coeff = terms[i], coeffs[i]
-        if istruncated(term, coeff)
-            coeffs[i] = zero(eltype(coeffs))
-        end
-    end
+    zero_if_truncated(pstr, coeff) = istruncated(pstr, coeff) ? zero(coeff) : coeff
+    mapcoeffsbypair!(zero_if_truncated, psum)
 
     return psum
 end
