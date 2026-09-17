@@ -289,8 +289,6 @@ _mapcoeffsbypair!(::StorageType, transform::F, thing::Union{AbstractTermSum,Abst
     _thrownotimplemented(thing, :mapcoeffs!)
 
 
-### Multi-sum storage
-
 # A transformation can move a term between zones, so it is applied through the multi-sum cache and
 # delivered to each term's owner afterwards.
 function _map!(::MultiSumStorage, transform, msum::AbstractTermSum; thread::Bool=true)

@@ -78,6 +78,9 @@ _withworkers(f::F, target::AbstractPropagationCache, thread::Bool) where {F} =
 _withworkers(::StorageType, f::F) where {F} = f()
 _withworkers(::ArrayStorage, f::F) where {F} = withworkers(f)
 
+# A propagation over a multi sum keeps its workers up from the first gate to the last.
+_withworkers(::MultiSumStorage, f::F) where {F} = withworkers(f)
+
 """
     applymergetruncate!(gate, prop_cache::AbstractPropagationCache; kwargs...)
     applymergetruncate!(gate, prop_cache::AbstractPropagationCache, parameter; kwargs...)
@@ -168,6 +171,10 @@ function _applytoall!(::StorageType, gate, prop_cache::AbstractPropagationCache,
 
     return
 end
+
+# A multi sum applies a gate zone by zone, routing terms to their owning zones as needed.
+_applytoall!(::MultiSumStorage, gate, prop_cache::AbstractPropagationCache, args...; kwargs...) =
+    applytoallzones!(gate, prop_cache, args...; kwargs...)
 
 @inline function _batch_add!(storage, terms_and_coeffs)
     for (term, coeff) in terms_and_coeffs

@@ -88,8 +88,6 @@ _mapreducecoeffs(::ArrayStorage, mapper, reducer, thing; init, neutral, thread::
         max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
 
-### Multi-sum storage
-
 function _mapreduce(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, neutral, thread::Bool) where {F,O}
     mappedtype = Base.promote_op(f, termtype(msum), coefftype(msum))
     zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)

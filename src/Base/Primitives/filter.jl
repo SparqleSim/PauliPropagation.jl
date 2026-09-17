@@ -80,8 +80,6 @@ filtercoeffs!(keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thre
     Base.filter!((term, coefficient) -> keep(coefficient), thing; thread)
 
 
-### Multi-sum storage
-
 function _filter!(::MultiSumStorage, keep, msum::AbstractTermSum; thread::Bool=true)
     prop_cache = PropagationCache(msum)
     filter!(keep, prop_cache; thread)

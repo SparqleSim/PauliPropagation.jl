@@ -87,6 +87,15 @@ function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; thread::B
 end
 
 
+_merge!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(merge!, zones(msum)); msum)
+
+function _merge!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
+    merge_zone!(zone_id) = merge!(zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
+    _eachzone(merge_zone!, prop_cache, thread)
+    return _syncsums!(prop_cache)
+end
+
+
 function _deduplicate!(prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing)
 
     _flaggroupbegin!(prop_cache; thread)
@@ -158,4 +167,3 @@ function _mergegroups!(prop_cache::AbstractPropagationCache; thread::Bool=true)
 
     return prop_cache
 end
-

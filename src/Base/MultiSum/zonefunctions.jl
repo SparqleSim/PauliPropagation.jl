@@ -14,10 +14,6 @@ Defaults to `false`, and can be overloaded for custom gates that only rescale co
 """
 staysinzone(gate) = false
 
-# a multi sum applies a gate zone by zone
-_applytoall!(::MultiSumStorage, gate, prop_cache::AbstractPropagationCache, args...; kwargs...) =
-    applytoallzones!(gate, prop_cache, args...; kwargs...)
-
 """
     applytoallzones!(gate, prop_cache, args...; thread=true, kwargs...)
 

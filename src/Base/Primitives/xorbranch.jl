@@ -208,8 +208,6 @@ function _branchflagged!(rule::F, prop_cache, mask; thread::Bool=true) where {F}
 end
 
 
-### Multi-sum storage
-
 # Because the zone assignment is linear in the term, `⊻ mask` permutes the zones: every zone writes
 # the terms it creates into a single box, and takes delivery from a single zone.
 function _xorbranch!(::MultiSumStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}

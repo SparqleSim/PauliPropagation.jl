@@ -96,8 +96,6 @@ _sortcoeffs!(::StorageType, thing::Union{AbstractTermSum,AbstractPropagationCach
     _thrownotimplemented(thing, :sortcoeffs!)
 
 
-### Multi-sum storage
-
 function _sortterms!(::MultiSumStorage, msum::AbstractTermSum; kwargs...)
     prop_cache = PropagationCache(msum)
     sortterms!(prop_cache; kwargs...)

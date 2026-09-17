@@ -175,10 +175,6 @@ function _copy!(::MultiSumStorage, dst_msum::AbstractTermSum, src_msum::Abstract
     return dst_msum
 end
 
-# a term sum merges without a `thread` argument, so this runs the zones in turn and lets each zone
-# thread inside. The zone-parallel version is the one on the propagation cache.
-_merge!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(merge!, zones(msum)); msum)
-
 # the zones are iterated one after the other, which carries neither a length nor an element type
 _length(::MultiSumStorage, msum::AbstractTermSum) = sum(length, zones(msum))
 _termtype(::MultiSumStorage, msum::AbstractTermSum) = termtype(first(zones(msum)))
