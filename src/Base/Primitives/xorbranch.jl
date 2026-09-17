@@ -206,3 +206,68 @@ function _branchflagged!(rule::F, prop_cache, mask; thread::Bool=true) where {F}
     setactivesize!(prop_cache, n_old + n_new)
     return prop_cache
 end
+
+
+### Multi-sum storage
+
+# Because the zone assignment is linear in the term, `⊻ mask` permutes the zones: every zone writes
+# the terms it creates into a single box, and takes delivery from a single zone.
+function _xorbranch!(::MultiSumStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
+    zone_storage = zonestorage(prop_cache)
+    sorted_zones = _sortedzones(zone_storage, prop_cache)
+
+    branch_zone!(zone_id) = _branchzone!(zone_storage, rule, zonecaches(prop_cache)[zone_id], _branchbox(prop_cache, zone_id), mask)
+    _eachzone(branch_zone!, prop_cache, thread)
+
+    # The box a zone collects is its tail already, in the parent order of the zone that made it, so
+    # an array zone sorts it in from where it is instead of taking delivery first.
+    function collect_branch!(owner)
+        source = _xortarget(zonemap(prop_cache), owner, mask)
+        _mergebox!(zone_storage, zonecaches(prop_cache)[owner], _branchbox(prop_cache, source), mask, sorted_zones, source; truncfunc)
+    end
+    _eachzone(collect_branch!, prop_cache, thread)
+
+    return _syncsums!(prop_cache)
+end
+
+# A dictionary zone keeps its terms where they are and sets the new ones in its box.
+_branchzone!(::StorageType, rule::F, zonecache, box, mask) where {F} = _branchdict!(rule, mainsum(zonecache), box, mask)
+
+# An array zone writes the new terms straight into its box, in the order of their parents.
+function _branchzone!(::ArrayStorage, rule::F, zonecache, box, mask) where {F}
+    n_old = activesize(zonecache)
+
+    # A term makes at most one new term, so the zone's size bounds what the box has to hold.
+    length(box) < n_old && resize!(box, n_old)
+    n_new = _branchwrite!(rule, terms(box), coefficients(box), 1,
+        terms(mainsum(zonecache)), coefficients(mainsum(zonecache)), 1, n_old, mask, Val(true))
+    resize!(box, n_new)
+
+    return zonecache
+end
+
+# A zone that is sorted throughout hands its terms to a single other zone in ascending order, so the
+# tail that zone takes delivery of is `mask ⊻ ascending` and sorts by XOR passes instead of by
+# comparison. Merging here leaves `merge!` nothing to do afterwards.
+_sortedzones(::StorageType, prop_cache::AbstractPropagationCache) = nothing
+
+_sortedzones(::ArrayStorage, prop_cache::AbstractPropagationCache) =
+    [sortedprefix(mainsum(zonecache)) == activesize(zonecache) for zonecache in zonecaches(prop_cache)]
+
+# A dictionary zone merges as it takes delivery, where an array zone sorts the box in and merges it.
+function _mergebox!(::StorageType, zonecache, box, mask, sorted_zones, source::Int; truncfunc=nothing)
+    _deliver!(zonecache, box)
+    truncfunc === nothing || truncate!(truncfunc, zonecache; thread=false)
+    return zonecache
+end
+
+_mergebox!(::ArrayStorage, zonecache, box, mask, sorted_zones, source::Int; truncfunc=nothing) =
+    xorsortedboxmerge!(zonecache, box, mask, (@inbounds sorted_zones[source]); thread=false, truncfunc)
+
+# `⊻ mask` maps zone `source` onto this zone, and this zone back onto `source`.
+@inline _xortarget(zone_map::ZoneMap, source::Int, mask) =
+    ((source - 1) ⊻ _zonebits(mask, zone_map.masks)) + 1
+
+# A fixed-mask branch has one destination zone, so one box holds all its new terms.
+@inline _branchbox(prop_cache::AbstractPropagationCache, zone_id::Int) =
+    @inbounds first(zones(outboxes(prop_cache)[zone_id]))

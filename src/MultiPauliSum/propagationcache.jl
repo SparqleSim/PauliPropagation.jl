@@ -28,6 +28,7 @@ end
 PropagationBase.PropagationCache(msum::MultiPauliSum) = MultiPauliPropagationCache(msum)
 
 PropagationBase.mainsum(prop_cache::MultiPauliPropagationCache) = prop_cache.msum
+PropagationBase.auxsum(prop_cache::MultiPauliPropagationCache) = throw(ArgumentError("MultiPauliPropagationCache does not have an auxiliary sum."))
 
 function Base.show(io::IO, prop_cache::MultiPauliPropagationCache)
     println(io, "MultiPauliPropagationCache with $(length(prop_cache)) terms over $(nzones(prop_cache)) zones:")

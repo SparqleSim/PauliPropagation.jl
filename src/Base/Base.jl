@@ -61,6 +61,24 @@ export
     lastactiveindex,
     resize!
 
+# MultiSumStorage is a storage trait, so its specializations of the primitive
+# operations below are loaded with those operations.
+include("./MultiSum/MultiSum.jl")
+export
+    MultiSumStorage,
+    ZoneMap,
+    zones,
+    zonemap,
+    zonestorage,
+    defaultnzones,
+    zonecaches,
+    outboxes,
+    nzones,
+    zonesizes,
+    zoneof,
+    staysinzone,
+    applytoallzones!
+
 include("./Primitives/Primitives.jl")
 export
     mapterms,
@@ -132,21 +150,5 @@ export
     multinomial_resample!,
     systematic_resample!,
     semideterministic_systematic_resample!
-
-include("./MultiSum/MultiSum.jl")
-export
-    MultiSumStorage,
-    ZoneMap,
-    zones,
-    zonemap,
-    zonestorage,
-    defaultnzones,
-    zonecaches,
-    outboxes,
-    nzones,
-    zonesizes,
-    zoneof,
-    staysinzone,
-    applytoallzones!
 
 end

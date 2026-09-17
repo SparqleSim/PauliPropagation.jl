@@ -49,82 +49,11 @@ _numcoefftype(::MultiSumStorage, prop_cache::AbstractPropagationCache) = numcoef
 _activesum(::MultiSumStorage, prop_cache::AbstractPropagationCache) =
     Base.typename(typeof(mainsum(prop_cache))).wrapper(nsites(prop_cache), map(activesum, zonecaches(prop_cache)), zonemap(prop_cache))
 
-function _map!(::MultiSumStorage, transform, prop_cache::AbstractPropagationCache; thread::Bool=true)
-    function map_zone!(zone_id)
-        zonecache = zonecaches(prop_cache)[zone_id]
-        outbox = outboxes(prop_cache)[zone_id]
-        empty!(outbox)
-
-        for (term, coefficient) in zonecache
-            mapped_term, mapped_coefficient = transform(term, coefficient)
-            push!(outbox, mapped_term, mapped_coefficient)
-        end
-
-        empty!(zonecache)
-        return
-    end
-
-    _eachzone(map_zone!, prop_cache, thread)
-
-    deliver_to_zone!(zone_id) = foreach(
-        outbox -> _deliver!(zonecaches(prop_cache)[zone_id], zones(outbox)[zone_id]),
-        outboxes(prop_cache),
-    )
-    _eachzone(deliver_to_zone!, prop_cache, thread)
-
-    return _syncsums!(prop_cache)
-end
-
-function _mapcoeffs!(::MultiSumStorage, transform, prop_cache::AbstractPropagationCache; thread::Bool=true)
-    map_zone!(zone_id) = mapcoeffs!(transform, zonecaches(prop_cache)[zone_id]; thread=false)
-    _eachzone(map_zone!, prop_cache, thread)
-    return _syncsums!(prop_cache)
-end
-
-function _mapcoeffsbypair!(::MultiSumStorage, transform::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
-    map_zone!(zone_id) = mapcoeffsbypair!(transform, zonecaches(prop_cache)[zone_id]; thread=false)
-    _eachzone(map_zone!, prop_cache, thread)
-    return _syncsums!(prop_cache)
-end
-
-function _filter!(::MultiSumStorage, keep, prop_cache::AbstractPropagationCache; thread::Bool=true)
-    filter_zone!(zone_id) = filter!(keep, zonecaches(prop_cache)[zone_id]; thread=false)
-    _eachzone(filter_zone!, prop_cache, thread)
-    return _syncsums!(prop_cache)
-end
-
-function _sortterms!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
-    sort_zone!(zone_id) = sortterms!(zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
-    _eachzone(sort_zone!, prop_cache, thread)
-    return _syncsums!(prop_cache)
-end
-
-function _sortcoeffs!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
-    sort_zone!(zone_id) = sortcoeffs!(zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
-    _eachzone(sort_zone!, prop_cache, thread)
-    return _syncsums!(prop_cache)
-end
-
 # the zone assignment spreads the terms evenly, so the zones take equal shares of the room
 function _resize!(::MultiSumStorage, prop_cache::AbstractPropagationCache, n_new::Int)
     per_zone = cld(n_new, nzones(prop_cache))
     foreach(zonecache -> resize!(zonecache, per_zone), zonecaches(prop_cache))
     return prop_cache
-end
-
-# each zone is reduced on its own thread, with no tasks started inside a zone
-function _mapreduce(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, neutral, thread::Bool) where {F,O}
-    mappedtype = Base.promote_op(f, termtype(prop_cache), coefftype(prop_cache))
-    zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)
-    reduce_zone(zonecache) = mapreduce(f, op, zonecache; init=neutral, neutral, thread=false)
-    return reduce(op, _zonevalues(reduce_zone, zonevaluetype, prop_cache, thread); init)
-end
-
-function _mapreducecoeffs(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, neutral, thread::Bool) where {F,O}
-    mappedtype = Base.promote_op(f, coefftype(prop_cache))
-    zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)
-    reduce_zone(zonecache) = mapreducecoeffs(f, op, zonecache; init=neutral, neutral, thread=false)
-    return reduce(op, _zonevalues(reduce_zone, zonevaluetype, prop_cache, thread); init)
 end
 
 function _extractsum!(::MultiSumStorage, prop_cache::AbstractPropagationCache)
@@ -171,14 +100,6 @@ function _eachzone(zonefunc::F, thing, thread::Bool) where {F}
         _eachtask(zonefunc, nzones(thing))
     end
     return thing
-end
-
-# one value of type `T` per zone, each computed on the zone's own thread
-function _zonevalues(zonefunc::F, ::Type{T}, prop_cache::AbstractPropagationCache, thread::Bool) where {F,T}
-    values = Vector{T}(undef, nzones(prop_cache))
-    store_zone_value!(zone_id) = (values[zone_id] = zonefunc(zonecaches(prop_cache)[zone_id]))
-    _eachzone(store_zone_value!, prop_cache, thread)
-    return values
 end
 
 # a propagation over a multi sum keeps its workers up from the first gate to the last

@@ -88,6 +88,53 @@ _mapreducecoeffs(::ArrayStorage, mapper, reducer, thing; init, neutral, thread::
         max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
 
+### Multi-sum storage
+
+function _mapreduce(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, neutral, thread::Bool) where {F,O}
+    mappedtype = Base.promote_op(f, termtype(msum), coefftype(msum))
+    zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)
+    reduce_zone(zone) = mapreduce(f, op, zone; init=neutral, neutral, thread=false)
+    return reduce(op, _zonevalues(reduce_zone, zonevaluetype, msum, thread); init)
+end
+
+function _mapreduce(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, neutral, thread::Bool) where {F,O}
+    mappedtype = Base.promote_op(f, termtype(prop_cache), coefftype(prop_cache))
+    zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)
+    reduce_zone(zonecache) = mapreduce(f, op, zonecache; init=neutral, neutral, thread=false)
+    return reduce(op, _zonevalues(reduce_zone, zonevaluetype, prop_cache, thread); init)
+end
+
+function _mapreducecoeffs(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, neutral, thread::Bool) where {F,O}
+    mappedtype = Base.promote_op(f, coefftype(msum))
+    zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)
+    reduce_zone(zone) = mapreducecoeffs(f, op, zone; init=neutral, neutral, thread=false)
+    return reduce(op, _zonevalues(reduce_zone, zonevaluetype, msum, thread); init)
+end
+
+function _mapreducecoeffs(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, neutral, thread::Bool) where {F,O}
+    mappedtype = Base.promote_op(f, coefftype(prop_cache))
+    zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)
+    reduce_zone(zonecache) = mapreducecoeffs(f, op, zonecache; init=neutral, neutral, thread=false)
+    return reduce(op, _zonevalues(reduce_zone, zonevaluetype, prop_cache, thread); init)
+end
+
+# Each zone is reduced on its own thread, with no tasks started inside a zone.
+function _zonevalues(zonefunc::F, ::Type{T}, msum::AbstractTermSum, thread::Bool) where {F,T}
+    values = Vector{T}(undef, nzones(msum))
+    store_zone_value!(zone_id) = (values[zone_id] = zonefunc(zones(msum)[zone_id]))
+    _eachzone(store_zone_value!, msum, thread)
+    return values
+end
+
+# One value of type `T` per zone, each computed on the zone's own thread.
+function _zonevalues(zonefunc::F, ::Type{T}, prop_cache::AbstractPropagationCache, thread::Bool) where {F,T}
+    values = Vector{T}(undef, nzones(prop_cache))
+    store_zone_value!(zone_id) = (values[zone_id] = zonefunc(zonecaches(prop_cache)[zone_id]))
+    _eachzone(store_zone_value!, prop_cache, thread)
+    return values
+end
+
+
 struct _DefaultReductionNeutral end
 const _DEFAULT_REDUCTION_NEUTRAL = _DefaultReductionNeutral()
 

@@ -78,3 +78,18 @@ Remove active coefficients for which `keep(coefficient)` returns `false`.
 """
 filtercoeffs!(keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
     Base.filter!((term, coefficient) -> keep(coefficient), thing; thread)
+
+
+### Multi-sum storage
+
+function _filter!(::MultiSumStorage, keep, msum::AbstractTermSum; thread::Bool=true)
+    prop_cache = PropagationCache(msum)
+    filter!(keep, prop_cache; thread)
+    return extractsum!(prop_cache, msum)
+end
+
+function _filter!(::MultiSumStorage, keep, prop_cache::AbstractPropagationCache; thread::Bool=true)
+    filter_zone!(zone_id) = filter!(keep, zonecaches(prop_cache)[zone_id]; thread=false)
+    _eachzone(filter_zone!, prop_cache, thread)
+    return _syncsums!(prop_cache)
+end

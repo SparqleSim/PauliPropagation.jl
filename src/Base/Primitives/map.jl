@@ -287,3 +287,64 @@ end
 
 _mapcoeffsbypair!(::StorageType, transform::F, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) where {F} =
     _thrownotimplemented(thing, :mapcoeffs!)
+
+
+### Multi-sum storage
+
+# A transformation can move a term between zones, so it is applied through the multi-sum cache and
+# delivered to each term's owner afterwards.
+function _map!(::MultiSumStorage, transform, msum::AbstractTermSum; thread::Bool=true)
+    prop_cache = PropagationCache(msum)
+    map!(transform, prop_cache; thread)
+    return extractsum!(prop_cache, msum)
+end
+
+function _map!(::MultiSumStorage, transform, prop_cache::AbstractPropagationCache; thread::Bool=true)
+    function map_zone!(zone_id)
+        zonecache = zonecaches(prop_cache)[zone_id]
+        outbox = outboxes(prop_cache)[zone_id]
+        empty!(outbox)
+
+        for (term, coefficient) in zonecache
+            mapped_term, mapped_coefficient = transform(term, coefficient)
+            push!(outbox, mapped_term, mapped_coefficient)
+        end
+
+        empty!(zonecache)
+        return
+    end
+
+    _eachzone(map_zone!, prop_cache, thread)
+
+    deliver_to_zone!(zone_id) = foreach(
+        outbox -> _deliver!(zonecaches(prop_cache)[zone_id], zones(outbox)[zone_id]),
+        outboxes(prop_cache),
+    )
+    _eachzone(deliver_to_zone!, prop_cache, thread)
+
+    return _syncsums!(prop_cache)
+end
+
+function _mapcoeffs!(::MultiSumStorage, transform, msum::AbstractTermSum; thread::Bool=true)
+    map_zone!(zone_id) = mapcoeffs!(transform, zones(msum)[zone_id]; thread=false)
+    _eachzone(map_zone!, msum, thread)
+    return msum
+end
+
+function _mapcoeffs!(::MultiSumStorage, transform, prop_cache::AbstractPropagationCache; thread::Bool=true)
+    map_zone!(zone_id) = mapcoeffs!(transform, zonecaches(prop_cache)[zone_id]; thread=false)
+    _eachzone(map_zone!, prop_cache, thread)
+    return _syncsums!(prop_cache)
+end
+
+function _mapcoeffsbypair!(::MultiSumStorage, transform::F, msum::AbstractTermSum; thread::Bool=true) where {F}
+    map_zone!(zone_id) = mapcoeffsbypair!(transform, zones(msum)[zone_id]; thread=false)
+    _eachzone(map_zone!, msum, thread)
+    return msum
+end
+
+function _mapcoeffsbypair!(::MultiSumStorage, transform::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+    map_zone!(zone_id) = mapcoeffsbypair!(transform, zonecaches(prop_cache)[zone_id]; thread=false)
+    _eachzone(map_zone!, prop_cache, thread)
+    return _syncsums!(prop_cache)
+end

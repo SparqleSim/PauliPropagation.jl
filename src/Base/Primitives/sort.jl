@@ -94,3 +94,30 @@ end
 
 _sortcoeffs!(::StorageType, thing::Union{AbstractTermSum,AbstractPropagationCache}; kwargs...) =
     _thrownotimplemented(thing, :sortcoeffs!)
+
+
+### Multi-sum storage
+
+function _sortterms!(::MultiSumStorage, msum::AbstractTermSum; kwargs...)
+    prop_cache = PropagationCache(msum)
+    sortterms!(prop_cache; kwargs...)
+    return extractsum!(prop_cache, msum)
+end
+
+function _sortterms!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
+    sort_zone!(zone_id) = sortterms!(zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
+    _eachzone(sort_zone!, prop_cache, thread)
+    return _syncsums!(prop_cache)
+end
+
+function _sortcoeffs!(::MultiSumStorage, msum::AbstractTermSum; kwargs...)
+    prop_cache = PropagationCache(msum)
+    sortcoeffs!(prop_cache; kwargs...)
+    return extractsum!(prop_cache, msum)
+end
+
+function _sortcoeffs!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
+    sort_zone!(zone_id) = sortcoeffs!(zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
+    _eachzone(sort_zone!, prop_cache, thread)
+    return _syncsums!(prop_cache)
+end
