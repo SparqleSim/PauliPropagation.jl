@@ -209,11 +209,27 @@ end
 # thread inside. The zone-parallel version is the one on the propagation cache.
 _merge!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(merge!, zones(msum)); msum)
 
-_mapreduce(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, thread::Bool) where {F,O} =
-    mapreduce(zone -> mapreduce(f, op, zone; init=zero(init), thread), op, zones(msum); init)
+function _mapreduce(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, neutral, thread::Bool) where {F,O}
+    mappedtype = Base.promote_op(f, termtype(msum), coefftype(msum))
+    zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)
+    reduce_zone(zone) = mapreduce(f, op, zone; init=neutral, neutral, thread=false)
+    return reduce(op, _zonevalues(reduce_zone, zonevaluetype, msum, thread); init)
+end
 
-_mapreducecoeffs(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, thread::Bool) where {F,O} =
-    mapreduce(zone -> mapreducecoeffs(f, op, zone; init=zero(init), thread), op, zones(msum); init)
+function _mapreducecoeffs(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, neutral, thread::Bool) where {F,O}
+    mappedtype = Base.promote_op(f, coefftype(msum))
+    zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)
+    reduce_zone(zone) = mapreducecoeffs(f, op, zone; init=neutral, neutral, thread=false)
+    return reduce(op, _zonevalues(reduce_zone, zonevaluetype, msum, thread); init)
+end
+
+# Each zone is reduced on its own thread, with no tasks started inside a zone.
+function _zonevalues(zonefunc::F, ::Type{T}, msum::AbstractTermSum, thread::Bool) where {F,T}
+    values = Vector{T}(undef, nzones(msum))
+    store_zone_value!(zone_id) = (values[zone_id] = zonefunc(zones(msum)[zone_id]))
+    _eachzone(store_zone_value!, msum, thread)
+    return values
+end
 
 # the zones are iterated one after the other, which carries neither a length nor an element type
 _length(::MultiSumStorage, msum::AbstractTermSum) = sum(length, zones(msum))

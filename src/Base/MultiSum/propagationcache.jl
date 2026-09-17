@@ -113,14 +113,18 @@ function _resize!(::MultiSumStorage, prop_cache::AbstractPropagationCache, n_new
 end
 
 # each zone is reduced on its own thread, with no tasks started inside a zone
-function _mapreduce(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, thread::Bool) where {F,O}
-    reduce_zone(zonecache) = mapreduce(f, op, zonecache; init=zero(init), thread=false)
-    return reduce(op, _zonevalues(reduce_zone, typeof(init), prop_cache, thread); init)
+function _mapreduce(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, neutral, thread::Bool) where {F,O}
+    mappedtype = Base.promote_op(f, termtype(prop_cache), coefftype(prop_cache))
+    zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)
+    reduce_zone(zonecache) = mapreduce(f, op, zonecache; init=neutral, neutral, thread=false)
+    return reduce(op, _zonevalues(reduce_zone, zonevaluetype, prop_cache, thread); init)
 end
 
-function _mapreducecoeffs(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, thread::Bool) where {F,O}
-    reduce_zone(zonecache) = mapreducecoeffs(f, op, zonecache; init=zero(init), thread=false)
-    return reduce(op, _zonevalues(reduce_zone, typeof(init), prop_cache, thread); init)
+function _mapreducecoeffs(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, neutral, thread::Bool) where {F,O}
+    mappedtype = Base.promote_op(f, coefftype(prop_cache))
+    zonevaluetype = Base.promote_op(op, typeof(neutral), mappedtype)
+    reduce_zone(zonecache) = mapreducecoeffs(f, op, zonecache; init=neutral, neutral, thread=false)
+    return reduce(op, _zonevalues(reduce_zone, zonevaluetype, prop_cache, thread); init)
 end
 
 function _extractsum!(::MultiSumStorage, prop_cache::AbstractPropagationCache)
@@ -158,15 +162,15 @@ end
 # Every zone is read and written by one thread only, so all parallelism comes from the zones. A
 # sum below one task's worth of terms is worked in turn: a round costs tens of microseconds and
 # more with every thread, where a zone that small takes one.
-function _eachzone(zonefunc::F, prop_cache::AbstractPropagationCache, thread::Bool) where {F}
-    if !thread || length(prop_cache) < _MIN_ELEMS_PER_TASK
-        for zone_id in 1:nzones(prop_cache)
+function _eachzone(zonefunc::F, thing, thread::Bool) where {F}
+    if !thread || length(thing) < _MIN_ELEMS_PER_TASK
+        for zone_id in 1:nzones(thing)
             zonefunc(zone_id)
         end
     else
-        _eachtask(zonefunc, nzones(prop_cache))
+        _eachtask(zonefunc, nzones(thing))
     end
-    return prop_cache
+    return thing
 end
 
 # one value of type `T` per zone, each computed on the zone's own thread
