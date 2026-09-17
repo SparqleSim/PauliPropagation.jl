@@ -13,6 +13,7 @@ sortterms(thing::Union{AbstractTermSum,AbstractPropagationCache}; kwargs...) =
     sortterms!(prop_cache::AbstractPropagationCache; lt=isless, by=identity, rev=false, order=Base.Forward, thread=true)
 
 Sort active terms. Dictionary-backed sums retain their unordered storage and are returned unchanged.
+Sorted in the default order, array-backed sums record their leading duplicate-free run as their sorted prefix.
 """
 sortterms!(thing::Union{AbstractTermSum,AbstractPropagationCache}; lt=isless, by=identity, rev::Bool=false,
     order=Base.Forward, thread::Bool=true) =
@@ -26,16 +27,32 @@ function _sortterms!(::ArrayStorage, term_sum::AbstractTermSum; kwargs...)
     return extractsum!(prop_cache, term_sum)
 end
 
+# Sorted in the default order, the terms are a sorted prefix up to their first duplicate.
 function _sortterms!(::ArrayStorage, prop_cache::AbstractPropagationCache; lt=isless, by=identity,
     rev::Bool=false, order=Base.Forward, thread::Bool=true)
 
     AK.sortperm!(activeindices(prop_cache), activeterms(prop_cache); lt, by, rev, order,
         max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-    return permuteviaindices!(prop_cache; thread)
+    permuteviaindices!(prop_cache; thread)
+
+    if lt === isless && by === identity && !rev && order === Base.Forward
+        setsortedprefix!(mainsum(prop_cache), _uniqueprefix(activeterms(prop_cache); thread))
+    end
+    return prop_cache
 end
 
 _sortterms!(::StorageType, thing::Union{AbstractTermSum,AbstractPropagationCache}; kwargs...) =
     _thrownotimplemented(thing, :sortterms!)
+
+# the number of leading sorted terms before the first one that repeats its predecessor
+function _uniqueprefix(sorted_terms; thread::Bool=true)
+    n = length(sorted_terms)
+    n <= 1 && return n
+
+    first_duplicate(index) = @inbounds sorted_terms[index] == sorted_terms[index-1] ? index : n + 1
+    return AK.mapreduce(first_duplicate, min, 2:n, AK.get_backend(sorted_terms); init=n + 1, neutral=n + 1,
+        max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) - 1
+end
 
 
 """
