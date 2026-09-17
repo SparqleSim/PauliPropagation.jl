@@ -150,6 +150,7 @@ _coefficients(::MultiSumStorage, msum::AbstractTermSum) = Iterators.flatten(coef
 
 _getcoeff(::MultiSumStorage, msum::AbstractTermSum, trm) = getcoeff(_zone(msum, trm), trm)
 _getmergedcoeff(::MultiSumStorage, msum::AbstractTermSum, trm) = getmergedcoeff(_zone(msum, trm), trm)
+_lookupcost(::MultiSumStorage, msum::AbstractTermSum) = maximum(_lookupcost, zones(msum))
 
 @inline _add!(::MultiSumStorage, msum::AbstractTermSum, term, coeff) = (add!(_zone(msum, term), term, coeff); msum)
 @inline _set!(::MultiSumStorage, msum::AbstractTermSum, term, coeff) = (set!(_zone(msum, term), term, coeff); msum)

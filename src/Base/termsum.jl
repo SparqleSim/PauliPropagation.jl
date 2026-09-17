@@ -116,6 +116,17 @@ function _getcoeff(::ArrayStorage, term_sum::AbstractTermSum, trm)
     return val
 end
 
+# the number of terms `getcoeff` visits: a dictionary finds a term at once, an array sum bisects
+# its sorted prefix and scans the rest
+_lookupcost(term_sum::AbstractTermSum) = _lookupcost(StorageType(term_sum), term_sum)
+_lookupcost(::DictStorage, term_sum::AbstractTermSum) = 1
+_lookupcost(::StorageType, term_sum::AbstractTermSum) = length(term_sum)
+
+function _lookupcost(::ArrayStorage, term_sum::AbstractTermSum)
+    n_sorted = sortedprefix(term_sum)
+    return length(term_sum) - n_sorted + ndigits(n_sorted; base=2)
+end
+
 # this assumes everything is merged and de-duplicated
 # may result in wrong results if not
 function getmergedcoeff(term_sum::AbstractTermSum, trm)

@@ -114,20 +114,14 @@ Calculates the scalar product between any combination of `PauliSum` and `PauliSt
 This  calculates the sum of the products of their coefficients for all Pauli strings that are present .
 Important: This is not equivalent to the trace `Tr[psum1 * psum2]` but instead  `Tr[psum1 * psum2]/2^n`,
 and equivalently for Pauli strings.
+The Pauli strings of one sum are looked up in the other, in whichever direction costs less:
+a dictionary finds a Pauli string at once, whereas an array sum bisects its sorted prefix and scans the rest.
 """
 function scalarproduct(psum1::AbstractPauliSum, psum2::AbstractPauliSum)
-
-    longer_psum = psum1
-    shorter_psum = psum2
-
-    # swap psums around if the other one is sparser
-    if length(longer_psum) < length(shorter_psum)
-        longer_psum, shorter_psum = shorter_psum, longer_psum
+    if length(psum2) * PropagationBase._lookupcost(psum1) <= length(psum1) * PropagationBase._lookupcost(psum2)
+        return _scalarproduct(psum1, psum2)
     end
-
-    # looping over the shorter psum because we are only looking for collisions
-    return _scalarproduct(longer_psum, shorter_psum)
-
+    return _scalarproduct(psum2, psum1)
 end
 
 function _scalarproduct(lookup_psum, loop_psum)
