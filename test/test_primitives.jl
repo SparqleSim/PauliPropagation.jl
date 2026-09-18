@@ -177,9 +177,69 @@ end
     @test coefficients(cpu_cache) == coefficients(portable_cache)
 end
 
+@testset "Flat map primitive" begin
+    nq = 4
+    rng = MersenneTwister(11)
+    dict_sum = PauliSum(nq)
+    for _ in 1:100
+        add!(dict_sum, symboltoint(rand(rng, (:I, :X, :Y, :Z), nq)), randn(rng))
+    end
+
+    # a Z on the first qubit branches into the term and a partner, an identity there drops the term
+    x_mask = symboltoint(paulitype(dict_sum), :X, 1)
+    function branch_or_drop(pstr, coeff)
+        pauli = getpauli(pstr, 1)
+        pauli == 0 && return ()
+        pauli == 3 && return ((pstr, 0.5 * coeff), (pstr ⊻ x_mask, 0.25 * coeff))
+        return ((pstr, coeff),)
+    end
+
+    reference = PauliSum(nq)
+    n_pairs = 0
+    for (pstr, coeff) in dict_sum
+        for (new_pstr, new_coeff) in branch_or_drop(pstr, coeff)
+            add!(reference, new_pstr, new_coeff)
+            n_pairs += 1
+        end
+    end
+    @test length(reference) < n_pairs
+
+    for makesum in (identity, VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 4), psum -> MultiPauliSum(psum, 4))
+        input = makesum(dict_sum)
+        mapped = PauliPropagation.PropagationBase.flatmap(branch_or_drop, input)
+        @test PauliSum(mapped) ≈ reference
+        @test PauliSum(input) == dict_sum
+        @test mapped isa typeof(input)
+
+        cache = PropagationCache(deepcopy(makesum(dict_sum)))
+        PauliPropagation.PropagationBase.flatmap!(branch_or_drop, cache)
+        @test PauliSum(PauliPropagation.PropagationBase.extractsum!(cache)) ≈ reference
+    end
+
+    # the pairs of an array sum are not merged, and outgrow the room the cache had
+    vector_cache = PropagationCache(VectorPauliSum(dict_sum))
+    PauliPropagation.PropagationBase.flatmap!(branch_or_drop, vector_cache; thread=false)
+    @test length(vector_cache) == n_pairs
+    @test PauliPropagation.PropagationBase.sortedprefix(mainsum(vector_cache)) == 0
+
+    # the kernels for arrays that are not on the CPU agree with the CPU kernels
+    portable_cache = PropagationCache(VectorPauliSum(dict_sum))
+    PauliPropagation.PropagationBase._flatmapflagged!(branch_or_drop, portable_cache; thread=false)
+    PauliPropagation.PropagationBase._commitwrite!(portable_cache, n_pairs, 0)
+    @test PauliPropagation.PropagationBase.terms(vector_cache) == PauliPropagation.PropagationBase.terms(portable_cache)
+    @test coefficients(vector_cache) == coefficients(portable_cache)
+
+    # several tasks count the pairs before writing them
+    many_terms = VectorPauliSum(nq, rand(rng, UInt8, 40_000), randn(rng, 40_000))
+    many_reference = PauliPropagation.PropagationBase.flatmap(branch_or_drop, many_terms; thread=false)
+    many_mapped = PauliPropagation.PropagationBase.flatmap(branch_or_drop, many_terms; thread=true)
+    @test PauliPropagation.PropagationBase.terms(many_mapped) == PauliPropagation.PropagationBase.terms(many_reference)
+    @test coefficients(many_mapped) == coefficients(many_reference)
+end
+
 @testset "Gates written for every cache dispatch without ties" begin
-    # a custom gate defined on the abstract Pauli cache runs on every storage, since the generic
-    # `applytoall!` dispatches on the storage of the cache
+    # a custom gate defined on the abstract Pauli cache runs on every storage, since the primitives
+    # it is written with dispatch on the storage of the cache
     struct HalvingGate <: StaticGate end
     PauliPropagation.PropagationBase.applytoall!(::HalvingGate, prop_cache::PauliPropagation.AbstractPauliPropagationCache; kwargs...) =
         mapcoeffs!(coeff -> 0.5 * coeff, prop_cache)
@@ -190,14 +250,30 @@ end
         @test getcoeff(out, [:X, :Z], [1, 3]) ≈ 0.4
     end
 
-    # a custom gate that only defines `apply` takes the generic path, which a multi sum runs zone by zone
+    # a custom gate that only defines `apply` takes the generic path, `flatmap!` over every storage
     struct SwappingGate <: StaticGate end
     PauliPropagation.PropagationBase.apply(::SwappingGate, pstr, coeff; kwargs...) =
         ((setpauli(setpauli(pstr, getpauli(pstr, 3), 1), getpauli(pstr, 1), 3), coeff),)
 
-    for makesum in (identity, psum -> MultiPauliSum(VectorPauliSum(psum), 2), psum -> MultiPauliSum(psum, 2))
+    for makesum in (identity, VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 2), psum -> MultiPauliSum(psum, 2))
         out = propagate([SwappingGate()], makesum(psum))
         @test getcoeff(out, [:Z, :X], [1, 3]) ≈ 0.8
+    end
+
+    # a frozen gate reaches the `applymergetruncate!` of the gate it froze: the normalization of an
+    # imaginary rotation, and the fused damping and truncation of Pauli noise
+    imaginary_state = PauliSum(3)
+    add!(imaginary_state, :I, 1, 1.0)
+    add!(imaginary_state, [:X, :Y], [1, 2], 0.5)
+    for makesum in (identity, VectorPauliSum)
+        unfrozen = propagate(ImaginaryPauliRotation(:X, 1), makesum(imaginary_state), 0.3; heisenberg=false)
+        frozen = propagate(FrozenGate(ImaginaryPauliRotation(:X, 1), 0.3), makesum(imaginary_state); heisenberg=false)
+        @test PauliSum(frozen) ≈ PauliSum(unfrozen)
+        @test getcoeff(frozen, 0) ≈ 1.0
+
+        unfrozen = propagate(DepolarizingNoise(1), makesum(psum), 0.5; min_abs_coeff=0.3)
+        frozen = propagate(DepolarizingNoise(1, 0.5), makesum(psum); min_abs_coeff=0.3)
+        @test PauliSum(frozen) ≈ PauliSum(unfrozen)
     end
 
     @test isempty(Test.detect_ambiguities(PauliPropagation, PauliPropagation.PropagationBase, PauliPropagation.Performance))

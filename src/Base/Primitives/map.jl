@@ -14,28 +14,20 @@ Base.map(transform, thing::Union{AbstractTermSum,AbstractPropagationCache}; thre
 
 Replace every active `(term, coefficient)` pair by the pair returned from
 `transform(term, coefficient)`. Array-backed storage updates its active entries in place,
-while dictionary-backed caches write transformed pairs into their auxiliary sum.
+while any other cache writes the transformed pairs through `flatmap!`.
 """
 Base.map!(transform, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
     _map!(StorageType(thing), transform, thing; thread)
 
-function _map!(::DictStorage, transform, term_sum::AbstractTermSum; thread::Bool=true)
+function _map!(::StorageType, transform::F, term_sum::AbstractTermSum; thread::Bool=true) where {F}
     prop_cache = PropagationCache(term_sum)
     Base.map!(transform, prop_cache; thread)
     return extractsum!(prop_cache, term_sum)
 end
 
-function _map!(::DictStorage, transform, prop_cache::AbstractPropagationCache; thread::Bool=true)
-    output_sum = auxsum(prop_cache)
-    isempty(output_sum) || empty!(output_sum)
-
-    for (term, coefficient) in prop_cache
-        mapped_term, mapped_coefficient = transform(term, coefficient)
-        add!(output_sum, mapped_term, mapped_coefficient)
-    end
-
-    empty!(mainsum(prop_cache))
-    return swapsums!(prop_cache)
+function _map!(::StorageType, transform::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+    map_to_pair(term, coefficient) = (transform(term, coefficient),)
+    return flatmap!(map_to_pair, prop_cache; thread)
 end
 
 function _map!(::ArrayStorage, transform, term_sum::AbstractTermSum; thread::Bool=true)
@@ -71,9 +63,6 @@ function _map!(::ArrayStorage, transform, prop_cache::AbstractPropagationCache; 
     setsortedprefix!(mainsum(prop_cache), 0)
     return prop_cache
 end
-
-_map!(::StorageType, transform, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
-    _thrownotimplemented(thing, :map!)
 
 
 """
@@ -288,40 +277,6 @@ end
 _mapcoeffsbypair!(::StorageType, transform::F, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) where {F} =
     _thrownotimplemented(thing, :mapcoeffs!)
 
-
-# A transformation can move a term between zones, so it is applied through the multi-sum cache and
-# delivered to each term's owner afterwards.
-function _map!(::MultiSumStorage, transform, msum::AbstractTermSum; thread::Bool=true)
-    prop_cache = PropagationCache(msum)
-    map!(transform, prop_cache; thread)
-    return extractsum!(prop_cache, msum)
-end
-
-function _map!(::MultiSumStorage, transform, prop_cache::AbstractPropagationCache; thread::Bool=true)
-    function map_zone!(zone_id)
-        zonecache = zonecaches(prop_cache)[zone_id]
-        outbox = outboxes(prop_cache)[zone_id]
-        empty!(outbox)
-
-        for (term, coefficient) in zonecache
-            mapped_term, mapped_coefficient = transform(term, coefficient)
-            push!(outbox, mapped_term, mapped_coefficient)
-        end
-
-        empty!(zonecache)
-        return
-    end
-
-    _eachzone(map_zone!, prop_cache, thread)
-
-    deliver_to_zone!(zone_id) = foreach(
-        outbox -> _deliver!(zonecaches(prop_cache)[zone_id], zones(outbox)[zone_id]),
-        outboxes(prop_cache),
-    )
-    _eachzone(deliver_to_zone!, prop_cache, thread)
-
-    return _syncsums!(prop_cache)
-end
 
 function _mapcoeffs!(::MultiSumStorage, transform, msum::AbstractTermSum; thread::Bool=true)
     map_zone!(zone_id) = mapcoeffs!(transform, zones(msum)[zone_id]; thread=false)

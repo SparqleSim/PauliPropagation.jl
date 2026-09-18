@@ -6,7 +6,7 @@ Every `PauliSum`, `VectorPauliSum` and `MultiPauliSum` is an `AbstractTermSum`, 
 ## Map
 ```@autodocs
 Modules = [PauliPropagation.PropagationBase]
-Pages = ["src/Base/Primitives/map.jl"]
+Pages = ["src/Base/Primitives/map.jl", "src/Base/Primitives/flatmap.jl"]
 ```
 
 ## Reduce

@@ -238,8 +238,7 @@ end
 """
     applytoall!(gate::TGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
 
-Overload of `applytoall!()` for `TGate(qind)` and a propagating `PauliSum`.
-Redirects to a `PauliRotation(:Z, qind)` with angle π/4.
+Apply a `TGate(qind)` as a `PauliRotation(:Z, qind)` with angle π/4.
 """
 function PropagationBase.applytoall!(gate::TGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
     return applytoall!(PauliRotation(:Z, gate.qind), prop_cache, π / 4; kwargs...)
@@ -274,17 +273,8 @@ end
 """
     applymergetruncate!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
 
-Overload of `applymergetruncate!` for `FrozenGate`s. Re-directs to `applymergetruncate!` for the wrapped `FrozenGate.gate` with the frozen parameter.
+Apply a `FrozenGate` through the top-level implementation of its wrapped gate, with its frozen parameter.
 """
 function PropagationBase.applymergetruncate!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
     return applymergetruncate!(gate.gate, prop_cache, gate.parameter; kwargs...)
-end
-
-"""
-    applytoall!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
-
-Overload of `applytoall!` for `FrozenGate`s. Re-directs to `applytoall!` for the wrapped `FrozenGate.gate` with the frozen parameter.
-"""
-function PropagationBase.applytoall!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
-    return applytoall!(gate.gate, prop_cache, gate.parameter; kwargs...)
 end

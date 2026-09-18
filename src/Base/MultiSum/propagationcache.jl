@@ -85,3 +85,6 @@ function _syncsums!(prop_cache::AbstractPropagationCache)
     end
     return prop_cache
 end
+
+# a box is emptied by the zone that takes delivery, so every box is empty when a gate picks it up
+_deliver!(zonecache, box) = (add!(zonecache, box); empty!(box); zonecache)

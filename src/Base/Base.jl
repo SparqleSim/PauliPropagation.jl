@@ -75,9 +75,7 @@ export
     outboxes,
     nzones,
     zonesizes,
-    zoneof,
-    staysinzone,
-    applytoallzones!
+    zoneof
 
 include("./Primitives/Primitives.jl")
 export
@@ -97,7 +95,9 @@ export
     mapreducecoeffs,
     maxabscoeff,
     xorbranch,
-    xorbranch!
+    xorbranch!,
+    flatmap,
+    flatmap!
 
 include("./vectorbackend.jl")
 export
