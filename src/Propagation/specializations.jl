@@ -181,7 +181,8 @@ Apply `PauliNoise` and truncate in one walk whenever the truncation threshold do
 the post-gate maximum coefficient. The gate never creates duplicate terms, so no merge is needed.
 """
 function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::AbstractPauliPropagationCache, lambda;
-    thread::Bool=true, min_rel_coeff=nothing, kwargs...)
+    thread::Bool=true, min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf,
+    max_sins::Real=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, kwargs...)
 
     _check_qind_range(nqubits(prop_cache), gate.qind)
     _check_noise_strength(PauliNoise, lambda)
@@ -189,13 +190,14 @@ function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::Abstr
     # A relative threshold needs the maximum after damping, so it necessarily remains two passes.
     if !isnothing(min_rel_coeff)
         applytoall!(gate, prop_cache, lambda; thread)
-        return truncate!(prop_cache; thread, min_rel_coeff, kwargs...)
+        return truncate!(prop_cache;
+            thread, min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc)
     end
 
     qind = gate.qind
     damp_val = 1 - lambda
     damp(pstr, coeff) = isdamped(gate, getpauli(pstr, qind)) ? coeff * damp_val : coeff
-    truncfunc = _truncationfunction(prop_cache; kwargs...)
+    truncfunc = _truncationfunction(; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
     return mapandtruncate!(damp, truncfunc, prop_cache; thread)
 end
 
