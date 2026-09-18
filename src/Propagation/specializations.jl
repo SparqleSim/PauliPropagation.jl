@@ -25,7 +25,7 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::AbstractPa
 
     function rotate(pstr, coeff)
         if commutes(gate_mask, pstr)
-            return unchanged
+            return Unchanged()
         else
             _, sign = paulirotationproduct(gate_mask, pstr)
             return Branch(coeff * cos_val, coeff * sin_val * sign)
@@ -108,7 +108,7 @@ function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::A
             _, sign = paulirotationproduct(gate_mask, pstr)
             return Branch(coeff * cosh_val, coeff * sinh_val * sign)
         else
-            return unchanged
+            return Unchanged()
         end
     end
 
@@ -170,9 +170,33 @@ function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::AbstractPauli
 
     qind = gate.qind
     damp_val = 1 - lambda
-
     damp(pstr, coeff) = isdamped(gate, getpauli(pstr, qind)) ? coeff * damp_val : coeff
     return mapcoeffsbypair!(damp, prop_cache; thread)
+end
+
+"""
+    applymergetruncate!(gate::PauliNoise, prop_cache::AbstractPauliPropagationCache, lambda; kwargs...)
+
+Apply `PauliNoise` and truncate in one walk whenever the truncation threshold does not depend on
+the post-gate maximum coefficient. The gate never creates duplicate terms, so no merge is needed.
+"""
+function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::AbstractPauliPropagationCache, lambda;
+    thread::Bool=true, min_rel_coeff=nothing, kwargs...)
+
+    _check_qind_range(nqubits(prop_cache), gate.qind)
+    _check_noise_strength(PauliNoise, lambda)
+
+    # A relative threshold needs the maximum after damping, so it necessarily remains two passes.
+    if !isnothing(min_rel_coeff)
+        applytoall!(gate, prop_cache, lambda; thread)
+        return truncate!(prop_cache; thread, min_rel_coeff, kwargs...)
+    end
+
+    qind = gate.qind
+    damp_val = 1 - lambda
+    damp(pstr, coeff) = isdamped(gate, getpauli(pstr, qind)) ? coeff * damp_val : coeff
+    truncfunc = _truncationfunction(prop_cache; kwargs...)
+    return mapandtruncate!(damp, truncfunc, prop_cache; thread)
 end
 
 PropagationBase.requiresmerging(::PauliNoise, ::AbstractPauliPropagationCache) = false
@@ -196,11 +220,11 @@ function PropagationBase.applytoall!(gate::AmplitudeDampingNoise, prop_cache::Ab
     function damp(pstr, coeff)
         pauli = getpauli(pstr, qind)
         if pauli == 0
-            return unchanged
+            return Unchanged()
         elseif pauli == 3
             return Branch((1 - gamma) * coeff, gamma * coeff)
         else
-            return damp_val * coeff
+            return Kept(damp_val * coeff)
         end
     end
 

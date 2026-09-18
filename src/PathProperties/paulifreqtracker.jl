@@ -40,7 +40,7 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropa
 
     function rotate(pstr, coeff)
         if commutes(gate_mask, pstr)
-            return unchanged
+            return Unchanged()
         else
             _, kept_coeff, _, new_coeff = splitapply(gate_mask, pstr, coeff, theta; kwargs...)
             return Branch(kept_coeff, new_coeff)

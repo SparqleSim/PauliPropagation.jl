@@ -131,6 +131,8 @@ export merge, merge!, mergefunc
 include("./truncate.jl")
 export truncate, truncate!
 
+include("./mapandtruncate.jl")
+export mapandtruncate!
 
 include("./sortedtailmerge.jl")
 
@@ -139,7 +141,8 @@ include("./xortailmerge.jl")
 export
     xorbranch,
     xorbranch!,
-    unchanged,
+    Unchanged,
+    Kept,
     Branch
 
 include("./MonteCarlo/MonteCarlo.jl")

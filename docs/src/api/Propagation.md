@@ -15,13 +15,15 @@ Modules = [PauliPropagation]
 Pages = ["src/Propagation/specializations.jl"]
 ```
 
-## Branching
+## Fused propagation passes
 
-The pass that a gate branching by a fixed Pauli string is built from. Like the primitives, it is defined in the `PropagationBase` submodule for generic term sums and propagation caches.
+The passes that a gate can build from without materializing separate application, merge, and
+truncation phases. They are defined in the `PropagationBase` submodule for generic propagation
+caches.
 
 ```@autodocs
 Modules = [PauliPropagation.PropagationBase]
-Pages = ["src/Base/xorbranch.jl"]
+Pages = ["src/Base/xorbranch.jl", "src/Base/mapandtruncate.jl"]
 ```
 
 ## Counting Pauli Strings

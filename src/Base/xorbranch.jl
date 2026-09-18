@@ -12,7 +12,7 @@ xorbranch(rule, thing::Union{AbstractTermSum,AbstractPropagationCache}, mask; kw
     xorbranch!(rule, prop_cache::AbstractPropagationCache, mask; thread=true, truncfunc=nothing)
 
 Branch every active term by `rule` and merge the terms this creates.
-`rule(term, coefficient)` returns `unchanged` to leave the term alone, a coefficient to keep it with,
+`rule(term, coefficient)` returns `Unchanged()` to leave the term alone, `Kept(coefficient)` to keep it with a new coefficient,
 or `Branch(kept, created)` to keep it with `kept` and create the term `term ⊻ mask` with `created`.
 Every new term is the same `⊻ mask` away from its parent, which lets an array sum sort the new terms in without comparing them,
 and a multi sum send each zone's new terms to a single other zone.
@@ -21,15 +21,22 @@ and a multi sum send each zone's new terms to a single other zone.
 xorbranch!(rule::F, thing::Union{AbstractTermSum,AbstractPropagationCache}, mask; thread::Bool=true, truncfunc=nothing) where {F} =
     _xorbranch!(StorageType(thing), rule, thing, mask; thread, truncfunc)
 
-struct Unchanged end
-
 """
-    unchanged
+    Unchanged()
 
 The outcome of a rule for `xorbranch!` that leaves a term as it is.
 A rule that returns it need not read the coefficient.
 """
-const unchanged = Unchanged()
+struct Unchanged end
+
+"""
+    Kept(coefficient)
+
+The outcome of a rule for `xorbranch!` that keeps the term with `coefficient`.
+"""
+struct Kept{C}
+    coefficient::C
+end
 
 """
     Branch(kept, created)
@@ -62,12 +69,14 @@ end
 function _xorbranch!(::StorageType, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
     function branch(term, coefficient)
         branched = rule(term, coefficient)
-        if branched === unchanged
+        if branched isa Unchanged
             return ((term, coefficient),)
+        elseif branched isa Kept
+            return ((term, branched.coefficient),)
         elseif branched isa Branch
             return ((term, branched.kept), (term ⊻ mask, branched.created))
         else
-            return ((term, branched),)
+            _throwunknownoutcome(branched)
         end
     end
 
@@ -103,11 +112,13 @@ function _branchdict!(rule::F, term_sum, new_sum, mask) where {F}
     for (term, coefficient) in term_sum
         branched = @inline rule(term, coefficient)
 
-        if branched isa Branch
+        if branched isa Kept
+            set!(term_sum, term, branched.coefficient)
+        elseif branched isa Branch
             set!(term_sum, term, branched.kept)
             set!(new_sum, term ⊻ mask, branched.created)
-        elseif branched !== unchanged
-            set!(term_sum, term, branched)
+        elseif !(branched isa Unchanged)
+            _throwunknownoutcome(branched)
         end
     end
 
@@ -203,13 +214,17 @@ end
     GC.@preserve terms @inbounds for ii in lo:hi
         branched = ruleat(rule, terms, coefficients, ii)
 
-        if branched isa Branch
+        if branched isa Kept
+            if DoWrite
+                coefficients[ii] = branched.coefficient
+            end
+        elseif branched isa Branch
             if DoWrite
                 coefficients[ii] = branched.kept
             end
             write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos, terms[ii] ⊻ mask, branched.created, Val(DoWrite))
-        elseif DoWrite && branched !== unchanged
-            coefficients[ii] = branched
+        elseif !(branched isa Unchanged)
+            _throwunknownoutcome(branched)
         end
     end
 
@@ -234,12 +249,14 @@ function _branchflagged!(rule::F, prop_cache, mask; thread::Bool=true) where {F}
     AK.foreachindex(write_positions; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         @inbounds begin
             branched = @inline rule(main_terms[ii], main_coefficients[ii])
-            if branched isa Branch
+            if branched isa Kept
+                main_coefficients[ii] = branched.coefficient
+            elseif branched isa Branch
                 main_coefficients[ii] = branched.kept
                 main_terms[n_old+write_positions[ii]] = main_terms[ii] ⊻ mask
                 main_coefficients[n_old+write_positions[ii]] = branched.created
-            elseif branched !== unchanged
-                main_coefficients[ii] = branched
+            elseif !(branched isa Unchanged)
+                _throwunknownoutcome(branched)
             end
         end
     end
@@ -314,3 +331,6 @@ _mergebox!(::ArrayStorage, zonecache, box, mask, sorted_zones, source::Int; trun
 # A fixed-mask branch has one destination zone, so one box holds all its new terms.
 @inline _branchbox(prop_cache::AbstractPropagationCache, zone_id::Int) =
     @inbounds first(zones(outboxes(prop_cache)[zone_id]))
+
+@noinline _throwunknownoutcome(branched) =
+    throw(ArgumentError("rule returned $(typeof(branched)); expected Unchanged(), Kept(coefficient), or Branch(kept, created)"))

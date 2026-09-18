@@ -114,7 +114,7 @@ end
         coeff = @inbounds coefficients[ii]
         return Branch(coeff * rule.kept_val, coeff * rule.new_val * sign)
     else
-        return unchanged
+        return Unchanged()
     end
 end
 
@@ -125,7 +125,7 @@ end
         _, sign = PauliPropagation.paulirotationproduct(mask, pstr)
         return Branch(coeff * rule.kept_val, coeff * rule.new_val * sign)
     else
-        return unchanged
+        return Unchanged()
     end
 end
 
@@ -158,7 +158,7 @@ end
 # a term whose new term is too heavy only keeps its own coefficient
 @inline function _capweight(capped::WeightCapped, branched, pstr)
     if branched isa Branch && _truncateweight(pstr ⊻ capped.mask, capped.max_weight)
-        return branched.kept
+        return Kept(branched.kept)
     else
         return branched
     end

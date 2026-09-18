@@ -215,6 +215,7 @@ function _truncationfunction(
 
     # if we use min_rel_coeff, compute the maximum absolute coefficient
     # this must be written in a single line to avoid Julia closure problems and boxing (wow)
+    # TODO: this must become an efficient check, which it currently is not.
     min_coeff = isnothing(min_rel_coeff) ? min_abs_coeff : max(min_rel_coeff * maxabscoeff(pobj), min_abs_coeff)
 
     function truncfunc(pstr, coeff)

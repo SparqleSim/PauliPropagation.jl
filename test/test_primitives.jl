@@ -118,7 +118,7 @@ end
     gate_mask = symboltoint(paulitype(dict_sum), gate.symbols, gate.qinds)
     function rotate(pstr, coeff)
         if commutes(gate_mask, pstr)
-            return PB.unchanged
+            return PB.Unchanged()
         else
             _, sign = PauliPropagation.paulirotationproduct(gate_mask, pstr)
             return PB.Branch(coeff * cos(theta), coeff * sin(theta) * sign)
@@ -126,7 +126,7 @@ end
     end
 
     # a rule that only rescales: every Pauli string with a Z on the first qubit
-    rescale(pstr, coeff) = getpauli(pstr, 1) == 3 ? 0.5 * coeff : PB.unchanged
+    rescale(pstr, coeff) = getpauli(pstr, 1) == 3 ? PB.Kept(0.5 * coeff) : PB.Unchanged()
     rescaled_reference = mapcoeffs(identity, dict_sum)
     for (pstr, coeff) in dict_sum
         if getpauli(pstr, 1) == 3
@@ -141,6 +141,10 @@ end
     for makesum in (identity, VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 4), psum -> MultiPauliSum(psum, 4))
         branched = PauliPropagation.PropagationBase.xorbranch(rotate, makesum(dict_sum), gate_mask)
         @test PauliSum(branched) ≈ reference
+
+        # a rule may only return the three outcomes
+        bare_coefficient(pstr, coeff) = 0.5 * coeff
+        @test_throws ArgumentError PB.xorbranch(bare_coefficient, makesum(dict_sum), gate_mask; thread=false)
 
         # truncating in the merge agrees with truncating afterwards
         truncfunc(pstr, coeff) = abs(coeff) < 0.05
@@ -157,6 +161,15 @@ end
         filtered = filter(keep_positive, makesum(dict_sum))
         @test length(filtered) == count(coeff > 0 for (_, coeff) in dict_sum)
         @test all(getcoeff(filtered, pstr) ≈ coeff for (pstr, coeff) in dict_sum if coeff > 0)
+
+        # This is intentionally cache-only: it fuses a coefficient map with removal, whereas the
+        # term-sum `mapcoeffsbypair!` above always preserves its number of terms.
+        trunc_negative(pstr, coeff) = coeff <= 0
+        map_and_truncated_cache = PropagationCache(deepcopy(makesum(dict_sum)))
+        PB.mapandtruncate!(halve_positive, trunc_negative, map_and_truncated_cache; thread=false)
+        map_and_truncated = PauliSum(extractsum!(map_and_truncated_cache))
+        @test length(map_and_truncated) == count(coeff > 0 for (_, coeff) in dict_sum)
+        @test all(getcoeff(map_and_truncated, pstr) ≈ 0.5 * coeff for (pstr, coeff) in dict_sum if coeff > 0)
     end
 
     # on a sorted array sum, none of the passes disturbs the sorted prefix
