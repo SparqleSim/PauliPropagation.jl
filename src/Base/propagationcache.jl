@@ -32,10 +32,13 @@ setauxsum!(prop_cache::AbstractPropagationCache, new_auxsum) = _thrownotimplemen
 terms(prop_cache::AbstractPropagationCache) = _terms(StorageType(prop_cache), prop_cache)
 _terms(::DictStorage, prop_cache::AbstractPropagationCache) = terms(mainsum(prop_cache))
 _terms(::ArrayStorage, prop_cache::AbstractPropagationCache) = activeterms(prop_cache)
+# A cache with an unknown storage has no separate active view.  Its main sum is its active sum.
+_terms(::StorageType, prop_cache::AbstractPropagationCache) = terms(mainsum(prop_cache))
 
 coefficients(prop_cache::AbstractPropagationCache) = _coefficients(StorageType(prop_cache), prop_cache)
 _coefficients(::DictStorage, prop_cache::AbstractPropagationCache) = coefficients(mainsum(prop_cache))
 _coefficients(::ArrayStorage, prop_cache::AbstractPropagationCache) = activecoeffs(prop_cache)
+_coefficients(::StorageType, prop_cache::AbstractPropagationCache) = coefficients(mainsum(prop_cache))
 
 termtype(prop_cache::AbstractPropagationCache) = _termtype(StorageType(prop_cache), prop_cache)
 
@@ -77,7 +80,7 @@ end
 activesum(prop_cache::AbstractPropagationCache) = _activesum(StorageType(prop_cache), prop_cache)
 
 function _activesum(::StorageType, prop_cache::AbstractPropagationCache)
-    _thrownotimplemented(prop_cache, :activesum)
+    return mainsum(prop_cache)
 end
 
 """
@@ -136,6 +139,7 @@ end
 function _length(::ArrayStorage, prop_cache::AbstractPropagationCache)
     return activesize(prop_cache)
 end
+_length(::StorageType, prop_cache::AbstractPropagationCache) = length(mainsum(prop_cache))
 
 Base.isempty(prop_cache::AbstractPropagationCache) = length(prop_cache) == 0
 
@@ -193,6 +197,9 @@ add!(prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum) = _add!(St
 _add!(::DictStorage, prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum) =
     (add!(mainsum(prop_cache), term_sum); prop_cache)
 
+_add!(::StorageType, prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum) =
+    (add!(mainsum(prop_cache), term_sum); prop_cache)
+
 function _add!(::ArrayStorage, prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum)
     n_old = activesize(prop_cache)
     n_new = n_old + length(term_sum)
@@ -215,6 +222,7 @@ Base.empty!(prop_cache::AbstractPropagationCache) = _empty!(StorageType(prop_cac
 _empty!(::DictStorage, prop_cache::AbstractPropagationCache) = (empty!(mainsum(prop_cache)); prop_cache)
 _empty!(::ArrayStorage, prop_cache::AbstractPropagationCache) =
     (setactivesize!(prop_cache, 0); setsortedprefix!(mainsum(prop_cache), 0); prop_cache)
+_empty!(::StorageType, prop_cache::AbstractPropagationCache) = (empty!(mainsum(prop_cache)); prop_cache)
 
 """
     resize!(prop_cache::AbstractPropagationCache, n::Int)
@@ -286,6 +294,9 @@ end
 
 
 _extractsum!(::DictStorage, prop_cache::AbstractPropagationCache) = mainsum(prop_cache)
+
+# Generic caches have no over-allocation or active-size bookkeeping to discard.
+_extractsum!(::StorageType, prop_cache::AbstractPropagationCache) = mainsum(prop_cache)
 
 function _extractsum!(::ArrayStorage, prop_cache::AbstractPropagationCache)
     # resize the entire cache to retain validity

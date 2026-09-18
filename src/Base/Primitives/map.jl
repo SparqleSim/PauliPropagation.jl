@@ -139,8 +139,10 @@ function _mapcoeffs!(::StorageType, transform, term_sum::AbstractTermSum; thread
     return term_sum
 end
 
-_mapcoeffs!(::StorageType, transform, prop_cache::AbstractPropagationCache; thread::Bool=true) =
-    _thrownotimplemented(prop_cache, :mapcoeffs!)
+function _mapcoeffs!(::StorageType, transform, prop_cache::AbstractPropagationCache; thread::Bool=true)
+    mapcoeffs!(transform, mainsum(prop_cache); thread)
+    return prop_cache
+end
 
 
 """
@@ -148,8 +150,8 @@ _mapcoeffs!(::StorageType, transform, prop_cache::AbstractPropagationCache; thre
     mapcoeffsbypair!(transform, prop_cache::AbstractPropagationCache; thread=true)
 
 Replace every active coefficient by `transform(term, coefficient)`, leaving terms unchanged.
-Returning `nothing` drops the term. This operation updates coefficients in place; sorted terms stay
-sorted and dictionaries are updated in place.
+Returning `nothing` drops the term. Storage may update coefficients in place or write kept pairs
+through its scratch sum; sorted built-in storage stays sorted.
 """
 mapcoeffsbypair!(transform, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
     _mapcoeffsbypair!(StorageType(thing), transform, thing; thread)
@@ -274,8 +276,20 @@ function _mapcoeffsbypairflagged!(transform::F, prop_cache; thread::Bool=true) w
     return filterviaflags!(prop_cache; thread)
 end
 
-_mapcoeffsbypair!(::StorageType, transform::F, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) where {F} =
-    _thrownotimplemented(thing, :mapcoeffs!)
+function _mapcoeffsbypair!(::StorageType, transform::F, term_sum::AbstractTermSum; thread::Bool=true) where {F}
+    prop_cache = PropagationCache(term_sum)
+    mapcoeffsbypair!(transform, prop_cache; thread)
+    return extractsum!(prop_cache, term_sum)
+end
+
+function _mapcoeffsbypair!(::StorageType, transform::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+    function map_or_drop(term, coefficient)
+        mapped = transform(term, coefficient)
+        return mapped === nothing ? () : ((term, mapped),)
+    end
+
+    return flatmap!(map_or_drop, prop_cache; thread)
+end
 
 
 function _mapcoeffs!(::MultiSumStorage, transform, msum::AbstractTermSum; thread::Bool=true)

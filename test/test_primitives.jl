@@ -237,6 +237,70 @@ end
     @test coefficients(many_mapped) == coefficients(many_reference)
 end
 
+@testset "Unknown storage primitive defaults" begin
+    # This storage deliberately has no primitive-specific methods.  It only implements the basic
+    # term-sum operations that the serial fallback paths require.
+    struct FallbackStorage <: PB.StorageType end
+
+    mutable struct FallbackPauliSum <: PP.AbstractPauliSum
+        nqubits::Int
+        data::Dict{UInt8,Float64}
+    end
+
+    PB.StorageType(::FallbackPauliSum) = FallbackStorage()
+    PB.storage(psum::FallbackPauliSum) = psum.data
+    PB.nsites(psum::FallbackPauliSum) = psum.nqubits
+    PP.nqubits(psum::FallbackPauliSum) = psum.nqubits
+    PB._terms(::FallbackStorage, psum::FallbackPauliSum) = keys(psum.data)
+    PB._coefficients(::FallbackStorage, psum::FallbackPauliSum) = values(psum.data)
+    PB._add!(::FallbackStorage, psum::FallbackPauliSum, term, coefficient) =
+        (psum.data[term] = get(psum.data, term, 0.0) + coefficient; psum)
+    PB._empty!(::FallbackStorage, psum::FallbackPauliSum) = (empty!(psum.data); psum)
+
+    function fallback_sum()
+        return FallbackPauliSum(3, Dict{UInt8,Float64}(
+            0x01 => 0.8,
+            0x03 => -0.3,
+            0x0c => 0.4,
+        ))
+    end
+
+    pauli_sum(psum::FallbackPauliSum) = PauliSum(psum.nqubits, copy(psum.data))
+    function matches(reference, result)
+        @test length(result) == length(reference)
+        @test all(getcoeff(result, term) ≈ coefficient for (term, coefficient) in reference)
+    end
+
+    # These gates exercise the broad specializations through their primitive fallbacks: map!,
+    # mapcoeffsbypair!, and xorbranch!, respectively.
+    for (gate, parameter) in (
+        (CliffordGate(:H, 1), nothing),
+        (DepolarizingNoise(1), 0.4),
+        (PauliRotation(:Z, 1), 0.3),
+        (AmplitudeDampingNoise(1), 0.2),
+    )
+        input = fallback_sum()
+        reference_input = pauli_sum(input)
+        reference = isnothing(parameter) ?
+            propagate(gate, reference_input; min_abs_coeff=0.0) :
+            propagate(gate, reference_input, parameter; min_abs_coeff=0.0)
+        result = isnothing(parameter) ?
+            propagate(gate, input; min_abs_coeff=0.0) :
+            propagate(gate, input, parameter; min_abs_coeff=0.0)
+        matches(reference, result)
+    end
+
+    # The cache-level defaults expose the main sum and combine an explicitly populated auxiliary
+    # sum through the public add! contract.
+    cache = PropagationCache(fallback_sum())
+    add!(auxsum(cache), 0x01, 0.2)
+    merge!(cache)
+    @test getcoeff(mainsum(cache), 0x01) ≈ 1.0
+
+    mapcoeffs!(coeff -> 2 * coeff, cache)
+    @test getcoeff(mainsum(cache), 0x01) ≈ 2.0
+end
+
 @testset "Gates written for every cache dispatch without ties" begin
     # a custom gate defined on the abstract Pauli cache runs on every storage, since the primitives
     # it is written with dispatch on the storage of the cache

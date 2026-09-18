@@ -38,8 +38,24 @@ function _xorbranch!(::StorageType, rule::F, term_sum::AbstractTermSum, mask; th
     return extractsum!(prop_cache, term_sum)
 end
 
-_xorbranch!(::StorageType, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F} =
-    _thrownotimplemented(prop_cache, :xorbranch!)
+function _xorbranch!(::StorageType, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
+    function branch(term, coefficient)
+        branched = rule(term, coefficient)
+        branched === nothing && return ((term, coefficient),)
+
+        if branched isa Tuple
+            kept_coefficient, new_coefficient = branched
+            return ((term, kept_coefficient), (term ⊻ mask, new_coefficient))
+        end
+
+        return ((term, branched),)
+    end
+
+    # `flatmap!` writes through `add!`, so its generic path has already combined equal terms.
+    flatmap!(branch, prop_cache; thread)
+    truncfunc === nothing || truncate!(truncfunc, prop_cache; thread)
+    return prop_cache
+end
 
 
 ### Dictionary storage

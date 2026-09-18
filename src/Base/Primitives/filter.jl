@@ -38,8 +38,10 @@ function _filter!(::ArrayStorage, keep::F, prop_cache::AbstractPropagationCache;
     return mapcoeffsbypair!(keep_or_drop, prop_cache; thread)
 end
 
-_filter!(::StorageType, keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
-    _thrownotimplemented(thing, :filter!)
+function _filter!(::StorageType, keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true)
+    keep_or_drop(term, coefficient) = keep(term, coefficient) ? coefficient : nothing
+    return mapcoeffsbypair!(keep_or_drop, thing; thread)
+end
 
 
 """

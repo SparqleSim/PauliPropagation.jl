@@ -51,6 +51,14 @@ function _merge!(::DictStorage, prop_cache::AbstractPropagationCache; kwargs...)
     return prop_cache
 end
 
+# The generic flatmap path writes through `add!`, whose contract already combines equal terms.
+# There may still be a caller-owned auxiliary sum, so fold it into the main sum and clear it.
+function _merge!(::StorageType, prop_cache::AbstractPropagationCache; kwargs...)
+    add!(mainsum(prop_cache), auxsum(prop_cache))
+    empty!(auxsum(prop_cache))
+    return prop_cache
+end
+
 function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing, kwargs...)
 
     if isempty(prop_cache)
