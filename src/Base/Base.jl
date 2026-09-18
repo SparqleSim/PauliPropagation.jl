@@ -94,8 +94,6 @@ export
     filtercoeffs!,
     mapreducecoeffs,
     maxabscoeff,
-    xorbranch,
-    xorbranch!,
     flatmap,
     flatmap!
 
@@ -135,6 +133,14 @@ export truncate, truncate!
 
 
 include("./sortedtailmerge.jl")
+
+include("./xorbranch.jl")
+include("./xortailmerge.jl")
+export
+    xorbranch,
+    xorbranch!,
+    unchanged,
+    Branch
 
 include("./MonteCarlo/MonteCarlo.jl")
 export

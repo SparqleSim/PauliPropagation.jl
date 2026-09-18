@@ -39,9 +39,12 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropa
     gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
 
     function rotate(pstr, coeff)
-        commutes(gate_mask, pstr) && return nothing
-        _, kept_coeff, _, new_coeff = splitapply(gate_mask, pstr, coeff, theta; kwargs...)
-        return (kept_coeff, new_coeff)
+        if commutes(gate_mask, pstr)
+            return unchanged
+        else
+            _, kept_coeff, _, new_coeff = splitapply(gate_mask, pstr, coeff, theta; kwargs...)
+            return Branch(kept_coeff, new_coeff)
+        end
     end
 
     return xorbranch!(rotate, prop_cache, gate_mask; thread=get(kwargs, :thread, true))

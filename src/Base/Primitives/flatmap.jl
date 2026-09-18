@@ -28,7 +28,9 @@ flatmap!(f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F
 # `swapsums!` takes this path.
 function _flatmap!(::StorageType, f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
     output_sum = auxsum(prop_cache)
-    isempty(output_sum) || empty!(output_sum)
+    if !isempty(output_sum)
+        empty!(output_sum)
+    end
 
     for (term, coefficient) in prop_cache
         for (new_term, new_coefficient) in f(term, coefficient)

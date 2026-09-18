@@ -47,7 +47,9 @@ _sortterms!(::StorageType, thing::Union{AbstractTermSum,AbstractPropagationCache
 # the number of leading sorted terms before the first one that repeats its predecessor
 function _uniqueprefix(sorted_terms; thread::Bool=true)
     n = length(sorted_terms)
-    n <= 1 && return n
+    if n <= 1
+        return n
+    end
 
     first_duplicate(index) = @inbounds sorted_terms[index] == sorted_terms[index-1] ? index : n + 1
     return AK.mapreduce(first_duplicate, min, 2:n, AK.get_backend(sorted_terms); init=n + 1, neutral=n + 1,

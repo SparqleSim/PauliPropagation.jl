@@ -76,7 +76,9 @@ function xorsortedboxmerge!(prop_cache::AbstractPropagationCache, box, xor_mask,
     thread::Bool=true, truncfunc=nothing, kwargs...)
 
     n_tail = length(box)
-    n_tail == 0 && return prop_cache
+    if n_tail == 0
+        return prop_cache
+    end
 
     n_old = activesize(prop_cache)
     main_sorted = sortedprefix(mainsum(prop_cache)) == n_old
@@ -219,15 +221,20 @@ end
 ### Planning the passes
 
 function _xorplan(xor_mask, terms::AbstractArray{TT}) where {TT}
-    (TT <: Unsigned && xor_mask isa TT && _iscpuarray(terms)) || return nothing
-    return _maskgroups(xor_mask)
+    if TT <: Unsigned && xor_mask isa TT && _iscpuarray(terms)
+        return _maskgroups(xor_mask)
+    else
+        return nothing
+    end
 end
 
 # group the set bits of `mask` into runs of neighbours, lowest first, each as (group mask, mask of
 # everything above it); `nothing` for no bits or more than _MAX_XOR_PASSES groups
 function _maskgroups(mask::TT) where {TT}
     bits = _masksetbits(mask)
-    isempty(bits) && return nothing
+    if isempty(bits)
+        return nothing
+    end
 
     groups = Tuple{TT,TT}[]
     lo = 1
@@ -236,7 +243,9 @@ function _maskgroups(mask::TT) where {TT}
         while hi < length(bits) && bits[hi+1] == bits[hi] + 1
             hi += 1
         end
-        length(groups) == _MAX_XOR_PASSES && return nothing
+        if length(groups) == _MAX_XOR_PASSES
+            return nothing
+        end
         above = _bitsfrom(TT, bits[hi] + 1)
         push!(groups, (mask & ~above & _bitsfrom(TT, bits[lo]), above))
         lo = hi + 1

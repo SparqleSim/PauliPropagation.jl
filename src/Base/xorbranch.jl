@@ -12,14 +12,35 @@ xorbranch(rule, thing::Union{AbstractTermSum,AbstractPropagationCache}, mask; kw
     xorbranch!(rule, prop_cache::AbstractPropagationCache, mask; thread=true, truncfunc=nothing)
 
 Branch every active term by `rule` and merge the terms this creates.
-`rule(term, coefficient)` returns `nothing` to leave the term alone, a coefficient to keep it with,
-or a pair `(kept_coefficient, new_coefficient)` to keep it with the first and create the term `term ⊻ mask` with the second.
+`rule(term, coefficient)` returns `unchanged` to leave the term alone, a coefficient to keep it with,
+or `Branch(kept, created)` to keep it with `kept` and create the term `term ⊻ mask` with `created`.
 Every new term is the same `⊻ mask` away from its parent, which lets an array sum sort the new terms in without comparing them,
 and a multi sum send each zone's new terms to a single other zone.
 `truncfunc(term, coefficient)`, if given, drops terms once merging has settled their coefficients.
 """
 xorbranch!(rule::F, thing::Union{AbstractTermSum,AbstractPropagationCache}, mask; thread::Bool=true, truncfunc=nothing) where {F} =
     _xorbranch!(StorageType(thing), rule, thing, mask; thread, truncfunc)
+
+struct Unchanged end
+
+"""
+    unchanged
+
+The outcome of a rule for `xorbranch!` that leaves a term as it is.
+A rule that returns it need not read the coefficient.
+"""
+const unchanged = Unchanged()
+
+"""
+    Branch(kept, created)
+
+The outcome of a rule for `xorbranch!` that keeps the term with the coefficient `kept`
+and creates the term `term ⊻ mask` with the coefficient `created`.
+"""
+struct Branch{C}
+    kept::C
+    created::C
+end
 
 """
     ruleat(rule, terms, coefficients, ii)
@@ -41,19 +62,20 @@ end
 function _xorbranch!(::StorageType, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
     function branch(term, coefficient)
         branched = rule(term, coefficient)
-        branched === nothing && return ((term, coefficient),)
-
-        if branched isa Tuple
-            kept_coefficient, new_coefficient = branched
-            return ((term, kept_coefficient), (term ⊻ mask, new_coefficient))
+        if branched === unchanged
+            return ((term, coefficient),)
+        elseif branched isa Branch
+            return ((term, branched.kept), (term ⊻ mask, branched.created))
+        else
+            return ((term, branched),)
         end
-
-        return ((term, branched),)
     end
 
     # `flatmap!` writes through `add!`, so its generic path has already combined equal terms.
     flatmap!(branch, prop_cache; thread)
-    truncfunc === nothing || truncate!(truncfunc, prop_cache; thread)
+    if truncfunc !== nothing
+        truncate!(truncfunc, prop_cache; thread)
+    end
     return prop_cache
 end
 
@@ -62,12 +84,16 @@ end
 
 function _xorbranch!(::DictStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
     new_sum = auxsum(prop_cache)
-    isempty(new_sum) || empty!(new_sum)
+    if !isempty(new_sum)
+        empty!(new_sum)
+    end
 
     _branchdict!(rule, mainsum(prop_cache), new_sum, mask)
 
     merge!(prop_cache; thread)
-    truncfunc === nothing || truncate!(truncfunc, prop_cache; thread)
+    if truncfunc !== nothing
+        truncate!(truncfunc, prop_cache; thread)
+    end
     return prop_cache
 end
 
@@ -76,13 +102,11 @@ end
 function _branchdict!(rule::F, term_sum, new_sum, mask) where {F}
     for (term, coefficient) in term_sum
         branched = @inline rule(term, coefficient)
-        branched === nothing && continue
 
-        if branched isa Tuple
-            kept_coefficient, new_coefficient = branched
-            set!(term_sum, term, kept_coefficient)
-            set!(new_sum, term ⊻ mask, new_coefficient)
-        else
+        if branched isa Branch
+            set!(term_sum, term, branched.kept)
+            set!(new_sum, term ⊻ mask, branched.created)
+        elseif branched !== unchanged
             set!(term_sum, term, branched)
         end
     end
@@ -96,7 +120,9 @@ end
 # The new terms are appended past the active terms in the order of their parents, and then sorted in.
 function _xorbranch!(::ArrayStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
     n_old = activesize(prop_cache)
-    n_old == 0 && return prop_cache
+    if n_old == 0
+        return prop_cache
+    end
 
     sorted_before = sortedprefix(mainsum(prop_cache)) == n_old
 
@@ -176,13 +202,13 @@ end
 
     GC.@preserve terms @inbounds for ii in lo:hi
         branched = ruleat(rule, terms, coefficients, ii)
-        branched === nothing && continue
 
-        if branched isa Tuple
-            kept_coefficient, new_coefficient = branched
-            DoWrite && (coefficients[ii] = kept_coefficient)
-            write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos, terms[ii] ⊻ mask, new_coefficient, Val(DoWrite))
-        elseif DoWrite
+        if branched isa Branch
+            if DoWrite
+                coefficients[ii] = branched.kept
+            end
+            write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos, terms[ii] ⊻ mask, branched.created, Val(DoWrite))
+        elseif DoWrite && branched !== unchanged
             coefficients[ii] = branched
         end
     end
@@ -195,7 +221,7 @@ end
 function _branchflagged!(rule::F, prop_cache, mask; thread::Bool=true) where {F}
     n_old = activesize(prop_cache)
 
-    createsnewterm(term, coefficient) = @inline(rule(term, coefficient)) isa Tuple
+    createsnewterm(term, coefficient) = @inline(rule(term, coefficient)) isa Branch
     flag!(createsnewterm, prop_cache; thread)
     flagstoindices!(prop_cache; thread)
 
@@ -208,12 +234,11 @@ function _branchflagged!(rule::F, prop_cache, mask; thread::Bool=true) where {F}
     AK.foreachindex(write_positions; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         @inbounds begin
             branched = @inline rule(main_terms[ii], main_coefficients[ii])
-            if branched isa Tuple
-                kept_coefficient, new_coefficient = branched
-                main_coefficients[ii] = kept_coefficient
+            if branched isa Branch
+                main_coefficients[ii] = branched.kept
                 main_terms[n_old+write_positions[ii]] = main_terms[ii] ⊻ mask
-                main_coefficients[n_old+write_positions[ii]] = new_coefficient
-            elseif branched !== nothing
+                main_coefficients[n_old+write_positions[ii]] = branched.created
+            elseif branched !== unchanged
                 main_coefficients[ii] = branched
             end
         end
@@ -252,7 +277,9 @@ function _branchzone!(::ArrayStorage, rule::F, zonecache, box, mask) where {F}
     n_old = activesize(zonecache)
 
     # A term makes at most one new term, so the zone's size bounds what the box has to hold.
-    length(box) < n_old && resize!(box, n_old)
+    if length(box) < n_old
+        resize!(box, n_old)
+    end
     n_new = _branchwrite!(rule, terms(box), coefficients(box), 1,
         terms(mainsum(zonecache)), coefficients(mainsum(zonecache)), 1, n_old, mask, Val(true))
     resize!(box, n_new)
@@ -271,7 +298,9 @@ _sortedzones(::ArrayStorage, prop_cache::AbstractPropagationCache) =
 # A dictionary zone merges as it takes delivery, where an array zone sorts the box in and merges it.
 function _mergebox!(::StorageType, zonecache, box, mask, sorted_zones, source::Int; truncfunc=nothing)
     _deliver!(zonecache, box)
-    truncfunc === nothing || truncate!(truncfunc, zonecache; thread=false)
+    if truncfunc !== nothing
+        truncate!(truncfunc, zonecache; thread=false)
+    end
     return zonecache
 end
 

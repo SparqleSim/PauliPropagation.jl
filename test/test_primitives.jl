@@ -117,20 +117,26 @@ end
     # a rule for `xorbranch!` that is the rotation: untouched, or kept and a new term
     gate_mask = symboltoint(paulitype(dict_sum), gate.symbols, gate.qinds)
     function rotate(pstr, coeff)
-        commutes(gate_mask, pstr) && return nothing
-        _, sign = PauliPropagation.paulirotationproduct(gate_mask, pstr)
-        return (coeff * cos(theta), coeff * sin(theta) * sign)
+        if commutes(gate_mask, pstr)
+            return PB.unchanged
+        else
+            _, sign = PauliPropagation.paulirotationproduct(gate_mask, pstr)
+            return PB.Branch(coeff * cos(theta), coeff * sin(theta) * sign)
+        end
     end
 
     # a rule that only rescales: every Pauli string with a Z on the first qubit
-    rescale(pstr, coeff) = getpauli(pstr, 1) == 3 ? 0.5 * coeff : nothing
+    rescale(pstr, coeff) = getpauli(pstr, 1) == 3 ? 0.5 * coeff : PB.unchanged
     rescaled_reference = mapcoeffs(identity, dict_sum)
     for (pstr, coeff) in dict_sum
-        getpauli(pstr, 1) == 3 && set!(rescaled_reference, pstr, 0.5 * coeff)
+        if getpauli(pstr, 1) == 3
+            set!(rescaled_reference, pstr, 0.5 * coeff)
+        end
     end
 
-    # a coefficient map based on the pair and drops on `nothing`
-    halve_or_drop(pstr, coeff) = coeff > 0 ? 0.5 * coeff : nothing
+    # a coefficient map that reads the pair, and the filter that keeps what it halves
+    halve_positive(pstr, coeff) = coeff > 0 ? 0.5 * coeff : coeff
+    keep_positive(pstr, coeff) = coeff > 0
 
     for makesum in (identity, VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 4), psum -> MultiPauliSum(psum, 4))
         branched = PauliPropagation.PropagationBase.xorbranch(rotate, makesum(dict_sum), gate_mask)
@@ -144,12 +150,16 @@ end
         rescaled = PauliPropagation.PropagationBase.xorbranch(rescale, makesum(dict_sum), gate_mask)
         @test PauliSum(rescaled) ≈ rescaled_reference
 
-        filtered = mapcoeffsbypair!(halve_or_drop, deepcopy(makesum(dict_sum)))
+        halved = mapcoeffsbypair!(halve_positive, deepcopy(makesum(dict_sum)))
+        @test length(halved) == length(dict_sum)
+        @test all(getcoeff(halved, pstr) ≈ halve_positive(pstr, coeff) for (pstr, coeff) in dict_sum)
+
+        filtered = filter(keep_positive, makesum(dict_sum))
         @test length(filtered) == count(coeff > 0 for (_, coeff) in dict_sum)
-        @test all(getcoeff(filtered, pstr) ≈ 0.5 * coeff for (pstr, coeff) in dict_sum if coeff > 0)
+        @test all(getcoeff(filtered, pstr) ≈ coeff for (pstr, coeff) in dict_sum if coeff > 0)
     end
 
-    # on a sorted array sum, neither primitive disturbs the sorted prefix
+    # on a sorted array sum, none of the passes disturbs the sorted prefix
     vector_sum = VectorPauliSum(dict_sum)
     sortterms!(vector_sum)
     prop_cache = PropagationCache(vector_sum)
@@ -159,7 +169,11 @@ end
     @test PauliPropagation.PropagationBase.sortedprefix(mainsum(prop_cache)) == length(prop_cache)
     @test issorted(PauliPropagation.PropagationBase.terms(prop_cache))
 
-    mapcoeffsbypair!(halve_or_drop, prop_cache; thread=false)
+    mapcoeffsbypair!(halve_positive, prop_cache; thread=false)
+    @test PauliPropagation.PropagationBase.sortedprefix(mainsum(prop_cache)) == length(prop_cache)
+    @test issorted(PauliPropagation.PropagationBase.terms(prop_cache))
+
+    filter!(keep_positive, prop_cache; thread=false)
     @test PauliPropagation.PropagationBase.sortedprefix(mainsum(prop_cache)) == length(prop_cache)
     @test issorted(PauliPropagation.PropagationBase.terms(prop_cache))
 
@@ -171,8 +185,9 @@ end
     @test PauliPropagation.PropagationBase.terms(cpu_cache) == PauliPropagation.PropagationBase.terms(portable_cache)
     @test coefficients(cpu_cache) == coefficients(portable_cache)
 
-    PauliPropagation.PropagationBase._mapcoeffsbypaircpu!(halve_or_drop, cpu_cache; thread=false)
-    PauliPropagation.PropagationBase._mapcoeffsbypairflagged!(halve_or_drop, portable_cache; thread=false)
+    PauliPropagation.PropagationBase._filtercpu!(keep_positive, cpu_cache; thread=false)
+    PauliPropagation.PropagationBase.flag!(keep_positive, portable_cache; thread=false)
+    PauliPropagation.PropagationBase.filterviaflags!(portable_cache; thread=false)
     @test PauliPropagation.PropagationBase.terms(cpu_cache) == PauliPropagation.PropagationBase.terms(portable_cache)
     @test coefficients(cpu_cache) == coefficients(portable_cache)
 end
@@ -189,9 +204,13 @@ end
     x_mask = symboltoint(paulitype(dict_sum), :X, 1)
     function branch_or_drop(pstr, coeff)
         pauli = getpauli(pstr, 1)
-        pauli == 0 && return ()
-        pauli == 3 && return ((pstr, 0.5 * coeff), (pstr ⊻ x_mask, 0.25 * coeff))
-        return ((pstr, coeff),)
+        if pauli == 0
+            return ()
+        elseif pauli == 3
+            return ((pstr, 0.5 * coeff), (pstr ⊻ x_mask, 0.25 * coeff))
+        else
+            return ((pstr, coeff),)
+        end
     end
 
     reference = PauliSum(nq)

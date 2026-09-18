@@ -26,9 +26,3 @@ Pages = ["src/Base/Primitives/filter.jl"]
 Modules = [PauliPropagation.PropagationBase]
 Pages = ["src/Base/Primitives/sort.jl"]
 ```
-
-## Branch
-```@autodocs
-Modules = [PauliPropagation.PropagationBase]
-Pages = ["src/Base/Primitives/xorbranch.jl"]
-```

@@ -24,9 +24,12 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::AbstractPa
     sin_val = sin(theta)
 
     function rotate(pstr, coeff)
-        commutes(gate_mask, pstr) && return nothing
-        _, sign = paulirotationproduct(gate_mask, pstr)
-        return (coeff * cos_val, coeff * sin_val * sign)
+        if commutes(gate_mask, pstr)
+            return unchanged
+        else
+            _, sign = paulirotationproduct(gate_mask, pstr)
+            return Branch(coeff * cos_val, coeff * sin_val * sign)
+        end
     end
 
     return xorbranch!(rotate, prop_cache, gate_mask; thread)
@@ -101,9 +104,12 @@ function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::A
     # the sign of paulirotationproduct is also the minus sign in
     # e^{-τ/2 P} Q e^{-τ/2 P} = cosh(τ) Q - sinh(τ) PQ for commuting P and Q
     function rotate(pstr, coeff)
-        commutes(gate_mask, pstr) || return nothing
-        _, sign = paulirotationproduct(gate_mask, pstr)
-        return (coeff * cosh_val, coeff * sinh_val * sign)
+        if commutes(gate_mask, pstr)
+            _, sign = paulirotationproduct(gate_mask, pstr)
+            return Branch(coeff * cosh_val, coeff * sinh_val * sign)
+        else
+            return unchanged
+        end
     end
 
     return xorbranch!(rotate, prop_cache, gate_mask; thread)
@@ -162,45 +168,11 @@ function PropagationBase.applytoall!(gate::PauliNoise, prop_cache::AbstractPauli
     _check_qind_range(nqubits(prop_cache), gate.qind)
     _check_noise_strength(PauliNoise, lambda)
 
-    return mapcoeffsbypair!(_damping(gate, lambda), prop_cache; thread)
-end
-
-"""
-    applymergetruncate!(gate::PauliNoise, prop_cache::AbstractPauliPropagationCache, lambda; kwargs...)
-
-Overload of `applymergetruncate!` for `PauliNoise` gates.
-The gate only rescales coefficients, so it and the truncation are one pass over the Pauli sum.
-"""
-function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::AbstractPauliPropagationCache, lambda;
-    thread::Bool=true, min_rel_coeff=nothing, kwargs...)
-
-    _check_qind_range(nqubits(prop_cache), gate.qind)
-    _check_noise_strength(PauliNoise, lambda)
-
-    # a relative threshold reads the largest coefficient after the gate
-    if !isnothing(min_rel_coeff)
-        applytoall!(gate, prop_cache, lambda; thread)
-        return truncate!(prop_cache; thread, min_rel_coeff, kwargs...)
-    end
-
-    damp = _damping(gate, lambda)
-    truncfunc = _truncationfunction(prop_cache; kwargs...)
-
-    function damp_or_drop(pstr, coeff)
-        new_coeff = damp(pstr, coeff)
-        return truncfunc(pstr, new_coeff) ? nothing : new_coeff
-    end
-
-    return mapcoeffsbypair!(damp_or_drop, prop_cache; thread)
-end
-
-# the coefficient a Pauli string keeps under the noise
-function _damping(gate::PauliNoise, lambda)
     qind = gate.qind
     damp_val = 1 - lambda
 
     damp(pstr, coeff) = isdamped(gate, getpauli(pstr, qind)) ? coeff * damp_val : coeff
-    return damp
+    return mapcoeffsbypair!(damp, prop_cache; thread)
 end
 
 PropagationBase.requiresmerging(::PauliNoise, ::AbstractPauliPropagationCache) = false
@@ -223,9 +195,13 @@ function PropagationBase.applytoall!(gate::AmplitudeDampingNoise, prop_cache::Ab
 
     function damp(pstr, coeff)
         pauli = getpauli(pstr, qind)
-        pauli == 0 && return nothing
-        pauli == 3 && return ((1 - gamma) * coeff, gamma * coeff)
-        return damp_val * coeff
+        if pauli == 0
+            return unchanged
+        elseif pauli == 3
+            return Branch((1 - gamma) * coeff, gamma * coeff)
+        else
+            return damp_val * coeff
+        end
     end
 
     # Z ⊻ Z is the identity on that qubit
@@ -277,4 +253,13 @@ Apply a `FrozenGate` through the top-level implementation of its wrapped gate, w
 """
 function PropagationBase.applymergetruncate!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
     return applymergetruncate!(gate.gate, prop_cache, gate.parameter; kwargs...)
+end
+
+"""
+    applytoall!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
+
+Apply a `FrozenGate` through the `applytoall!` implementation of its wrapped gate, with its frozen parameter.
+"""
+function PropagationBase.applytoall!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
+    return applytoall!(gate.gate, prop_cache, gate.parameter; kwargs...)
 end

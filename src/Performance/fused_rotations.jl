@@ -60,8 +60,10 @@ end
 
 # the fused path truncates in one pass, so an option it does not implement must not be silently dropped
 function _checkunusedkwargs(kwargs)
-    isempty(kwargs) && return
-    throw(ArgumentError("keyword arguments $(join(keys(kwargs), ", ")) are not supported by Performance.propagate"))
+    if !isempty(kwargs)
+        throw(ArgumentError("keyword arguments $(join(keys(kwargs), ", ")) are not supported by Performance.propagate"))
+    end
+    return
 end
 
 # Both rotations branch by the gate's Pauli string: a `PauliRotation` the terms that anticommute
@@ -70,7 +72,9 @@ function _fusedrotation!(gate, prop_cache, kept_val, new_val, on_commuting::Bool
     min_abs_coeff::Real, max_weight::Real, max_freq::Real, max_sins::Real, customtruncfunc, thread::Bool)
 
     PauliPropagation._check_qind_range(nqubits(prop_cache), gate.qinds)
-    isempty(prop_cache) && return prop_cache
+    if isempty(prop_cache)
+        return prop_cache
+    end
 
     mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
     rule = LocalRotationRule(_gatemask(mask, _localterms(prop_cache)), kept_val, new_val, on_commuting)
@@ -105,20 +109,24 @@ end
 # the array kernels come with an index, and read through the bytes
 @inline function PropagationBase.ruleat(rule::LocalRotationRule, terms, coefficients, ii::Int)
     bytes = _bytesof(terms, rule.gate_mask)
-    _gatecommutes(rule.gate_mask, terms, bytes, ii) == rule.on_commuting || return nothing
-    sign = _gatesign(rule.gate_mask, terms, bytes, ii)
-
-    coeff = @inbounds coefficients[ii]
-    return (coeff * rule.kept_val, coeff * rule.new_val * sign)
+    if _gatecommutes(rule.gate_mask, terms, bytes, ii) == rule.on_commuting
+        sign = _gatesign(rule.gate_mask, terms, bytes, ii)
+        coeff = @inbounds coefficients[ii]
+        return Branch(coeff * rule.kept_val, coeff * rule.new_val * sign)
+    else
+        return unchanged
+    end
 end
 
 # every other storage comes with the term
 @inline function (rule::LocalRotationRule)(pstr, coeff)
     mask = _plainmask(rule.gate_mask)
-    commutes(mask, pstr) == rule.on_commuting || return nothing
-    _, sign = PauliPropagation.paulirotationproduct(mask, pstr)
-
-    return (coeff * rule.kept_val, coeff * rule.new_val * sign)
+    if commutes(mask, pstr) == rule.on_commuting
+        _, sign = PauliPropagation.paulirotationproduct(mask, pstr)
+        return Branch(coeff * rule.kept_val, coeff * rule.new_val * sign)
+    else
+        return unchanged
+    end
 end
 
 """
@@ -140,13 +148,18 @@ end
 
 @inline function PropagationBase.ruleat(capped::WeightCapped, terms, coefficients, ii::Int)
     branched = PropagationBase.ruleat(capped.rule, terms, coefficients, ii)
-    branched isa Tuple || return branched
-    return _capweight(capped, branched, (@inbounds terms[ii]))
+    if branched isa Branch
+        return _capweight(capped, branched, (@inbounds terms[ii]))
+    else
+        return branched
+    end
 end
 
 # a term whose new term is too heavy only keeps its own coefficient
 @inline function _capweight(capped::WeightCapped, branched, pstr)
-    branched isa Tuple || return branched
-    _truncateweight(pstr ⊻ capped.mask, capped.max_weight) && return first(branched)
-    return branched
+    if branched isa Branch && _truncateweight(pstr ⊻ capped.mask, capped.max_weight)
+        return branched.kept
+    else
+        return branched
+    end
 end
