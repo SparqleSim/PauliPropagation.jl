@@ -6,7 +6,7 @@
 
 
 # Writes `(term, coefficient)` at `position` when `DoWrite`, and advances `position` in both the
-# dry run and the writing pass.
+# dry run and the writing pass. The caller keeps `position` within the output arrays.
 @inline function _writeandadvance!(output_terms, output_coefficients, position, term, coefficient, ::Val{DoWrite}) where DoWrite
     if DoWrite
         @inbounds output_terms[position] = term
@@ -14,6 +14,19 @@
     end
     return position + 1
 end
+
+# The same, but only up to `write_stop`: a pair past it is counted, not written, so a pass that
+# replays a callback can compare its count with the counting pass instead of writing out of bounds.
+@inline function _writeandadvance!(output_terms, output_coefficients, position, write_stop, term, coefficient, ::Val{DoWrite}) where DoWrite
+    if DoWrite && position <= write_stop
+        @inbounds output_terms[position] = term
+        @inbounds output_coefficients[position] = coefficient
+    end
+    return position + 1
+end
+
+@noinline _throwreplaymismatch() = throw(ArgumentError(
+    "the callback returned different results when called again; it must return the same results for the same pair every time"))
 
 
 # Flagging and prefix scans support branching gates and array-backed filtering.
@@ -123,6 +136,7 @@ function filterviaflags!(source_flags, destination_indices, output_terms, output
 
     @assert length(source_flags) <= length(input_terms) && length(source_flags) <= length(input_coefficients)
     @assert length(source_flags) <= length(output_terms) && length(source_flags) <= length(output_coefficients)
+    @assert length(source_flags) <= length(destination_indices)
 
     flagstoindices!(destination_indices, source_flags; thread)
 

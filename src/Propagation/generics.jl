@@ -189,8 +189,8 @@ end
 ### TRUNCATE
 
 """
-truncate!(psum::AbstractPauliSum; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread=true)
-truncate!(prop_cache::AbstractPauliPropagationCache; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread=true)
+truncate!(psum::AbstractPauliSum; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread=true, kwargs...)
+truncate!(prop_cache::AbstractPauliPropagationCache; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread=true, kwargs...)
 
 Truncation function for `AbstractPauliPropagationCache`s that combines multiple truncation criteria.
 The default truncation criteria are:
@@ -204,14 +204,14 @@ This function combines all truncation criteria into a single truncation function
 """
 function PropagationBase.truncate!(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
-    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true)
+    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
     if !isnothing(min_rel_coeff)
         min_abs_coeff = max(min_rel_coeff * maxabscoeff(pobj; thread), min_abs_coeff)
     end
 
     truncfunc = _truncationfunction(; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
-    return truncate!(truncfunc, pobj; thread)
+    return truncate!(truncfunc, pobj; thread, kwargs...)
 end
 
 # The truncation function of `truncate!`, from the keyword arguments of `propagate`.

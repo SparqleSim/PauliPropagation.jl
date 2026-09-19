@@ -29,6 +29,7 @@ function _mapreduce(::ArrayStorage, mapper::F, reducer::O, thing; init, neutral,
     active_terms = terms(thing)
     active_coefficients = coefficients(thing)
 
+    @assert length(active_terms) == length(active_coefficients)
     if _iscpuarray(active_terms)
         return _mapreducecpu(mapper, reducer, active_terms, active_coefficients; init, neutral, thread)
     end

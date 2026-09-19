@@ -59,7 +59,7 @@ end
 # `nothing` when the words cannot be read directly, or the gate spreads over more than two of them
 function _wordmask(gate_mask::TT, terms) where {TT}
     little_endian = Base.ENDIAN_BOM == 0x04030201
-    (!little_endian || !(terms isa Vector) || sizeof(TT) % 8 != 0) && return nothing
+    (!little_endian || !(terms isa Vector{TT}) || !isbitstype(TT) || sizeof(TT) % 8 != 0) && return nothing
 
     bits = PropagationBase._masksetbits(gate_mask)
     isempty(bits) && return nothing
@@ -85,7 +85,7 @@ Wrap `gate_mask` for the two-byte path, or return it unchanged when that path do
 function _bytemask(gate_mask::TT, terms) where {TT}
     # the byte reads assume little-endian layout; ENDIAN_BOM is a constant, so the test folds away
     little_endian = Base.ENDIAN_BOM == 0x04030201
-    (!little_endian || sizeof(TT) < _MIN_LOCAL_BYTES || !(terms isa Vector)) && return gate_mask
+    (!little_endian || sizeof(TT) < _MIN_LOCAL_BYTES || !(terms isa Vector{TT}) || !isbitstype(TT)) && return gate_mask
 
     bits = PropagationBase._masksetbits(gate_mask)
     isempty(bits) && return gate_mask

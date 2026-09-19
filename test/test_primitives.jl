@@ -374,3 +374,113 @@ end
 
     @test isempty(Test.detect_ambiguities(PauliPropagation, PauliPropagation.PropagationBase, PauliPropagation.Performance))
 end
+
+@testset "Two-pass kernels reject a callback that changes on replay" begin
+    # several tasks call a callback once to count and once to write, so the write pass stays within
+    # the room the counts reserved and reports a callback that answers differently the second time
+    AK = PB.AK
+    nq = 16
+    n = 4 * PB._MIN_ELEMS_PER_TASK
+    rng = MersenneTwister(3)
+    input_terms = UInt32.(1:n)
+    vpsum = VectorPauliSum(nq, copy(input_terms), randn(rng, n))
+
+    # answers `first_answer` the first time it is called on a term and `second_answer` after
+    function replaying(first_answer, second_answer, n_terms)
+        seen = falses(n_terms)
+        function answer(term, coefficient)
+            if seen[term]
+                return second_answer(term, coefficient)
+            else
+                seen[term] = true
+                return first_answer(term, coefficient)
+            end
+        end
+        return answer
+    end
+
+    one_pair(term, coefficient) = ((term, coefficient),)
+    two_pairs(term, coefficient) = ((term, coefficient), (term, coefficient))
+    no_pairs(term, coefficient) = ()
+
+    for (first_answer, second_answer) in ((one_pair, two_pairs), (one_pair, no_pairs))
+        cache = PropagationCache(deepcopy(vpsum))
+        task_partitioner = AK.TaskPartitioner(n, 4, 1)
+        @test_throws ArgumentError PB._flatmapintasks!(replaying(first_answer, second_answer, n), cache, task_partitioner, task_partitioner.num_tasks)
+        @test PB.terms(cache) == input_terms
+
+        cache = PropagationCache(deepcopy(vpsum))
+        @test_throws ArgumentError PB._flatmapflagged!(replaying(first_answer, second_answer, n), cache; thread=false)
+        @test PB.terms(cache) == input_terms
+    end
+
+    mask = UInt32(1) << 20
+    unchanged(term, coefficient) = PB.Unchanged()
+    branch(term, coefficient) = PB.Branch(coefficient, coefficient)
+
+    for (first_answer, second_answer) in ((unchanged, branch), (branch, unchanged))
+        cache = PropagationCache(deepcopy(vpsum))
+        task_partitioner = AK.TaskPartitioner(n, 4, 1)
+        @test_throws ArgumentError PB._branchintasks!(replaying(first_answer, second_answer, n), cache, n, task_partitioner, task_partitioner.num_tasks, mask)
+
+        cache = PropagationCache(deepcopy(vpsum))
+        @test_throws ArgumentError PB._branchflagged!(replaying(first_answer, second_answer, n), cache, mask; thread=false)
+    end
+
+    # the kernels that split by thread count only replay when there is more than one
+    if Threads.nthreads() > 1
+        keep_all(term, coefficient) = true
+        drop_all(term, coefficient) = false
+        never(term, coefficient) = false
+        always(term, coefficient) = true
+        identity_map(term, coefficient) = coefficient
+
+        for (first_answer, second_answer) in ((keep_all, drop_all), (drop_all, keep_all))
+            cache = PropagationCache(deepcopy(vpsum))
+            @test_throws ArgumentError filter!(replaying(first_answer, second_answer, n), cache; thread=true)
+        end
+
+        for (first_answer, second_answer) in ((never, always), (always, never))
+            cache = PropagationCache(deepcopy(vpsum))
+            @test_throws ArgumentError PB.mapandtruncate!(identity_map, replaying(first_answer, second_answer, n), cache; thread=true)
+        end
+
+        # a sorted head with an appended tail merges through the tail merge, which replays truncfunc
+        n_tail = 100
+        tail = VectorPauliSum(nq, UInt32.(n+1:n+n_tail), randn(rng, n_tail))
+        for (first_answer, second_answer) in ((never, always), (always, never))
+            cache = PropagationCache(VectorPauliSum(nq, copy(input_terms), randn(rng, n), n))
+            add!(cache, tail)
+            @test_throws ArgumentError merge!(cache; thread=true, truncfunc=replaying(first_answer, second_answer, n + n_tail))
+        end
+    end
+
+    # a replayable callback goes through, with or without a task per chunk
+    for makesum in (VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 4))
+        reference = PB.flatmap(two_pairs, makesum(vpsum); thread=false)
+        @test PauliSum(PB.flatmap(two_pairs, makesum(vpsum); thread=true)) ≈ PauliSum(reference)
+        @test length(reference) == 2n
+    end
+
+    # an empty sum makes nothing on every storage
+    keep_pair(term, coefficient) = true
+    for makesum in (identity, VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 4), psum -> MultiPauliSum(psum, 4))
+        empty_sum = makesum(PauliSum(nq))
+        @test isempty(PB.flatmap(two_pairs, empty_sum))
+        @test isempty(PB.xorbranch(branch, empty_sum, mask))
+        @test isempty(filter(keep_pair, empty_sum))
+    end
+end
+
+@testset "Array cache invariants are checked where they are set" begin
+    nq = 16
+    small = VectorPauliSum(nq, UInt32.(1:4), ones(4))
+    cache = PropagationCache(deepcopy(small))
+    @test_throws ArgumentError PB.setactivesize!(cache, 5)
+    @test_throws ArgumentError PB.setactivesize!(cache, -1)
+    @test PB.activesize(PB.setactivesize!(cache, 2)) == 2
+
+    @test_throws ArgumentError PP.VectorPauliPropagationCache(deepcopy(small), similar(small), falses(3), zeros(Int, 4), 4)
+    @test_throws ArgumentError PP.VectorPauliPropagationCache(deepcopy(small), similar(small), falses(4), zeros(Int, 4), 5)
+    @test PB.activesize(PP.VectorPauliPropagationCache(deepcopy(small), similar(small), falses(4), zeros(Int, 4), 4)) == 4
+end

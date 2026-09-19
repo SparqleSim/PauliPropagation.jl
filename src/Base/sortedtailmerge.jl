@@ -75,23 +75,31 @@ function _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_c
 
         # dry run: each task counts its own merged output size (unknown ahead of time due to collisions)
         merged_counts_per_task = Vector{Int}(undef, n_tasks)
-        _eachtask(n_tasks) do task_id
+        function count_merged!(task_id)
             head_range = task_partitioner[task_id]
             merged_counts_per_task[task_id] = _tailmerge_write!(aux_terms, aux_coeffs, 1,
                 main_terms, main_coeffs, head_range.start, head_range.stop,
                 tail_terms, tail_coeffs, tail_bounds_per_task[task_id], tail_bounds_per_task[task_id+1] - 1, truncfunc, Val(false), distinct_tail)
         end
+        _eachtask(count_merged!, n_tasks)
 
         # prefix sum over the per-task counts gives each task its exact final write offset
         write_offsets_per_task = _offsetsfromcounts(merged_counts_per_task)
         merged_count = write_offsets_per_task[end] - 1
 
-        # real pass: each task redoes the same merge, now writing directly into its final position
-        _eachtask(n_tasks) do task_id
+        # real pass: each task redoes the same merge, now writing directly into its final position;
+        # a task writes at most as many pairs as its head and tail slices hold, so never past aux
+        written_per_task = Vector{Int}(undef, n_tasks)
+        function write_merged!(task_id)
             head_range = task_partitioner[task_id]
-            _tailmerge_write!(aux_terms, aux_coeffs, write_offsets_per_task[task_id],
+            written_per_task[task_id] = _tailmerge_write!(aux_terms, aux_coeffs, write_offsets_per_task[task_id],
                 main_terms, main_coeffs, head_range.start, head_range.stop,
                 tail_terms, tail_coeffs, tail_bounds_per_task[task_id], tail_bounds_per_task[task_id+1] - 1, truncfunc, Val(true), distinct_tail)
+        end
+        _eachtask(write_merged!, n_tasks)
+
+        if written_per_task != merged_counts_per_task
+            _throwreplaymismatch()
         end
     end
 

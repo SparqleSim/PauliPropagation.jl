@@ -13,6 +13,7 @@ Base.filter(keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread
     filter!(keep, prop_cache::AbstractPropagationCache; thread=true)
 
 Remove active `(term, coefficient)` pairs for which `keep(term, coefficient)` returns `false`.
+Several tasks on an array call `keep` once to count the pairs and once to write them, so it must return the same for the same pair each time.
 """
 Base.filter!(keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) =
     _filter!(StorageType(thing), keep, thing; thread)
@@ -84,12 +85,17 @@ function _filtercpu!(keep::F, prop_cache; thread::Bool=true) where {F}
 
     offsets = _offsetsfromcounts(kept_counts)
 
+    # a task keeps at most as many pairs as its chunk holds, so it never writes past the chunk's end
+    written = Vector{Int}(undef, n_tasks)
     function write_kept!(task_id)
         chunk = task_partitioner[task_id]
-        _filterwrite!(keep, aux_terms, aux_coefficients, offsets[task_id], main_terms, main_coefficients, chunk.start, chunk.stop, n_sorted, Val(true))
+        written[task_id], _ = _filterwrite!(keep, aux_terms, aux_coefficients, offsets[task_id], main_terms, main_coefficients, chunk.start, chunk.stop, n_sorted, Val(true))
     end
     _eachtask(write_kept!, n_tasks)
 
+    if written != kept_counts
+        _throwreplaymismatch()
+    end
     return _commitwrite!(prop_cache, offsets[end] - 1, sum(sorted_kept_counts))
 end
 

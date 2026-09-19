@@ -164,6 +164,8 @@ _mapcoeffsbypair!(::ArrayStorage, transform, prop_cache::AbstractPropagationCach
 function _mapactivecoeffsbypair!(transform::F, thing; thread::Bool=true) where {F}
     active_terms = terms(thing)
     active_coefficients = coefficients(thing)
+
+    @assert length(active_terms) == length(active_coefficients)
     AK.foreachindex(active_coefficients; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
         @inbounds active_coefficients[index] = @inline transform(active_terms[index], active_coefficients[index])
     end

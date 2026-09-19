@@ -38,6 +38,14 @@ struct MultiPauliSum{TS<:AbstractPauliSum,ZM<:ZoneMap} <: AbstractPauliSum
     nqubits::Int
     zones::Vector{TS}
     zonemap::ZM
+
+    # a zone is looked up by the index the map assigns without a bounds check
+    function MultiPauliSum(nqubits::Integer, zones::Vector{TS}, zonemap::ZM) where {TS<:AbstractPauliSum,ZM<:ZoneMap}
+        if length(zones) != nzones(zonemap)
+            throw(ArgumentError("got $(length(zones)) zones for a zone map of $(nzones(zonemap))."))
+        end
+        return new{TS,ZM}(nqubits, zones, zonemap)
+    end
 end
 
 MultiPauliSum(psum::AbstractPauliSum, n_zones::Integer=defaultnzones()) =

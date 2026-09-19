@@ -305,6 +305,10 @@ end
     @test ispow2(PP.defaultnzones())
     @test_throws ArgumentError MultiPauliSum(psum, 0)
     @test_throws ArgumentError MultiPauliSum(psum, 6)
+    @test_throws ArgumentError MultiPauliSum(nq, [PauliSum(nq) for _ in 1:3], PP.ZoneMap(paulitype(psum), 4))
+    @test nzones(PP.ZoneMap(paulitype(psum), 4)) == 4
+    msum = MultiPauliSum(psum, 4)
+    @test_throws ArgumentError MultiPauliPropagationCache(msum, map(PropagationCache, zones(msum)), [similar(msum) for _ in 1:3])
 
     # empty sums, on a number of qubits and optionally a coefficient type
     @test isempty(MultiPauliSum(nq)) && nqubits(MultiPauliSum(nq)) == nq

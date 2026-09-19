@@ -17,6 +17,7 @@ or `Branch(kept, created)` to keep it with `kept` and create the term `term ⊻ 
 Every new term is the same `⊻ mask` away from its parent, which lets an array sum sort the new terms in without comparing them,
 and a multi sum send each zone's new terms to a single other zone.
 `truncfunc(term, coefficient)`, if given, drops terms once merging has settled their coefficients.
+Several tasks on an array call `rule` and `truncfunc` once to count the terms and once to write them, so both must return the same for the same pair each time.
 """
 xorbranch!(rule::F, thing::Union{AbstractTermSum,AbstractPropagationCache}, mask; thread::Bool=true, truncfunc=nothing) where {F} =
     _xorbranch!(StorageType(thing), rule, thing, mask; thread, truncfunc)
@@ -172,7 +173,8 @@ function _branchserially!(rule::F, prop_cache, n_old::Int, mask) where {F}
         main_terms, main_coefficients, _, _ = _mainauxarrays(prop_cache)
 
         hi = min(n_old, lo + capacity(prop_cache) - write_pos)
-        write_pos += _branchwrite!(rule, main_terms, main_coefficients, write_pos, main_terms, main_coefficients, lo, hi, mask, Val(true))
+        write_pos += _branchwrite!(rule, main_terms, main_coefficients, write_pos, capacity(prop_cache),
+            main_terms, main_coefficients, lo, hi, mask, Val(true))
         lo = hi + 1
     end
 
@@ -185,7 +187,7 @@ function _branchintasks!(rule::F, prop_cache, n_old::Int, task_partitioner, n_ta
     function count_new_terms!(task_id)
         main_terms, main_coefficients, _, _ = _mainauxarrays(prop_cache)
         chunk = task_partitioner[task_id]
-        counts[task_id] = _branchwrite!(rule, main_terms, main_coefficients, 1, main_terms, main_coefficients, chunk.start, chunk.stop, mask, Val(false))
+        counts[task_id] = _branchwrite!(rule, main_terms, main_coefficients, 1, 0, main_terms, main_coefficients, chunk.start, chunk.stop, mask, Val(false))
     end
     _eachtask(count_new_terms!, n_tasks)
 
@@ -193,20 +195,27 @@ function _branchintasks!(rule::F, prop_cache, n_old::Int, task_partitioner, n_ta
     n_new = offsets[end] - 1
     _growto!(prop_cache, n_old + n_new)
 
+    # each task writes within the room its count reserved and reports what it made
+    written = Vector{Int}(undef, n_tasks)
     function write_new_terms!(task_id)
         main_terms, main_coefficients, _, _ = _mainauxarrays(prop_cache)
         chunk = task_partitioner[task_id]
-        _branchwrite!(rule, main_terms, main_coefficients, n_old + offsets[task_id], main_terms, main_coefficients, chunk.start, chunk.stop, mask, Val(true))
+        written[task_id] = _branchwrite!(rule, main_terms, main_coefficients, n_old + offsets[task_id], n_old + offsets[task_id+1] - 1,
+            main_terms, main_coefficients, chunk.start, chunk.stop, mask, Val(true))
     end
     _eachtask(write_new_terms!, n_tasks)
 
+    if written != counts
+        _throwreplaymismatch()
+    end
     return n_new
 end
 
 # Walks terms[lo:hi] under `rule`. A term keeps its coefficient in place, and the term it creates is
-# written from `write_start` on into the output arrays, which may be the very arrays being walked.
-# A dry run (`DoWrite` false) only counts. Returns the number of new terms.
-@inline function _branchwrite!(rule::F, output_terms, output_coefficients, write_start,
+# written from `write_start` up to `write_stop` into the output arrays, which may be the very arrays
+# being walked. A dry run (`DoWrite` false) only counts. Returns the number of new terms, which
+# includes those past `write_stop` that were not written.
+@inline function _branchwrite!(rule::F, output_terms, output_coefficients, write_start, write_stop,
     terms, coefficients, lo, hi, mask, ::Val{DoWrite}) where {F,DoWrite}
 
     write_pos = write_start
@@ -222,7 +231,7 @@ end
             if DoWrite
                 coefficients[ii] = branched.kept
             end
-            write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos, terms[ii] ⊻ mask, branched.created, Val(DoWrite))
+            write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos, write_stop, terms[ii] ⊻ mask, branched.created, Val(DoWrite))
         elseif !(branched isa Unchanged)
             _throwunknownoutcome(branched)
         end
@@ -245,7 +254,10 @@ function _branchflagged!(rule::F, prop_cache, mask; thread::Bool=true) where {F}
 
     main_terms, main_coefficients, _, _ = _mainauxarrays(prop_cache)
     write_positions = activeindices(prop_cache)
+    counted = activeflags(prop_cache)
 
+    # a term only writes where the first pass counted a new term, and its flag then says whether
+    # the rule answered the same again
     AK.foreachindex(write_positions; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         @inbounds begin
             branched = @inline rule(main_terms[ii], main_coefficients[ii])
@@ -253,12 +265,19 @@ function _branchflagged!(rule::F, prop_cache, mask; thread::Bool=true) where {F}
                 main_coefficients[ii] = branched.coefficient
             elseif branched isa Branch
                 main_coefficients[ii] = branched.kept
-                main_terms[n_old+write_positions[ii]] = main_terms[ii] ⊻ mask
-                main_coefficients[n_old+write_positions[ii]] = branched.created
+                if counted[ii]
+                    main_terms[n_old+write_positions[ii]] = main_terms[ii] ⊻ mask
+                    main_coefficients[n_old+write_positions[ii]] = branched.created
+                end
             elseif !(branched isa Unchanged)
                 _throwunknownoutcome(branched)
             end
+            counted[ii] = counted[ii] != (branched isa Branch)
         end
+    end
+
+    if AK.any(identity, counted; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+        _throwreplaymismatch()
     end
 
     setactivesize!(prop_cache, n_old + n_new)
@@ -297,7 +316,7 @@ function _branchzone!(::ArrayStorage, rule::F, zonecache, box, mask) where {F}
     if length(box) < n_old
         resize!(box, n_old)
     end
-    n_new = _branchwrite!(rule, terms(box), coefficients(box), 1,
+    n_new = _branchwrite!(rule, terms(box), coefficients(box), 1, n_old,
         terms(mainsum(zonecache)), coefficients(mainsum(zonecache)), 1, n_old, mask, Val(true))
     resize!(box, n_new)
 

@@ -12,6 +12,7 @@
 Storage type of a term sum that is split over work zones, each of which is a term sum of the carried type that one thread owns.
 `zonestorage` is the storage type of the zones, on which all zone-local operations dispatch.
 A term sum carries this storage type by returning its zones from `storage()` and its `ZoneMap` from `zonemap()`, and is constructed as `TS(nsites, zones, zonemap)` wherever a sum of its type is built around new zones, in the same way that `emptylike()` constructs the other storages.
+The zones are looked up by the index the map assigns without a bounds check, so a sum must hold exactly `nzones(zonemap)` of them.
 """
 struct MultiSumStorage{ST<:StorageType} <: StorageType
     zonestorage::ST
@@ -45,8 +46,9 @@ zonemap(msum::AbstractTermSum) = msum.zonemap
 
 """
     nzones(msum::AbstractTermSum)
+    nzones(zone_map::ZoneMap)
 
-Get the number of work zones that `msum` is split over.
+Get the number of work zones that `msum` is split over, or that `zone_map` assigns to.
 """
 nzones(msum::AbstractTermSum) = length(zones(msum))
 
@@ -75,6 +77,7 @@ end
 
 # the masks are the whole map: how many there are is the zone count, and what they are is the assignment
 Base.:(==)(zone_map1::ZoneMap, zone_map2::ZoneMap) = zone_map1.masks == zone_map2.masks
+nzones(zone_map::ZoneMap) = 1 << length(zone_map.masks)
 
 function ZoneMap(::Type{TT}, n_zones::Integer) where {TT}
     n_zones >= 1 || throw(ArgumentError("n_zones must be positive, got $n_zones."))

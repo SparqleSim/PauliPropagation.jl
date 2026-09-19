@@ -16,8 +16,8 @@ flatmap(f::F, term_sum::AbstractTermSum; thread::Bool=true) where {F} =
 
 Replace every active term and coefficient pair by the pairs `f(term, coefficient)` returns,
 a tuple of `(term, coefficient)` pairs or another iterable of them, such as what `apply` returns for a gate.
-The pairs are not merged: a dictionary merges them as it adds them, an array holds duplicates until `merge!`,
-and a multi sum delivers each pair to the zone that owns it and leaves the merging to `merge!` as well.
+`flatmap!` performs no separate merge pass, so duplicate handling depends on storage: dictionaries merge while inserting,
+whereas arrays and multi sums retain duplicates until `merge!`.
 Several tasks on an array call `f` once to count the pairs and once to write them, so `f` must return the same pairs each time.
 Only a cache is transformed in place, because the pairs need room of their own; a term sum takes `flatmap`.
 """
@@ -92,7 +92,7 @@ function _flatmapintasks!(f::F, prop_cache, task_partitioner, n_tasks::Int) wher
     function count_pairs!(task_id)
         main_terms, main_coefficients, aux_terms, aux_coefficients = _mainauxarrays(prop_cache)
         chunk = task_partitioner[task_id]
-        counts[task_id] = _flatmapwrite!(f, aux_terms, aux_coefficients, 1, main_terms, main_coefficients, chunk.start, chunk.stop, Val(false))
+        counts[task_id] = _flatmapwrite!(f, aux_terms, aux_coefficients, 1, 0, main_terms, main_coefficients, chunk.start, chunk.stop, Val(false))
     end
     _eachtask(count_pairs!, n_tasks)
 
@@ -100,26 +100,33 @@ function _flatmapintasks!(f::F, prop_cache, task_partitioner, n_tasks::Int) wher
     n_new = offsets[end] - 1
     _growto!(prop_cache, n_new)
 
+    # each task writes within the room its count reserved and reports what it made
+    written = Vector{Int}(undef, n_tasks)
     function write_pairs!(task_id)
         main_terms, main_coefficients, aux_terms, aux_coefficients = _mainauxarrays(prop_cache)
         chunk = task_partitioner[task_id]
-        _flatmapwrite!(f, aux_terms, aux_coefficients, offsets[task_id], main_terms, main_coefficients, chunk.start, chunk.stop, Val(true))
+        written[task_id] = _flatmapwrite!(f, aux_terms, aux_coefficients, offsets[task_id], offsets[task_id+1] - 1,
+            main_terms, main_coefficients, chunk.start, chunk.stop, Val(true))
     end
     _eachtask(write_pairs!, n_tasks)
 
+    if written != counts
+        _throwreplaymismatch()
+    end
     return n_new
 end
 
-# Walks terms[lo:hi] under `f`, writing the pairs every term makes from `write_start` on into the
-# output arrays, or only counting them on a dry run (`DoWrite` false). Returns the number of pairs.
-@inline function _flatmapwrite!(f::F, output_terms, output_coefficients, write_start,
+# Walks terms[lo:hi] under `f`, writing the pairs every term makes from `write_start` up to
+# `write_stop` into the output arrays, or only counting them on a dry run (`DoWrite` false).
+# Returns the number of pairs, which includes those past `write_stop` that were not written.
+@inline function _flatmapwrite!(f::F, output_terms, output_coefficients, write_start, write_stop,
     terms, coefficients, lo, hi, ::Val{DoWrite}) where {F,DoWrite}
 
     write_pos = write_start
 
     @inbounds for ii in lo:hi
         for (term, coefficient) in @inline f(terms[ii], coefficients[ii])
-            write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos, term, coefficient, Val(DoWrite))
+            write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos, write_stop, term, coefficient, Val(DoWrite))
         end
     end
 
@@ -142,16 +149,23 @@ function _flatmapflagged!(f::F, prop_cache; thread::Bool=true) where {F}
 
     main_terms, main_coefficients, aux_terms, aux_coefficients = _mainauxarrays(prop_cache)
     write_ends = activeindices(prop_cache)
+    mismatched = activeflags(prop_cache)
 
+    # every term writes within the room its count reserved and flags whether it made that many pairs
     AK.foreachindex(write_ends; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         @inbounds begin
             write_pos = ii == 1 ? 1 : write_ends[ii-1] + 1
+            write_stop = write_ends[ii]
             for (term, coefficient) in @inline f(main_terms[ii], main_coefficients[ii])
-                write_pos = _writeandadvance!(aux_terms, aux_coefficients, write_pos, term, coefficient, Val(true))
+                write_pos = _writeandadvance!(aux_terms, aux_coefficients, write_pos, write_stop, term, coefficient, Val(true))
             end
+            mismatched[ii] = write_pos != write_stop + 1
         end
     end
 
+    if AK.any(identity, mismatched; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+        _throwreplaymismatch()
+    end
     return n_new
 end
 
