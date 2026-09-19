@@ -1,8 +1,8 @@
 ###
 ##
 # Variants of `applymergetruncate!` for the rotation gates on a VectorPauliSum, and on a MultiPauliSum,
-# that truncate during gate application: the coefficient truncations are paid in the merge that
-# `xorbranch!` ends with, and a product too heavy to ever be kept is never made.
+# that truncate during gate application: the coefficient truncations are paid in the merge of the
+# branch, and a product too heavy to ever be kept is never made.
 # This may yield slightly different results compared to normal functionality.
 ##
 ###
@@ -82,7 +82,8 @@ function _fusedrotation!(gate, prop_cache, kept_val, new_val, on_commuting::Bool
 
     truncfunc(pstr, coeff) = _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
 
-    return xorbranch!(capped_rule, prop_cache, mask; thread, truncfunc)
+    xorbranch!(capped_rule, prop_cache, mask; thread)
+    return xormergeandtruncate!(truncfunc, prop_cache, mask; thread)
 end
 
 # the terms whose array type decides which local read applies; every zone holds the same kind

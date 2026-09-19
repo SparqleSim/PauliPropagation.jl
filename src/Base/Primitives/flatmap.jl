@@ -197,12 +197,7 @@ function _flatmap!(::MultiSumStorage, f::F, prop_cache::AbstractPropagationCache
         return
     end
     _eachzone(scatter_zone!, prop_cache, thread)
-
-    deliver_to_zone!(owner) = foreach(
-        outbox -> _deliver!(zonecaches(prop_cache)[owner], zones(outbox)[owner]),
-        outboxes(prop_cache),
-    )
-    _eachzone(deliver_to_zone!, prop_cache, thread)
+    _deliverboxes!(prop_cache; thread)
 
     return _syncsums!(prop_cache)
 end

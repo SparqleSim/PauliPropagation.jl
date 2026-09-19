@@ -12,20 +12,25 @@
 const _TAILMERGE_SORTEDPREFIX_FRACTION = 0.4
 
 """
-    sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing)
+    sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true)
 
 Merges the sorted head against the unsorted tail (see file header) and updates
 `activesize`/`sortedprefix`. Set `thread=false` to force sequential execution.
-
-`truncfunc(term, merged_coeff)`, if given, drops a term when it returns `true`. It sees the merged
-coefficient, so contributions can still cancel before the term is judged.
 """
-function sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing)
+sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true) =
+    _sortedtailmerge!(nothing, prop_cache; thread)
+
+# The same, dropping the pairs `truncfunc` rejects as they are written when there is one. It sees the
+# merged coefficient, so contributions can still cancel before the term is judged, and it is applied
+# even when there is no tail, since the head may have been rescaled since it was last truncated.
+function _sortedtailmerge!(truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
     n_old = sortedprefix(mainsum(prop_cache))
     n_new = activesize(prop_cache)
     n_tail = n_new - n_old
     if n_tail == 0
-        setsortedprefix!(mainsum(prop_cache), n_old)
+        if truncfunc !== nothing
+            truncate!(truncfunc, prop_cache; thread)
+        end
         return prop_cache
     end
 

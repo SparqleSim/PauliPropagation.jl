@@ -139,19 +139,27 @@ end
     keep_positive(pstr, coeff) = coeff > 0
 
     for makesum in (identity, VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 4), psum -> MultiPauliSum(psum, 4))
-        branched = PauliPropagation.PropagationBase.xorbranch(rotate, makesum(dict_sum), gate_mask)
+        branched = PB.xorbranch(rotate, PropagationCache(makesum(dict_sum)), gate_mask)
+        PB.xormerge!(branched, gate_mask)
+        @test PauliSum(branched) ≈ reference
+
+        # the plain merge finds the new terms wherever the branch left them
+        branched = PB.xorbranch(rotate, PropagationCache(makesum(dict_sum)), gate_mask)
+        merge!(branched)
         @test PauliSum(branched) ≈ reference
 
         # a rule may only return the three outcomes
         bare_coefficient(pstr, coeff) = 0.5 * coeff
-        @test_throws ArgumentError PB.xorbranch(bare_coefficient, makesum(dict_sum), gate_mask; thread=false)
+        @test_throws ArgumentError PB.xorbranch(bare_coefficient, PropagationCache(makesum(dict_sum)), gate_mask; thread=false)
 
         # truncating in the merge agrees with truncating afterwards
         truncfunc(pstr, coeff) = abs(coeff) < 0.05
-        truncated = PauliPropagation.PropagationBase.xorbranch(rotate, makesum(dict_sum), gate_mask; truncfunc)
+        truncated = PB.xorbranch(rotate, PropagationCache(makesum(dict_sum)), gate_mask)
+        PB.xormergeandtruncate!(truncfunc, truncated, gate_mask)
         @test PauliSum(truncated) ≈ truncate(reference; min_abs_coeff=0.05)
 
-        rescaled = PauliPropagation.PropagationBase.xorbranch(rescale, makesum(dict_sum), gate_mask)
+        rescaled = PB.xorbranch(rescale, PropagationCache(makesum(dict_sum)), gate_mask)
+        PB.xormerge!(rescaled, gate_mask)
         @test PauliSum(rescaled) ≈ rescaled_reference
 
         halved = mapcoeffsbypair!(halve_positive, deepcopy(makesum(dict_sum)))
@@ -179,6 +187,7 @@ end
     PauliPropagation.PropagationBase.setsortedprefix!(mainsum(prop_cache), length(prop_cache))
 
     PauliPropagation.PropagationBase.xorbranch!(rotate, prop_cache, gate_mask; thread=false)
+    PauliPropagation.PropagationBase.xormerge!(prop_cache, gate_mask; thread=false)
     @test PauliPropagation.PropagationBase.sortedprefix(mainsum(prop_cache)) == length(prop_cache)
     @test issorted(PauliPropagation.PropagationBase.terms(prop_cache))
 
@@ -329,6 +338,15 @@ end
     merge!(cache)
     @test getcoeff(mainsum(cache), 0x01) ≈ 1.0
 
+    fallback_term_sum = fallback_sum()
+    PB.mergeandtruncate!((term, coefficient) -> abs(coefficient) < 0.35, fallback_term_sum; thread=false)
+    @test Set(keys(fallback_term_sum.data)) == Set(UInt8[0x01, 0x0c])
+
+    add!(auxsum(cache), 0x03, 0.25)
+    PB.mergeandtruncate!((term, coefficient) -> abs(coefficient) < 0.2, cache; thread=false)
+    @test !haskey(mainsum(cache).data, 0x03)
+    @test getcoeff(mainsum(cache), 0x0c) ≈ 0.4
+
     mapcoeffs!(coeff -> 2 * coeff, cache)
     @test getcoeff(mainsum(cache), 0x01) ≈ 2.0
 end
@@ -451,7 +469,7 @@ end
         for (first_answer, second_answer) in ((never, always), (always, never))
             cache = PropagationCache(VectorPauliSum(nq, copy(input_terms), randn(rng, n), n))
             add!(cache, tail)
-            @test_throws ArgumentError merge!(cache; thread=true, truncfunc=replaying(first_answer, second_answer, n + n_tail))
+            @test_throws ArgumentError PB.mergeandtruncate!(replaying(first_answer, second_answer, n + n_tail), cache; thread=true)
         end
     end
 
@@ -467,7 +485,7 @@ end
     for makesum in (identity, VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 4), psum -> MultiPauliSum(psum, 4))
         empty_sum = makesum(PauliSum(nq))
         @test isempty(PB.flatmap(two_pairs, empty_sum))
-        @test isempty(PB.xorbranch(branch, empty_sum, mask))
+        @test isempty(PB.xormerge!(PB.xorbranch(branch, PropagationCache(empty_sum), mask), mask))
         @test isempty(filter(keep_pair, empty_sum))
     end
 end

@@ -92,7 +92,7 @@ function _undostep!(gate::PauliRotation, state::_BackwardSweepState, theta; thre
     # after, its support is capped to whatever the (just-truncated) operator sum still has
     applymergetruncate!(gate, state.op_cache, theta; thread, kwargs...)
     applytoall!(gate, state.dual_cache, theta; thread)
-    merge!(state.dual_cache; thread)
+    xormerge!(state.dual_cache, gate_mask; thread)
     _intersectfilter!(state.dual_cache, state.op_cache; thread)
 
     return state

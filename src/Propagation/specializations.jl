@@ -19,7 +19,7 @@ which gets a factor of sin(θ).
 function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
+    gate_mask = _branchmask(gate, prop_cache)
     cos_val = cos(theta)
     sin_val = sin(theta)
 
@@ -33,6 +33,16 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::AbstractPa
     end
 
     return xorbranch!(rotate, prop_cache, gate_mask; thread)
+end
+
+"""
+    applymergetruncate!(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta; thread=true, kwargs...)
+
+Overload of `applymergetruncate!` for `PauliRotation` gates.
+Applies the gate, merges the Pauli strings it branched into through `xormerge!`, and truncates.
+"""
+function PropagationBase.applymergetruncate!(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta; kwargs...)
+    return _applyxormergetruncate!(gate, prop_cache, theta; kwargs...)
 end
 
 function paulirotationproduct(gate::PauliRotation, pstr::TT) where TT
@@ -64,26 +74,25 @@ Applies the gate, merges the resulting Pauli sum, and truncates it.
 If `normalize_coeffs=true`, the resulting Pauli sum is normalized by the coefficient of the identity Pauli string after merging.
 This is useful for numerical stability when evolving states in the Schrödinger picture.
 """
-function PropagationBase.applymergetruncate!(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau; normalize_coeffs=true, kwargs...)
-    # normal application
-    applytoall!(gate, prop_cache, tau; kwargs...)
+function PropagationBase.applymergetruncate!(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau; normalize_coeffs=true, thread::Bool=true, kwargs...)
+    function apply_merge_truncate!()
+        applytoall!(gate, prop_cache, tau; thread)
+        xormerge!(prop_cache, _branchmask(gate, prop_cache); thread)
 
-    # normal merging
-    merge!(prop_cache; kwargs...)
+        # This gate assumes we are working in the Schrödinger picture evolving states
+        # we normalize by the coefficient of the identity Pauli string
+        # this is beneficial for numerical stability and if absolute coefficient truncation is used
+        # example failure modes are if the coefficient is zero, of if it is supposed to be a number other than 1
+        # these can be avoided by setting `normalize_coeffs=false`
+        if normalize_coeffs
+            # getcoeff is fast here even for VectorPauliSum
+            # because we just merged and can do sorted search.
+            mult!(prop_cache, 1 / getcoeff(activesum(prop_cache), 0))
+        end
 
-    # This gate assumes we are working in the Schrödinger picture evolving states
-    # we normalize by the coefficient of the identity Pauli string
-    # this is beneficial for numerical stability and if absolute coefficient truncation is used
-    # example failure modes are if the coefficient is zero, of if it is supposed to be a number other than 1
-    # these can be avoided by setting `normalize_coeffs=false`
-    if normalize_coeffs
-        # getcoeff is fast here even for VectorPauliSum
-        # because we just merged and can do sorted search.
-        mult!(prop_cache, 1 / getcoeff(activesum(prop_cache), 0))
+        truncate!(prop_cache; thread, kwargs...)
     end
-
-    # normal truncation
-    truncate!(prop_cache; kwargs...)
+    PropagationBase._with_threads_freed_for(apply_merge_truncate!, StorageType(prop_cache))
 
     return
 end
@@ -97,7 +106,7 @@ with factors of cosh(τ) and sinh(τ).
 function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
+    gate_mask = _branchmask(gate, prop_cache)
     cosh_val = cosh(tau)
     sinh_val = sinh(tau)
 
@@ -230,12 +239,29 @@ function PropagationBase.applytoall!(gate::AmplitudeDampingNoise, prop_cache::Ab
         end
     end
 
-    # Z ⊻ Z is the identity on that qubit
-    z_mask = symboltoint(paulitype(prop_cache), :Z, qind)
-    return xorbranch!(damp, prop_cache, z_mask; thread)
+    return xorbranch!(damp, prop_cache, _branchmask(gate, prop_cache); thread)
+end
+
+"""
+    applymergetruncate!(gate::AmplitudeDampingNoise, prop_cache::AbstractPauliPropagationCache, gamma; thread=true, kwargs...)
+
+Overload of `applymergetruncate!` for `AmplitudeDampingNoise` gates.
+Applies the gate, merges the Pauli strings it branched into through `xormerge!`, and truncates.
+"""
+function PropagationBase.applymergetruncate!(gate::AmplitudeDampingNoise, prop_cache::AbstractPauliPropagationCache, gamma; kwargs...)
+    return _applyxormergetruncate!(gate, prop_cache, gamma; kwargs...)
 end
 
 ### T gate
+
+"""
+    applymergetruncate!(gate::TGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
+
+Apply a `TGate(qind)` through the top-level implementation of a `PauliRotation(:Z, qind)` with angle π/4.
+"""
+function PropagationBase.applymergetruncate!(gate::TGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
+    return applymergetruncate!(PauliRotation(:Z, gate.qind), prop_cache, π / 4; kwargs...)
+end
 
 """
     applytoall!(gate::TGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
@@ -288,4 +314,26 @@ Apply a `FrozenGate` through the `applytoall!` implementation of its wrapped gat
 """
 function PropagationBase.applytoall!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
     return applytoall!(gate.gate, prop_cache, gate.parameter; kwargs...)
+end
+
+### Gates that branch by a fixed Pauli string
+
+# the Pauli string a gate branches by, as the mask of its `xorbranch!`
+_branchmask(gate::Union{PauliRotation,ImaginaryPauliRotation}, prop_cache) = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
+
+# Z ⊻ Z is the identity on the damped qubit
+_branchmask(gate::AmplitudeDampingNoise, prop_cache) = symboltoint(paulitype(prop_cache), :Z, gate.qind)
+
+# `applymergetruncate!` for a gate whose `applytoall!` is an `xorbranch!` by `_branchmask`, so that
+# the merge can be an `xormerge!`
+function _applyxormergetruncate!(gate, prop_cache::AbstractPauliPropagationCache, args...; thread::Bool=true, kwargs...)
+    function apply_merge_truncate!()
+        applytoall!(gate, prop_cache, args...; thread)
+        xormerge!(prop_cache, _branchmask(gate, prop_cache); thread)
+        truncate!(prop_cache; thread, kwargs...)
+    end
+    # the array kernels of AcceleratedKernels start tasks of their own, which the workers make room for
+    PropagationBase._with_threads_freed_for(apply_merge_truncate!, StorageType(prop_cache))
+
+    return
 end

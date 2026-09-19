@@ -1,26 +1,26 @@
 """
-    xorbranch(rule, term_sum::AbstractTermSum, mask; thread=true, truncfunc=nothing)
-    xorbranch(rule, prop_cache::AbstractPropagationCache, mask; thread=true, truncfunc=nothing)
+    xorbranch(rule, prop_cache::AbstractPropagationCache, mask; thread=true)
 
 Branch every active term by `rule` on a copy, see `xorbranch!`.
 """
-xorbranch(rule, thing::Union{AbstractTermSum,AbstractPropagationCache}, mask; kwargs...) =
-    xorbranch!(rule, deepcopy(thing), mask; kwargs...)
+xorbranch(rule, prop_cache::AbstractPropagationCache, mask; kwargs...) =
+    xorbranch!(rule, deepcopy(prop_cache), mask; kwargs...)
 
 """
-    xorbranch!(rule, term_sum::AbstractTermSum, mask; thread=true, truncfunc=nothing)
-    xorbranch!(rule, prop_cache::AbstractPropagationCache, mask; thread=true, truncfunc=nothing)
+    xorbranch!(rule, prop_cache::AbstractPropagationCache, mask; thread=true)
 
-Branch every active term by `rule` and merge the terms this creates.
+Branch every active term by `rule`.
 `rule(term, coefficient)` returns `Unchanged()` to leave the term alone, `Kept(coefficient)` to keep it with a new coefficient,
 or `Branch(kept, created)` to keep it with `kept` and create the term `term ⊻ mask` with `created`.
-Every new term is the same `⊻ mask` away from its parent, which lets an array sum sort the new terms in without comparing them,
-and a multi sum send each zone's new terms to a single other zone.
-`truncfunc(term, coefficient)`, if given, drops terms once merging has settled their coefficients.
-Several tasks on an array call `rule` and `truncfunc` once to count the terms and once to write them, so both must return the same for the same pair each time.
+The terms it creates are left for `xormerge!` or `xormergeandtruncate!` to merge:
+a dictionary holds them in the auxiliary sum, an array appends them past its sorted prefix in the order of their parents,
+a multi sum leaves them in the outboxes, each zone's in the one box of the zone that owns them, and any other storage adds them through `flatmap!`.
+Every new term is the same `⊻ mask` away from its parent, which is what lets those merges sort the new terms in without comparing them.
+`merge!` and `mergeandtruncate!` merge them too, only by comparison.
+Several tasks on an array call `rule` once to count the terms and once to write them, so it must return the same for the same pair each time.
 """
-xorbranch!(rule::F, thing::Union{AbstractTermSum,AbstractPropagationCache}, mask; thread::Bool=true, truncfunc=nothing) where {F} =
-    _xorbranch!(StorageType(thing), rule, thing, mask; thread, truncfunc)
+xorbranch!(rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F} =
+    _xorbranch!(StorageType(prop_cache), rule, prop_cache, mask; thread)
 
 """
     Unchanged()
@@ -60,14 +60,7 @@ The kernels keep `terms` alive for the whole walk, so a rule may read it through
 """
 @inline ruleat(rule::F, terms, coefficients, ii::Int) where {F} = @inline rule((@inbounds terms[ii]), (@inbounds coefficients[ii]))
 
-# a term sum branches through a propagation cache of its own
-function _xorbranch!(::StorageType, rule::F, term_sum::AbstractTermSum, mask; thread::Bool=true, truncfunc=nothing) where {F}
-    prop_cache = PropagationCache(term_sum)
-    xorbranch!(rule, prop_cache, mask; thread, truncfunc)
-    return extractsum!(prop_cache, term_sum)
-end
-
-function _xorbranch!(::StorageType, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
+function _xorbranch!(::StorageType, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
     function branch(term, coefficient)
         branched = rule(term, coefficient)
         if branched isa Unchanged
@@ -81,29 +74,19 @@ function _xorbranch!(::StorageType, rule::F, prop_cache::AbstractPropagationCach
         end
     end
 
-    # `flatmap!` writes through `add!`, so its generic path has already combined equal terms.
-    flatmap!(branch, prop_cache; thread)
-    if truncfunc !== nothing
-        truncate!(truncfunc, prop_cache; thread)
-    end
-    return prop_cache
+    return flatmap!(branch, prop_cache; thread)
 end
 
 
 ### Dictionary storage
 
-function _xorbranch!(::DictStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
+function _xorbranch!(::DictStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
     new_sum = auxsum(prop_cache)
     if !isempty(new_sum)
         empty!(new_sum)
     end
 
     _branchdict!(rule, mainsum(prop_cache), new_sum, mask)
-
-    merge!(prop_cache; thread)
-    if truncfunc !== nothing
-        truncate!(truncfunc, prop_cache; thread)
-    end
     return prop_cache
 end
 
@@ -129,22 +112,16 @@ end
 
 ### Array storage
 
-# The new terms are appended past the active terms in the order of their parents, and then sorted in.
-function _xorbranch!(::ArrayStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
-    n_old = activesize(prop_cache)
-    if n_old == 0
+# The new terms are appended past the active terms in the order of their parents.
+function _xorbranch!(::ArrayStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
+    if isempty(prop_cache)
         return prop_cache
     end
 
-    sorted_before = sortedprefix(mainsum(prop_cache)) == n_old
-
     if _iscpuarray(terms(mainsum(prop_cache)))
-        _branchcpu!(rule, prop_cache, mask; thread)
-    else
-        _branchflagged!(rule, prop_cache, mask; thread)
+        return _branchcpu!(rule, prop_cache, mask; thread)
     end
-
-    return xorsortedtailmerge!(prop_cache, mask, sorted_before; thread, truncfunc)
+    return _branchflagged!(rule, prop_cache, mask; thread)
 end
 
 # One task writes each new term as it makes it, growing the arrays as they fill. Several tasks first
@@ -286,23 +263,14 @@ end
 
 
 # Because the zone assignment is linear in the term, `⊻ mask` permutes the zones: every zone writes
-# the terms it creates into a single box, and takes delivery from a single zone.
-function _xorbranch!(::MultiSumStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true, truncfunc=nothing) where {F}
+# the terms it creates into the box of the single zone that owns them.
+function _xorbranch!(::MultiSumStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
     zone_storage = zonestorage(prop_cache)
-    sorted_zones = _sortedzones(zone_storage, prop_cache)
 
-    branch_zone!(zone_id) = _branchzone!(zone_storage, rule, zonecaches(prop_cache)[zone_id], _branchbox(prop_cache, zone_id), mask)
+    branch_zone!(zone_id) = _branchzone!(zone_storage, rule, zonecaches(prop_cache)[zone_id], _branchbox(prop_cache, zone_id, mask), mask)
     _eachzone(branch_zone!, prop_cache, thread)
 
-    # The box a zone collects is its tail already, in the parent order of the zone that made it, so
-    # an array zone sorts it in from where it is instead of taking delivery first.
-    function collect_branch!(owner)
-        source = _xortarget(zonemap(prop_cache), owner, mask)
-        _mergebox!(zone_storage, zonecaches(prop_cache)[owner], _branchbox(prop_cache, source), mask, sorted_zones, source; truncfunc)
-    end
-    _eachzone(collect_branch!, prop_cache, thread)
-
-    return _syncsums!(prop_cache)
+    return prop_cache
 end
 
 # A dictionary zone keeps its terms where they are and sets the new ones in its box.
@@ -323,33 +291,13 @@ function _branchzone!(::ArrayStorage, rule::F, zonecache, box, mask) where {F}
     return zonecache
 end
 
-# A zone that is sorted throughout hands its terms to a single other zone in ascending order, so the
-# tail that zone takes delivery of is `mask ⊻ ascending` and sorts by XOR passes instead of by
-# comparison. Merging here leaves `merge!` nothing to do afterwards.
-_sortedzones(::StorageType, prop_cache::AbstractPropagationCache) = nothing
-
-_sortedzones(::ArrayStorage, prop_cache::AbstractPropagationCache) =
-    [sortedprefix(mainsum(zonecache)) == activesize(zonecache) for zonecache in zonecaches(prop_cache)]
-
-# A dictionary zone merges as it takes delivery, where an array zone sorts the box in and merges it.
-function _mergebox!(::StorageType, zonecache, box, mask, sorted_zones, source::Int; truncfunc=nothing)
-    _deliver!(zonecache, box)
-    if truncfunc !== nothing
-        truncate!(truncfunc, zonecache; thread=false)
-    end
-    return zonecache
-end
-
-_mergebox!(::ArrayStorage, zonecache, box, mask, sorted_zones, source::Int; truncfunc=nothing) =
-    xorsortedboxmerge!(zonecache, box, mask, (@inbounds sorted_zones[source]); thread=false, truncfunc)
-
 # `⊻ mask` maps zone `source` onto this zone, and this zone back onto `source`.
 @inline _xortarget(zone_map::ZoneMap, source::Int, mask) =
     ((source - 1) ⊻ _zonebits(mask, zone_map.masks)) + 1
 
-# A fixed-mask branch has one destination zone, so one box holds all its new terms.
-@inline _branchbox(prop_cache::AbstractPropagationCache, zone_id::Int) =
-    @inbounds first(zones(outboxes(prop_cache)[zone_id]))
+# the box in the outbox of `zone_id` for the zone its new terms belong to
+@inline _branchbox(prop_cache::AbstractPropagationCache, zone_id::Int, mask) =
+    @inbounds zones(outboxes(prop_cache)[zone_id])[_xortarget(zonemap(prop_cache), zone_id, mask)]
 
 @noinline _throwunknownoutcome(branched) =
     throw(ArgumentError("rule returned $(typeof(branched)); expected Unchanged(), Kept(coefficient), or Branch(kept, created)"))

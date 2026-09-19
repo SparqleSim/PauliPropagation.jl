@@ -26,10 +26,7 @@ end
 
 # Merge auxsum into mainsum
 function Base.merge!(prop_cache::AbstractPropagationCache; kwargs...)
-
-    prop_cache = _merge!(StorageType(prop_cache), prop_cache; kwargs...)
-
-    return prop_cache
+    return _merge!(StorageType(prop_cache), prop_cache; kwargs...)
 end
 
 function _merge!(::DictStorage, prop_cache::AbstractPropagationCache; kwargs...)
@@ -59,7 +56,7 @@ function _merge!(::StorageType, prop_cache::AbstractPropagationCache; kwargs...)
     return prop_cache
 end
 
-function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing, kwargs...)
+function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
 
     if isempty(prop_cache)
         return prop_cache
@@ -78,7 +75,7 @@ function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; thread::B
         # the sorted head covers most of the array: sort just the unsorted tail and merge it in
         # (CPU-only scalar code, hence the backing-array check -- GPU backends fall through to
         # the fully AK-portable path below instead)
-        sortedtailmerge!(prop_cache; thread, truncfunc)
+        sortedtailmerge!(prop_cache; thread)
         return prop_cache
     end
 
@@ -86,7 +83,7 @@ function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; thread::B
     # TODO: allow sorting kwargs?
     sortterms!(prop_cache; thread)
 
-    _deduplicate!(prop_cache; thread, truncfunc)
+    _deduplicate!(prop_cache; thread)
 
     setsortedprefix!(mainsum(prop_cache), activesize(prop_cache))
 
@@ -97,25 +94,21 @@ end
 
 _merge!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(merge!, zones(msum)); msum)
 
+# the outboxes are the auxiliary sums of a multi sum, and a gate may have left terms in them
 function _merge!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
-    merge_zone!(zone_id) = merge!(zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
+    merge_zone!(owner) = merge!(_deliverto!(prop_cache, owner); thread=false, kwargs...)
     _eachzone(merge_zone!, prop_cache, thread)
     return _syncsums!(prop_cache)
 end
 
 
-function _deduplicate!(prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing)
+function _deduplicate!(prop_cache::AbstractPropagationCache; thread::Bool=true)
 
     _flaggroupbegin!(prop_cache; thread)
 
     flagstoindices!(prop_cache; thread)
 
     _mergegroups!(prop_cache; thread)
-
-    # group positions are fixed before their merged coefficients are known, so truncation needs its own pass
-    if truncfunc !== nothing
-        truncate!(truncfunc, prop_cache; thread)
-    end
 
     return prop_cache
 end

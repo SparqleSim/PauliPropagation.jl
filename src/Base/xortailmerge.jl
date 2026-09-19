@@ -5,7 +5,7 @@
 # XORing a fixed mask into sorted terms keeps two terms in relative order unless their highest
 # differing bit was flipped; one pass per group of neighbouring flipped bits, highest group first, orders it.
 # Within a pass the affected blocks arrive exactly reversed, so a pass only copies blocks back to front.
-# Only valid if the gate's input was sorted; the caller states that.
+# Only valid if the tail is `term ⊻ mask` of an ascending run, which one pass over the tail checks.
 ##
 ###
 
@@ -22,28 +22,67 @@ const _MIN_XOR_PASS_TASKS = 3
 ### Merge driver
 
 """
-    xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sorted_before::Bool; thread=true, truncfunc=nothing, kwargs...)
+    xormerge!(prop_cache::AbstractPropagationCache, mask; thread=true)
 
-`sortedtailmerge!` for a tail that a gate appended as `term ⊻ xor_mask` in parent order: the tail is
-sorted by XOR passes or by the generic `merge!`, depending on `sorted_before`.
+`merge!` for a cache that `xorbranch!` has branched by `mask`.
+An array sorts the tail past its sorted prefix in by XOR passes instead of by comparison when the tail is `term ⊻ mask` of an ascending run of terms,
+which one pass over the tail checks, and merges it generically otherwise.
+A multi sum takes delivery of the outboxes `xorbranch!` filled, sorting each in from where it is.
 """
-function xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sorted_before::Bool;
-    thread::Bool=true, truncfunc=nothing, kwargs...)
+xormerge!(prop_cache::AbstractPropagationCache, mask; thread::Bool=true) =
+    _xormerge!(StorageType(prop_cache), nothing, prop_cache, mask; thread)
 
+"""
+    xormergeandtruncate!(truncfunc, prop_cache::AbstractPropagationCache, mask; thread=true)
+
+`mergeandtruncate!` for a cache that `xorbranch!` has branched by `mask`, see `xormerge!`.
+Several tasks on an array call `truncfunc` once to count the terms and once to write them, so it must return the same for the same pair each time.
+"""
+xormergeandtruncate!(truncfunc::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F} =
+    _xormerge!(StorageType(prop_cache), truncfunc, prop_cache, mask; thread)
+
+# only an array keeps the new terms apart in an order the mask can sort
+_xormerge!(::StorageType, truncfunc::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F} =
+    _mergeandtruncateby!(truncfunc, prop_cache; thread)
+
+_xormerge!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F} =
+    _xorsortedtailmerge!(truncfunc, prop_cache, mask; thread)
+
+# The box a zone collected is its tail already, in the parent order of the zone that made it, so an
+# array zone sorts it in from where it is instead of taking delivery first.
+function _xormerge!(::MultiSumStorage, truncfunc::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
+    zone_storage = zonestorage(prop_cache)
+
+    function collect_branch!(owner)
+        source = _xortarget(zonemap(prop_cache), owner, mask)
+        _mergebox!(zone_storage, truncfunc, zonecaches(prop_cache)[owner], _branchbox(prop_cache, source, mask), mask)
+    end
+    _eachzone(collect_branch!, prop_cache, thread)
+
+    return _syncsums!(prop_cache)
+end
+
+function _mergebox!(::StorageType, truncfunc::F, zonecache, box, mask) where {F}
+    _deliver!(zonecache, box)
+    return _mergeandtruncateby!(truncfunc, zonecache; thread=false)
+end
+
+_mergebox!(::ArrayStorage, truncfunc::F, zonecache, box, mask) where {F} =
+    _xorsortedboxmerge!(truncfunc, zonecache, box, mask; thread=false)
+
+# `sortedtailmerge!` for a tail appended as `term ⊻ mask` in parent order, dropping the pairs
+# `truncfunc` rejects as they are written when there is one.
+function _xorsortedtailmerge!(truncfunc::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
     n_old = sortedprefix(mainsum(prop_cache))
     n_new = activesize(prop_cache)
     n_tail = n_new - n_old
 
-    if n_tail == 0
-        return prop_cache
-    end
-
     main_terms, main_coeffs, aux_terms, aux_coeffs = _mainauxarrays(prop_cache)
 
-    groups = (sorted_before && n_old > 0 && n_tail >= _MIN_XOR_TAIL) ? _xorplan(xor_mask, main_terms) : nothing
-    if groups === nothing
+    groups = n_tail >= _MIN_XOR_TAIL ? _xorplan(mask, main_terms) : nothing
+    if groups === nothing || !_isxortail(main_terms, n_old + 1, n_new, mask; thread)
         # the generic merge sorts through AcceleratedKernels, which starts tasks of its own
-        merge_generically!() = merge!(prop_cache; thread, truncfunc, kwargs...)
+        merge_generically!() = _mergeandtruncateby!(truncfunc, prop_cache; thread)
         return _with_threads_freed_for(merge_generically!)
     end
 
@@ -58,37 +97,23 @@ function xorsortedtailmerge!(prop_cache::AbstractPropagationCache, xor_mask, sor
 
     tail_terms, tail_coeffs = _xorsorttail!(groups, a_terms, a_coeffs, b_terms, b_coeffs; thread)
 
-    # the tail is `head ⊻ mask` over a duplicate-free head, so it holds no duplicates of its own
+    # an ascending run has no duplicates, so neither does the tail
     return _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs,
         n_old, tail_terms, tail_coeffs, n_tail, truncfunc, thread, Val(true))
 end
 
-
-"""
-    xorsortedboxmerge!(prop_cache::AbstractPropagationCache, box, xor_mask, sorted_before::Bool; thread=true, truncfunc=nothing, kwargs...)
-
-`xorsortedtailmerge!` for a tail that is still in `box`, a term sum of the same array type, in the
-parent order of whichever sum made it. The XOR passes read the box where it is and ping-pong
-between it and the room past the active terms, so the tail is moved by the sort alone instead of
-being copied in first, and the box serves as the sort's scratch. The box is empty afterwards.
-"""
-function xorsortedboxmerge!(prop_cache::AbstractPropagationCache, box, xor_mask, sorted_before::Bool;
-    thread::Bool=true, truncfunc=nothing, kwargs...)
-
+# The same for a tail that is still in `box`, a term sum of the same array type. The XOR passes
+# read the box where it is and ping-pong between it and the room past the active terms, so the
+# tail is moved by the sort alone instead of being copied in first. The box is empty afterwards.
+function _xorsortedboxmerge!(truncfunc::F, prop_cache::AbstractPropagationCache, box, mask; thread::Bool=true) where {F}
     n_tail = length(box)
-    if n_tail == 0
-        return prop_cache
-    end
-
     n_old = activesize(prop_cache)
-    main_sorted = sortedprefix(mainsum(prop_cache)) == n_old
+    head_sorted = sortedprefix(mainsum(prop_cache)) == n_old
 
-    groups = (sorted_before && main_sorted && n_old > 0 && n_tail >= _MIN_XOR_TAIL) ?
-             _xorplan(xor_mask, terms(mainsum(prop_cache))) : nothing
-    if groups === nothing
-        add!(prop_cache, box)
-        empty!(box)
-        return merge!(prop_cache; thread, truncfunc, kwargs...)
+    groups = (head_sorted && n_tail >= _MIN_XOR_TAIL) ? _xorplan(mask, terms(mainsum(prop_cache))) : nothing
+    if groups === nothing || !_isxortail(terms(box), 1, n_tail, mask; thread)
+        _deliver!(prop_cache, box)
+        return _mergeandtruncateby!(truncfunc, prop_cache; thread)
     end
 
     # the head keeps its place, the sorted tail lands past it or stays in the box, and the merge
@@ -116,6 +141,38 @@ function xorsortedboxmerge!(prop_cache::AbstractPropagationCache, box, xor_mask,
     empty!(box)
 
     return prop_cache
+end
+
+
+### Checking the tail
+
+# whether terms[lo:hi] is `term ⊻ mask` of a strictly ascending run, which is what the XOR passes sort
+function _isxortail(terms, lo::Int, hi::Int, mask; thread::Bool=true)
+    n = hi - lo + 1
+    task_partitioner, n_tasks = _preparetasks(n, thread)
+
+    if n_tasks == 1
+        return _isxortailchunk(terms, lo, hi, mask)
+    end
+
+    # a chunk also checks the step from the last term of the chunk before it
+    ascending = Vector{Bool}(undef, n_tasks)
+    function check_chunk!(task_id)
+        chunk = task_partitioner[task_id]
+        ascending[task_id] = _isxortailchunk(terms, lo + chunk.start - 1 - (task_id > 1), lo + chunk.stop - 1, mask)
+    end
+    _eachtask(check_chunk!, n_tasks)
+
+    return all(ascending)
+end
+
+function _isxortailchunk(terms, lo::Int, hi::Int, mask)
+    @inbounds for ii in lo:hi-1
+        if !((terms[ii] ⊻ mask) < (terms[ii+1] ⊻ mask))
+            return false
+        end
+    end
+    return true
 end
 
 

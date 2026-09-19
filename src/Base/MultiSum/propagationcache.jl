@@ -88,3 +88,17 @@ end
 
 # a box is emptied by the zone that takes delivery, so every box is empty when a gate picks it up
 _deliver!(zonecache, box) = (add!(zonecache, box); empty!(box); zonecache)
+
+# a zone takes delivery of what the other zones parked in their outboxes for it
+function _deliverto!(prop_cache::AbstractPropagationCache, owner::Int)
+    zonecache = zonecaches(prop_cache)[owner]
+    for outbox in outboxes(prop_cache)
+        _deliver!(zonecache, zones(outbox)[owner])
+    end
+    return zonecache
+end
+
+function _deliverboxes!(prop_cache::AbstractPropagationCache; thread::Bool=true)
+    deliver_to_zone!(owner) = _deliverto!(prop_cache, owner)
+    return _eachzone(deliver_to_zone!, prop_cache, thread)
+end

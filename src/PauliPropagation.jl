@@ -151,6 +151,7 @@ export
     mapreducecoeffs,
     merge,
     merge!,
+    mergeandtruncate!,
     mergefunc
 
 

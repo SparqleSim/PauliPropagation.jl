@@ -131,6 +131,9 @@ export merge, merge!, mergefunc
 include("./truncate.jl")
 export truncate, truncate!
 
+include("./mergeandtruncate.jl")
+export mergeandtruncate!
+
 include("./mapandtruncate.jl")
 export mapandtruncate!
 
@@ -141,6 +144,8 @@ include("./xortailmerge.jl")
 export
     xorbranch,
     xorbranch!,
+    xormerge!,
+    xormergeandtruncate!,
     Unchanged,
     Kept,
     Branch
