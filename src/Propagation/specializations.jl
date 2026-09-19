@@ -324,13 +324,27 @@ _branchmask(gate::Union{PauliRotation,ImaginaryPauliRotation}, prop_cache) = sym
 # Z ⊻ Z is the identity on the damped qubit
 _branchmask(gate::AmplitudeDampingNoise, prop_cache) = symboltoint(paulitype(prop_cache), :Z, gate.qind)
 
-# `applymergetruncate!` for a gate whose `applytoall!` is an `xorbranch!` by `_branchmask`, so that
-# the merge can be an `xormerge!`
-function _applyxormergetruncate!(gate, prop_cache::AbstractPauliPropagationCache, args...; thread::Bool=true, kwargs...)
+# `applymergetruncate!` for a gate whose `applytoall!` is an `xorbranch!` by `_branchmask`.
+# `xormergeandtruncate!` combines the merge and all per-term truncation criteria in one pass.
+function _applyxormergetruncate!(gate, prop_cache::AbstractPauliPropagationCache, args...;
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
+    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
+
     function apply_merge_truncate!()
         applytoall!(gate, prop_cache, args...; thread)
-        xormerge!(prop_cache, _branchmask(gate, prop_cache); thread)
-        truncate!(prop_cache; thread, kwargs...)
+        mask = _branchmask(gate, prop_cache)
+
+        # A relative threshold is based on the largest merged coefficient and thus cannot be
+        # evaluated while the merged output is written.
+        if !isnothing(min_rel_coeff)
+            xormerge!(prop_cache, mask; thread)
+            return truncate!(prop_cache;
+                min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc,
+                thread, kwargs...)
+        end
+
+        truncfunc = _truncationfunction(; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
+        return xormergeandtruncate!(truncfunc, prop_cache, mask; thread)
     end
     # the array kernels of AcceleratedKernels start tasks of their own, which the workers make room for
     PropagationBase._with_threads_freed_for(apply_merge_truncate!, StorageType(prop_cache))
