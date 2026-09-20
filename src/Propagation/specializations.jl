@@ -206,7 +206,8 @@ function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::Abstr
     qind = gate.qind
     damp_val = 1 - lambda
     damp(pstr, coeff) = isdamped(gate, getpauli(pstr, qind)) ? coeff * damp_val : coeff
-    truncfunc = _truncationfunction(; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
+    truncfunc = buildtruncfunc(prop_cache;
+        min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
     return mapandtruncate!(damp, truncfunc, prop_cache; thread)
 end
 
@@ -343,7 +344,8 @@ function _applyxormergetruncate!(gate, prop_cache::AbstractPauliPropagationCache
                 thread, kwargs...)
         end
 
-        truncfunc = _truncationfunction(; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
+        truncfunc = buildtruncfunc(prop_cache;
+            min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
         return xormergeandtruncate!(truncfunc, prop_cache, mask; thread)
     end
     # the array kernels of AcceleratedKernels start tasks of their own, which the workers make room for

@@ -206,35 +206,39 @@ function PropagationBase.truncate!(pobj::Union{AbstractPauliSum,AbstractPauliPro
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
     min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-    if !isnothing(min_rel_coeff)
-        min_abs_coeff = max(min_rel_coeff * maxabscoeff(pobj; thread), min_abs_coeff)
-    end
-
-    truncfunc = _truncationfunction(; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
+    truncfunc = buildtruncfunc(pobj;
+        min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread)
     return truncate!(truncfunc, pobj; thread, kwargs...)
 end
 
-# The truncation function of `truncate!`, from the keyword arguments of `propagate`.
-function _truncationfunction(;
-    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
-    customtruncfunc=nothing)
+"""
+    buildtruncfunc(pobj; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf,
+                   max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing,
+                   thread=true)
 
-    function truncfunc(pstr, coeff)
-        is_truncated = false
-        if truncateweight(pstr, max_weight)
-            is_truncated = true
-        elseif truncatemincoeff(coeff, min_abs_coeff)
-            is_truncated = true
-        elseif truncatefrequency(coeff, max_freq)
-            is_truncated = true
-        elseif truncatesins(coeff, max_sins)
-            is_truncated = true
-        elseif !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff)
-            is_truncated = true
+Build a predicate that combines the supported truncation criteria. When
+`min_rel_coeff` is specified, its absolute threshold is calculated from the
+largest coefficient currently in `pobj` and captured by the returned function.
+"""
+function buildtruncfunc(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
+    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true)
+
+    effective_min_abs_coeff = isnothing(min_rel_coeff) ? min_abs_coeff :
+        max(min_rel_coeff * maxabscoeff(pobj; thread), min_abs_coeff)
+
+    # `let` prevents the effective threshold from being captured in a `Core.Box`.
+    # The predicate is called in the innermost propagation loops, so it must retain
+    # concrete captures to avoid type-erased calls and per-call allocations.
+    return let effective_min_abs_coeff = effective_min_abs_coeff
+        function truncfunc(pstr, coeff)
+            truncateweight(pstr, max_weight) && return true
+            truncatemincoeff(coeff, effective_min_abs_coeff) && return true
+            truncatefrequency(coeff, max_freq) && return true
+            truncatesins(coeff, max_sins) && return true
+            return !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff)
         end
 
-        return is_truncated
+        return truncfunc
     end
-
-    return truncfunc
 end

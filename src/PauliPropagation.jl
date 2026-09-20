@@ -147,6 +147,7 @@ export
     apply,
     truncate,
     truncate!,
+    buildtruncfunc,
     maxabscoeff,
     mapreducecoeffs,
     merge,
