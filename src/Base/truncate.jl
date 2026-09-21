@@ -33,6 +33,10 @@ function truncate!(truncfunc::F, thing::Union{AbstractTermSum,AbstractPropagatio
     return filter!(keep, thing; thread)
 end
 
+# `truncate!` by a truncation function that may be `nothing`, which the merges take for no truncation
+_truncate!(truncfunc::F, thing; thread::Bool=true) where {F} = truncate!(truncfunc, thing; thread)
+_truncate!(::Nothing, thing; thread::Bool=true) = thing
+
 # Truncations on unsuitable coefficient types default to false.
 truncatemincoeff(coeff, min_abs_coeff::Real) = false
 truncatemincoeff(coeff::Number, min_abs_coeff::Real) = abs(coeff) < min_abs_coeff

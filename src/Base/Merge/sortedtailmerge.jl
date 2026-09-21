@@ -6,16 +6,14 @@
 ##
 ###
 
-# _merge!() only dispatches to sortedtailmerge! when:
-# sortedprefix(term_sum) / length(term_sum) > _TAILMERGE_SORTEDPREFIX_FRACTION
-# below it, a full re-sort is cheaper.
+# `_mergeandtruncatebysorting!` only takes the tail merge when the sorted prefix covers more than this fraction
+# of the active terms; below it, a full re-sort is cheaper.
 const _TAILMERGE_SORTEDPREFIX_FRACTION = 0.4
 
 """
-    sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true)
+    sortedtailmerge!(prop_cache::AbstractPropagationCache; thread=true)
 
-Merges the sorted head against the unsorted tail (see file header) and updates
-`activesize`/`sortedprefix`. Set `thread=false` to force sequential execution.
+Sort the terms past the sorted prefix and merge them into the head, combining equal terms with `mergefunc`, so that every active term is in the sorted prefix afterwards.
 """
 sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true) =
     _sortedtailmergeandtruncate!(nothing, prop_cache; thread)
@@ -28,10 +26,7 @@ function _sortedtailmergeandtruncate!(truncfunc::F, prop_cache::AbstractPropagat
     n_new = activesize(prop_cache)
     n_tail = n_new - n_old
     if n_tail == 0
-        if truncfunc !== nothing
-            truncate!(truncfunc, prop_cache; thread)
-        end
-        return prop_cache
+        return _truncate!(truncfunc, prop_cache; thread)
     end
 
     main_terms, main_coeffs, aux_terms, aux_coeffs = _mainauxarrays(prop_cache)

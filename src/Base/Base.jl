@@ -34,7 +34,8 @@ export
     emptylike,
     capacity,
     sortedprefix,
-    setsortedprefix!
+    setsortedprefix!,
+    mergefunc
 
 include("./propagationcache.jl")
 export
@@ -141,7 +142,6 @@ include("./Merge/Merge.jl")
 export
     merge,
     merge!,
-    mergefunc,
     mergeandtruncate!,
     xormerge!,
     xormergeandtruncate!

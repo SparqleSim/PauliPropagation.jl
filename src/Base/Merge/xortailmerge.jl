@@ -30,7 +30,7 @@ which one pass over the tail checks, and merges it generically otherwise.
 A multi sum takes delivery of the outboxes `xorbranch!` filled, sorting each in from where it is.
 """
 xormerge!(prop_cache::AbstractPropagationCache, mask; thread::Bool=true) =
-    _xormerge!(StorageType(prop_cache), prop_cache, mask; thread)
+    _xormergeandtruncate!(StorageType(prop_cache), nothing, prop_cache, mask; thread)
 
 """
     xormergeandtruncate!(truncfunc, prop_cache::AbstractPropagationCache, mask; thread=true)
@@ -42,19 +42,8 @@ xormergeandtruncate!(truncfunc::F, prop_cache::AbstractPropagationCache, mask; t
     _xormergeandtruncate!(StorageType(prop_cache), truncfunc, prop_cache, mask; thread)
 
 # only an array keeps the new terms apart in an order the mask can sort
-_xormerge!(::StorageType, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) =
-    merge!(prop_cache; thread)
-
 _xormergeandtruncate!(::StorageType, truncfunc::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F} =
     mergeandtruncate!(truncfunc, prop_cache; thread)
-
-function _xormerge!(::ArrayStorage, prop_cache::AbstractPropagationCache, mask; thread::Bool=true)
-    groups = _xortailplan(prop_cache, mask; thread)
-    if groups === nothing
-        return merge!(prop_cache; thread)
-    end
-    return _xorsortedtailmerge!(groups, prop_cache; thread)
-end
 
 function _xormergeandtruncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
     groups = _xortailplan(prop_cache, mask; thread)
@@ -66,13 +55,6 @@ end
 
 # The box a zone collected is its tail already, in the parent order of the zone that made it, so an
 # array zone sorts it in from where it is instead of taking delivery first.
-function _xormerge!(::MultiSumStorage, prop_cache::AbstractPropagationCache, mask; thread::Bool=true)
-    zone_storage = zonestorage(prop_cache)
-    merge_box!(owner) = _xormergebox!(zone_storage, zonecaches(prop_cache)[owner], _branchboxfor(prop_cache, owner, mask), mask)
-    _eachzone(merge_box!, prop_cache, thread)
-    return _syncsums!(prop_cache)
-end
-
 function _xormergeandtruncate!(::MultiSumStorage, truncfunc::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
     zone_storage = zonestorage(prop_cache)
     merge_box!(owner) = _xormergeandtruncatebox!(zone_storage, truncfunc, zonecaches(prop_cache)[owner], _branchboxfor(prop_cache, owner, mask), mask)
@@ -80,18 +62,8 @@ function _xormergeandtruncate!(::MultiSumStorage, truncfunc::F, prop_cache::Abst
     return _syncsums!(prop_cache)
 end
 
-_xormergebox!(::StorageType, zonecache, box, mask) = merge!(_deliver!(zonecache, box); thread=false)
-
 _xormergeandtruncatebox!(::StorageType, truncfunc::F, zonecache, box, mask) where {F} =
     mergeandtruncate!(truncfunc, _deliver!(zonecache, box); thread=false)
-
-function _xormergebox!(::ArrayStorage, zonecache, box, mask)
-    groups = _xorboxplan(zonecache, box, mask; thread=false)
-    if groups === nothing
-        return merge!(_deliver!(zonecache, box); thread=false)
-    end
-    return _xorsortedboxmerge!(groups, zonecache, box; thread=false)
-end
 
 function _xormergeandtruncatebox!(::ArrayStorage, truncfunc::F, zonecache, box, mask) where {F}
     groups = _xorboxplan(zonecache, box, mask; thread=false)
@@ -136,12 +108,8 @@ end
 
 ### Sorting the tail in
 
-# `sortedtailmerge!` for a tail appended as `term ⊻ mask` in parent order, sorted by the passes of
+# `_sortedtailmergeandtruncate!` for a tail appended as `term ⊻ mask` in parent order, sorted by the passes of
 # `groups`
-_xorsortedtailmerge!(groups, prop_cache::AbstractPropagationCache; thread::Bool=true) =
-    _xorsortedtailmergeandtruncate!(groups, nothing, prop_cache; thread)
-
-# the same, dropping the pairs `truncfunc` rejects as they are written when there is one
 function _xorsortedtailmergeandtruncate!(groups, truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
     n_old = sortedprefix(mainsum(prop_cache))
     n_new = activesize(prop_cache)
@@ -167,9 +135,6 @@ end
 # The same for a tail that is still in `box`, a term sum of the same array type. The XOR passes
 # read the box where it is and ping-pong between it and the room past the active terms, so the
 # tail is moved by the sort alone instead of being copied in first. The box is empty afterwards.
-_xorsortedboxmerge!(groups, prop_cache::AbstractPropagationCache, box; thread::Bool=true) =
-    _xorsortedboxmergeandtruncate!(groups, nothing, prop_cache, box; thread)
-
 function _xorsortedboxmergeandtruncate!(groups, truncfunc::F, prop_cache::AbstractPropagationCache, box; thread::Bool=true) where {F}
     n_tail = length(box)
     n_old = activesize(prop_cache)

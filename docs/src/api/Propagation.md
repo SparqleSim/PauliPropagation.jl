@@ -15,15 +15,15 @@ Modules = [PauliPropagation]
 Pages = ["src/Propagation/specializations.jl"]
 ```
 
-## Fused propagation passes
+## Merging and fused propagation passes
 
-The passes that a gate can build from without materializing separate application, merge, and
-truncation phases. They are defined in the `PropagationBase` submodule for generic propagation
-caches.
+The merges, and the passes that a gate can build from without materializing separate application,
+merge, and truncation phases. They are defined in the `PropagationBase` submodule for generic
+propagation caches.
 
 ```@autodocs
 Modules = [PauliPropagation.PropagationBase]
-Pages = ["src/Base/xorbranch.jl", "src/Base/Merge/xortailmerge.jl", "src/Base/Primitives/mapandtruncate.jl", "src/Base/Merge/mergeandtruncate.jl"]
+Pages = ["src/Base/Merge/merge.jl", "src/Base/xorbranch.jl", "src/Base/Merge/xortailmerge.jl", "src/Base/Primitives/mapandtruncate.jl"]
 ```
 
 ## Counting Pauli Strings
