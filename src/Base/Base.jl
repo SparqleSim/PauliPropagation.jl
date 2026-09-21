@@ -95,7 +95,8 @@ export
     mapreducecoeffs,
     maxabscoeff,
     flatmap,
-    flatmap!
+    flatmap!,
+    mapandtruncate!
 
 include("./vectorbackend.jl")
 export
@@ -125,30 +126,25 @@ export propagate,
     apply,
     requiresmerging
 
-include("./merge.jl")
-export merge, merge!, mergefunc
-
 include("./truncate.jl")
 export truncate, truncate!
 
-include("./mergeandtruncate.jl")
-export mergeandtruncate!
-
-include("./mapandtruncate.jl")
-export mapandtruncate!
-
-include("./sortedtailmerge.jl")
-
 include("./xorbranch.jl")
-include("./xortailmerge.jl")
 export
     xorbranch,
     xorbranch!,
-    xormerge!,
-    xormergeandtruncate!,
     Unchanged,
     Kept,
     Branch
+
+include("./Merge/Merge.jl")
+export
+    merge,
+    merge!,
+    mergefunc,
+    mergeandtruncate!,
+    xormerge!,
+    xormergeandtruncate!
 
 include("./MonteCarlo/MonteCarlo.jl")
 export

@@ -23,7 +23,7 @@ caches.
 
 ```@autodocs
 Modules = [PauliPropagation.PropagationBase]
-Pages = ["src/Base/xorbranch.jl", "src/Base/xortailmerge.jl", "src/Base/mapandtruncate.jl", "src/Base/mergeandtruncate.jl"]
+Pages = ["src/Base/xorbranch.jl", "src/Base/Merge/xortailmerge.jl", "src/Base/Primitives/mapandtruncate.jl", "src/Base/Merge/mergeandtruncate.jl"]
 ```
 
 ## Counting Pauli Strings
