@@ -75,7 +75,7 @@ end
 function _mapandtruncate!(::ArrayStorage, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
     isempty(prop_cache) && return prop_cache
 
-    if _iscpuarray(terms(mainsum(prop_cache)))
+    if _iscpuarray(prop_cache)
         return _mapandtruncatecpu!(mapfunc, truncfunc, prop_cache; thread)
     end
 

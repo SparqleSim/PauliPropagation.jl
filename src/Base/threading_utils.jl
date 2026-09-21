@@ -177,12 +177,22 @@ end
 function _with_threads_freed_for(f::F) where {F}
     workers = _currentworkers()
     workers === nothing && return f()
+    # a stretch inside another leaves the workers as it found them
+    were_sleeping = @atomic :acquire workers.sleep_when_idle
     @atomic :release workers.sleep_when_idle = true
     try
         return f()
     finally
-        @atomic :release workers.sleep_when_idle = false
+        @atomic :release workers.sleep_when_idle = were_sleeping
     end
+end
+
+# with `thread` false the kernels run inline and start no tasks, so there is nothing to make room for
+function _with_threads_freed_for(f::F, thread::Bool) where {F}
+    if thread
+        return _with_threads_freed_for(f)
+    end
+    return f()
 end
 
 

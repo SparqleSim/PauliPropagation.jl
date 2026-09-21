@@ -46,7 +46,7 @@ end
 
 # The pairs are written into the auxiliary arrays in the order of the terms that made them.
 function _flatmap!(::ArrayStorage, f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
-    n_new = if _iscpuarray(terms(mainsum(prop_cache)))
+    n_new = if _iscpuarray(prop_cache)
         _flatmapcpu!(f, prop_cache; thread)
     else
         _flatmapflagged!(f, prop_cache; thread)

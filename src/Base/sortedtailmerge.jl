@@ -18,12 +18,12 @@ Merges the sorted head against the unsorted tail (see file header) and updates
 `activesize`/`sortedprefix`. Set `thread=false` to force sequential execution.
 """
 sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true) =
-    _sortedtailmerge!(nothing, prop_cache; thread)
+    _sortedtailmergeandtruncate!(nothing, prop_cache; thread)
 
 # The same, dropping the pairs `truncfunc` rejects as they are written when there is one. It sees the
 # merged coefficient, so contributions can still cancel before the term is judged, and it is applied
 # even when there is no tail, since the head may have been rescaled since it was last truncated.
-function _sortedtailmerge!(truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+function _sortedtailmergeandtruncate!(truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
     n_old = sortedprefix(mainsum(prop_cache))
     n_new = activesize(prop_cache)
     n_tail = n_new - n_old

@@ -17,6 +17,7 @@ a dictionary holds them in the auxiliary sum, an array appends them past its sor
 a multi sum leaves them in the outboxes, each zone's in the one box of the zone that owns them, and any other storage adds them through `flatmap!`.
 Every new term is the same `⊻ mask` away from its parent, which is what lets those merges sort the new terms in without comparing them.
 `merge!` and `mergeandtruncate!` merge them too, only by comparison.
+A dictionary or multi sum therefore finds its auxiliary sum or outboxes empty, and throws an `ArgumentError` otherwise, since a branch would write over what they hold; an array branches an unmerged tail like any other terms.
 Several tasks on an array call `rule` once to count the terms and once to write them, so it must return the same for the same pair each time.
 """
 xorbranch!(rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F} =
@@ -81,12 +82,8 @@ end
 ### Dictionary storage
 
 function _xorbranch!(::DictStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
-    new_sum = auxsum(prop_cache)
-    if !isempty(new_sum)
-        empty!(new_sum)
-    end
-
-    _branchdict!(rule, mainsum(prop_cache), new_sum, mask)
+    _checkauxempty(prop_cache)
+    _branchdict!(rule, mainsum(prop_cache), auxsum(prop_cache), mask)
     return prop_cache
 end
 
@@ -118,7 +115,7 @@ function _xorbranch!(::ArrayStorage, rule::F, prop_cache::AbstractPropagationCac
         return prop_cache
     end
 
-    if _iscpuarray(terms(mainsum(prop_cache)))
+    if _iscpuarray(prop_cache)
         return _branchcpu!(rule, prop_cache, mask; thread)
     end
     return _branchflagged!(rule, prop_cache, mask; thread)
@@ -265,6 +262,7 @@ end
 # Because the zone assignment is linear in the term, `⊻ mask` permutes the zones: every zone writes
 # the terms it creates into the box of the single zone that owns them.
 function _xorbranch!(::MultiSumStorage, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
+    _checkauxempty(prop_cache)
     zone_storage = zonestorage(prop_cache)
 
     branch_zone!(zone_id) = _branchzone!(zone_storage, rule, zonecaches(prop_cache)[zone_id], _branchbox(prop_cache, zone_id, mask), mask)
@@ -298,6 +296,10 @@ end
 # the box in the outbox of `zone_id` for the zone its new terms belong to
 @inline _branchbox(prop_cache::AbstractPropagationCache, zone_id::Int, mask) =
     zones(outboxes(prop_cache)[zone_id])[_xortarget(zonemap(prop_cache), zone_id, mask)]
+
+# the box the zone `⊻ mask` maps onto `owner` filled with the new terms of `owner`
+@inline _branchboxfor(prop_cache::AbstractPropagationCache, owner::Int, mask) =
+    _branchbox(prop_cache, _xortarget(zonemap(prop_cache), owner, mask), mask)
 
 @noinline _throwunknownoutcome(branched) =
     throw(ArgumentError("rule returned $(typeof(branched)); expected Unchanged(), Kept(coefficient), or Branch(kept, created)"))

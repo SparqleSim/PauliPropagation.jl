@@ -180,6 +180,22 @@ end
         @test all(getcoeff(map_and_truncated, pstr) ≈ 0.5 * coeff for (pstr, coeff) in dict_sum if coeff > 0)
     end
 
+    # a gate finds the terms the gate before it created merged in, where they would otherwise be lost
+    keep_pair(pstr, coeff) = ((pstr, coeff),)
+    for makesum in (identity, psum -> MultiPauliSum(VectorPauliSum(psum), 4), psum -> MultiPauliSum(psum, 4))
+        branched = PB.xorbranch(rotate, PropagationCache(makesum(dict_sum)), gate_mask; thread=false)
+        @test_throws ArgumentError PB.xorbranch!(rotate, branched, gate_mask; thread=false)
+        @test_throws ArgumentError PB.flatmap!(keep_pair, branched; thread=false)
+        merge!(branched)
+        @test PauliSum(branched) ≈ reference
+    end
+
+    # an array only holds them as an unmerged tail, which the next branch walks like any other terms
+    branched = PB.xorbranch(rotate, PropagationCache(VectorPauliSum(dict_sum)), gate_mask; thread=false)
+    PB.xorbranch!(rotate, branched, gate_mask; thread=false)
+    merge!(branched)
+    @test PauliSum(branched) ≈ propagate([gate, gate], dict_sum, [theta, theta]; min_abs_coeff=0.0)
+
     # on a sorted array sum, none of the passes disturbs the sorted prefix
     vector_sum = VectorPauliSum(dict_sum)
     sortterms!(vector_sum)
@@ -302,11 +318,10 @@ end
         @test coefficients(fanned) == coefficients(fanned_serially)
     end
 
-    # a box left full by a callback that threw is emptied before the next gate fills it
+    # a box that is not empty holds terms no zone took delivery of, which the next gate would lose
     stale_cache = PropagationCache(MultiPauliSum(VectorPauliSum(few_terms), 4))
     push!(PauliPropagation.PropagationBase.outboxes(stale_cache)[1], UInt8(200), 1.0)
-    PauliPropagation.PropagationBase.flatmap!(fan_out, stale_cache; thread=false)
-    @test PauliSum(PauliPropagation.PropagationBase.extractsum!(stale_cache)) ≈ few_terms
+    @test_throws ArgumentError PauliPropagation.PropagationBase.flatmap!(fan_out, stale_cache; thread=false)
 end
 
 @testset "Unknown storage primitive defaults" begin
@@ -559,5 +574,5 @@ end
     # dropping every merged pair leaves the head read as the only trace of the bad prefix
     cache = PropagationCache(deepcopy(small))
     mainsum(cache)._terms_sorted = 5
-    @test_throws ArgumentError PB._sortedtailmerge!((term, coefficient) -> true, cache; thread=false)
+    @test_throws ArgumentError PB._sortedtailmergeandtruncate!((term, coefficient) -> true, cache; thread=false)
 end

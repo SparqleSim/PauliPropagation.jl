@@ -24,12 +24,16 @@ function _merge!(::ArrayStorage, term_sum::AbstractTermSum)
     return extractsum!(prop_cache, term_sum)
 end
 
-# Merge auxsum into mainsum
-function Base.merge!(prop_cache::AbstractPropagationCache; kwargs...)
-    return _merge!(StorageType(prop_cache), prop_cache; kwargs...)
+"""
+    merge!(prop_cache::AbstractPropagationCache; thread=true)
+
+Merge the terms the last gate left in the auxiliary sum, or appended past the sorted prefix, into the main sum, combining equal terms with `mergefunc`.
+"""
+function Base.merge!(prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
+    return _merge!(StorageType(prop_cache), prop_cache; thread)
 end
 
-function _merge!(::DictStorage, prop_cache::AbstractPropagationCache; kwargs...)
+function _merge!(::DictStorage, prop_cache::AbstractPropagationCache; thread::Bool=true)
     term_sum1 = mainsum(prop_cache)
     term_sum2 = auxsum(prop_cache)
 
@@ -50,53 +54,73 @@ end
 
 # The generic flatmap path writes through `add!`, whose contract already combines equal terms.
 # There may still be a caller-owned auxiliary sum, so fold it into the main sum and clear it.
-function _merge!(::StorageType, prop_cache::AbstractPropagationCache; kwargs...)
+function _merge!(::StorageType, prop_cache::AbstractPropagationCache; thread::Bool=true)
     add!(mainsum(prop_cache), auxsum(prop_cache))
     empty!(auxsum(prop_cache))
     return prop_cache
 end
 
-function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
-
+# An array merges the cheapest way its state allows: not at all when the sorted head is all there
+# is, by a sort of the tail alone when the head covers most of the array, and by a sort of
+# everything otherwise. `_mergeandtruncate!` makes the same choices, truncating as the merged terms
+# are written.
+function _merge!(::ArrayStorage, prop_cache::AbstractPropagationCache; thread::Bool=true)
     if isempty(prop_cache)
         return prop_cache
     end
 
+    n_sorted, n_total = _sortedandactive(prop_cache)
+    if n_sorted == n_total
+        return prop_cache
+    end
+
+    # the sorts run through AcceleratedKernels, which starts tasks of its own
+    merge_by_sorting!() = _mergebysorting!(prop_cache, n_sorted, n_total; thread)
+    return _with_threads_freed_for(merge_by_sorting!, thread)
+end
+
+# The tail merge and the one-walk reduction of the sorted array are scalar code, so an array
+# elsewhere than the CPU sorts everything and reduces the runs of equal terms in flagging passes.
+function _mergebysorting!(prop_cache::AbstractPropagationCache, n_sorted::Int, n_total::Int; thread::Bool=true)
+    on_cpu = _iscpuarray(prop_cache)
+
+    if on_cpu && _tailmergepays(n_sorted, n_total)
+        return sortedtailmerge!(prop_cache; thread)
+    end
+
+    sortterms!(prop_cache; thread)
+    if on_cpu
+        return _deduplicatecpu!(prop_cache; thread)
+    end
+
+    _deduplicate!(prop_cache; thread)
+    setsortedprefix!(mainsum(prop_cache), activesize(prop_cache))
+    return prop_cache
+end
+
+# the sorted head and the active size of an array, which no write leaves the head reaching past
+function _sortedandactive(prop_cache::AbstractPropagationCache)
     n_sorted = sortedprefix(mainsum(prop_cache))
     n_total = activesize(prop_cache)
 
     if n_sorted > n_total
         # something went wrong. Set to zero and do a full merge.
         setsortedprefix!(mainsum(prop_cache), 0)
-        n_sorted = sortedprefix(mainsum(prop_cache))
+        n_sorted = 0
     end
 
-    if n_sorted / n_total > _TAILMERGE_SORTEDPREFIX_FRACTION && _iscpuarray(terms(mainsum(prop_cache)))
-        # the sorted head covers most of the array: sort just the unsorted tail and merge it in
-        # (CPU-only scalar code, hence the backing-array check -- GPU backends fall through to
-        # the fully AK-portable path below instead)
-        sortedtailmerge!(prop_cache; thread)
-        return prop_cache
-    end
-
-    # fallback: sort everything
-    # TODO: allow sorting kwargs?
-    sortterms!(prop_cache; thread)
-
-    _deduplicate!(prop_cache; thread)
-
-    setsortedprefix!(mainsum(prop_cache), activesize(prop_cache))
-
-    return prop_cache
-
+    return n_sorted, n_total
 end
 
+# whether the sorted head covers enough of the array for a sort of the tail alone to beat a sort of
+# everything
+_tailmergepays(n_sorted::Int, n_total::Int) = n_sorted / n_total > _TAILMERGE_SORTEDPREFIX_FRACTION
 
 _merge!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(merge!, zones(msum)); msum)
 
 # the outboxes are the auxiliary sums of a multi sum, and a gate may have left terms in them
-function _merge!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
-    merge_zone!(owner) = merge!(_deliverto!(prop_cache, owner); thread=false, kwargs...)
+function _merge!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true)
+    merge_zone!(owner) = merge!(_deliverto!(prop_cache, owner); thread=false)
     _eachzone(merge_zone!, prop_cache, thread)
     return _syncsums!(prop_cache)
 end

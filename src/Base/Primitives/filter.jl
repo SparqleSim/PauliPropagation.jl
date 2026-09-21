@@ -50,7 +50,7 @@ function _filter!(::ArrayStorage, keep::F, prop_cache::AbstractPropagationCache;
         return prop_cache
     end
 
-    if _iscpuarray(terms(mainsum(prop_cache)))
+    if _iscpuarray(prop_cache)
         return _filtercpu!(keep, prop_cache; thread)
     end
 

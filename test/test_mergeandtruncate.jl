@@ -107,12 +107,12 @@ end
         @test isempty(tail_cache)
 
         sorted_tail_cache = PropagationCache(VectorPauliSum(2, UInt8[0x01], [0.01], 1))
-        MAT_PB._sortedtailmerge!(mat_truncfunc, sorted_tail_cache; thread=false)
+        MAT_PB._sortedtailmergeandtruncate!(mat_truncfunc, sorted_tail_cache; thread=false)
         @test isempty(sorted_tail_cache)
 
         box_cache = PropagationCache(VectorPauliSum(2, UInt8[0x01], [0.01], 1))
         empty_box = VectorPauliSum(2)
-        MAT_PB._xorsortedboxmerge!(mat_truncfunc, box_cache, empty_box, xor_mask; thread=false)
+        MAT_PB._xormergeandtruncatebox!(MAT_PB.ArrayStorage(), mat_truncfunc, box_cache, empty_box, xor_mask)
         @test isempty(box_cache)
         @test isempty(empty_box)
 

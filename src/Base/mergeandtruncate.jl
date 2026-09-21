@@ -12,14 +12,6 @@ function mergeandtruncate!(truncfunc::F, thing::Union{AbstractTermSum,AbstractPr
     return _mergeandtruncate!(StorageType(thing), truncfunc, thing; thread)
 end
 
-# `mergeandtruncate!`, or `merge!` when there is nothing to truncate by; the fused tail merges fall back on it
-function _mergeandtruncateby!(truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
-    if truncfunc === nothing
-        return merge!(prop_cache; thread)
-    end
-    return mergeandtruncate!(truncfunc, prop_cache; thread)
-end
-
 
 ### Generic storage
 
@@ -32,8 +24,7 @@ end
 
 function _mergeandtruncate!(::StorageType, truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
     merge!(prop_cache; thread)
-    truncate!(truncfunc, prop_cache; thread)
-    return prop_cache
+    return truncate!(truncfunc, prop_cache; thread)
 end
 
 
@@ -48,49 +39,67 @@ end
 
 ### Array storage
 
+# `_merge!` of an array, truncating as the merged terms are written
 function _mergeandtruncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
     if isempty(prop_cache)
         return prop_cache
     end
 
-    n_total = activesize(prop_cache)
-    n_sorted = sortedprefix(mainsum(prop_cache))
-
-    if n_sorted > n_total
-        # something went wrong. Set to zero and do a full merge.
-        setsortedprefix!(mainsum(prop_cache), 0)
-        n_sorted = 0
-    end
-
     # nothing to merge, but the terms may have been rescaled since they were last truncated
+    n_sorted, n_total = _sortedandactive(prop_cache)
     if n_sorted == n_total
         return truncate!(truncfunc, prop_cache; thread)
     end
 
-    if n_sorted / n_total > _TAILMERGE_SORTEDPREFIX_FRACTION && _iscpuarray(terms(mainsum(prop_cache)))
-        # the sorted head covers most of the array: sort just the unsorted tail and merge it in,
-        # truncating as the merged terms are written
-        return _sortedtailmerge!(truncfunc, prop_cache; thread)
-    end
-
-    # fallback: sort everything, then reduce and truncate each run of equal terms in one walk on
-    # the CPU, or in a merge pass and a truncation pass anywhere else
-    sortterms!(prop_cache; thread)
-
-    if _iscpuarray(terms(mainsum(prop_cache)))
-        _deduplicateandtruncatecpu!(truncfunc, prop_cache; thread)
-    else
-        _deduplicate!(prop_cache; thread)
-        setsortedprefix!(mainsum(prop_cache), activesize(prop_cache))
-        truncate!(truncfunc, prop_cache; thread)
-    end
-
-    return prop_cache
+    # the sorts run through AcceleratedKernels, which starts tasks of its own
+    merge_by_sorting!() = _mergeandtruncatebysorting!(truncfunc, prop_cache, n_sorted, n_total; thread)
+    return _with_threads_freed_for(merge_by_sorting!, thread)
 end
 
-# Reduces complete runs of equal terms. One task compacts in place, since it writes at or behind the
-# run it just read. Several tasks first count what each of them keeps, then write their parts into
-# the auxiliary arrays.
+# `_mergebysorting!` truncating as the merged terms are written, which the flagging passes cannot
+function _mergeandtruncatebysorting!(truncfunc::F, prop_cache::AbstractPropagationCache, n_sorted::Int, n_total::Int; thread::Bool=true) where {F}
+    on_cpu = _iscpuarray(prop_cache)
+
+    if on_cpu && _tailmergepays(n_sorted, n_total)
+        return _sortedtailmergeandtruncate!(truncfunc, prop_cache; thread)
+    end
+
+    sortterms!(prop_cache; thread)
+    if on_cpu
+        return _deduplicateandtruncatecpu!(truncfunc, prop_cache; thread)
+    end
+
+    _deduplicate!(prop_cache; thread)
+    setsortedprefix!(mainsum(prop_cache), activesize(prop_cache))
+    return truncate!(truncfunc, prop_cache; thread)
+end
+
+
+### Multi-sum storage
+
+# equal terms share a zone, so the zones merge on their own
+function _mergeandtruncate!(::MultiSumStorage, truncfunc::F, msum::AbstractTermSum; thread::Bool=true) where {F}
+    merge_zone!(zone_id) = mergeandtruncate!(truncfunc, zones(msum)[zone_id]; thread=false)
+    _eachzone(merge_zone!, msum, thread)
+    return msum
+end
+
+function _mergeandtruncate!(::MultiSumStorage, truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+    merge_zone!(owner) = mergeandtruncate!(truncfunc, _deliverto!(prop_cache, owner); thread=false)
+    _eachzone(merge_zone!, prop_cache, thread)
+    return _syncsums!(prop_cache)
+end
+
+
+### Array kernels
+
+# `_deduplicate!` in one walk over the sorted array, for an array on the CPU
+_deduplicatecpu!(prop_cache::AbstractPropagationCache; thread::Bool=true) =
+    _deduplicateandtruncatecpu!(nothing, prop_cache; thread)
+
+# The same, dropping the pairs `truncfunc` rejects as they are written when there is one. One task
+# compacts in place, since it writes at or behind the run it just read. Several tasks first count
+# what each of them keeps, then write their parts into the auxiliary arrays.
 function _deduplicateandtruncatecpu!(truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
     n = activesize(prop_cache)
 
@@ -172,27 +181,8 @@ end
             read_pos += 1
         end
 
-        if !(@inline truncfunc(term, merged_coefficient))
-            write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos,
-                term, merged_coefficient, Val(DoWrite))
-        end
+        write_pos = _writekept!(output_terms, output_coefficients, write_pos, term, merged_coefficient, truncfunc, Val(DoWrite))
     end
 
     return write_pos - write_start
-end
-
-
-### Multi-sum storage
-
-# equal terms share a zone, so the zones merge on their own
-function _mergeandtruncate!(::MultiSumStorage, truncfunc::F, msum::AbstractTermSum; thread::Bool=true) where {F}
-    merge_zone!(zone_id) = mergeandtruncate!(truncfunc, zones(msum)[zone_id]; thread=false)
-    _eachzone(merge_zone!, msum, thread)
-    return msum
-end
-
-function _mergeandtruncate!(::MultiSumStorage, truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
-    merge_zone!(owner) = mergeandtruncate!(truncfunc, _deliverto!(prop_cache, owner); thread=false)
-    _eachzone(merge_zone!, prop_cache, thread)
-    return _syncsums!(prop_cache)
 end

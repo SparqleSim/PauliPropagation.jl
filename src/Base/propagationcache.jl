@@ -117,6 +117,10 @@ function _mainauxarrays(prop_cache::AbstractPropagationCache)
     )
 end
 
+# whether the arrays of the cache are on the CPU, where a pass may run scalar code and tasks of its
+# own instead of a kernel of AcceleratedKernels
+_iscpuarray(prop_cache::AbstractPropagationCache) = _iscpuarray(terms(mainsum(prop_cache)))
+
 # Publishes a pass's result: the auxsum just written becomes the new mainsum
 function _commitwrite!(prop_cache::AbstractPropagationCache, new_activesize::Int, new_sortedprefix::Int)
     swapsums!(prop_cache)
@@ -216,6 +220,20 @@ function _add!(::ArrayStorage, prop_cache::AbstractPropagationCache, term_sum::A
 
     return prop_cache
 end
+
+# A gate writes the terms it creates into the auxiliary sum, or the outboxes of a multi sum, and the
+# merge after it empties them again. Finding them filled, a gate would write over what they hold.
+_checkauxempty(prop_cache::AbstractPropagationCache) = _checkauxempty(StorageType(prop_cache), prop_cache)
+
+function _checkauxempty(::StorageType, prop_cache::AbstractPropagationCache)
+    if !isempty(auxsum(prop_cache))
+        _throwunmerged()
+    end
+    return prop_cache
+end
+
+@noinline _throwunmerged() = throw(ArgumentError(
+    "the terms the last gate created were never merged in; merge! the cache before applying another gate"))
 
 # emptying keeps the capacity, so the cache is ready to be filled again
 Base.empty!(prop_cache::AbstractPropagationCache) = _empty!(StorageType(prop_cache), prop_cache)
