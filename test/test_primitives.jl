@@ -276,6 +276,37 @@ end
     many_mapped = PauliPropagation.PropagationBase.flatmap(branch_or_drop, many_terms; thread=true)
     @test PauliPropagation.PropagationBase.terms(many_mapped) == PauliPropagation.PropagationBase.terms(many_reference)
     @test coefficients(many_mapped) == coefficients(many_reference)
+
+    # one term makes many pairs, so the room grows while its pairs are being written
+    n_fanout = 300
+    few_terms = PauliSum(nq, Dict{UInt8,Float64}(UInt8(k) => Float64(k) for k in 1:4))
+    fan_out(pstr, coeff) = ((pstr, coeff / n_fanout) for _ in 1:n_fanout)
+    for makesum in (identity, VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 4), psum -> MultiPauliSum(psum, 4))
+        fanned = PauliPropagation.PropagationBase.flatmap(fan_out, makesum(few_terms); thread=false)
+        @test PauliSum(fanned) ≈ few_terms
+    end
+
+    fanned_serially = PropagationCache(VectorPauliSum(few_terms))
+    PauliPropagation.PropagationBase.flatmap!(fan_out, fanned_serially; thread=false)
+    @test length(fanned_serially) == n_fanout * length(few_terms)
+
+    task_partitioner = PauliPropagation.PropagationBase.AK.TaskPartitioner(length(few_terms), 2, 1)
+    fanned_in_tasks = PropagationCache(VectorPauliSum(few_terms))
+    n_fanned = PauliPropagation.PropagationBase._flatmapintasks!(fan_out, fanned_in_tasks, task_partitioner, task_partitioner.num_tasks)
+    PauliPropagation.PropagationBase._commitwrite!(fanned_in_tasks, n_fanned, 0)
+    fanned_flagged = PropagationCache(VectorPauliSum(few_terms))
+    n_fanned = PauliPropagation.PropagationBase._flatmapflagged!(fan_out, fanned_flagged; thread=false)
+    PauliPropagation.PropagationBase._commitwrite!(fanned_flagged, n_fanned, 0)
+    for fanned in (fanned_in_tasks, fanned_flagged)
+        @test PauliPropagation.PropagationBase.terms(fanned) == PauliPropagation.PropagationBase.terms(fanned_serially)
+        @test coefficients(fanned) == coefficients(fanned_serially)
+    end
+
+    # a box left full by a callback that threw is emptied before the next gate fills it
+    stale_cache = PropagationCache(MultiPauliSum(VectorPauliSum(few_terms), 4))
+    push!(PauliPropagation.PropagationBase.outboxes(stale_cache)[1], UInt8(200), 1.0)
+    PauliPropagation.PropagationBase.flatmap!(fan_out, stale_cache; thread=false)
+    @test PauliSum(PauliPropagation.PropagationBase.extractsum!(stale_cache)) ≈ few_terms
 end
 
 @testset "Unknown storage primitive defaults" begin

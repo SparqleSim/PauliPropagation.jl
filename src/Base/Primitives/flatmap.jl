@@ -186,6 +186,10 @@ function _flatmap!(::MultiSumStorage, f::F, prop_cache::AbstractPropagationCache
     function scatter_zone!(zone_id)
         outbox = outboxes(prop_cache)[zone_id]
         zonecache = zonecaches(prop_cache)[zone_id]
+        # delivery empties the box, unless a callback threw before it took place
+        if !isempty(outbox)
+            empty!(outbox)
+        end
 
         for (term, coefficient) in zonecache
             for (new_term, new_coefficient) in f(term, coefficient)
