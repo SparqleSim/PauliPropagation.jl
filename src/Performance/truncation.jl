@@ -11,6 +11,14 @@
         Tuple{typeof(gate),PauliPropagation.AbstractPauliPropagationCache,typeof(param)},
         gate, prop_cache, param; kwargs...)
 
+# the fused path truncates in one pass, so an option it does not implement must not be silently dropped
+function _checkunusedkwargs(kwargs)
+    if !isempty(kwargs)
+        throw(ArgumentError("keyword arguments $(join(keys(kwargs), ", ")) are not supported by Performance.propagate"))
+    end
+    return
+end
+
 @inline function _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
     _truncateweight(pstr, max_weight) && return true
     return _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
