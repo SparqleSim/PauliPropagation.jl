@@ -161,6 +161,40 @@ end
         @test psum2 == psum4
     end
 
+    @testset "+ and - PauliString" begin
+        psum = PauliSum(3)
+        add!(psum, [:I, :I, :Y], 1:3, 1.0)
+        add!(psum, :I, 1, 1.5)
+        pstr = PauliString(3, [:X, :I, :Y], 1:3, 0.5)
+        complex_pstr = PauliString(3, :Z, 2, 0.5im)
+
+        expected_sum = deepcopy(psum)
+        add!(expected_sum, pstr)
+        expected_diff = deepcopy(psum)
+        add!(expected_diff, -1 * pstr)
+        expected_complex_sum = convertcoefftype(ComplexF64, psum)
+        add!(expected_complex_sum, complex_pstr)
+
+        for PS in (PauliSum, VectorPauliSum, MultiPauliSum)
+            input = PS(psum)
+            input_copy = deepcopy(input)
+
+            for (result, expected) in (
+                (input + pstr, expected_sum),
+                (pstr + input, expected_sum),
+                (input - pstr, expected_diff),
+                (pstr - input, -1 * expected_diff),
+                (input + complex_pstr, expected_complex_sum),
+            )
+                @test isa(result, PS)
+                @test length(result) == length(expected)
+                @test result == expected
+            end
+            @test coefftype(input + complex_pstr) == ComplexF64
+            @test input == input_copy
+        end
+    end
+
     @testset "- PauliSum" begin
         psum1 = PauliSum(PauliString(3, [:I, :I, :Y], 1:3, 1im))
         add!(psum1, :I, 1, 1.5im)

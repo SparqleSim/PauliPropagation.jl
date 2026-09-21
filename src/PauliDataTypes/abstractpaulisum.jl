@@ -164,7 +164,7 @@ function Base.:+(psum::AbstractPauliSum, pstr::PauliString)
 
     # an empty sum of the very type of `psum`, widened to hold both coefficient types
     CType = promote_type(coefftype(psum), coefftype(pstr))
-    new_psum = CType === coefftype(psum) ? similar(psum) : convertcoefftype(CType, similar(psum))
+    new_psum = CType === coefftype(psum) ? emptylike(psum) : convertcoefftype(CType, emptylike(psum))
 
     add!(new_psum, psum)
     add!(new_psum, pstr)
