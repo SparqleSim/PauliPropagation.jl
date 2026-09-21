@@ -89,6 +89,15 @@ end
 # a box is emptied by the zone that takes delivery, so every box is empty when a gate picks it up
 _deliver!(zonecache, box) = (add!(zonecache, box); empty!(box); zonecache)
 
+function _checkauxempty(::MultiSumStorage, prop_cache::AbstractPropagationCache)
+    for outbox in outboxes(prop_cache)
+        if !isempty(outbox)
+            _throwunmerged()
+        end
+    end
+    return prop_cache
+end
+
 # a zone takes delivery of what the other zones parked in their outboxes for it
 function _deliverto!(prop_cache::AbstractPropagationCache, owner::Int)
     zonecache = zonecaches(prop_cache)[owner]

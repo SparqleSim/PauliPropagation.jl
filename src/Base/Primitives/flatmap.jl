@@ -19,6 +19,7 @@ a tuple of `(term, coefficient)` pairs or another iterable of them, such as what
 `flatmap!` performs no separate merge pass, so duplicate handling depends on storage: dictionaries merge while inserting,
 whereas arrays and multi sums retain duplicates until `merge!`.
 Several tasks on an array call `f` once to count the pairs and once to write them, so `f` must return the same pairs each time.
+A dictionary or multi sum finds its auxiliary sum or outboxes empty, as the merge after a gate leaves them, and throws an `ArgumentError` otherwise, since what they hold would be lost.
 Only a cache is transformed in place, because the pairs need room of their own; a term sum takes `flatmap`.
 """
 flatmap!(f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F} =
@@ -27,10 +28,8 @@ flatmap!(f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F
 # Written against the interface of a term sum alone, so any storage with `add!`, `empty!` and
 # `swapsums!` takes this path.
 function _flatmap!(::StorageType, f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+    _checkauxempty(prop_cache)
     output_sum = auxsum(prop_cache)
-    if !isempty(output_sum)
-        empty!(output_sum)
-    end
 
     for (term, coefficient) in prop_cache
         for (new_term, new_coefficient) in f(term, coefficient)
@@ -183,13 +182,11 @@ end
 # Every zone parks the pairs its terms make in its outbox, sorted by the zones that own them, and
 # then takes delivery of the pairs the other zones made for it.
 function _flatmap!(::MultiSumStorage, f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+    _checkauxempty(prop_cache)
+
     function scatter_zone!(zone_id)
         outbox = outboxes(prop_cache)[zone_id]
         zonecache = zonecaches(prop_cache)[zone_id]
-        # delivery empties the box, unless a callback threw before it took place
-        if !isempty(outbox)
-            empty!(outbox)
-        end
 
         for (term, coefficient) in zonecache
             for (new_term, new_coefficient) in f(term, coefficient)
