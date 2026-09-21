@@ -21,6 +21,14 @@ _storagetype(x) = _thrownotimplemented(typeof(x), :StorageType)
 # often this is a Dict{TermType,CoeffType} but it can be anything
 storage(term_sum::TS) where TS<:AbstractTermSum = _thrownotimplemented(TS, :storage)
 
+"""
+    mergefunc(coeff1, coeff2)
+
+How the coefficients of two equal terms combine, by addition unless overloaded for a coefficient type.
+`add!` and every merge combine through it.
+"""
+mergefunc(coeff1, coeff2) = coeff1 + coeff2
+
 
 """
     sortedprefix(term_sum::AbstractTermSum)
@@ -250,7 +258,7 @@ end
 @inline function _add!(::DictStorage, term_sum::AbstractTermSum, term, coeff)
     dict_storage = storage(term_sum)
     if haskey(dict_storage, term)
-        dict_storage[term] += coeff
+        dict_storage[term] = mergefunc(dict_storage[term], coeff)
     else
         dict_storage[term] = coeff
     end
@@ -261,7 +269,7 @@ end
     terms_vec, coeffs_vec = storage(term_sum)
     ind = findfirst(t -> t == term, terms_vec)
     if !isnothing(ind)
-        coeffs_vec[ind] += coeff
+        coeffs_vec[ind] = mergefunc(coeffs_vec[ind], coeff)
     else
         push!(terms_vec, term)
         push!(coeffs_vec, coeff)

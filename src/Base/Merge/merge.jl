@@ -1,36 +1,31 @@
 ### MERGE
 
-# Default merge function for coefficients: simple addition
-# Can be overloaded for different coefficient types.
-mergefunc(coeff1, coeff2) = coeff1 + coeff2
+"""
+    merge(term_sum::AbstractTermSum; thread=true)
+    merge(prop_cache::AbstractPropagationCache; thread=true)
 
-Base.merge(obj) = merge!(deepcopy(obj))
-
-function Base.merge!(term_sum::TS) where TS<:AbstractTermSum
-    return _merge!(StorageType(term_sum), term_sum)
-end
-
-function _merge!(::DictStorage, term_sum::AbstractTermSum)
-    # Dicts are always already merged
-    return term_sum
-end
-
-function _merge!(::ArrayStorage, term_sum::AbstractTermSum)
-    prop_cache = PropagationCache(term_sum)
-
-    merge!(prop_cache)
-
-    # extracts the original input term sum
-    return extractsum!(prop_cache, term_sum)
-end
+`merge!` on a copy.
+"""
+Base.merge(thing::Union{AbstractTermSum,AbstractPropagationCache}; thread::Bool=true) = merge!(deepcopy(thing); thread)
 
 """
+    merge!(term_sum::AbstractTermSum; thread=true)
     merge!(prop_cache::AbstractPropagationCache; thread=true)
 
 Merge the terms the last gate left in the auxiliary sum, or appended past the sorted prefix, into the main sum, combining equal terms with `mergefunc`.
+A term sum combines its own equal terms the same way, through a propagation cache of its own where it needs one.
 """
-function Base.merge!(prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
-    return _merge!(StorageType(prop_cache), prop_cache; thread)
+Base.merge!(term_sum::AbstractTermSum; thread::Bool=true) = _merge!(StorageType(term_sum), term_sum; thread)
+
+Base.merge!(prop_cache::AbstractPropagationCache; thread::Bool=true) = _merge!(StorageType(prop_cache), prop_cache; thread)
+
+# a dictionary is merged by construction
+_merge!(::DictStorage, term_sum::AbstractTermSum; thread::Bool=true) = term_sum
+
+function _merge!(::StorageType, term_sum::AbstractTermSum; thread::Bool=true)
+    prop_cache = PropagationCache(term_sum)
+    merge!(prop_cache; thread)
+    return extractsum!(prop_cache, term_sum)
 end
 
 function _merge!(::DictStorage, prop_cache::AbstractPropagationCache; thread::Bool=true)
@@ -103,7 +98,7 @@ function _sortedandactive(prop_cache::AbstractPropagationCache)
     n_sorted = sortedprefix(mainsum(prop_cache))
     n_total = activesize(prop_cache)
 
-    if n_sorted > n_total
+    if !(0 <= n_sorted <= n_total)
         # something went wrong. Set to zero and do a full merge.
         setsortedprefix!(mainsum(prop_cache), 0)
         n_sorted = 0
@@ -116,7 +111,12 @@ end
 # everything
 _tailmergepays(n_sorted::Int, n_total::Int) = n_sorted / n_total > _TAILMERGE_SORTEDPREFIX_FRACTION
 
-_merge!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(merge!, zones(msum)); msum)
+# equal terms share a zone, so the zones merge on their own
+function _merge!(::MultiSumStorage, msum::AbstractTermSum; thread::Bool=true)
+    merge_zone!(zone_id) = merge!(zones(msum)[zone_id]; thread=false)
+    _eachzone(merge_zone!, msum, thread)
+    return msum
+end
 
 # the outboxes are the auxiliary sums of a multi sum, and a gate may have left terms in them
 function _merge!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true)
@@ -172,11 +172,9 @@ function _mergegroups!(prop_cache::AbstractPropagationCache; thread::Bool=true)
                 end_idx += 1
             end
 
-            # Sum the values in the range.
-            CT = typeof(coeffs[ii])
-            merged_coeff = zero(CT)
-            for jj in ii:end_idx
-                # mergefunc can be overloaded for different coefficient types
+            # mergefunc can be overloaded for different coefficient types
+            merged_coeff = coeffs[ii]
+            for jj in ii+1:end_idx
                 merged_coeff = mergefunc(merged_coeff, coeffs[jj])
             end
 

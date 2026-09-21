@@ -123,7 +123,9 @@ end
 # mergefunc, in order. Returns (merged_coeff, run_length, next_tail_j).
 # A tail the caller declares duplicate-free has no run to fold.
 @inline function _foldtailrun(tail_terms, tail_coeffs, tail_j, tail_hi, tail_term, seed, ::Val{DistinctTail}=Val(false)) where {DistinctTail}
-    DistinctTail && return seed, 0, tail_j
+    if DistinctTail
+        return seed, 0, tail_j
+    end
 
     merged_coeff = seed
     run_length = 0
@@ -159,19 +161,25 @@ end
                     mergefunc(head_coeffs[head_i], tail_coeffs[tail_j]), distinct_tail)
                 write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, merged_coeff, truncfunc, Val(DoWrite))
                 head_i += 1
-                (head_i > head_hi || tail_j > tail_hi) && break
+                if head_i > head_hi || tail_j > tail_hi
+                    break
+                end
                 head_term = head_terms[head_i]
                 tail_term = tail_terms[tail_j]
             elseif head_term < tail_term
                 write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, head_coeffs[head_i], truncfunc, Val(DoWrite))
                 head_i += 1
-                head_i > head_hi && break
+                if head_i > head_hi
+                    break
+                end
                 head_term = head_terms[head_i]
             else
                 # tail term has no match in the head (yet): merge its own run of duplicates first
                 merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j], distinct_tail)
                 write_pos = _writekept!(out_terms, out_coeffs, write_pos, tail_term, merged_coeff, truncfunc, Val(DoWrite))
-                tail_j > tail_hi && break
+                if tail_j > tail_hi
+                    break
+                end
                 tail_term = tail_terms[tail_j]
             end
         end
@@ -191,7 +199,7 @@ end
 
 # `_writeandadvance!` past `truncfunc`; with no truncfunc the test is compiled away
 @inline function _writekept!(out_terms, out_coeffs, write_pos, term, coeff, truncfunc::F, ::Val{DoWrite}) where {F,DoWrite}
-    if truncfunc !== nothing && truncfunc(term, coeff)
+    if truncfunc !== nothing && (@inline truncfunc(term, coeff))
         return write_pos
     end
     return _writeandadvance!(out_terms, out_coeffs, write_pos, term, coeff, Val(DoWrite))

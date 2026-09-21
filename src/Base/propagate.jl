@@ -100,18 +100,18 @@ end
 _with_threads_freed_for(f::F, ::StorageType) where {F} = f()
 _with_threads_freed_for(f::F, ::ArrayStorage) where {F} = _with_threads_freed_for(f)
 
-function _applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args...; kwargs...)
+function _applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args...; thread::Bool=true, kwargs...)
     # args is usually expected to be empty or contain a parameter for the gate
     # prop_cache is modified in place
-    applytoall!(gate, prop_cache, args...; kwargs...)
+    applytoall!(gate, prop_cache, args...; thread, kwargs...)
 
     # usually this merges from some auxillary term sum into the main term sum
     # for vector-based caches, it deduplicates within the main term sum
     if requiresmerging(gate, prop_cache)
-        merge!(prop_cache; kwargs...)
+        merge!(prop_cache; thread)
     end
 
-    truncate!(prop_cache; kwargs...)
+    truncate!(prop_cache; thread, kwargs...)
 
     return
 end

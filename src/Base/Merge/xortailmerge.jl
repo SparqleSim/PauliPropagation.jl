@@ -15,7 +15,7 @@ const _MAX_XOR_PASSES = 4
 # below this many appended terms, setting up the passes costs more than it saves
 const _MIN_XOR_TAIL = 64
 
-# need at least three passes to pay it up
+# a pass split over fewer tasks than this runs as one
 const _MIN_XOR_PASS_TASKS = 3
 
 
@@ -265,10 +265,11 @@ function _xorpass!(dst_terms, dst_coeffs, src_terms, src_coeffs, group, above; t
     if n_tasks < _MIN_XOR_PASS_TASKS
         _xorpassall!(dst_terms, dst_coeffs, src_terms, src_coeffs, group, above)
     else
-        _eachtask(n_tasks) do task_id
+        function pass_chunk!(task_id)
             chunk = task_partitioner[task_id]
             _xorpasschunk!(dst_terms, dst_coeffs, src_terms, src_coeffs, group, above, chunk.start, chunk.stop)
         end
+        _eachtask(pass_chunk!, n_tasks)
     end
 
     return nothing
