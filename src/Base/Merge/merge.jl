@@ -95,9 +95,7 @@ function _mergeandtruncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPr
         return _truncate!(truncfunc, prop_cache; thread)
     end
 
-    # the sorts run through AcceleratedKernels, which starts tasks of its own
-    merge_by_sorting!() = _mergeandtruncatebysorting!(truncfunc, prop_cache, n_sorted, n_total; thread)
-    return _with_threads_freed_for(merge_by_sorting!, thread)
+    return _mergeandtruncatebysorting!(truncfunc, prop_cache, n_sorted, n_total; thread)
 end
 
 # The tail merge and the one-walk reduction of the sorted array are scalar code, so an array

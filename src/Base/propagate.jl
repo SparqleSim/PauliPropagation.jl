@@ -91,16 +91,7 @@ All terms are then merged and deduplicated into the main term sum.
 Truncations are performed after merging.
 This function can be overwritten for a custom gate if the lower-level functions `applytoall!`, and `apply` are not sufficient.
 """
-function applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args...; kwargs...)
-    apply_merge_truncate!() = _applymergetruncate!(gate, prop_cache, args...; kwargs...)
-    return _with_threads_freed_for(apply_merge_truncate!, StorageType(prop_cache))
-end
-
-# the array kernels of AcceleratedKernels start tasks of their own, which the workers make room for
-_with_threads_freed_for(f::F, ::StorageType) where {F} = f()
-_with_threads_freed_for(f::F, ::ArrayStorage) where {F} = _with_threads_freed_for(f)
-
-function _applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args...; thread::Bool=true, kwargs...)
+function applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args...; thread::Bool=true, kwargs...)
     # args is usually expected to be empty or contain a parameter for the gate
     # prop_cache is modified in place
     applytoall!(gate, prop_cache, args...; thread, kwargs...)

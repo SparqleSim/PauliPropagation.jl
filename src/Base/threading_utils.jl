@@ -21,11 +21,11 @@
 # and on a machine with as many cores as threads each wake-up waits a scheduler slice behind a
 # spinning worker: milliseconds per round, 4x on 18 steps of the 6x6 TFIM.
 #
-# An idle worker spins for a bounded time and then sleeps on a condition, so that a task started
-# elsewhere in the process gets a thread within that time. A stretch in which the owner starts
-# tasks of its own (the kernels of AcceleratedKernels do) is wrapped in `_with_threads_freed_for`,
-# which sends the idle workers to sleep at once: a spinning worker never yields its thread to another
-# task, so those tasks would otherwise queue up on the owner's thread until the spin window ran out.
+# An idle worker spins for a bounded time and then sleeps on a condition. A spinning worker never
+# yields its thread to another task, so every few spins it also asks the scheduler whether a task
+# is queued for its thread or for the pool (the kernels of AcceleratedKernels start tasks of their
+# own, and so may a `@threads` loop in a step) and sleeps at once if so; the scheduler then runs
+# that task on the thread, and the next round wakes the worker.
 ##
 ###
 
@@ -79,7 +79,6 @@ mutable struct Workers
     @atomic round::Int          # bumped once per round; a worker runs when it sees it move
     @atomic pending::Int        # workers that have not finished the current round
     @atomic stop::Bool
-    @atomic sleep_when_idle::Bool   # idle workers sleep instead of spinning, see `_with_threads_freed_for`
     job::Any                    # (f, n_tasks) of the current round
     error::Any                  # an exception a worker hit, rethrown by the owner
     tasks::Vector{Task}
@@ -119,7 +118,7 @@ function withworkers(f::F) where {F}
     owner_id = something(findfirst(==(Threads.threadid()), thread_ids), 0)
     (owner_id == 0 || !current_task().sticky) && return _onpoolthread(f, first(thread_ids))
 
-    workers = Workers(0, 0, false, false, nothing, nothing, Task[], length(thread_ids), owner_id,
+    workers = Workers(0, 0, false, nothing, nothing, Task[], length(thread_ids), owner_id,
         current_task(), Threads.Condition())
     (@atomicreplace _WORKERS.current nothing => workers).success || return f()
 
@@ -172,28 +171,6 @@ function _stopworkers!(workers::Workers)
     return
 end
 
-# Run `f()` with the idle workers asleep, so that the tasks `f` starts of its own get the threads
-# (see the file header). The next round wakes the workers again.
-function _with_threads_freed_for(f::F) where {F}
-    workers = _currentworkers()
-    workers === nothing && return f()
-    # a stretch inside another leaves the workers as it found them
-    were_sleeping = @atomic :acquire workers.sleep_when_idle
-    @atomic :release workers.sleep_when_idle = true
-    try
-        return f()
-    finally
-        @atomic :release workers.sleep_when_idle = were_sleeping
-    end
-end
-
-# with `thread` false the kernels run inline and start no tasks, so there is nothing to make room for
-function _with_threads_freed_for(f::F, thread::Bool) where {F}
-    if thread
-        return _with_threads_freed_for(f)
-    end
-    return f()
-end
 
 
 ### A round of tasks
@@ -283,7 +260,7 @@ function _awaitround(workers::Workers, seen::Int)
         spins += 1
         if spins == 64
             spins = 0
-            (time_ns() - t_start > _WORKER_SPIN_NS || (@atomic :acquire workers.sleep_when_idle)) && break
+            (time_ns() - t_start > _WORKER_SPIN_NS || _taskpending()) && break
         end
     end
 
@@ -297,6 +274,15 @@ function _awaitround(workers::Workers, seen::Int)
         unlock(workers.wakeup)
     end
     return @atomic :acquire workers.round
+end
+
+# Whether the scheduler has a task queued for this thread or for the pool. `workqueue_for` and
+# `checktaskempty` are what the scheduler itself looks at to find one; on a Julia without them a
+# worker sleeps after every spin window instead.
+@static if isdefined(Base, :workqueue_for) && isdefined(Base, :checktaskempty)
+    _taskpending() = !isempty(Base.workqueue_for(Threads.threadid())) || !Base.checktaskempty()
+else
+    _taskpending() = true
 end
 
 # One turn of a spin-wait: a CPU pause, a safepoint (a collection started by a working thread waits

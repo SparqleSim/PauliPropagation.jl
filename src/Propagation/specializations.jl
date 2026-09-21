@@ -75,25 +75,21 @@ If `normalize_coeffs=true`, the resulting Pauli sum is normalized by the coeffic
 This is useful for numerical stability when evolving states in the Schrödinger picture.
 """
 function PropagationBase.applymergetruncate!(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau; normalize_coeffs=true, thread::Bool=true, kwargs...)
-    function apply_merge_truncate!()
-        applytoall!(gate, prop_cache, tau; thread)
-        xormerge!(prop_cache, _branchmask(gate, prop_cache); thread)
+    applytoall!(gate, prop_cache, tau; thread)
+    xormerge!(prop_cache, _branchmask(gate, prop_cache); thread)
 
-        # This gate assumes we are working in the Schrödinger picture evolving states
-        # we normalize by the coefficient of the identity Pauli string
-        # this is beneficial for numerical stability and if absolute coefficient truncation is used
-        # example failure modes are if the coefficient is zero, of if it is supposed to be a number other than 1
-        # these can be avoided by setting `normalize_coeffs=false`
-        if normalize_coeffs
-            # getcoeff is fast here even for VectorPauliSum
-            # because we just merged and can do sorted search.
-            mult!(prop_cache, 1 / getcoeff(activesum(prop_cache), 0))
-        end
-
-        truncate!(prop_cache; thread, kwargs...)
+    # This gate assumes we are working in the Schrödinger picture evolving states
+    # we normalize by the coefficient of the identity Pauli string
+    # this is beneficial for numerical stability and if absolute coefficient truncation is used
+    # example failure modes are if the coefficient is zero, of if it is supposed to be a number other than 1
+    # these can be avoided by setting `normalize_coeffs=false`
+    if normalize_coeffs
+        # getcoeff is fast here even for VectorPauliSum
+        # because we just merged and can do sorted search.
+        mult!(prop_cache, 1 / getcoeff(activesum(prop_cache), 0))
     end
-    PropagationBase._with_threads_freed_for(apply_merge_truncate!, StorageType(prop_cache))
 
+    truncate!(prop_cache; thread, kwargs...)
     return
 end
 
@@ -331,25 +327,23 @@ function _applyxormergetruncate!(gate, prop_cache::AbstractPauliPropagationCache
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
     min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-    function apply_merge_truncate!()
-        applytoall!(gate, prop_cache, args...; thread)
-        mask = _branchmask(gate, prop_cache)
+    applytoall!(gate, prop_cache, args...; thread)
+    mask = _branchmask(gate, prop_cache)
 
-        # A relative threshold is based on the largest merged coefficient and thus cannot be
-        # evaluated while the merged output is written.
-        if !isnothing(min_rel_coeff)
-            xormerge!(prop_cache, mask; thread)
-            return truncate!(prop_cache;
-                min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc,
-                thread, kwargs...)
-        end
-
-        truncfunc = buildtruncfunc(prop_cache;
-            min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
-        return xormergeandtruncate!(truncfunc, prop_cache, mask; thread)
+    # A relative threshold is based on the largest merged coefficient and thus cannot be
+    # evaluated while the merged output is written.
+    if !isnothing(min_rel_coeff)
+        xormerge!(prop_cache, mask; thread)
+        truncate!(prop_cache;
+            min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc,
+            thread, kwargs...)
+        return
     end
-    # the array kernels of AcceleratedKernels start tasks of their own, which the workers make room for
-    PropagationBase._with_threads_freed_for(apply_merge_truncate!, StorageType(prop_cache))
 
+    truncfunc = buildtruncfunc(prop_cache;
+        min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread
+    )
+
+    xormergeandtruncate!(truncfunc, prop_cache, mask; thread)
     return
 end
