@@ -148,6 +148,7 @@ end
 
 # whether terms[lo:hi] is `term ⊻ mask` of a strictly ascending run, which is what the XOR passes sort
 function _isxortail(terms, lo::Int, hi::Int, mask; thread::Bool=true)
+    checkbounds(terms, lo:hi)
     n = hi - lo + 1
     task_partitioner, n_tasks = _preparetasks(n, thread)
 
@@ -181,6 +182,11 @@ end
 # sort the tail in pair A (a_terms[i] == sources[i] ⊻ mask, sources strictly ascending),
 # in a ping-pong fashion into pair B; returns the pair holding the result
 function _xorsorttail!(groups, a_terms, a_coeffs, b_terms, b_coeffs; thread::Bool=true)
+    # a pass indexes all four arrays up to the length of the pair it reads
+    if !(length(a_terms) == length(a_coeffs) == length(b_terms) == length(b_coeffs))
+        throw(ArgumentError("the ping-pong pairs must be the same length"))
+    end
+
     src_terms, src_coeffs = a_terms, a_coeffs
     dst_terms, dst_coeffs = b_terms, b_coeffs
 

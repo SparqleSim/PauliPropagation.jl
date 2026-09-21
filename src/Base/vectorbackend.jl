@@ -28,6 +28,14 @@ end
 @noinline _throwreplaymismatch() = throw(ArgumentError(
     "the callback returned different results when called again; it must return the same results for the same pair every time"))
 
+# `n` leading pairs exist in both arrays, for a kernel that indexes them up to `n` without bounds checks
+function _checkfits(n::Int, terms, coefficients)
+    if !(0 <= n <= length(terms) && n <= length(coefficients))
+        throw(ArgumentError("$n pairs do not fit arrays of lengths $(length(terms)) and $(length(coefficients))"))
+    end
+    return n
+end
+
 
 # Flagging and prefix scans support branching gates and array-backed filtering.
 function flag!(predicate, prop_cache::AbstractPropagationCache; thread::Bool=true)
@@ -81,8 +89,10 @@ flagstoindices!(destination_indices, source_flags; thread::Bool=true) =
         max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
 
-# Permutation and compaction use the auxiliary term sum as their destination buffer.
-function permuteviaindices!(prop_cache::AbstractPropagationCache; thread::Bool=true)
+# Permutation and compaction use the auxiliary term sum as their destination buffer. The gather
+# reads by the permutation without bounds checks, so the permutation is checked first unless the
+# call is made under `@inbounds`, which a caller that has just built it with `sortperm!` may do.
+Base.@propagate_inbounds function permuteviaindices!(prop_cache::AbstractPropagationCache; thread::Bool=true)
     input_terms = activeterms(prop_cache)
     input_coefficients = activecoeffs(prop_cache)
     output_terms = activeauxterms(prop_cache)
@@ -96,9 +106,10 @@ function permuteviaindices!(prop_cache::AbstractPropagationCache; thread::Bool=t
     return prop_cache
 end
 
-function permuteviaindices!(output_terms, output_coefficients, input_terms, input_coefficients, permutation; thread::Bool=true)
+Base.@propagate_inbounds function permuteviaindices!(output_terms, output_coefficients, input_terms, input_coefficients, permutation; thread::Bool=true)
     @assert length(permutation) <= length(input_terms) && length(permutation) <= length(input_coefficients)
     @assert length(permutation) <= length(output_terms) && length(permutation) <= length(output_coefficients)
+    @boundscheck _checkpermutation(permutation, min(length(input_terms), length(input_coefficients)); thread)
 
     AK.foreachindex(permutation; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
         @inbounds begin
@@ -108,6 +119,15 @@ function permuteviaindices!(output_terms, output_coefficients, input_terms, inpu
         end
     end
     return output_terms, output_coefficients
+end
+
+# every index within 1:n, in one pass over the permutation
+function _checkpermutation(permutation, n::Int; thread::Bool=true)
+    outside(index) = index < 1 || index > n
+    if AK.any(outside, permutation; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+        throw(ArgumentError("permutation indices must lie within 1:$n"))
+    end
+    return permutation
 end
 
 function filterviaflags!(prop_cache::AbstractPropagationCache; thread::Bool=true)
@@ -126,7 +146,7 @@ function filterviaflags!(prop_cache::AbstractPropagationCache; thread::Bool=true
     swapsums!(prop_cache)
     setactivesize!(prop_cache, lastactiveindex(prop_cache))
 
-    new_sorted_prefix = old_sorted_prefix == 0 ? 0 : @inbounds(active_indices[old_sorted_prefix])
+    new_sorted_prefix = old_sorted_prefix == 0 ? 0 : active_indices[old_sorted_prefix]
     setsortedprefix!(mainsum(prop_cache), new_sorted_prefix)
     return prop_cache
 end

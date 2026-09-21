@@ -297,7 +297,7 @@ end
 
 # the box in the outbox of `zone_id` for the zone its new terms belong to
 @inline _branchbox(prop_cache::AbstractPropagationCache, zone_id::Int, mask) =
-    @inbounds zones(outboxes(prop_cache)[zone_id])[_xortarget(zonemap(prop_cache), zone_id, mask)]
+    zones(outboxes(prop_cache)[zone_id])[_xortarget(zonemap(prop_cache), zone_id, mask)]
 
 @noinline _throwunknownoutcome(branched) =
     throw(ArgumentError("rule returned $(typeof(branched)); expected Unchanged(), Kept(coefficient), or Branch(kept, created)"))

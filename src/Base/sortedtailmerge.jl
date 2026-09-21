@@ -44,7 +44,7 @@ function _sortedtailmerge!(truncfunc::F, prop_cache::AbstractPropagationCache; t
     AK.sortperm!(tail_perm, unsorted_tail_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
     tail_terms, tail_coeffs = _tailscratch(aux_terms, aux_coeffs, n_new, n_tail, main_terms, main_coeffs)
-    permuteviaindices!(tail_terms, tail_coeffs, unsorted_tail_terms, unsorted_tail_coeffs, tail_perm; thread)
+    @inbounds permuteviaindices!(tail_terms, tail_coeffs, unsorted_tail_terms, unsorted_tail_coeffs, tail_perm; thread)
 
     return _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs, n_old,
         tail_terms, tail_coeffs, n_tail, truncfunc, thread)
@@ -63,19 +63,25 @@ end
 function _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs, n_old::Int,
     tail_terms, tail_coeffs, n_tail::Int, truncfunc, thread::Bool, distinct_tail::Val=Val(false))
 
+    # the merge indexes the head, the tail and the output up to these counts without bounds checks
+    _checkfits(n_old, main_terms, main_coeffs)
+    _checkfits(n_tail, tail_terms, tail_coeffs)
+    _checkfits(n_old + n_tail, aux_terms, aux_coeffs)
+
     task_partitioner, n_tasks = _preparetasks(n_old, thread)
 
     if n_tasks == 1
         merged_count = _tailmerge_write!(aux_terms, aux_coeffs, 1,
             main_terms, main_coeffs, 1, n_old, tail_terms, tail_coeffs, 1, n_tail, truncfunc, Val(true), distinct_tail)
     else
-        # slice and partition the two-pointer merge across threads
+        # slice and partition the two-pointer merge across threads; the slices are kept monotone, so
+        # they partition the tail whatever the head holds
         tail_bounds_per_task = Vector{Int}(undef, n_tasks + 1)
         tail_bounds_per_task[1] = 1
         tail_bounds_per_task[n_tasks+1] = n_tail + 1
         @inbounds for task_id in 1:(n_tasks-1)
             head_chunk_boundary_term = main_terms[task_partitioner[task_id].stop]
-            tail_bounds_per_task[task_id+1] = searchsortedlast(tail_terms, head_chunk_boundary_term) + 1
+            tail_bounds_per_task[task_id+1] = max(tail_bounds_per_task[task_id], searchsortedlast(tail_terms, head_chunk_boundary_term) + 1)
         end
 
         # dry run: each task counts its own merged output size (unknown ahead of time due to collisions)

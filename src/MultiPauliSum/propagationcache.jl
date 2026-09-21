@@ -18,7 +18,7 @@ struct MultiPauliPropagationCache{MS<:MultiPauliSum,ZC<:AbstractPauliPropagation
     zonecaches::Vector{ZC}
     outboxes::Vector{MS}
 
-    # a zone's cache and box are looked up by the index the zone map assigns without a bounds check
+    # one cache and one box per zone, looked up by the index the zone map assigns
     function MultiPauliPropagationCache(msum::MS, zonecaches::Vector{ZC}, outboxes::Vector{MS}) where {MS<:MultiPauliSum,ZC<:AbstractPauliPropagationCache}
         if !(length(zonecaches) == length(outboxes) == nzones(msum))
             throw(ArgumentError("got $(length(zonecaches)) zone caches and $(length(outboxes)) outboxes for $(nzones(msum)) zones."))

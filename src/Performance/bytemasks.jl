@@ -104,8 +104,9 @@ end
 
 ### Hooks used by the fused gate loop
 
-_bytesof(terms::Vector, ::ByteMask) = Ptr{UInt8}(pointer(terms))
-_bytesof(terms::Vector, ::WordMask) = Ptr{UInt64}(pointer(terms))
+# the reads stride by the mask's type, so only an array of that type is read through a pointer
+_bytesof(terms::Vector{TT}, ::ByteMask{TT}) where {TT} = Ptr{UInt8}(pointer(terms))
+_bytesof(terms::Vector{TT}, ::WordMask{TT}) where {TT} = Ptr{UInt64}(pointer(terms))
 _bytesof(terms, gate_mask) = terms
 
 @inline _byteat(bytes::Ptr{UInt8}, ii::Int, m::ByteMask{TT}, k::Int) where {TT} =

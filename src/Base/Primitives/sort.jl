@@ -33,7 +33,8 @@ function _sortterms!(::ArrayStorage, prop_cache::AbstractPropagationCache; lt=is
 
     AK.sortperm!(activeindices(prop_cache), activeterms(prop_cache); lt, by, rev, order,
         max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-    permuteviaindices!(prop_cache; thread)
+    # the permutation was just written by sortperm!, so the gather needs no check
+    @inbounds permuteviaindices!(prop_cache; thread)
 
     if lt === isless && by === identity && !rev && order === Base.Forward
         setsortedprefix!(mainsum(prop_cache), _uniqueprefix(activeterms(prop_cache); thread))
@@ -91,7 +92,7 @@ function _sortcoeffs!(::ArrayStorage, prop_cache::AbstractPropagationCache; lt=i
 
     AK.sortperm!(activeindices(prop_cache), activecoeffs(prop_cache); lt, by, rev, order,
         max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-    return permuteviaindices!(prop_cache; thread)
+    return @inbounds permuteviaindices!(prop_cache; thread)
 end
 
 _sortcoeffs!(::StorageType, thing::Union{AbstractTermSum,AbstractPropagationCache}; kwargs...) =

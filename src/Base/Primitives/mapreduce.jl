@@ -41,6 +41,7 @@ end
 
 # Every task reduces its part from the reducer's identity on the workers of the propagation in progress.
 function _mapreducecpu(mapper::F, reducer::O, terms, coefficients; init, neutral, thread::Bool) where {F,O}
+    @assert length(terms) == length(coefficients)
     task_partitioner, n_tasks = _preparetasks(length(terms), thread)
     mappedtype = Base.promote_op(mapper, eltype(terms), eltype(coefficients))
     partialtype = Base.promote_op(reducer, typeof(neutral), mappedtype)

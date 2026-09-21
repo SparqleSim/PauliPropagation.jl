@@ -177,7 +177,7 @@ activeindices(prop_cache::AbstractPropagationCache) = view(indices(prop_cache), 
 # callers read this as "number of flagged terms" (last prefix-sum value), which is 0 when nothing is active
 @inline function lastactiveindex(prop_cache::AbstractPropagationCache)
     active_size = activesize(prop_cache)
-    return active_size == 0 ? 0 : @inbounds(indices(prop_cache)[active_size])
+    return active_size == 0 ? 0 : indices(prop_cache)[active_size]
 end
 
 

@@ -529,7 +529,35 @@ end
     @test_throws ArgumentError PB.setactivesize!(cache, -1)
     @test PB.activesize(PB.setactivesize!(cache, 2)) == 2
 
+    @test_throws ArgumentError PB.setsortedprefix!(mainsum(cache), 5)
+    @test_throws ArgumentError PB.setsortedprefix!(mainsum(cache), -1)
+    @test PB.sortedprefix(PB.setsortedprefix!(mainsum(cache), 4)) == 4
+
     @test_throws ArgumentError PP.VectorPauliPropagationCache(deepcopy(small), similar(small), falses(3), zeros(Int, 4), 4)
     @test_throws ArgumentError PP.VectorPauliPropagationCache(deepcopy(small), similar(small), falses(4), zeros(Int, 4), 5)
+    @test_throws ArgumentError PP.VectorPauliPropagationCache(deepcopy(small), similar(small), falses(4), zeros(Int32, 4), 4)
     @test PB.activesize(PP.VectorPauliPropagationCache(deepcopy(small), similar(small), falses(4), zeros(Int, 4), 4)) == 4
+end
+
+# the kernels that index by a permutation or by the sorted prefix check the range themselves
+@testset "Array kernels check the ranges they index without bounds checks" begin
+    nq = 16
+    small = VectorPauliSum(nq, UInt32.(1:4), ones(4))
+
+    # a permutation is checked unless the caller has just built it with sortperm!
+    cache = PropagationCache(deepcopy(small))
+    PB.flagterms!(term -> term != 1, cache)
+    PB.flagstoindices!(cache)
+    @test_throws ArgumentError PB.permuteviaindices!(cache; thread=false)
+
+    # a sorted prefix written past its setter
+    cache = PropagationCache(deepcopy(small))
+    mainsum(cache)._terms_sorted = -1
+    PB.flagterms!(term -> true, cache)
+    @test_throws BoundsError PB.filterviaflags!(cache; thread=false)
+
+    # dropping every merged pair leaves the head read as the only trace of the bad prefix
+    cache = PropagationCache(deepcopy(small))
+    mainsum(cache)._terms_sorted = 5
+    @test_throws ArgumentError PB._sortedtailmerge!((term, coefficient) -> true, cache; thread=false)
 end

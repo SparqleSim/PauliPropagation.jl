@@ -71,11 +71,15 @@ mutable struct VectorPauliPropagationCache{VPS<:VectorPauliSum,VB,VI} <: Abstrac
     # we will over-allocate the arrays and keep track of the non-empty size
     active_size::Int
 
-    # the array kernels index all four arrays up to the active size without bounds checks
+    # the array kernels index all four arrays up to the active size without bounds checks, and
+    # write at positions they accumulate in `indices`, which must not wrap
     function VectorPauliPropagationCache(psum::VPS, aux_psum::VPS, flags::VB, indices::VI, active_size::Int) where {VPS<:VectorPauliSum,VB,VI}
         n = length(psum)
         if !(length(aux_psum) == length(flags) == length(indices) == n)
             throw(ArgumentError("psum, aux_psum, flags and indices must have the same length."))
+        end
+        if eltype(indices) !== Int
+            throw(ArgumentError("indices must hold Int, got $(eltype(indices))."))
         end
         if !(0 <= active_size <= n)
             throw(ArgumentError("active_size must be between 0 and the length of psum, got $active_size for $n."))

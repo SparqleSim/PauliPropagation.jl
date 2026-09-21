@@ -40,6 +40,24 @@ function _agreeswithsortedtailmerge(nq, n, gate_mask, xor_mask, parent_order, th
     return paulis(xor_sum) == paulis(ref_sum) && coefficients(xor_sum) == coefficients(ref_sum)
 end
 
+# the tail check and the tail sort index their ranges without bounds checks, so they prove them first
+@testset "xormerge! checks the ranges it indexes" begin
+    U = PauliPropagation.getinttype(20)
+    gate_mask = U(0b11)
+    prop_cache = _rotatedcache(20, 500, gate_mask)
+    terms, coeffs = paulis(mainsum(prop_cache)), coefficients(mainsum(prop_cache))
+
+    @test_throws BoundsError PB._isxortail(terms, 0, 500, gate_mask; thread=false)
+    @test_throws BoundsError PB._isxortail(terms, 501, length(terms) + 1, gate_mask; thread=false)
+
+    groups = PB._xorplan(gate_mask, terms)
+    @test_throws ArgumentError PB._xorsorttail!(groups, view(terms, 1:500), view(coeffs, 1:500), view(terms, 501:1000), view(coeffs, 501:999); thread=false)
+
+    # a sorted prefix written past its setter
+    mainsum(prop_cache)._terms_sorted = -1
+    @test_throws BoundsError PB.xormerge!(prop_cache, gate_mask; thread=false)
+end
+
 @testset "xormerge!" begin
     U = PauliPropagation.getinttype(20)
     W = PauliPropagation.getinttype(100)

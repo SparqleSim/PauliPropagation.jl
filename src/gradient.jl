@@ -191,6 +191,8 @@ end
 # flags the dual terms in [lo, hi] that also occur in op_terms_sorted
 function _flagintersection!(flags, dual_terms_sorted, op_terms_sorted, lo::Int, hi::Int)
     lo > hi && return
+    checkbounds(flags, lo:hi)
+    checkbounds(dual_terms_sorted, lo:hi)
 
     n_op = length(op_terms_sorted)
     i = lo

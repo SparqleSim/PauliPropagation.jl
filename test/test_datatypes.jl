@@ -336,6 +336,10 @@ end
     vpsum = VectorPauliSum(nq)
     @test sortedprefix(vpsum) == 0
 
+    # the prefix counts leading terms, so it is checked against the number of terms
+    @test_throws ArgumentError setsortedprefix!(vpsum, 1)
+    @test_throws ArgumentError setsortedprefix!(vpsum, -1)
+    resize!(vpsum, 3)
     setsortedprefix!(vpsum, 3)
     @test sortedprefix(vpsum) == 3
 
@@ -347,7 +351,7 @@ end
     src = VectorPauliSum([pstr1, pstr2])
     setsortedprefix!(src, 1)
     dst = similar(src)
-    setsortedprefix!(dst, 99)
+    setsortedprefix!(dst, 2)
     copy!(dst, src)
     @test sortedprefix(dst) == 1
 
