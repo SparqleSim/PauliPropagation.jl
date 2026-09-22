@@ -329,6 +329,28 @@ function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::Pauli
 end
 
 """
+    applymergetruncate!(gate::PauliRotation, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, theta; kwargs...) where {TT<:PauliStringType,T<:Number}
+    applymergetruncate!(gate::AmplitudeDampingNoise, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, gamma; kwargs...) where {TT<:PauliStringType,T<:Number}
+
+Falls back to the generic apply-merge-truncate pipeline instead of the one-call branch and merge of the core, so that the
+`applytoall!` and `merge!` above record a tree node/edge for each transformed Pauli string.
+"""
+function PropagationBase.applymergetruncate!(gate::PauliRotation, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, theta; kwargs...) where {TT<:PauliStringType,T<:Number}
+    return _applymergetruncatetracked!(gate, prop_cache, theta; kwargs...)
+end
+
+function PropagationBase.applymergetruncate!(gate::AmplitudeDampingNoise, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, gamma; kwargs...) where {TT<:PauliStringType,T<:Number}
+    return _applymergetruncatetracked!(gate, prop_cache, gamma; kwargs...)
+end
+
+function _applymergetruncatetracked!(gate, prop_cache, parameter; kwargs...)
+    applytoall!(gate, prop_cache, parameter; kwargs...)
+    merge!(prop_cache)
+    truncate!(prop_cache; kwargs...)
+    return prop_cache
+end
+
+"""
     applytoall!(gate::AmplitudeDampingNoise, gamma, psum::PauliSum{TT,PauliTreeTracker{T}}, aux_psum; kwargs...)
 
 Specialized applytoall! for AmplitudeDampingNoise with PauliSum containing PauliTreeTracker coefficients.

@@ -17,6 +17,12 @@ A Pauli string that anticommutes with the generator keeps a factor of cos(θ) an
 which gets a factor of sin(θ).
 """
 function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta; thread::Bool=true, kwargs...)
+    return xorbranch!(_branchrule(gate, prop_cache, theta), prop_cache, _branchmask(gate, prop_cache); thread)
+end
+
+# The rule of a gate that branches by `_branchmask`, for `xorbranch!`, which also validates the
+# gate against the cache. A coefficient type that branches differently overloads it for its cache.
+function _branchrule(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
     gate_mask = _branchmask(gate, prop_cache)
@@ -32,14 +38,14 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::AbstractPa
         end
     end
 
-    return xorbranch!(rotate, prop_cache, gate_mask; thread)
+    return rotate
 end
 
 """
     applymergetruncate!(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta; thread=true, kwargs...)
 
 Overload of `applymergetruncate!` for `PauliRotation` gates.
-Applies the gate, merges the Pauli strings it branched into through `xormerge!`, and truncates.
+Branches, merges and truncates in one call through `xorbranchmergeandtruncate!`.
 """
 function PropagationBase.applymergetruncate!(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta; kwargs...)
     return _applyxormergetruncate!(gate, prop_cache, theta; kwargs...)
@@ -100,6 +106,10 @@ Like the `PauliRotation` method, except that an imaginary Pauli rotation branche
 with factors of cosh(τ) and sinh(τ).
 """
 function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau; thread::Bool=true, kwargs...)
+    return xorbranch!(_branchrule(gate, prop_cache, tau), prop_cache, _branchmask(gate, prop_cache); thread)
+end
+
+function _branchrule(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
     gate_mask = _branchmask(gate, prop_cache)
@@ -117,7 +127,7 @@ function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::A
         end
     end
 
-    return xorbranch!(rotate, prop_cache, gate_mask; thread)
+    return rotate
 end
 
 ### Clifford gates
@@ -219,6 +229,10 @@ On the damped qubit, X and Y are damped by a factor of sqrt(1 - gamma),
 and Z keeps a factor of 1 - gamma and branches into the identity with a factor of gamma.
 """
 function PropagationBase.applytoall!(gate::AmplitudeDampingNoise, prop_cache::AbstractPauliPropagationCache, gamma; thread::Bool=true, kwargs...)
+    return xorbranch!(_branchrule(gate, prop_cache, gamma), prop_cache, _branchmask(gate, prop_cache); thread)
+end
+
+function _branchrule(gate::AmplitudeDampingNoise, prop_cache::AbstractPauliPropagationCache, gamma)
     _check_qind_range(nqubits(prop_cache), gate.qind)
     _check_noise_strength(AmplitudeDampingNoise, gamma)
 
@@ -236,14 +250,14 @@ function PropagationBase.applytoall!(gate::AmplitudeDampingNoise, prop_cache::Ab
         end
     end
 
-    return xorbranch!(damp, prop_cache, _branchmask(gate, prop_cache); thread)
+    return damp
 end
 
 """
     applymergetruncate!(gate::AmplitudeDampingNoise, prop_cache::AbstractPauliPropagationCache, gamma; thread=true, kwargs...)
 
 Overload of `applymergetruncate!` for `AmplitudeDampingNoise` gates.
-Applies the gate, merges the Pauli strings it branched into through `xormerge!`, and truncates.
+Branches, merges and truncates in one call through `xorbranchmergeandtruncate!`.
 """
 function PropagationBase.applymergetruncate!(gate::AmplitudeDampingNoise, prop_cache::AbstractPauliPropagationCache, gamma; kwargs...)
     return _applyxormergetruncate!(gate, prop_cache, gamma; kwargs...)
@@ -322,17 +336,19 @@ _branchmask(gate::Union{PauliRotation,ImaginaryPauliRotation}, prop_cache) = sym
 _branchmask(gate::AmplitudeDampingNoise, prop_cache) = symboltoint(paulitype(prop_cache), :Z, gate.qind)
 
 # `applymergetruncate!` for a gate whose `applytoall!` is an `xorbranch!` by `_branchmask`.
-# `xormergeandtruncate!` combines the merge and all per-term truncation criteria in one pass.
+# `xorbranchmergeandtruncate!` branches, merges and truncates in one call, and does nothing
+# further when the gate touched no term.
 function _applyxormergetruncate!(gate, prop_cache::AbstractPauliPropagationCache, args...;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
     min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-    applytoall!(gate, prop_cache, args...; thread)
     mask = _branchmask(gate, prop_cache)
+    rule = _branchrule(gate, prop_cache, args...)
 
     # A relative threshold is based on the largest merged coefficient and thus cannot be
     # evaluated while the merged output is written.
     if !isnothing(min_rel_coeff)
+        xorbranch!(rule, prop_cache, mask; thread)
         xormerge!(prop_cache, mask; thread)
         truncate!(prop_cache;
             min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc,
@@ -344,6 +360,6 @@ function _applyxormergetruncate!(gate, prop_cache::AbstractPauliPropagationCache
         min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread
     )
 
-    xormergeandtruncate!(truncfunc, prop_cache, mask; thread)
+    xorbranchmergeandtruncate!(rule, truncfunc, prop_cache, mask; thread)
     return
 end

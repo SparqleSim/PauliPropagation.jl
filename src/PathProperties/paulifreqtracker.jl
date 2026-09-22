@@ -34,20 +34,22 @@ PropagationBase.numcoefftype(::Type{PauliFreqTracker{T}}) where {T<:Number} = T
 
 ### Specializations for PauliRotations that incremet the nsins, ncos, and freq
 
-# Overload of `applytoall!` for `PauliRotation` gates acting onto Pauli sums with `PathProperties` coefficients. 
-function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropagationCache{PauliSum{TT,PProp}}, theta; kwargs...) where {TT,PProp<:PathProperties}
+# The rule of a `PauliRotation` on Pauli sums with `PathProperties` coefficients, which branches
+# through `splitapply` so that the coefficients keep their record of the path.
+function _branchrule(gate::PauliRotation, prop_cache::PauliPropagationCache{PauliSum{TT,PProp}}, theta) where {TT,PProp<:PathProperties}
+    _check_qind_range(nqubits(prop_cache), gate.qinds)
     gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
 
     function rotate(pstr, coeff)
         if commutes(gate_mask, pstr)
             return Unchanged()
         else
-            _, kept_coeff, _, new_coeff = splitapply(gate_mask, pstr, coeff, theta; kwargs...)
+            _, kept_coeff, _, new_coeff = splitapply(gate_mask, pstr, coeff, theta)
             return Branch(kept_coeff, new_coeff)
         end
     end
 
-    return xorbranch!(rotate, prop_cache, gate_mask; thread=get(kwargs, :thread, true))
+    return rotate
 end
 
 ## Specializations for PauliRotations that increment the nsins, ncos, and freq
