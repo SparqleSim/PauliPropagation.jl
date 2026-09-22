@@ -49,6 +49,7 @@ end
 
 """
     translationmerge(psum::AbstractPauliSum; thread=true)
+    translationmerge(prop_cache::AbstractPauliPropagationCache; thread=true)
 
 Shift and merge of a `psum` in a system with 1D translational symmetry.
 ```
@@ -61,7 +62,8 @@ translationmerge(psum)
 )
 ```
 """
-translationmerge(psum::AbstractPauliSum; thread::Bool=true) = symmetrymerge(_translationmapper(psum), psum; thread)
+translationmerge(thing::Union{AbstractPauliSum,AbstractPauliPropagationCache}; thread::Bool=true) =
+    symmetrymerge(_translationmapper(thing), thing; thread)
 
 """
     translationmerge!(psum::AbstractPauliSum; thread=true)
@@ -79,6 +81,7 @@ end
 
 """
     translationmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; thread=true)
+    translationmerge(prop_cache::AbstractPauliPropagationCache, nx::Integer, ny::Integer; thread=true)
 
 Shift and merge of a `psum` in a system with 2D translational symmetry.
 ```
@@ -88,8 +91,8 @@ add!(psum, :Z, 6)
 translationmerge(psum, 2, 3)
 ```
 """
-function translationmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; thread::Bool=true)
-    return symmetrymerge(_translationmapper(psum, nx, ny), psum; thread)
+function translationmerge(thing::Union{AbstractPauliSum,AbstractPauliPropagationCache}, nx::Integer, ny::Integer; thread::Bool=true)
+    return symmetrymerge(_translationmapper(thing, nx, ny), thing; thread)
 end
 
 """
