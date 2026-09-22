@@ -87,7 +87,8 @@ end
 
 `xorbranch!` by `rule` followed by `xormergeandtruncate!` by `truncfunc`, as one call.
 The merge then knows what the branch left: an array whose active terms were all in its sorted prefix sorts the new terms in by XOR passes without checking them first,
-a multi sum of arrays does the same zone by zone, and a cache in which the rule touched no term is left as it is, without a merge or a truncation pass.
+a multi sum of arrays does the same zone by zone, and an array or multi sum in which the rule touched no term is left as it is, without a merge or a truncation pass.
+A dictionary truncates after every branch, so that a term the rule leaves alone still goes through `truncfunc`.
 A zone of a multi sum parks its new terms in the first box of its outbox, whatever zone owns them, so that one box per outbox grows instead of one per pair of zones.
 A `truncfunc` of `nothing` truncates nothing.
 """
@@ -102,10 +103,7 @@ end
 
 function _xorbranchmergeandtruncate!(::DictStorage, rule::F, truncfunc::G, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F,G}
     _checkauxempty(prop_cache)
-    n_touched = _branchdict!(rule, mainsum(prop_cache), auxsum(prop_cache), mask)
-    if n_touched == 0
-        return prop_cache
-    end
+    _branchdict!(rule, mainsum(prop_cache), auxsum(prop_cache), mask)
     return mergeandtruncate!(truncfunc, prop_cache; thread)
 end
 

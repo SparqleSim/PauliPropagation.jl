@@ -336,8 +336,8 @@ _branchmask(gate::Union{PauliRotation,ImaginaryPauliRotation}, prop_cache) = sym
 _branchmask(gate::AmplitudeDampingNoise, prop_cache) = symboltoint(paulitype(prop_cache), :Z, gate.qind)
 
 # `applymergetruncate!` for a gate whose `applytoall!` is an `xorbranch!` by `_branchmask`.
-# `xorbranchmergeandtruncate!` branches, merges and truncates in one call, and does nothing
-# further when the gate touched no term.
+# `xorbranchmergeandtruncate!` branches, merges and truncates in one call, and on an array or
+# multi sum does nothing further when the gate touched no term.
 function _applyxormergetruncate!(gate, prop_cache::AbstractPauliPropagationCache, args...;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
     min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
