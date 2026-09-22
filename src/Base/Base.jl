@@ -144,7 +144,8 @@ export
     merge!,
     mergeandtruncate!,
     xormerge!,
-    xormergeandtruncate!
+    xormergeandtruncate!,
+    xorbranchmergeandtruncate!
 
 include("./MonteCarlo/MonteCarlo.jl")
 export

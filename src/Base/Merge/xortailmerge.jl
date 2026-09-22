@@ -5,7 +5,8 @@
 # XORing a fixed mask into sorted terms keeps two terms in relative order unless their highest
 # differing bit was flipped; one pass per group of neighbouring flipped bits, highest group first, orders it.
 # Within a pass the affected blocks arrive exactly reversed, so a pass only copies blocks back to front.
-# Only valid if the tail is `term ⊻ mask` of an ascending run, which one pass over the tail checks.
+# Only valid if the tail is `term ⊻ mask` of an ascending run, which one pass over the tail checks,
+# unless the branch and the merge run as one call and the branch vouches for it.
 ##
 ###
 
@@ -67,10 +68,115 @@ _xormergeandtruncatebox!(::StorageType, truncfunc::F, zonecache, box, mask) wher
 
 function _xormergeandtruncatebox!(::ArrayStorage, truncfunc::F, zonecache, box, mask) where {F}
     groups = _xorboxplan(zonecache, box, mask; thread=false)
+    return _xormergebox!(groups, truncfunc, zonecache, box)
+end
+
+# the box sorted in by the passes of `groups`, or delivered and merged by comparison without them
+function _xormergebox!(groups, truncfunc::F, zonecache, box) where {F}
     if groups === nothing
         return mergeandtruncate!(truncfunc, _deliver!(zonecache, box); thread=false)
     end
     return _xorsortedboxmergeandtruncate!(groups, truncfunc, zonecache, box; thread=false)
+end
+
+
+### Branching and merging in one call
+
+"""
+    xorbranchmergeandtruncate!(rule, truncfunc, prop_cache::AbstractPropagationCache, mask; thread=true)
+
+`xorbranch!` by `rule` followed by `xormergeandtruncate!` by `truncfunc`, as one call.
+The merge then knows what the branch left: an array whose active terms were all in its sorted prefix sorts the new terms in by XOR passes without checking them first,
+a multi sum of arrays does the same zone by zone, and a cache in which the rule touched no term is left as it is, without a merge or a truncation pass.
+A zone of a multi sum parks its new terms in the first box of its outbox, whatever zone owns them, so that one box per outbox grows instead of one per pair of zones.
+A `truncfunc` of `nothing` truncates nothing.
+"""
+xorbranchmergeandtruncate!(rule::F, truncfunc::G, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F,G} =
+    _xorbranchmergeandtruncate!(StorageType(prop_cache), rule, truncfunc, prop_cache, mask; thread)
+
+# a storage without a walk of its own branches and merges in two calls
+function _xorbranchmergeandtruncate!(::StorageType, rule::F, truncfunc::G, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F,G}
+    xorbranch!(rule, prop_cache, mask; thread)
+    return xormergeandtruncate!(truncfunc, prop_cache, mask; thread)
+end
+
+function _xorbranchmergeandtruncate!(::DictStorage, rule::F, truncfunc::G, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F,G}
+    _checkauxempty(prop_cache)
+    n_touched = _branchdict!(rule, mainsum(prop_cache), auxsum(prop_cache), mask)
+    if n_touched == 0
+        return prop_cache
+    end
+    return mergeandtruncate!(truncfunc, prop_cache; thread)
+end
+
+function _xorbranchmergeandtruncate!(::ArrayStorage, rule::F, truncfunc::G, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F,G}
+    if isempty(prop_cache)
+        return prop_cache
+    end
+    if !_iscpuarray(prop_cache)
+        xorbranch!(rule, prop_cache, mask; thread)
+        return xormergeandtruncate!(truncfunc, prop_cache, mask; thread)
+    end
+
+    n_sorted, n_total = _sortedandactive(prop_cache)
+    n_new, n_touched = _branchcpu!(rule, prop_cache, mask; thread)
+    if n_touched == 0
+        return prop_cache
+    end
+
+    groups = _xorvouchedplan(terms(mainsum(prop_cache)), n_sorted == n_total, n_new, mask)
+    if groups === nothing
+        return mergeandtruncate!(truncfunc, prop_cache; thread)
+    end
+    return _xorsortedtailmergeandtruncate!(groups, truncfunc, prop_cache; thread)
+end
+
+# Every zone branches into the box of the zone its new terms belong to, and every zone then sorts in
+# the box filled for it, trusting the sortedness its source had before the branch.
+function _xorbranchmergeandtruncate!(::MultiSumStorage, rule::F, truncfunc::G, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F,G}
+    _checkauxempty(prop_cache)
+    zone_storage = zonestorage(prop_cache)
+    zone_caches = zonecaches(prop_cache)
+    zone_map = zonemap(prop_cache)
+
+    sorted_zones = _sortedzones(zone_storage, prop_cache)
+    touched_counts = Vector{Int}(undef, nzones(prop_cache))
+
+    function branch_zone!(zone_id)
+        touched_counts[zone_id] = _branchzone!(zone_storage, rule, zone_caches[zone_id], _firstbox(prop_cache, zone_id), mask)
+    end
+    _eachzone(branch_zone!, prop_cache, thread)
+
+    function merge_box!(owner)
+        source = _xortarget(zone_map, owner, mask)
+        box = _firstbox(prop_cache, source)
+        if touched_counts[owner] == 0 && isempty(box)
+            return
+        end
+        _xorbranchedbox!(zone_storage, truncfunc, zone_caches[owner], box, mask, sorted_zones, source, owner)
+    end
+    _eachzone(merge_box!, prop_cache, thread)
+
+    return _syncsums!(prop_cache)
+end
+
+# the first box of the outbox of `zone_id`, which is where a zone parks the terms it branches when
+# the owner takes them straight from there
+@inline _firstbox(prop_cache::AbstractPropagationCache, zone_id::Int) = first(zones(outboxes(prop_cache)[zone_id]))
+
+# whether every active term of each array zone is in its sorted prefix; other zones sort nothing in
+_sortedzones(::StorageType, prop_cache::AbstractPropagationCache) = nothing
+_sortedzones(::ArrayStorage, prop_cache::AbstractPropagationCache) =
+    [sortedprefix(mainsum(zonecache)) == activesize(zonecache) for zonecache in zonecaches(prop_cache)]
+
+_xorbranchedbox!(::StorageType, truncfunc::F, zonecache, box, mask, sorted_zones, source::Int, owner::Int) where {F} =
+    mergeandtruncate!(truncfunc, _deliver!(zonecache, box); thread=false)
+
+# the box holds `term ⊻ mask` of the source zone's terms in their order, so it is sorted the way the
+# source was, and the passes sort it in past a head that holds every active term
+function _xorbranchedbox!(::ArrayStorage, truncfunc::F, zonecache, box, mask, sorted_zones, source::Int, owner::Int) where {F}
+    groups = _xorvouchedplan(terms(mainsum(zonecache)), sorted_zones[source] && sorted_zones[owner], length(box), mask)
+    return _xormergebox!(groups, truncfunc, zonecache, box)
 end
 
 
@@ -103,6 +209,15 @@ function _xorpasses(main_terms, tail_terms, lo::Int, hi::Int, mask; thread::Bool
         return nothing
     end
     return groups
+end
+
+# The passes for a tail of `n_tail` terms that a branch vouches for: `term ⊻ mask` of parents that
+# were all in the sorted prefix, in their order, so that nothing has to be checked.
+function _xorvouchedplan(main_terms, ascending::Bool, n_tail::Int, mask)
+    if !ascending || n_tail < _MIN_XOR_TAIL
+        return nothing
+    end
+    return _xorplan(mask, main_terms)
 end
 
 

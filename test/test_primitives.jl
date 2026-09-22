@@ -482,11 +482,16 @@ end
     unchanged(term, coefficient) = PB.Unchanged()
     branch(term, coefficient) = PB.Branch(coefficient, coefficient)
 
-    for (first_answer, second_answer) in ((unchanged, branch), (branch, unchanged))
-        cache = PropagationCache(deepcopy(vpsum))
-        task_partitioner = AK.TaskPartitioner(n, 4, 1)
-        @test_throws ArgumentError PB._branchintasks!(replaying(first_answer, second_answer, n), cache, n, task_partitioner, task_partitioner.num_tasks, mask)
+    task_partitioner = AK.TaskPartitioner(n, 4, 1)
+    cache = PropagationCache(deepcopy(vpsum))
+    @test_throws ArgumentError PB._branchintasks!(replaying(branch, unchanged, n), cache, n, task_partitioner, task_partitioner.num_tasks, mask)
 
+    # a rule that touches nothing while the terms are counted is not called again
+    cache = PropagationCache(deepcopy(vpsum))
+    @test PB._branchintasks!(replaying(unchanged, branch, n), cache, n, task_partitioner, task_partitioner.num_tasks, mask) == (0, 0)
+    @test PB.terms(cache) == input_terms
+
+    for (first_answer, second_answer) in ((unchanged, branch), (branch, unchanged))
         cache = PropagationCache(deepcopy(vpsum))
         @test_throws ArgumentError PB._branchflagged!(replaying(first_answer, second_answer, n), cache, mask; thread=false)
     end
@@ -575,4 +580,85 @@ end
     cache = PropagationCache(deepcopy(small))
     mainsum(cache)._terms_sorted = 5
     @test_throws ArgumentError PB._sortedtailmergeandtruncate!((term, coefficient) -> true, cache; thread=false)
+end
+
+@testset "xorbranchmergeandtruncate! agrees with branching and merging apart" begin
+    nq = 6
+    rng = MersenneTwister(11)
+    dict_sum = PauliSum(nq)
+    for _ in 1:200
+        add!(dict_sum, symboltoint(rand(rng, (:I, :X, :Y, :Z), nq)), randn(rng))
+    end
+
+    gate_mask = symboltoint(paulitype(dict_sum), [:X, :Y], [2, 5])
+    theta = 0.7
+    function rotate(pstr, coeff)
+        if commutes(gate_mask, pstr)
+            return PB.Unchanged()
+        else
+            _, sign = PauliPropagation.paulirotationproduct(gate_mask, pstr)
+            return PB.Branch(coeff * cos(theta), coeff * sin(theta) * sign)
+        end
+    end
+    rescale(pstr, coeff) = getpauli(pstr, 1) == 3 ? PB.Kept(0.5 * coeff) : PB.Unchanged()
+    untouched(pstr, coeff) = PB.Unchanged()
+    truncfunc(pstr, coeff) = abs(coeff) < 0.05
+
+    # a sorted array takes the XOR passes without checking the tail, an unsorted one merges by comparison
+    sorted(psum) = sortterms!(VectorPauliSum(psum))
+    makesums = (identity, VectorPauliSum, sorted, psum -> MultiPauliSum(sorted(psum), 4), psum -> MultiPauliSum(psum, 4))
+
+    for makesum in makesums, rule in (rotate, rescale), thread in (false, true)
+        apart = PB.xorbranch(rule, PropagationCache(makesum(dict_sum)), gate_mask; thread)
+        PB.xormergeandtruncate!(truncfunc, apart, gate_mask; thread)
+        together = PB.xorbranchmergeandtruncate!(rule, truncfunc, PropagationCache(makesum(dict_sum)), gate_mask; thread)
+        @test PauliSum(together) ≈ PauliSum(apart)
+
+        merged_apart = PB.xormerge!(PB.xorbranch(rule, PropagationCache(makesum(dict_sum)), gate_mask; thread), gate_mask; thread)
+        merged_together = PB.xorbranchmergeandtruncate!(rule, nothing, PropagationCache(makesum(dict_sum)), gate_mask; thread)
+        @test PauliSum(merged_together) ≈ PauliSum(merged_apart)
+    end
+
+    # a rule that touches nothing leaves the cache as it is, small coefficients included
+    for makesum in makesums
+        cache = PB.xorbranchmergeandtruncate!(untouched, truncfunc, PropagationCache(makesum(dict_sum)), gate_mask)
+        @test PauliSum(cache) ≈ dict_sum
+    end
+
+    # the merged array is sorted throughout again
+    cache = PB.xorbranchmergeandtruncate!(rotate, truncfunc, PropagationCache(sorted(dict_sum)), gate_mask)
+    @test PB.sortedprefix(mainsum(cache)) == length(cache)
+    @test issorted(PB.terms(cache))
+
+    # enough terms for the branch and the merge to be split over tasks
+    n = 40_000
+    big_terms = sort!(unique(rand(rng, UInt32, 2n)))[1:n]
+    big_sum = VectorPauliSum(16, big_terms, randn(rng, n), n)
+    big_mask = symboltoint(UInt32, [:X, :Z], [3, 9])
+    function rotate_big(pstr, coeff)
+        if commutes(big_mask, pstr)
+            return PB.Unchanged()
+        else
+            _, sign = PauliPropagation.paulirotationproduct(big_mask, pstr)
+            return PB.Branch(coeff * cos(theta), coeff * sin(theta) * sign)
+        end
+    end
+    serial = PB.xorbranchmergeandtruncate!(rotate_big, truncfunc, PropagationCache(deepcopy(big_sum)), big_mask; thread=false)
+    threaded = PB.xorbranchmergeandtruncate!(rotate_big, truncfunc, PropagationCache(deepcopy(big_sum)), big_mask; thread=true)
+    @test PB.terms(serial) == PB.terms(threaded)
+    @test PB.coefficients(serial) == PB.coefficients(threaded)
+    @test length(serial) > n
+end
+
+@testset "mult! on a cache scales the active coefficients only" begin
+    cache = PropagationCache(VectorPauliSum(16, UInt32[1, 2], [1.0, 2.0]))
+    resize!(cache, 4)
+    coefficients(mainsum(cache))[3:4] .= 7.0
+    mult!(cache, 2.0)
+    @test collect(PB.coefficients(cache)) == [2.0, 4.0]
+    @test coefficients(mainsum(cache))[3:4] == [7.0, 7.0]
+
+    multi_cache = PropagationCache(MultiPauliSum(VectorPauliSum(16, UInt32[1, 2], [1.0, 2.0]), 2))
+    mult!(multi_cache, 2.0; thread=false)
+    @test PauliSum(multi_cache) == PauliSum(16, Dict{UInt32,Float64}(1 => 2.0, 2 => 4.0))
 end

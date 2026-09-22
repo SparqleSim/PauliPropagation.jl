@@ -185,8 +185,10 @@ activeindices(prop_cache::AbstractPropagationCache) = view(indices(prop_cache), 
 end
 
 
-function mult!(prop_cache::AbstractPropagationCache, scalar::Number)
-    mult!(mainsum(prop_cache), scalar)
+# scales the active coefficients, not the room past them
+function mult!(prop_cache::AbstractPropagationCache, scalar::Number; thread::Bool=true)
+    scale(coefficient) = coefficient * scalar
+    mapcoeffs!(scale, prop_cache; thread)
     return prop_cache
 end
 

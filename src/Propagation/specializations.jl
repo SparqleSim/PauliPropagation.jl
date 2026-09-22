@@ -86,7 +86,7 @@ function PropagationBase.applymergetruncate!(gate::ImaginaryPauliRotation, prop_
     if normalize_coeffs
         # getcoeff is fast here even for VectorPauliSum
         # because we just merged and can do sorted search.
-        mult!(prop_cache, 1 / getcoeff(activesum(prop_cache), 0))
+        mult!(prop_cache, 1 / getcoeff(activesum(prop_cache), 0); thread)
     end
 
     truncate!(prop_cache; thread, kwargs...)
