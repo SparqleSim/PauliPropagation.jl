@@ -80,27 +80,27 @@ thetas_optimized = res.minimizer</code></pre><pre><code class="nohighlight hljs"
      0     1.603985e-05     2.843205e-04
 
 
- * time: 0.035455942153930664
+ * time: 0.030495882034301758
 
 
      2     1.198640e-05     4.583469e-05
- * time: 8.367703914642334
+ * time: 6.936444997787476
 
 
      4     1.106306e-05     5.592322e-05
- * time: 14.750715017318726
+ * time: 12.825587034225464
 
 
      6     9.998616e-06     6.135679e-05
- * time: 22.15857982635498
+ * time: 19.35357093811035
 
 
      8     5.553962e-06     1.038666e-04
- * time: 35.81646704673767
+ * time: 29.520891904830933
 
 
     10     5.030398e-06     9.969406e-06
- * time: 44.858120918273926</code></pre><h2 id="Statevector-simulator"><a class="docs-heading-anchor" href="#Statevector-simulator">Statevector simulator</a><a id="Statevector-simulator-1"></a><a class="docs-heading-anchor-permalink" href="#Statevector-simulator" title="Permalink"></a></h2><p>We use the Yao library to simulate the dynamics of an initial state <span>$\ket{\psi_0}$</span> under the differernt circuits. Note that the following results showing that the expectation value is much more accurate with the compressed ansatz can be strongly problem dependent, and must be taken as illustrative examples only.</p><pre><code class="language-julia hljs">using Yao
+ * time: 35.29644703865051</code></pre><h2 id="Statevector-simulator"><a class="docs-heading-anchor" href="#Statevector-simulator">Statevector simulator</a><a id="Statevector-simulator-1"></a><a class="docs-heading-anchor-permalink" href="#Statevector-simulator" title="Permalink"></a></h2><p>We use the Yao library to simulate the dynamics of an initial state <span>$\ket{\psi_0}$</span> under the differernt circuits. Note that the following results showing that the expectation value is much more accurate with the compressed ansatz can be strongly problem dependent, and must be taken as illustrative examples only.</p><pre><code class="language-julia hljs">using Yao
 using LinearAlgebra
 
 function heisenberg_1d(n, topology; J=1.0)
@@ -111,72 +111,7 @@ function heisenberg_1d(n, topology; J=1.0)
         Jz * (kron(n, i=&gt;Z, j=&gt;Z))
     end
     sum(terms)
-end</code></pre><pre><code class="nohighlight hljs">[36m[1m[ [22m[39m[36m[1mInfo: [22m[39mPrecompiling Yao [5872b779-8223-5990-8dd0-5abbb0748c8c] (caches not reused: 1 for different dependency version already loaded)
-
-
-[32m[1mPrecompiling[22m[39m 
-
-packages...
-
-
-   1.3 s[32m  ✓ [39m[90mVectorInterface → VectorInterfaceChainRulesCoreExt[39m
-
-
-   2.0 s[32m  ✓ [39m[90mVectorInterface → VectorInterfaceStaticArraysExt[39m
-
-
-   3.7 s[32m  ✓ [39m[90mTreeWidthSolver[39m
-
-
-   5.8 s[32m  ✓ [39m[90mKrylovKit[39m
-
-
-   1.4 s[32m  ✓ [39m[90mKrylovKit → KrylovKitChainRulesCoreExt[39m
-
-
-  11.5 s[32m  ✓ [39m[90mYaoArrayRegister[39m
-
-
-  12.6 s[32m  ✓ [39m[90mCliqueTrees[39m
-
-
-   3.9 s[32m  ✓ [39m[90mCliqueTrees → TreeWidthSolverExt[39m
-
-
-   5.7 s[32m  ✓ [39m[90mOMEinsumContractionOrders[39m
-
-
-  17.0 s[32m  ✓ [39m[90mYaoBlocks[39m
-
-
-   6.4 s[32m  ✓ [39m[90mOMEinsum[39m
-
-
-   4.3 s[32m  ✓ [39m[90mYaoSym[39m
-
-
-   4.8 s[32m  ✓ [39m[90mYaoToEinsum[39m
-
-
-   6.0 s[32m  ✓ [39m[90mYaoPlots[39m
-
-
-   6.3 s[32m  ✓ [39mYao
-  15 dependencies successfully precompiled in 41 seconds. 162 already precompiled.
-[36m[1m[ [22m[39m[36m[1mInfo: [22m[39mPrecompiling PauliPropagationYao [abffbc56-3ddf-54f6-a220-d3b69acb3a3b] (caches not reused: 1 for different dependency version already loaded)
-
-
-[32m[1mPrecompiling[22m[39m packages...
-
-
-   3.3 s[32m  ✓ [39mPauliPropagation → PauliPropagationYao
-  1 dependency successfully precompiled in 4 seconds. 106 already precompiled.
-
-
-
-
-
-heisenberg_1d (generic function with 1 method)</code></pre><p>Create Hamiltonian as matrix, take matrix exponential</p><pre><code class="language-julia hljs">H = heisenberg_1d(nq, topology; J=1.0)
+end</code></pre><pre><code class="nohighlight hljs">heisenberg_1d (generic function with 1 method)</code></pre><p>Create Hamiltonian as matrix, take matrix exponential</p><pre><code class="language-julia hljs">H = heisenberg_1d(nq, topology; J=1.0)
 
 # 10 qubits
 reg = product_state(bit&quot;0101010101&quot;)
@@ -316,8 +251,6 @@ Stacktrace:
  [90m   @[39m [90mBase[39m [90m./[39m[90m[4mclient.jl:577[24m[39m
 in expression starting at /home/runner/.julia/packages/Conda/05AVg/src/Conda.jl:1
 in expression starting at stdin:5
-
-
 [36m[1m┌ [22m[39m[36m[1mInfo: [22m[39mSkipping precompilation due to precompilable error. Importing IJuliaExt [388d8a6b-6fe4-50b5-a981-2e7a5d676f34].
 [36m[1m└ [22m[39m  exception = Error when precompiling module, potentially caused by a __precompile__(false) declaration in the module.
 [36m[1m[ [22m[39m[36m[1mInfo: [22m[39mPrecompiling IJuliaExt [6e0e26ac-fb43-584e-b323-fdbabcf95812]
@@ -350,10 +283,8 @@ Stacktrace:
  [90m   @[39m [90mBase[39m [90m./[39m[90m[4mclient.jl:577[24m[39m
 in expression starting at /home/runner/.julia/packages/Conda/05AVg/src/Conda.jl:1
 in expression starting at stdin:5
-
-
 [36m[1m┌ [22m[39m[36m[1mInfo: [22m[39mSkipping precompilation due to precompilable error. Importing IJuliaExt [6e0e26ac-fb43-584e-b323-fdbabcf95812].
 [36m[1m└ [22m[39m  exception = Error when precompiling module, potentially caused by a __precompile__(false) declaration in the module.
 
 
-3, mean AT = 0.011479990614483218, mean deeper = 0.002928244974399666, mean OPT = 0.0022235244768955774</code></pre><p><img src="../circuit_compression_example_files/circuit_compression_example_32_9.png" alt="png"/></p><p><img src="../circuit_compression_example_files/circuit_compression_example_32_10.png" alt="png"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../introduction-example-error-mitigation/">« Error Mitigation using Pauli Propagation</a><a class="docs-footer-nextpage" href="../PP-from-Python/">Using PauliPropagation.jl from Python »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 22 September 2026 10:40">Tuesday 22 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+3, mean AT = 0.011479990614442829, mean deeper = 0.002928244974359276, mean OPT = 0.002223524476865582</code></pre><p><img src="../circuit_compression_example_files/circuit_compression_example_32_7.png" alt="png"/></p><p><img src="../circuit_compression_example_files/circuit_compression_example_32_8.png" alt="png"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../introduction-example-error-mitigation/">« Error Mitigation using Pauli Propagation</a><a class="docs-footer-nextpage" href="../PP-from-Python/">Using PauliPropagation.jl from Python »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 22 September 2026 11:29">Tuesday 22 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
