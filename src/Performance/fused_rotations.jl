@@ -72,7 +72,7 @@ function _fusedrotation!(gate, prop_cache, kept_val, new_val, on_commuting::Bool
     rule = LocalRotationRule(_gatemask(mask, _localterms(prop_cache)), kept_val, new_val, on_commuting)
     capped_rule = isinf(max_weight) ? rule : WeightCapped(rule, mask, max_weight)
 
-    truncfunc(pstr, coeff) = _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
+    truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
 
     return xorbranchmergeandtruncate!(capped_rule, truncfunc, prop_cache, mask; thread)
 end

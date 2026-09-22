@@ -69,6 +69,17 @@ end
     @test PauliSum(vpsum) == PauliSum(original)
 end
 
+@testset "translationmerge accepts a propagation cache" begin
+    nq = 6
+    nx, ny = 3, 2
+    input_psum = get_psum(nq)
+
+    for psum in (input_psum, VectorPauliSum(input_psum))
+        @test PauliSum(translationmerge(PropagationCache(psum))) == PauliSum(translationmerge(psum))
+        @test PauliSum(translationmerge(PropagationCache(psum), nx, ny)) == PauliSum(translationmerge(psum, nx, ny))
+    end
+end
+
 @testset "translationmerge thread=false matches thread=true" begin
     nq = 6
     vpsum = VectorPauliSum(get_psum(nq))

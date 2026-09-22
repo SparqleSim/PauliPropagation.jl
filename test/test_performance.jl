@@ -82,6 +82,31 @@ end
     end
 end
 
+@testset "fused propagation truncates an input term already above max_weight" begin
+    # the fused paths cap the weight of the terms they create, so an input term above the cap is the
+    # one case where a term a gate only keeps still has to be truncated on its weight. Only the
+    # rotations take the fused path, so any other gate would truncate that term through the stock one.
+    nq = 6
+    circuit = [PauliRotation([:X], [1]), PauliRotation([:X], [5])]
+    thetas = [0.4, 0.7]
+    max_weight = 2
+
+    function overweightsum(T)
+        psum = T(nq)
+        add!(psum, [:Z, :Z, :Z], [1, 2, 3], 1.0)
+        add!(psum, [:Z], [5], 1.0)
+        return psum
+    end
+
+    stock = propagate(circuit, overweightsum(PauliSum), thetas; min_abs_coeff=0.0, max_weight)
+    @test !isempty(stock)
+
+    for T in (VectorPauliSum, MultiPauliSum)
+        fused = Performance.propagate(circuit, overweightsum(T), thetas; min_abs_coeff=0.0, max_weight, fused=true)
+        @test PauliSum(fused) == stock
+    end
+end
+
 @testset "fused Vector on wide Pauli strings matches stock exactly" begin
     # from 96 qubits on, a Pauli string is wider than a machine word and the fused rotations read
     # only the bytes a gate touches. The long-range rotation is too spread out for that, so it also

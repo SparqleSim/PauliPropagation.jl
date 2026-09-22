@@ -32,8 +32,7 @@ it produces terms.
 
 A product below the threshold on its own still shifts a term it collides with, so dropping it as it
 is produced leaves that term artificially large, and more terms then clear the threshold than
-should. Weight is not tested here: it reads the Pauli string alone, which merging cannot change, so
-it is settled where the product is made and does not have to be paid for again per merged term.
+should. Weight is not tested here, but in `_fusedtruncfunc`, which reads the Pauli string alone.
 """
 @inline function _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
     PauliPropagation.truncatemincoeff(coeff, min_abs_coeff) && return true
