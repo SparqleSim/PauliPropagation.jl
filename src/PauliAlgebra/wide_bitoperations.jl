@@ -10,38 +10,49 @@ const _ALTLIMB = 0x5555555555555555
 
 alternatingmask(::NTupleInteger{N}) where {N} = NTupleInteger{N}(ntuple(_ -> _ALTLIMB, Val(N)))
 
-# the parity of the anticommuting pairs adds under xor, so the flag limbs are folded first
+# Two Paulis anticommute when the low bit of one meets the high bit of the other exactly once, so the parity over all
+# pairs is that of the first string with the two bits of every pair swapped, ANDed with the second. The swap reads the
+# first string alone, so a walk that keeps the gate's string first computes it once.
 @generated function _bitcommutes(pstr1::NTupleInteger{N}, pstr2::NTupleInteger{N}) where {N}
     return quote
         Base.@_inline_meta
         flags = zero(UInt64)
-        Base.Cartesian.@nexprs $N k -> begin
-            a = pstr1.limbs[k]
-            b = pstr2.limbs[k]
-            flags ⊻= ((a & (b >> 1)) ⊻ ((a >> 1) & b)) & _ALTLIMB
-        end
+        Base.Cartesian.@nexprs $N k -> (flags ⊻= _swappairbits(pstr1.limbs[k]) & pstr2.limbs[k])
         return iseven(count_ones(flags))
     end
 end
 
-# the exponent of `_calculatesignexponent`, with the two counts taken over all limbs
+@inline _swappairbits(w::UInt64) = ((w >> 1) & _ALTLIMB) | ((w & _ALTLIMB) << 1)
+
+# The exponent of `_calculatesignexponent`. With x = low ⊻ high and z = high for every pair, a pair anticommutes where
+# x1 z2 ⊻ z1 x2 is set, and it contributes -i instead of i where x3 ⊻ z3 ⊻ x1 z2 is set as well, with x3 ⊻ z3 = low1 ⊻ low2
+# for the product. So the anticommuting pairs are counted, and those contributing -i only by their parity.
 @generated function _calculatesignexponent(pauli1::NTupleInteger{N}, pauli2::NTupleInteger{N}) where {N}
     return quote
         Base.@_inline_meta
         n_anticommuting = 0
-        n_negative = 0
+        negative = zero(UInt64)
         Base.Cartesian.@nexprs $N k -> begin
-            pauli1_1 = (pauli1.limbs[k] >> 1) & _ALTLIMB
-            pauli1_2 = pauli1.limbs[k] & _ALTLIMB
-            pauli2_1 = (pauli2.limbs[k] >> 1) & _ALTLIMB
-            pauli2_2 = pauli2.limbs[k] & _ALTLIMB
-            not_commuting = (pauli1_1 | pauli1_2) & (pauli2_1 | pauli2_2) & ((pauli1_1 ⊻ pauli2_1) | (pauli1_2 ⊻ pauli2_2))
-            negative_sign = not_commuting & ((pauli1_1 ⊻ pauli2_2) | (~pauli1_2 & ~pauli2_1))
-            n_anticommuting += count_ones(not_commuting)
-            n_negative += count_ones(negative_sign)
+            p1 = pauli1.limbs[k]
+            p2 = pauli2.limbs[k]
+            z1 = p1 >> 1
+            z2 = p2 >> 1
+            x1z2 = (p1 ⊻ z1) & z2
+            anticommuting = (x1z2 ⊻ (z1 & (p2 ⊻ z2))) & _ALTLIMB
+            n_anticommuting += count_ones(anticommuting)
+            negative ⊻= (p1 ⊻ p2 ⊻ x1z2) & anticommuting
         end
-        return (2 * n_negative + n_anticommuting) & 3
+        return (n_anticommuting + 2 * count_ones(negative)) & 3
     end
+end
+
+# The rotation rules call these for every term. Unrolled over many limbs, the generic methods outgrow the inlining
+# budget, which would leave a call per term that also repeats the gate's side of the work.
+@inline commutes(pstr1::NTupleInteger{N}, pstr2::NTupleInteger{N}) where {N} = _bitcommutes(pstr1, pstr2)
+
+# the sign as the generic method takes it, real(im * im^exponent)
+@inline function paulirotationproduct(gate_mask::NTupleInteger{N}, pstr::NTupleInteger{N}) where {N}
+    return _bitpaulimultiply(gate_mask, pstr), (_calculatesignexponent(gate_mask, pstr) & 2) - 1
 end
 
 # the number of Pauli pairs `perlimb` flags, summed over the limbs
@@ -69,18 +80,19 @@ _countbitx(pstr::NTupleInteger) = _countlimbs(_xlimb, pstr)
 _countbity(pstr::NTupleInteger) = _countlimbs(_ylimb, pstr)
 _countbitz(pstr::NTupleInteger) = _countlimbs(_zlimb, pstr)
 
-# A Pauli of a chunked string comes back as a `UInt64`, and so do up to 32 Paulis at once, since
-# nothing reads them from the whole value. The limb index is checked against the tuple.
+# A Pauli of a chunked string comes back as a `UInt64`, since nothing reads it from the whole value.
+# The limb index is checked against the tuple.
 @inline function _getpaulibits(pstr::NTupleInteger, index::Integer)
     bit = _bitshiftfromsiteindex(index)
     limb = pstr.limbs[(bit>>6)+1]
     return (limb >> (bit & 63)) & 3
 end
 
+# up to 32 Paulis are read from the two limbs they span, more by shifting the whole value
 @inline function _getpaulibits(pstr::NTupleInteger{N}, index1::Integer, index2::Integer) where {N}
     n_sites = index2 - index1 + 1
     if n_sites > 32
-        throw(ArgumentError("At most 32 Paulis of a chunked Pauli string can be read at once. Got $n_sites."))
+        return (pstr >> _bitshiftfromsiteindex(index1)) & _paulimask(NTupleInteger{N}, n_sites)
     end
     bit = _bitshiftfromsiteindex(index1)
     k = (bit >> 6) + 1
@@ -88,15 +100,32 @@ end
     low = pstr.limbs[k]
     high = k < N ? pstr.limbs[k+1] : zero(UInt64)
     window = (low >> offset) | (high << (64 - offset))
-    return window & ((one(UInt64) << (2 * n_sites)) - one(UInt64))
+    return NTupleInteger{N}(window & ((one(UInt64) << (2 * n_sites)) - one(UInt64)))
 end
 
+# Up to 32 Paulis are gathered in one word, which widens once, instead of shifting the whole value in for every Pauli.
+# Every Clifford gate reads its Paulis this way.
+function getpauli(pstr::NTupleInteger{N}, qinds::Union{AbstractVector,Tuple}) where {N}
+    if length(qinds) > 32
+        return invoke(getpauli, Tuple{PauliStringType,Any}, pstr, qinds)
+    end
+    _check_qind_range(maxqubits(pstr), qinds)
+    gathered = zero(UInt64)
+    for (i, qind) in enumerate(qinds)
+        gathered |= _getpaulibits(pstr, qind) << (2 * (i - 1))
+    end
+    return NTupleInteger{N}(gathered)
+end
+
+# Every limb takes the same update where it holds the index, so no limb is read at a runtime position.
+# `setpauli` checks the index against the qubits first.
 @inline function _setpaulibits(pstr::NTupleInteger{N}, target_pauli::PauliType, index::Integer) where {N}
     bit = _bitshiftfromsiteindex(index)
     k = (bit >> 6) + 1
     offset = bit & 63
-    limb = (pstr.limbs[k] & ~(UInt64(3) << offset)) | (((target_pauli % UInt64) & 3) << offset)
-    return NTupleInteger{N}(ntuple(j -> ifelse(j == k, limb, pstr.limbs[j]), Val(N)))
+    keep = ~(UInt64(3) << offset)
+    pauli = ((target_pauli % UInt64) & 3) << offset
+    return NTupleInteger{N}(ntuple(j -> ifelse(j == k, (pstr.limbs[j] & keep) | pauli, pstr.limbs[j]), Val(N)))
 end
 
 # the low `2 * n_sites` bits set, limb by limb: full below the cut, empty above it, partial across it

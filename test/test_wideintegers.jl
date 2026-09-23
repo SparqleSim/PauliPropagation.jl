@@ -46,7 +46,7 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
         rng = MersenneTwister(N)
         modulus = _modulus(T)
         samples = [rand(rng, T) for _ in 1:40]
-        push!(samples, zero(T), one(T), typemax(T), T(5), T(1) << (64 * N - 1))
+        push!(samples, zero(T), one(T), typemax(T), T(5), T(1) << (64 * N - 1), T(3) << 70, T(typemax(UInt64)) << 60, samples[1] ⊻ one(T))
 
         @test _big(zero(T)) == 0
         @test _big(one(T)) == 1
@@ -82,6 +82,11 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
         for x in samples
             bx = _big(x)
             @test T(bx) == x
+            @test hash(x) == hash(bx) && hash(x, UInt(17)) == hash(bx, UInt(17))
+            @test hash(x) == hash(NTupleInteger{N + 2}(x))
+            if bx <= typemax(UInt128)
+                @test hash(x) == hash(UInt128(bx))
+            end
             @test count_ones(x) == count_ones(bx)
             @test count_zeros(x) == 64 * N - count_ones(bx)
             @test trailing_zeros(x) == (iszero(x) ? 64 * N : trailing_zeros(bx))
@@ -213,16 +218,24 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
             end
             @test setpauli(a, :Y, q) == setpauli(a, 2, q)
 
-            # several Paulis gathered into the low bits, and a window of at most 32 read into a machine word
+            # several Paulis gathered into the low bits, up to 32 in one word and more in the full type, and windows
+            # of up to 32 and of more Paulis
             qinds = shuffle(rng, 1:nq)[1:5]
             packed = getpauli(a, qinds)
+            @test packed isa T
             @test [Int(getpauli(packed, i)) for i in 1:5] == ps[qinds]
+            @test getpauli(a, Tuple(qinds)) == packed
+            many_qinds = shuffle(rng, 1:nq)[1:40]
+            @test [Int(getpauli(getpauli(a, many_qinds), i)) for i in 1:40] == ps[many_qinds]
             q1 = rand(rng, 1:nq-31)
             window = getpauli(a, q1, q1 + 31)
-            @test window isa UInt64
+            @test window isa T
             @test [Int(getpauli(window, i)) for i in 1:32] == ps[q1:q1+31]
             @test getpauli(a, q1, q1) == ps[q1]
-            @test_throws ArgumentError getpauli(a, 1, 33)
+            long_window = getpauli(a, q1, nq)
+            @test long_window isa T
+            @test [Int(getpauli(long_window, i)) for i in 1:nq-q1+1] == ps[q1:nq]
+            @test getpauli(a, 1, nq) == a
 
             set = setpauli(a, packed, qinds)
             @test [Int(getpauli(set, i)) for i in qinds] == ps[qinds]
@@ -238,6 +251,7 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
         @test getpauli(edge, 32, 33) == UInt64(3) | (UInt64(2) << 2)
         @test getpauli(edge, 1, 32) == UInt64(3) << 62
         @test getpauli(edge, 33, 64) == 2
+        @test getpauli(edge, 1, 33) == T(3) << 62 | T(2) << 64 && getpauli(edge, 31, 64) == 3 << 2 | 2 << 4
 
         # symbols and strings
         symbols = rand(rng, [:I, :X, :Y, :Z], nq)

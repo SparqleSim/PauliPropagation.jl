@@ -12,7 +12,7 @@
 An unsigned integer of `N` 64-bit limbs, little-endian: `limbs[1]` holds the lowest bits.
 Every operation is unrolled over the limbs at compile time.
 It is the term type of a Pauli sum on more than 64 qubits, see `getinttype`.
-Values convert to and from the machine integers and `BigInt`, compare with them, and hash like the `UInt64` they equal when they fit in one.
+Values convert to and from the machine integers and `BigInt`, compare with them, and hash like the values of those types they equal.
 """
 struct NTupleInteger{N} <: Unsigned
     limbs::NTuple{N,UInt64}
@@ -239,9 +239,44 @@ function Base.:(==)(x::NTupleInteger{N}, y::NTupleInteger{M}) where {N,M}
     return x == (y % NTupleInteger{N})
 end
 
+# LLVM IR that joins the limbs of the `arg`-th argument, lowest first, into one integer `%name` of 64N bits
+function _joinlimbsir(name::String, arg::Int, N::Int)
+    bits = 64 * N
+    lines = String[]
+    for k in 0:N-1
+        joined = k == N - 1 ? "%$name" : "%$(name)_joined$k"
+        previous = k == 0 ? "0" : "%$(name)_joined$(k - 1)"
+        push!(lines, "%$(name)_limb$k = extractvalue [$N x i64] %$arg, $k")
+        push!(lines, "%$(name)_wide$k = zext i64 %$(name)_limb$k to i$bits")
+        push!(lines, "%$(name)_shifted$k = shl i$bits %$(name)_wide$k, $(64 * k)")
+        push!(lines, "$joined = or i$bits $previous, %$(name)_shifted$k")
+    end
+    return join(lines, "\n")
+end
+
 # The highest limb that differs decides, as the integer order does.
-# It is found as the one with the highest score, which is odd where x is the smaller, so the comparison is a maximum over the limbs with no branch on which limb differs.
+# Up to 8 limbs, the limbs are joined into one integer, which LLVM compares by a chain of subtractions with borrow.
+# Above that, where its code for the joined integer grows, the highest limb that differs is found as the one with the highest score, which is odd where x is the smaller, so the comparison is a maximum over the limbs with no branch on which limb differs.
 @generated function Base.isless(x::NTupleInteger{N}, y::NTupleInteger{N}) where {N}
+    if N == 1
+        return quote
+            Base.@_inline_meta
+            return x.limbs[1] < y.limbs[1]
+        end
+    end
+    if N <= 8
+        ir = """
+            $(_joinlimbsir("x", 0, N))
+            $(_joinlimbsir("y", 1, N))
+            %less = icmp ult i$(64N) %x, %y
+            %byte = zext i1 %less to i8
+            ret i8 %byte
+            """
+        return quote
+            Base.@_inline_meta
+            return Base.llvmcall($ir, Bool, Tuple{NTuple{$N,UInt64},NTuple{$N,UInt64}}, x.limbs, y.limbs)
+        end
+    end
     return quote
         Base.@_inline_meta
         top = zero(UInt64)
@@ -286,7 +321,8 @@ Base.:<(y::Union{Base.BitInteger,Bool}, x::NTupleInteger) = isless(y, x)
 Base.:<(x::NTupleInteger, y::BigInt) = isless(x, y)
 Base.:<(y::BigInt, x::NTupleInteger) = isless(y, x)
 
-# A value that fits a machine word hashes as that word, since it compares equal to it.
+# A value hashes as the machine integer or `BigInt` it compares equal to: as a word if it fits one,
+# as a `Float64` if it has at most 53 significant bits, else as its power of two and the words of its odd part.
 @generated function Base.hash(x::NTupleInteger{N}, h::UInt) where {N}
     return quote
         Base.@_inline_meta
@@ -295,7 +331,19 @@ Base.:<(y::BigInt, x::NTupleInteger) = isless(y, x)
         if iszero(rest)
             return hash(x.limbs[1], h)
         end
-        Base.Cartesian.@nexprs $N k -> (h = hash(x.limbs[k], h))
+        pow = trailing_zeros(x)
+        odd = x >> pow
+        nbits = $(64 * N) - leading_zeros(x)
+        if nbits - pow <= 53 && nbits <= 1024
+            return hash(ldexp(Float64(odd.limbs[1]), pow), h)
+        end
+        h = Base.hash_integer(pow, h)
+        top = $N - (leading_zeros(odd) >> 6)
+        Base.Cartesian.@nexprs $N k -> begin
+            if k <= top
+                h = Base.hash_integer(odd.limbs[k], h)
+            end
+        end
         return h
     end
 end
