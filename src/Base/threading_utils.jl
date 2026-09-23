@@ -72,16 +72,21 @@ function _eachtask(f::F, n_tasks::Int) where {F}
     return
 end
 
-# Copies each array into a new one of length `n`, every task copying its own stripe of each.
-function _copyinparallel(arrays::Tuple, n::Int)
-    copies = map(array -> similar(array, n), arrays)
-    task_partitioner, n_tasks = _preparetasks(length(first(arrays)), true)
-    function copy_stripes!(task_id)
-        chunk = task_partitioner[task_id]
-        foreach((dest, src) -> copyto!(dest, chunk.start, src, chunk.start, length(chunk)), copies, arrays)
+# The array to keep in place of `array`, with room for `n` elements. During a propagation, a growing
+# array on the CPU is copied into a new one by the workers, each copying its own stripe; otherwise
+# `array` itself is resized.
+function _resizearray(array, n::Int)
+    if n <= length(array) || !_iscpuarray(array) || _currentworkers() === nothing
+        return resize!(array, n)
     end
-    _eachtask(copy_stripes!, n_tasks)
-    return copies
+    resized_array = similar(array, n)
+    task_partitioner, n_tasks = _preparetasks(length(array), true)
+    function copy_stripe!(task_id)
+        chunk = task_partitioner[task_id]
+        copyto!(resized_array, chunk.start, array, chunk.start, length(chunk))
+    end
+    _eachtask(copy_stripe!, n_tasks)
+    return resized_array
 end
 
 

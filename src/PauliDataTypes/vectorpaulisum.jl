@@ -68,8 +68,8 @@ nqubits(vpsum::VectorPauliSum) = vpsum.nqubits
 Base.similar(vpsum::VectorPauliSum) = VectorPauliSum(vpsum.nqubits, similar(vpsum.terms), similar(vpsum.coeffs))
 
 function Base.resize!(vpsum::VectorPauliSum, n_new::Int)
-    resize!(vpsum.terms, n_new)
-    resize!(vpsum.coeffs, n_new)
+    vpsum.terms = PropagationBase._resizearray(vpsum.terms, n_new)
+    vpsum.coeffs = PropagationBase._resizearray(vpsum.coeffs, n_new)
     setsortedprefix!(vpsum, min(sortedprefix(vpsum), n_new))  # clamp on shrink, no-op on grow
     return vpsum
 end

@@ -253,28 +253,14 @@ Base.resize!(prop_cache::AbstractPropagationCache, n::Int) = _resize!(StorageTyp
 
 _resize!(::DictStorage, prop_cache::AbstractPropagationCache, n::Int) = (sizehint!(storage(mainsum(prop_cache)), n); prop_cache)
 
-# During a propagation, the workers copy a growing cache on the CPU into new arrays. The arrays are
-# copied whole, since a serial pass grows in the middle of writing.
 function _resize!(::ArrayStorage, prop_cache::AbstractPropagationCache, n::Int)
-    if n > capacity(prop_cache) && _iscpuarray(prop_cache) && _currentworkers() !== nothing
-        main_psum, aux_psum = mainsum(prop_cache), auxsum(prop_cache)
-        main_terms, main_coeffs, aux_terms, aux_coeffs, new_flags, new_indices = _copyinparallel(
-            (terms(main_psum), coefficients(main_psum), terms(aux_psum), coefficients(aux_psum), flags(prop_cache), indices(prop_cache)), n)
-        _setarrays!(prop_cache, (main_terms, main_coeffs), (aux_terms, aux_coeffs), new_flags, new_indices)
-    else
-        resize!(mainsum(prop_cache), n)
-        resize!(auxsum(prop_cache), n)
-        resize!(flags(prop_cache), n)
-        resize!(indices(prop_cache), n)
-    end
+    resize!(mainsum(prop_cache), n)
+    resize!(auxsum(prop_cache), n)
+    resize!(flags(prop_cache), n)
+    resize!(indices(prop_cache), n)
     setactivesize!(prop_cache, min(activesize(prop_cache), n))
     return prop_cache
 end
-
-# Gives the cache new arrays: the terms and coefficients of each sum, and its flags and indices. The
-# sums stay, so the sum handed to `propagate!` is still the one `extractsum!` finds.
-_setarrays!(prop_cache::AbstractPropagationCache, main_arrays, aux_arrays, new_flags, new_indices) =
-    _thrownotimplemented(prop_cache, :_setarrays!)
 
 _resize!(::StorageType, prop_cache::AbstractPropagationCache, n::Int) = _thrownotimplemented(prop_cache, :resize!)
 
