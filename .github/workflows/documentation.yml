@@ -62,6 +62,13 @@ jobs:
       # generate doc using files from the triggering branch
       - name: Obtain PP
         uses: actions/checkout@v4
+
+      # fail on paths that differ only in case, since a
+      # macOS or Windows checkout keeps only one of them
+      - name: Check for paths that differ only in case
+        run: |
+          collisions=$(git ls-files | LC_ALL=C sort -f | LC_ALL=C uniq -Di)
+          if [ -n "$collisions" ]; then echo "$collisions"; exit 1; fi
     
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
