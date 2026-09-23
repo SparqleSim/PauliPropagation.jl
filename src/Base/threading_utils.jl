@@ -72,16 +72,15 @@ function _eachtask(f::F, n_tasks::Int) where {F}
     return
 end
 
-# Copies each array into a fresh one of length `n`, every task copying its own stripe. Memory is
-# placed near the thread that first writes it, so where the one-thread copy of `resize!` puts the
-# whole array near that thread, here each stripe lands near the thread that works on it.
+# Copies each array into a new one of length `n`, every task copying its own stripe of each.
 function _copyinparallel(arrays::Tuple, n::Int)
     copies = map(array -> similar(array, n), arrays)
     task_partitioner, n_tasks = _preparetasks(length(first(arrays)), true)
-    _eachtask(n_tasks) do task_id
+    function copy_stripes!(task_id)
         chunk = task_partitioner[task_id]
         foreach((dest, src) -> copyto!(dest, chunk.start, src, chunk.start, length(chunk)), copies, arrays)
     end
+    _eachtask(copy_stripes!, n_tasks)
     return copies
 end
 

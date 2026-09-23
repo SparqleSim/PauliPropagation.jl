@@ -253,9 +253,8 @@ Base.resize!(prop_cache::AbstractPropagationCache, n::Int) = _resize!(StorageTyp
 
 _resize!(::DictStorage, prop_cache::AbstractPropagationCache, n::Int) = (sizehint!(storage(mainsum(prop_cache)), n); prop_cache)
 
-# A cache on the CPU that grows between the rounds of a propagation is copied into fresh arrays by
-# the workers. The arrays are copied whole, as `resize!` would, because a serial pass grows in the
-# middle of writing. A zone grows inside a round, on the one thread that works it, with `resize!`.
+# During a propagation, the workers copy a growing cache on the CPU into new arrays. The arrays are
+# copied whole, since a serial pass grows in the middle of writing.
 function _resize!(::ArrayStorage, prop_cache::AbstractPropagationCache, n::Int)
     if n > capacity(prop_cache) && _iscpuarray(prop_cache) && _currentworkers() !== nothing
         main_psum, aux_psum = mainsum(prop_cache), auxsum(prop_cache)
@@ -272,17 +271,15 @@ function _resize!(::ArrayStorage, prop_cache::AbstractPropagationCache, n::Int)
     return prop_cache
 end
 
-# Gives the cache new arrays. The main and aux arrays are each the terms and the coefficients of
-# that sum, as `storage` returns them. The sums themselves stay, only their arrays are replaced, so
-# the sum handed to `propagate!` is still the one `extractsum!` finds.
+# Gives the cache new arrays: the terms and coefficients of each sum, and its flags and indices. The
+# sums stay, so the sum handed to `propagate!` is still the one `extractsum!` finds.
 _setarrays!(prop_cache::AbstractPropagationCache, main_arrays, aux_arrays, new_flags, new_indices) =
     _thrownotimplemented(prop_cache, :_setarrays!)
 
 _resize!(::StorageType, prop_cache::AbstractPropagationCache, n::Int) = _thrownotimplemented(prop_cache, :resize!)
 
-# Room for at least `n` terms, which a pass asks for before it writes that many. 
-# On the CPU, array resize costs address space until it is written, not memory. 
-# A larger factor saves a few percent more, but an array over twice the need can be refused
+# Room for at least `n` terms, which a pass asks for before it writes that many.
+# On the CPU, room costs no memory until it is written, so it grows by more than on a GPU.
 function _ensurecapacity!(prop_cache::AbstractPropagationCache, n::Int)
     if capacity(prop_cache) < n
         new_capacity = _iscpuarray(prop_cache) ? 2n : round(Int, 1.5 * n)
