@@ -21,12 +21,12 @@ Pages = ["src/PauliDataTypes/vectorpaulisum.jl"]
 ## MultiPauliSum
 ```@autodocs
 Modules = [PauliPropagation]
-Pages = ["src/MultiPauliSum/multipaulisum.jl", "src/MultiPauliSum/propagationcache.jl"]
+Pages = ["src/MultiPauliSum/datatypes.jl", "src/MultiPauliSum/propagationcache.jl"]
 ```
 
 ```@autodocs
 Modules = [PauliPropagation.PropagationBase]
-Pages = ["src/Base/MultiSum/multisum.jl"]
+Pages = ["src/Base/MultiSum/multisumstorage.jl"]
 Filter = t -> t in (PauliPropagation.zones, PauliPropagation.nzones, PauliPropagation.zonesizes, PauliPropagation.zoneof, PauliPropagation.PropagationBase.defaultnzones)
 ```
 
