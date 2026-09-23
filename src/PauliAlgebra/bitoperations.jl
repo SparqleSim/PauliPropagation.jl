@@ -3,66 +3,26 @@
 
 Function to return an integer type that can hold `nqubits`.
 This is the type that will be used internally for representing Pauli strings.
-Above the native integer types the bit-width is rounded up to a whole number of 64-bit words for performance.
+Up to 64 qubits it is the smallest machine integer that holds two bits per qubit, above that an `NTupleInteger` of as many 64-bit limbs as the qubits need.
 """
 function getinttype(nqubits::Integer)
     # we need 2 bits per qubit
     nbits = 2 * nqubits
 
-    # whole words are faster to compute with, and take no more memory
-    if nbits > 64
-        nbits = cld(nbits, 64) * 64
+    if nbits <= 8
+        return UInt8
+    elseif nbits <= 16
+        return UInt16
+    elseif nbits <= 32
+        return UInt32
+    elseif nbits <= 64
+        return UInt64
+    elseif nbits <= 128
+        return UInt128
     end
 
-
-    # just over 8.3 Million is the largest integer type we can generate
-    for trial_bits in nbits:2:8_300_000
-
-        # we can check if the number of bits is divisible by 8
-        # othervise we know it cannot be defined
-        if !(trial_bits % 8 == 0)
-            continue
-        end
-
-        # special clauses for inbuilt integer types
-        if trial_bits == 8
-            return UInt8
-        elseif trial_bits == 16
-            return UInt16
-        elseif trial_bits == 32
-            return UInt32
-        elseif trial_bits == 64
-            return UInt64
-        end
-        # stop at 64 bits because I am suspicious of UInt128
-
-        trial_inttype_expr = Symbol("UInt", trial_bits)
-        # check if the integer type is defined to avoid overrides
-        if isdefined(PauliPropagation, trial_inttype_expr)
-            return eval(trial_inttype_expr)
-        end
-
-        # defining the integer type can fail for bit numbers that are odd not not natively supported
-        # just try the next number if that happens
-        try
-            @eval @define_integers $trial_bits
-            # return the newly defined unsigned integer type
-            return eval(trial_inttype_expr)
-        catch ErrorException
-            continue
-        end
-    end
-
-    # if we reach here, we have failed to define the integer type
-    # Falling back to BigInt
-    @warn "Failed to define integer types for $nqubits qubits. Falling back to BigInt."
-    return BigInt
+    return NTupleInteger{cld(nbits, 64)}
 end
-
-
-# A priated hash function for unsigned integers from BitIntegers.jl
-# This hashes for the value of the integer and is a lot faster than the default hash function.
-Base.hash(v::BitIntegers.AbstractBitUnsigned, h::UInt) = Base.hash_integer(v, h)
 
 
 # This function counts the number of 00 bit pairs in the integer Pauli string.

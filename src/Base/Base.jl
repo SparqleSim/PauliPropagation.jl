@@ -3,9 +3,13 @@ using LinearAlgebra
 using AcceleratedKernels
 const AK = AcceleratedKernels
 using Base.Threads
+using Random
 
 include("./utils.jl")
 export tonumber
+
+include("./wide_integers.jl")
+export NTupleInteger
 
 include("./threading_utils.jl")
 export maxtasks, withworkers

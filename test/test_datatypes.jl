@@ -83,7 +83,7 @@ end
     @test length(psum) == length(psum.terms) == 0
     @test coefftype(psum) == Float64
     @test paulitype(psum) == getinttype(nq)
-    @test paulitype(psum) == PauliPropagation.UInt40
+    @test paulitype(psum) == UInt64
 
     pstr = createpaulistring(7)
     wrapped_pstr = wrapcoefficients(pstr, PauliFreqTracker)
