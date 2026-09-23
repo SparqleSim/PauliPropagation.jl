@@ -286,11 +286,11 @@ end
 # Both sides are duplicate-free at this point, and once both are sorted this is a merge-join of the
 # two term arrays, sliced across tasks the same way `_mergesortedhead!` slices its own two-pointer
 # merge. A gate can leave a cache unsorted: a Clifford maps in place and skips the merge, and a
-# rotation that touches no term skips it too. So a cache whose sorted prefix does not cover its
-# active terms is merged first, which sorts it.
+# rotation that touches no term skips it too. So both caches are merged first, which sorts them and
+# is a no-op on a cache whose sorted prefix already covers its active terms.
 function _intersectfilter!(::PropagationBase.ArrayStorage, dual_cache, op_cache; thread::Bool=true)
-    _sortactive!(dual_cache; thread)
-    _sortactive!(op_cache; thread)
+    merge!(dual_cache; thread)
+    merge!(op_cache; thread)
 
     # read after the merges, which may have swapped the sums of a cache
     dual_terms_sorted = activeterms(dual_cache)
@@ -317,12 +317,6 @@ function _intersectfilter!(::MultiSumStorage, dual_cache, op_cache; thread::Bool
     PropagationBase._syncsums!(dual_cache)
     PropagationBase._syncsums!(op_cache)
     return
-end
-
-# merges, which sorts the active terms, unless the sorted prefix already covers them
-function _sortactive!(prop_cache; thread::Bool=true)
-    sortedprefix(mainsum(prop_cache)) == activesize(prop_cache) && return prop_cache
-    return merge!(prop_cache; thread)
 end
 
 # flags the dual terms in [lo, hi] that also occur in op_terms_sorted
