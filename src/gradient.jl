@@ -162,6 +162,9 @@ end
 # patterns are picked up as they appear and a term that finds the cursor table full falls back to
 # the plain search, so nothing depends on the number of patterns staying small.
 function _generatorcommutatordot(::PropagationBase.ArrayStorage, gate_mask, op_cache, dual_cache; thread::Bool=true)
+    merge!(op_cache; thread)
+    merge!(dual_cache; thread)
+
     op_terms, op_coeffs = activeterms(op_cache), activecoeffs(op_cache)
     dual_terms, dual_coeffs = activeterms(dual_cache), activecoeffs(dual_cache)
     @assert length(op_terms) == length(op_coeffs) "the operator sum's terms and coefficients disagree in length"
@@ -283,11 +286,8 @@ function _intersectfilter!(::PropagationBase.DictStorage, dual_cache, op_cache; 
     return
 end
 
-# Both sides are duplicate-free at this point, and once both are sorted this is a merge-join of the
-# two term arrays, sliced across tasks the same way `_mergesortedhead!` slices its own two-pointer
-# merge. A gate can leave a cache unsorted: a Clifford maps in place and skips the merge, and a
-# rotation that touches no term skips it too. So both caches are merged first, which sorts them and
-# is a no-op on a cache whose sorted prefix already covers its active terms.
+# Both sides are merged first, so this is a merge-join of the two term
+# arrays, sliced across tasks the same way `_mergesortedhead!` slices its own two-pointer merge
 function _intersectfilter!(::PropagationBase.ArrayStorage, dual_cache, op_cache; thread::Bool=true)
     merge!(dual_cache; thread)
     merge!(op_cache; thread)

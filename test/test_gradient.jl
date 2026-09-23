@@ -186,10 +186,7 @@ end
     end
 
     @testset "Circuit whose first gates commute with the final operator" begin
-        # regression: in the Heisenberg sweep the H(4) reorders the array in place without a
-        # merge, and the RZ(1) then touches nothing, so the operator cache ends unsorted. The
-        # backward sweep's intersect filter is a merge-join and assumed it was sorted, dropping
-        # valid dual terms, which left VectorPauliSum and MultiPauliSum with wrong gradients.
+        # regression: H(4) leaves an array cache unsorted and RZ(1), touching nothing, does not merge it
         nq = 4
         obs = PauliString(nq, [:Z, :Z], [2, 3])
         circuit = [
@@ -210,10 +207,6 @@ end
         for psum in (PauliSum(obs), VectorPauliSum(obs), MultiPauliSum(VectorPauliSum(obs), 2), MultiPauliSum(PauliSum(obs), 2))
             _checkgradient(circuit, psum, params, dense_overlap)
         end
-
-        _, grad_dict = rewindgradient(circuit, PauliSum(obs), params, dense_overlap; min_abs_coeff=0.0)
-        _, grad_vec = rewindgradient(circuit, VectorPauliSum(obs), params, dense_overlap; min_abs_coeff=0.0)
-        @test grad_vec ≈ grad_dict
     end
 
     @testset "Truncation to empty sum does not error" begin
