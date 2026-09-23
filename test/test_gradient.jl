@@ -185,6 +185,30 @@ end
         @test vec_psum == VectorPauliSum(dict_psum)
     end
 
+    @testset "Circuit whose first gates commute with the final operator" begin
+        # regression: H(4) leaves an array cache unsorted and RZ(1), touching nothing, does not merge it
+        nq = 4
+        obs = PauliString(nq, [:Z, :Z], [2, 3])
+        circuit = [
+            PauliRotation(:Z, 1),
+            CliffordGate(:H, [4]),
+            PauliRotation(:X, 2),
+            PauliRotation(:Y, 3),
+            PauliRotation(:Y, 4),
+            PauliRotation([:X, :X], [3, 4]),
+        ]
+        params = [0.3, -0.7, 1.1, 0.42, -0.15]
+
+        # a dense state gives every Pauli string weight, so a dropped dual term shows in the gradient
+        rng = MersenneTwister(3)
+        rho = PauliSum(nq, Dict{UInt8,Float64}(UInt8(i) => randn(rng) for i in 0:255))
+        dense_overlap(pobj) = overlapwithpaulisum(rho, pobj)
+
+        for psum in (PauliSum(obs), VectorPauliSum(obs), MultiPauliSum(VectorPauliSum(obs), 2), MultiPauliSum(PauliSum(obs), 2))
+            _checkgradient(circuit, psum, params, dense_overlap)
+        end
+    end
+
     @testset "Truncation to empty sum does not error" begin
         # regression: min_abs_coeff truncating everything mid-sweep emptied the
         # caches and lastactiveindex threw a BoundsError on the empty view
