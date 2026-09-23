@@ -164,7 +164,7 @@ function Base.:+(psum::AbstractPauliSum, pstr::PauliString)
 
     # an empty sum of the very type of `psum`, widened to hold both coefficient types
     CType = promote_type(coefftype(psum), coefftype(pstr))
-    new_psum = CType === coefftype(psum) ? similar(psum) : convertcoefftype(CType, similar(psum))
+    new_psum = CType === coefftype(psum) ? emptylike(psum) : convertcoefftype(CType, emptylike(psum))
 
     add!(new_psum, psum)
     add!(new_psum, pstr)
@@ -211,18 +211,3 @@ PropagationBase.set!
 
 ### TODO: general products between AbstractPauliSums and PauliStrings
 # TODO: in-place pauliprod()
-
-
-"""
-    filter!(filterfunc::Function, psum::AbstractPauliSum)
-
-Filter a `AbstractPauliSum` by copying and removing all Pauli strings for which `filterfunc(pstr, coeff)` returns `false`.
-"""
-Base.filter(filterfunc::F, psum::AbstractPauliSum) where {F<:Function} = truncate!((pstr, coeff) -> !filterfunc(pstr, coeff), deepcopy(psum))
-
-"""
-    filter!(filterfunc::Function, psum::AbstractPauliSum)
-
-Filter a `AbstractPauliSum` in-place by removing all Pauli strings for which `filterfunc(pstr, coeff)` returns `false`.
-"""
-Base.filter!(filterfunc::F, psum::AbstractPauliSum) where {F<:Function} = truncate!((pstr, coeff) -> !filterfunc(pstr, coeff), psum)

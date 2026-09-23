@@ -56,77 +56,26 @@ function _resize!(::MultiSumStorage, prop_cache::AbstractPropagationCache, n_new
     return prop_cache
 end
 
-# each zone is reduced on its own thread, with no tasks started inside a zone
-function _mapreducecoeffs(::MultiSumStorage, f::F, op::O, prop_cache::AbstractPropagationCache; init, thread::Bool) where {F,O}
-    reduce_zone(zonecache) = mapreducecoeffs(f, op, zonecache; init=zero(init), thread=false)
-    return reduce(op, _zonevalues(reduce_zone, typeof(init), prop_cache, thread); init)
-end
-
 function _extractsum!(::MultiSumStorage, prop_cache::AbstractPropagationCache)
     foreach(extractsum!, zonecaches(prop_cache))
     return mainsum(_syncsums!(prop_cache))
 end
-
-function _merge!(::MultiSumStorage, prop_cache::AbstractPropagationCache; thread::Bool=true, kwargs...)
-    merge_zone!(zone_id) = merge!(zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
-    _eachzone(merge_zone!, prop_cache, thread)
-    return _syncsums!(prop_cache)
-end
-
-function _truncate!(::MultiSumStorage, truncfunc::F, prop_cache::AbstractPropagationCache;
-    thread::Bool=true, kwargs...) where {F<:Function}
-
-    truncate_zone!(zone_id) = truncate!(truncfunc, zonecaches(prop_cache)[zone_id]; thread=false, kwargs...)
-    _eachzone(truncate_zone!, prop_cache, thread)
-
-    return _syncsums!(prop_cache)
-end
-
-# the slots of a zone follow those of the zones before it
-function _mapslots!(::MultiSumStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F}
-    total_zone_weight(zonecache) = mapreducecoeffs(weight_func, +, zonecache; thread=false)
-    zone_weights = _zonevalues(total_zone_weight, real(numcoefftype(prop_cache)), prop_cache, thread)
-    zone_slot_starts = pushfirst!(cumsum(zone_weights), zero(eltype(zone_weights)))
-
-    map_zone_slots!(zone_id) = _map_shifted_slots!(weight_func, new_coeff_func, zonecaches(prop_cache)[zone_id], zone_slot_starts[zone_id])
-    _eachzone(map_zone_slots!, prop_cache, thread)
-
-    return prop_cache
-end
-
-# `mapslots!` on one zone, with its slots starting at `zone_slot_start` instead of at zero
-function _map_shifted_slots!(weight_func::W, new_coeff_func::F, zonecache, zone_slot_start) where {W,F}
-    shifted_new_coeff_func(coeff, slot_start, slot_end) = new_coeff_func(coeff, zone_slot_start + slot_start, zone_slot_start + slot_end)
-    return mapslots!(weight_func, shifted_new_coeff_func, zonecache; thread=false)
-end
-
 
 ### Working the zones
 
 # Every zone is read and written by one thread only, so all parallelism comes from the zones. A
 # sum below one task's worth of terms is worked in turn: a round costs tens of microseconds and
 # more with every thread, where a zone that small takes one.
-function _eachzone(zonefunc::F, prop_cache::AbstractPropagationCache, thread::Bool) where {F}
-    if !thread || length(prop_cache) < _MIN_ELEMS_PER_TASK
-        for zone_id in 1:nzones(prop_cache)
+function _eachzone(zonefunc::F, thing, thread::Bool) where {F}
+    if !thread || length(thing) < _MIN_ELEMS_PER_TASK
+        for zone_id in 1:nzones(thing)
             zonefunc(zone_id)
         end
     else
-        _eachtask(zonefunc, nzones(prop_cache))
+        _eachtask(zonefunc, nzones(thing))
     end
-    return prop_cache
+    return thing
 end
-
-# one value of type `T` per zone, each computed on the zone's own thread
-function _zonevalues(zonefunc::F, ::Type{T}, prop_cache::AbstractPropagationCache, thread::Bool) where {F,T}
-    values = Vector{T}(undef, nzones(prop_cache))
-    store_zone_value!(zone_id) = (values[zone_id] = zonefunc(zonecaches(prop_cache)[zone_id]))
-    _eachzone(store_zone_value!, prop_cache, thread)
-    return values
-end
-
-# a propagation over a multi sum keeps its workers up from the first gate to the last
-_withworkers(::MultiSumStorage, f::F) where {F} = withworkers(f)
 
 # a zone cache swaps its sums as it works, so the multi sum's zones follow it
 function _syncsums!(prop_cache::AbstractPropagationCache)
@@ -135,4 +84,30 @@ function _syncsums!(prop_cache::AbstractPropagationCache)
         zone_sums[zone_id] = mainsum(zonecache)
     end
     return prop_cache
+end
+
+# a box is emptied by the zone that takes delivery, so every box is empty when a gate picks it up
+_deliver!(zonecache, box) = (add!(zonecache, box); empty!(box); zonecache)
+
+function _checkauxempty(::MultiSumStorage, prop_cache::AbstractPropagationCache)
+    for outbox in outboxes(prop_cache)
+        if !isempty(outbox)
+            _throwunmerged()
+        end
+    end
+    return prop_cache
+end
+
+# a zone takes delivery of what the other zones parked in their outboxes for it
+function _deliverto!(prop_cache::AbstractPropagationCache, owner::Int)
+    zonecache = zonecaches(prop_cache)[owner]
+    for outbox in outboxes(prop_cache)
+        _deliver!(zonecache, zones(outbox)[owner])
+    end
+    return zonecache
+end
+
+function _deliverboxes!(prop_cache::AbstractPropagationCache; thread::Bool=true)
+    deliver_to_zone!(owner) = _deliverto!(prop_cache, owner)
+    return _eachzone(deliver_to_zone!, prop_cache, thread)
 end

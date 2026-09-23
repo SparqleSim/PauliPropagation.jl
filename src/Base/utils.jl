@@ -1,7 +1,5 @@
 tonumber(x::Number) = x
 
-_invertfunc(func::F) where {F<:Function} = args -> !func(args...)
-
 # the positions of the set bits of `mask`, ascending
 function _masksetbits(mask::TT) where {TT}
     bits = Int[]
@@ -14,6 +12,7 @@ end
 
 # for CPU-only code using Threads.@spawn
 # GPU extensions override this for their array for fallback functionality
+# TODO: Use AK method to check whether an array is on GPU.
 _iscpuarray(::AbstractArray) = true
 
 function _thrownotimplemented(::Type{T}, func_name::Symbol) where T

@@ -148,23 +148,51 @@ end
     @test PauliSum(filter((pauli, coeff) -> coeff > 0, MultiPauliSum(psum, 4))) == filter((pauli, coeff) -> coeff > 0, psum)
 end
 
+# every Pauli string of a MultiPauliSum sits in the zone that zoneof() assigns it to
+zonesown(msum) = all(zoneof(msum, term) == zone_id for (zone_id, zone) in enumerate(zones(msum)) for (term, _) in zone)
+
 @testset "MultiPauliSum Monte Carlo sampling" begin
     Random.seed!(42)
     thetas = randn(countparameters(rotations))
+    circuit = vcat(Gate[], rotations, filter(gate -> gate isa CliffordGate, cliffords))
 
-    # one walker keeps one branch per gate, and squared sampling keeps its squared coefficient
-    for seed in (PauliSum(pstr), VectorPauliSum(pstr))
-        msum = MultiPauliSum(seed, 4)
-        sampled = mcsample(rotations, msum, thetas; squared=true)
+    # one walker keeps one branch per gate, and squared sampling keeps its squared coefficient;
+    # the string it ends up on is owned by the zone it lands in
+    for seed in (PauliSum(pstr), VectorPauliSum(pstr)), n_zones in (1, 4)
+        msum = MultiPauliSum(seed, n_zones)
+        sampled = mcsample(circuit, msum, thetas; squared=true)
 
         @test sampled isa MultiPauliSum{typeof(seed)}
-        @test nzones(sampled) == 4
+        @test nzones(sampled) == n_zones
         @test length(sampled) == 1
         @test sum(abs2, coefficients(sampled)) ≈ 1.0
+        @test zonesown(sampled)
         @test PauliSum(msum) == PauliSum(pstr)
+
+        @test mcsample!(circuit, msum, thetas; squared=true) === msum
+        @test length(msum) == 1
+        @test zonesown(msum)
     end
 
-    @test_throws ArgumentError mcsample!(rotations, MultiPauliSum(pstr, 4), thetas)
+    # many walkers on the same string average to the exact propagation; only vector zones keep them apart
+    exact = propagate(rotations, pstr, thetas; min_abs_coeff=0)
+    reps = 20_000
+    for thread in (true, false)
+        msum = emptylike(MultiPauliSum(VectorPauliSum(pstr), 4))
+        foreach(_ -> push!(msum, pstr.term, 1.0), 1:reps)
+
+        mcsample!(rotations, msum, thetas; thread)
+        @test zonesown(msum)
+        mult!(msum, 1 / reps)
+        @test maxdeviation(exact, PauliSum(msum)) < 0.05
+    end
+
+    # each walker's |coeff|^2 is preserved gate by gate, so the ensemble's squared 2-norm is exact
+    msum = emptylike(MultiPauliSum(VectorPauliSum(pstr), 4))
+    foreach(_ -> push!(msum, pstr.term, 1.0), 1:50)
+    norm_before = sum(abs2, coefficients(msum))
+    mcsample!(circuit, msum, thetas; squared=true)
+    @test sum(abs2, coefficients(msum)) ≈ norm_before
 end
 
 @testset "MultiPauliSum interface" begin
@@ -277,6 +305,10 @@ end
     @test ispow2(PP.defaultnzones())
     @test_throws ArgumentError MultiPauliSum(psum, 0)
     @test_throws ArgumentError MultiPauliSum(psum, 6)
+    @test_throws ArgumentError MultiPauliSum(nq, [PauliSum(nq) for _ in 1:3], PP.ZoneMap(paulitype(psum), 4))
+    @test nzones(PP.ZoneMap(paulitype(psum), 4)) == 4
+    msum = MultiPauliSum(psum, 4)
+    @test_throws ArgumentError MultiPauliPropagationCache(msum, map(PropagationCache, zones(msum)), [similar(msum) for _ in 1:3])
 
     # empty sums, on a number of qubits and optionally a coefficient type
     @test isempty(MultiPauliSum(nq)) && nqubits(MultiPauliSum(nq)) == nq

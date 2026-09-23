@@ -114,3 +114,13 @@ end
         prev_nterms = length(dnum)
     end
 end
+
+@testset "buildtruncfunc" begin
+    psum = PauliSum(1)
+    add!(psum, :X, 1, 1.0)
+    add!(psum, :Y, 1, 0.1)
+
+    truncfunc = buildtruncfunc(psum; min_abs_coeff=0.0, min_rel_coeff=0.2)
+    @test !truncfunc(symboltoint(UInt8, :X, 1), 1.0)
+    @test truncfunc(symboltoint(UInt8, :Y, 1), 0.1)
+end

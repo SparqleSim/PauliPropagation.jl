@@ -100,6 +100,7 @@ makedocs(
         # be grouped under an 'API' section in the navbar
         "API" => [
             "api/PauliDataTypes.md",
+            "api/Primitives.md",
             "api/PauliAlgebra.md",
             "api/Gates.md",
             "api/Circuits.md",

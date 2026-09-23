@@ -34,13 +34,14 @@ using Test
     end
 
     @testset "Tree Tracking Inputs" begin
-        pstr = PauliString(3, :Z, 2)
-        circ = [PauliRotation(:X, 2), CliffordGate(:CNOT, [1, 2])]
-        thetas = [0.3]
+        pstr = PauliString(3, [:Z, :X], [2, 3])
+        circ = [PauliRotation(:X, 2), CliffordGate(:CNOT, [1, 2]), DepolarizingNoise(2), AmplitudeDampingNoise(3), PauliRotation(:Y, 1)]
+        thetas = [0.3, 0.05, 0.1, 0.7]
 
         reset_tree!()
-        propagate_with_tree_tracking(circ, PauliSum(pstr), thetas)
+        tracked = propagate_with_tree_tracking(circ, PauliSum(pstr), thetas)
         @test !isempty(EVOLUTION_EDGES)
+        @test tracked ≈ propagate(circ, PauliSum(pstr), thetas)
 
         @test_throws ArgumentError propagate_with_tree_tracking(circ, VectorPauliSum(pstr), thetas)
         @test_throws ArgumentError propagate_with_tree_tracking(circ, MultiPauliSum(pstr), thetas)

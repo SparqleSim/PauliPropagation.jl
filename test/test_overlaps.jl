@@ -71,6 +71,12 @@ end
             @test scalarproduct(psum1, psum2) == 5.0
         end
     end
+
+    # a dictionary is the cheapest to look up in, an unsorted array the dearest
+    @test PB._lookupcost(orig_psum) == 1
+    @test PB._lookupcost(vector_psum) == length(vector_psum) + 1
+    @test PB._lookupcost(sortterms(vector_psum)) == 2
+    @test PB._lookupcost(MultiPauliSum(vector_psum, 2)) <= length(vector_psum) + 1
 end
 
 

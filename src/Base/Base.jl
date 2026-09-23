@@ -27,13 +27,15 @@ export
     add!,
     mult!,
     mapcoeffs!,
+    mapcoeffsbypair!,
     set!,
     empty!,
     similar,
     emptylike,
     capacity,
     sortedprefix,
-    setsortedprefix!
+    setsortedprefix!,
+    mergefunc
 
 include("./propagationcache.jl")
 export
@@ -60,6 +62,54 @@ export
     lastactiveindex,
     resize!
 
+# MultiSumStorage is a storage trait, so its specializations of the primitive
+# operations below are loaded with those operations.
+include("./MultiSum/MultiSum.jl")
+export
+    MultiSumStorage,
+    ZoneMap,
+    zones,
+    zonemap,
+    zonestorage,
+    defaultnzones,
+    zonecaches,
+    outboxes,
+    nzones,
+    zonesizes,
+    zoneof
+
+include("./Primitives/Primitives.jl")
+export
+    mapterms,
+    mapterms!,
+    mapcoeffs,
+    mapcoeffs!,
+    mapcoeffsbypair!,
+    sortterms,
+    sortterms!,
+    sortcoeffs,
+    sortcoeffs!,
+    filterterms,
+    filterterms!,
+    filtercoeffs,
+    filtercoeffs!,
+    mapreducecoeffs,
+    maxabscoeff,
+    flatmap,
+    flatmap!,
+    mapandtruncate!
+
+include("./vectorbackend.jl")
+export
+    flag!,
+    flagterms!,
+    flagcoeffs!,
+    flagstoindices!,
+    permuteviaindices!,
+    filterviaflags!,
+    coeffcumsum,
+    coeffcumsum!
+
 include("./gates.jl")
 export
     Gate,
@@ -77,28 +127,25 @@ export propagate,
     apply,
     requiresmerging
 
-include("./merge.jl")
-export merge, merge!, mergefunc
-
 include("./truncate.jl")
-export truncate, truncate!, maxabscoeff, mapreducecoeffs
+export truncate, truncate!
 
-
-include("./vectorbackend.jl")
+include("./xorbranch.jl")
 export
-    sortbyterm!,
-    flag!,
-    flagterms!,
-    flagcoeffs!,
-    flagstoindices!,
-    permuteviaindices!,
-    filterviaflags!,
-    coeffcumsum,
-    coeffcumsum!
+    xorbranch,
+    xorbranch!,
+    Unchanged,
+    Kept,
+    Branch
 
-include("./sortedtailmerge.jl")
-
-include("./xortailmerge.jl")
+include("./Merge/Merge.jl")
+export
+    merge,
+    merge!,
+    mergeandtruncate!,
+    xormerge!,
+    xormergeandtruncate!,
+    xorbranchmergeandtruncate!
 
 include("./MonteCarlo/MonteCarlo.jl")
 export
@@ -114,23 +161,5 @@ export
     multinomial_resample!,
     systematic_resample!,
     semideterministic_systematic_resample!
-
-include("./MultiSum/MultiSum.jl")
-export
-    MultiSumStorage,
-    ZoneMap,
-    zones,
-    zonemap,
-    zonestorage,
-    defaultnzones,
-    zonecaches,
-    outboxes,
-    nzones,
-    zonesizes,
-    zoneof,
-    staysinzone,
-    applytoallzones!,
-    applyxorbranch!,
-    applyxorbranchzones!
 
 end

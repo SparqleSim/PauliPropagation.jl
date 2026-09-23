@@ -46,7 +46,11 @@ end
 
 # TODO: This function is apparently
 function PauliPropagation.lastactiveindex(prop_cache::CUDAVectorPauliPropagationCache)
-    return CUDA.@allowscalar PP.indices(prop_cache)[PP.activesize(prop_cache)]
+    active_size = PP.activesize(prop_cache)
+    if active_size == 0
+        return 0
+    end
+    return CUDA.@allowscalar PP.indices(prop_cache)[active_size]
 end
 
 

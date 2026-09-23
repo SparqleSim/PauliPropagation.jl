@@ -189,8 +189,8 @@ end
 ### TRUNCATE
 
 """
-truncate!(psum::AbstractPauliSum; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, kwargs...)    
-truncate!(prop_cache::AbstractPauliPropagationCache; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, kwargs...)
+truncate!(psum::AbstractPauliSum; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread=true, kwargs...)
+truncate!(prop_cache::AbstractPauliPropagationCache; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread=true, kwargs...)
 
 Truncation function for `AbstractPauliPropagationCache`s that combines multiple truncation criteria.
 The default truncation criteria are:
@@ -202,32 +202,43 @@ A custom truncation function can be passed as `customtruncfunc` with the signatu
 
 This function combines all truncation criteria into a single truncation function `truncfunc()` calls PropagationBase.truncate!(truncfunc, prop_cache).
 """
-function PropagationBase.truncate!(
-    pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
-    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing,
-    customtruncfunc=nothing, kwargs...
-    )
+function PropagationBase.truncate!(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
+    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-    # if we use min_rel_coeff, compute the maximum absolute coefficient
-    # this must be written in a single line to avoid Julia closure problems and boxing (wow)
-    min_coeff = isnothing(min_rel_coeff) ? min_abs_coeff : max(min_rel_coeff * maxabscoeff(pobj), min_abs_coeff)
+    truncfunc = buildtruncfunc(pobj;
+        min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread)
+    return truncate!(truncfunc, pobj; thread, kwargs...)
+end
 
-    function truncfunc(pstr, coeff)
-        is_truncated = false
-        if truncateweight(pstr, max_weight)
-            is_truncated = true
-        elseif truncatemincoeff(coeff, min_coeff)
-            is_truncated = true
-        elseif truncatefrequency(coeff, max_freq)
-            is_truncated = true
-        elseif truncatesins(coeff, max_sins)
-            is_truncated = true
-        elseif !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff)
-            is_truncated = true
+"""
+    buildtruncfunc(pobj; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf,
+                   max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing,
+                   thread=true)
+
+Build a predicate that combines the supported truncation criteria. When
+`min_rel_coeff` is specified, its absolute threshold is calculated from the
+largest coefficient currently in `pobj` and captured by the returned function.
+"""
+function buildtruncfunc(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
+    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true)
+
+    effective_min_abs_coeff = isnothing(min_rel_coeff) ? min_abs_coeff :
+        max(min_rel_coeff * maxabscoeff(pobj; thread), min_abs_coeff)
+
+    # `let` prevents the effective threshold from being captured in a `Core.Box`.
+    # The predicate is called in the innermost propagation loops, so it must retain
+    # concrete captures to avoid type-erased calls and per-call allocations.
+    return let effective_min_abs_coeff = effective_min_abs_coeff
+        function truncfunc(pstr, coeff)
+            truncateweight(pstr, max_weight) && return true
+            truncatemincoeff(coeff, effective_min_abs_coeff) && return true
+            truncatefrequency(coeff, max_freq) && return true
+            truncatesins(coeff, max_sins) && return true
+            return !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff)
         end
 
-        return is_truncated
+        return truncfunc
     end
-
-    return truncate!(truncfunc, pobj; kwargs...)
 end

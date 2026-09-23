@@ -30,6 +30,19 @@ export
     set!,
     push!,
     mult!,
+    mapterms,
+    mapterms!,
+    mapcoeffs,
+    mapcoeffs!,
+    mapcoeffsbypair!,
+    sortterms,
+    sortterms!,
+    sortcoeffs,
+    sortcoeffs!,
+    filterterms,
+    filterterms!,
+    filtercoeffs,
+    filtercoeffs!,
     empty!,
     emptylike,
     similar
@@ -134,9 +147,12 @@ export
     apply,
     truncate,
     truncate!,
+    buildtruncfunc,
     maxabscoeff,
+    mapreducecoeffs,
     merge,
     merge!,
+    mergeandtruncate!,
     mergefunc
 
 
@@ -209,7 +225,9 @@ export
 include("Symmetry/Symmetry.jl")
 export
     symmetrymerge,
-    translationmerge
+    symmetrymerge!,
+    translationmerge,
+    translationmerge!
 
 include("Surrogate/Surrogate.jl")
 export

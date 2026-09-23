@@ -12,6 +12,7 @@
 Storage type of a term sum that is split over work zones, each of which is a term sum of the carried type that one thread owns.
 `zonestorage` is the storage type of the zones, on which all zone-local operations dispatch.
 A term sum carries this storage type by returning its zones from `storage()` and its `ZoneMap` from `zonemap()`, and is constructed as `TS(nsites, zones, zonemap)` wherever a sum of its type is built around new zones, in the same way that `emptylike()` constructs the other storages.
+The zones are looked up by the index the map assigns without a bounds check, so a sum must hold exactly `nzones(zonemap)` of them.
 """
 struct MultiSumStorage{ST<:StorageType} <: StorageType
     zonestorage::ST
@@ -45,8 +46,9 @@ zonemap(msum::AbstractTermSum) = msum.zonemap
 
 """
     nzones(msum::AbstractTermSum)
+    nzones(zone_map::ZoneMap)
 
-Get the number of work zones that `msum` is split over.
+Get the number of work zones that `msum` is split over, or that `zone_map` assigns to.
 """
 nzones(msum::AbstractTermSum) = length(zones(msum))
 
@@ -67,7 +69,7 @@ Assignment of terms of type `TermType` to one of `n_zones` zones, where `n_zones
 Each bit of the zone index is the parity of the term under a fixed mask, which reads every site and spreads the terms evenly over the zones.
 This makes the assignment linear over GF(2), that is `zoneof(t ⊻ m) - 1 == (zoneof(t) - 1) ⊻ (zoneof(m) - 1)`.
 A gate that moves all of the terms it branches by the same `⊻ m` therefore permutes the zones, with each zone sending to and receiving from exactly one other zone.
-This is what `applyxorbranch!()` relies on.
+This is what `xorbranch!()` relies on.
 """
 struct ZoneMap{TT}
     masks::Vector{TT}
@@ -75,6 +77,7 @@ end
 
 # the masks are the whole map: how many there are is the zone count, and what they are is the assignment
 Base.:(==)(zone_map1::ZoneMap, zone_map2::ZoneMap) = zone_map1.masks == zone_map2.masks
+nzones(zone_map::ZoneMap) = 1 << length(zone_map.masks)
 
 function ZoneMap(::Type{TT}, n_zones::Integer) where {TT}
     n_zones >= 1 || throw(ArgumentError("n_zones must be positive, got $n_zones."))
@@ -150,6 +153,7 @@ _coefficients(::MultiSumStorage, msum::AbstractTermSum) = Iterators.flatten(coef
 
 _getcoeff(::MultiSumStorage, msum::AbstractTermSum, trm) = getcoeff(_zone(msum, trm), trm)
 _getmergedcoeff(::MultiSumStorage, msum::AbstractTermSum, trm) = getmergedcoeff(_zone(msum, trm), trm)
+_lookupcost(::MultiSumStorage, msum::AbstractTermSum) = maximum(_lookupcost, zones(msum))
 
 @inline _add!(::MultiSumStorage, msum::AbstractTermSum, term, coeff) = (add!(_zone(msum, term), term, coeff); msum)
 @inline _set!(::MultiSumStorage, msum::AbstractTermSum, term, coeff) = (set!(_zone(msum, term), term, coeff); msum)
@@ -164,7 +168,6 @@ function _add!(::MultiSumStorage, msum::AbstractTermSum, other::AbstractTermSum)
     return merge!(msum)
 end
 
-_mapcoeffs!(::MultiSumStorage, f::F, msum::AbstractTermSum) where {F} = (foreach(zone -> mapcoeffs!(f, zone), zones(msum)); msum)
 _empty!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(empty!, zones(msum)); msum)
 function _copy!(::MultiSumStorage, dst_msum::AbstractTermSum, src_msum::AbstractTermSum)
     # a zone only holds the terms it owns, so copying across differing assignments loses ownership
@@ -174,18 +177,6 @@ function _copy!(::MultiSumStorage, dst_msum::AbstractTermSum, src_msum::Abstract
     foreach(copy!, zones(dst_msum), zones(src_msum))
     return dst_msum
 end
-
-# a term sum merges and truncates without a `thread` argument, so these run the zones in turn and let
-# each zone thread inside. The zone-parallel versions are the ones on the propagation cache.
-_merge!(::MultiSumStorage, msum::AbstractTermSum) = (foreach(merge!, zones(msum)); msum)
-
-function _truncate!(::MultiSumStorage, truncfunc::F, msum::AbstractTermSum; kwargs...) where {F<:Function}
-    foreach(zone -> truncate!(truncfunc, zone; kwargs...), zones(msum))
-    return msum
-end
-
-_mapreducecoeffs(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, thread::Bool) where {F,O} =
-    mapreduce(zone -> mapreducecoeffs(f, op, zone; init=zero(init), thread), op, zones(msum); init)
 
 # the zones are iterated one after the other, which carries neither a length nor an element type
 _length(::MultiSumStorage, msum::AbstractTermSum) = sum(length, zones(msum))
@@ -202,4 +193,3 @@ _sizehint!(::MultiSumStorage, msum::AbstractTermSum, n) =
 
 # a p-norm over the zones' p-norms is the p-norm over all coefficients
 _norm(::MultiSumStorage, msum::AbstractTermSum, L::Real) = LinearAlgebra.norm((norm(zone, L) for zone in zones(msum)), L)
-

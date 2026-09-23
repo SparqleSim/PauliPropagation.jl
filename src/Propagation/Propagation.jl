@@ -5,13 +5,9 @@ include("propagationcache.jl")
 # generics.jl contains the core functionality of the `propagation` function.
 include("generics.jl")
 
-# specializations.jl contains specialized implementations of lower level propagation functions for specific gates
-# and the PauliSum type. It assumes a Dict container and is currently not multithreaded.
+# specializations.jl contains the gates of the library, written once for every propagation cache.
 include("specializations.jl")
 
-# vectorspecializations.jl contains specializations for the VectorPauliSum type,
-# which is intended for multithreaded CPU and GPU propagation.
-include("vectorspecializations.jl")
 
-# vectormontecarlo.jl contains the Monte Carlo (mcapplytoall!) specializations for VectorPauliSum.
-include("vectormontecarlo.jl")
+# mcsample.jl contains the Monte Carlo (mcsample!) specializations for VectorPauliSum.
+include("mcsample.jl")

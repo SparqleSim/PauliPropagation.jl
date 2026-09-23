@@ -219,6 +219,26 @@ function _mapslots!(::ArrayStorage, weight_func::W, new_coeff_func::F, prop_cach
     return prop_cache
 end
 
+
+# The slots of a zone follow the slots of all earlier zones. Zone weights are first reduced with
+# the map-reduce primitive, then each zone maps its local slots with the appropriate offset.
+function _mapslots!(::MultiSumStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F}
+    total_zone_weight(zonecache) = mapreducecoeffs(weight_func, +, zonecache; thread=false)
+    zone_weights = _zonevalues(total_zone_weight, real(numcoefftype(prop_cache)), prop_cache, thread)
+    zone_slot_starts = pushfirst!(cumsum(zone_weights), zero(eltype(zone_weights)))
+
+    map_zone_slots!(zone_id) = _map_shifted_slots!(weight_func, new_coeff_func, zonecaches(prop_cache)[zone_id], zone_slot_starts[zone_id])
+    _eachzone(map_zone_slots!, prop_cache, thread)
+
+    return prop_cache
+end
+
+# `mapslots!` on one zone, with its slots starting at `zone_slot_start` instead of at zero.
+function _map_shifted_slots!(weight_func::W, new_coeff_func::F, zonecache, zone_slot_start) where {W,F}
+    shifted_new_coeff_func(coeff, slot_start, slot_end) = new_coeff_func(coeff, zone_slot_start + slot_start, zone_slot_start + slot_end)
+    return mapslots!(weight_func, shifted_new_coeff_func, zonecache; thread=false)
+end
+
 # a real-valued buffer of length(coeffs), in the memory of `dst` when the coefficients are real
 function _realweightbuffer(dst, coeffs)
     if eltype(coeffs) <: Real

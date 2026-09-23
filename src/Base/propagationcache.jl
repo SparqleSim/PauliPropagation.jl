@@ -32,10 +32,13 @@ setauxsum!(prop_cache::AbstractPropagationCache, new_auxsum) = _thrownotimplemen
 terms(prop_cache::AbstractPropagationCache) = _terms(StorageType(prop_cache), prop_cache)
 _terms(::DictStorage, prop_cache::AbstractPropagationCache) = terms(mainsum(prop_cache))
 _terms(::ArrayStorage, prop_cache::AbstractPropagationCache) = activeterms(prop_cache)
+# A cache with an unknown storage has no separate active view.  Its main sum is its active sum.
+_terms(::StorageType, prop_cache::AbstractPropagationCache) = terms(mainsum(prop_cache))
 
 coefficients(prop_cache::AbstractPropagationCache) = _coefficients(StorageType(prop_cache), prop_cache)
 _coefficients(::DictStorage, prop_cache::AbstractPropagationCache) = coefficients(mainsum(prop_cache))
 _coefficients(::ArrayStorage, prop_cache::AbstractPropagationCache) = activecoeffs(prop_cache)
+_coefficients(::StorageType, prop_cache::AbstractPropagationCache) = coefficients(mainsum(prop_cache))
 
 termtype(prop_cache::AbstractPropagationCache) = _termtype(StorageType(prop_cache), prop_cache)
 
@@ -77,7 +80,7 @@ end
 activesum(prop_cache::AbstractPropagationCache) = _activesum(StorageType(prop_cache), prop_cache)
 
 function _activesum(::StorageType, prop_cache::AbstractPropagationCache)
-    _thrownotimplemented(prop_cache, :activesum)
+    return mainsum(prop_cache)
 end
 
 """
@@ -114,6 +117,10 @@ function _mainauxarrays(prop_cache::AbstractPropagationCache)
     )
 end
 
+# whether the arrays of the cache are on the CPU, where a pass may run scalar code and tasks of its
+# own instead of a kernel of AcceleratedKernels
+_iscpuarray(prop_cache::AbstractPropagationCache) = _iscpuarray(terms(mainsum(prop_cache)))
+
 # Publishes a pass's result: the auxsum just written becomes the new mainsum
 function _commitwrite!(prop_cache::AbstractPropagationCache, new_activesize::Int, new_sortedprefix::Int)
     swapsums!(prop_cache)
@@ -136,6 +143,7 @@ end
 function _length(::ArrayStorage, prop_cache::AbstractPropagationCache)
     return activesize(prop_cache)
 end
+_length(::StorageType, prop_cache::AbstractPropagationCache) = length(mainsum(prop_cache))
 
 Base.isempty(prop_cache::AbstractPropagationCache) = length(prop_cache) == 0
 
@@ -171,11 +179,16 @@ indices(prop_cache::AbstractPropagationCache) = _thrownotimplemented(prop_cache,
 activeflags(prop_cache::AbstractPropagationCache) = view(flags(prop_cache), 1:activesize(prop_cache))
 activeindices(prop_cache::AbstractPropagationCache) = view(indices(prop_cache), 1:activesize(prop_cache))
 # callers read this as "number of flagged terms" (last prefix-sum value), which is 0 when nothing is active
-lastactiveindex(prop_cache::AbstractPropagationCache) = activesize(prop_cache) == 0 ? 0 : activeindices(prop_cache)[end]
+@inline function lastactiveindex(prop_cache::AbstractPropagationCache)
+    active_size = activesize(prop_cache)
+    return active_size == 0 ? 0 : indices(prop_cache)[active_size]
+end
 
 
-function mult!(prop_cache::AbstractPropagationCache, scalar::Number)
-    mult!(mainsum(prop_cache), scalar)
+# scales the active coefficients, not the room past them
+function mult!(prop_cache::AbstractPropagationCache, scalar::Number; thread::Bool=true)
+    scale(coefficient) = coefficient * scalar
+    mapcoeffs!(scale, prop_cache; thread)
     return prop_cache
 end
 
@@ -188,6 +201,9 @@ A dict-based cache merges them in as it goes, while an array-based one appends t
 add!(prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum) = _add!(StorageType(prop_cache), prop_cache, term_sum)
 
 _add!(::DictStorage, prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum) =
+    (add!(mainsum(prop_cache), term_sum); prop_cache)
+
+_add!(::StorageType, prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum) =
     (add!(mainsum(prop_cache), term_sum); prop_cache)
 
 function _add!(::ArrayStorage, prop_cache::AbstractPropagationCache, term_sum::AbstractTermSum)
@@ -207,11 +223,26 @@ function _add!(::ArrayStorage, prop_cache::AbstractPropagationCache, term_sum::A
     return prop_cache
 end
 
+# A gate writes the terms it creates into the auxiliary sum, or the outboxes of a multi sum, and the
+# merge after it empties them again. Finding them filled, a gate would write over what they hold.
+_checkauxempty(prop_cache::AbstractPropagationCache) = _checkauxempty(StorageType(prop_cache), prop_cache)
+
+function _checkauxempty(::StorageType, prop_cache::AbstractPropagationCache)
+    if !isempty(auxsum(prop_cache))
+        _throwunmerged()
+    end
+    return prop_cache
+end
+
+@noinline _throwunmerged() = throw(ArgumentError(
+    "the terms the last gate created were never merged in; merge! the cache before applying another gate"))
+
 # emptying keeps the capacity, so the cache is ready to be filled again
 Base.empty!(prop_cache::AbstractPropagationCache) = _empty!(StorageType(prop_cache), prop_cache)
 _empty!(::DictStorage, prop_cache::AbstractPropagationCache) = (empty!(mainsum(prop_cache)); prop_cache)
 _empty!(::ArrayStorage, prop_cache::AbstractPropagationCache) =
     (setactivesize!(prop_cache, 0); setsortedprefix!(mainsum(prop_cache), 0); prop_cache)
+_empty!(::StorageType, prop_cache::AbstractPropagationCache) = (empty!(mainsum(prop_cache)); prop_cache)
 
 """
     resize!(prop_cache::AbstractPropagationCache, n::Int)
@@ -233,6 +264,12 @@ function _resize!(::ArrayStorage, prop_cache::AbstractPropagationCache, n::Int)
 end
 
 _resize!(::StorageType, prop_cache::AbstractPropagationCache, n::Int) = _thrownotimplemented(prop_cache, :resize!)
+
+# room for at least `n` terms, grown in geometric steps so that growing stays rare
+function _growto!(prop_cache::AbstractPropagationCache, n::Int)
+    capacity(prop_cache) < n && resize!(prop_cache, n + n >> 1)
+    return prop_cache
+end
 
 ## Back-conversions 
 
@@ -277,6 +314,9 @@ end
 
 
 _extractsum!(::DictStorage, prop_cache::AbstractPropagationCache) = mainsum(prop_cache)
+
+# Generic caches have no over-allocation or active-size bookkeeping to discard.
+_extractsum!(::StorageType, prop_cache::AbstractPropagationCache) = mainsum(prop_cache)
 
 function _extractsum!(::ArrayStorage, prop_cache::AbstractPropagationCache)
     # resize the entire cache to retain validity

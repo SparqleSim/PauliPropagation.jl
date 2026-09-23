@@ -17,6 +17,14 @@ struct MultiPauliPropagationCache{MS<:MultiPauliSum,ZC<:AbstractPauliPropagation
     msum::MS
     zonecaches::Vector{ZC}
     outboxes::Vector{MS}
+
+    # one cache and one box per zone, looked up by the index the zone map assigns
+    function MultiPauliPropagationCache(msum::MS, zonecaches::Vector{ZC}, outboxes::Vector{MS}) where {MS<:MultiPauliSum,ZC<:AbstractPauliPropagationCache}
+        if !(length(zonecaches) == length(outboxes) == nzones(msum))
+            throw(ArgumentError("got $(length(zonecaches)) zone caches and $(length(outboxes)) outboxes for $(nzones(msum)) zones."))
+        end
+        return new{MS,ZC}(msum, zonecaches, outboxes)
+    end
 end
 
 function MultiPauliPropagationCache(msum::MultiPauliSum)
@@ -28,6 +36,7 @@ end
 PropagationBase.PropagationCache(msum::MultiPauliSum) = MultiPauliPropagationCache(msum)
 
 PropagationBase.mainsum(prop_cache::MultiPauliPropagationCache) = prop_cache.msum
+PropagationBase.auxsum(prop_cache::MultiPauliPropagationCache) = throw(ArgumentError("MultiPauliPropagationCache does not have an auxiliary sum."))
 
 function Base.show(io::IO, prop_cache::MultiPauliPropagationCache)
     println(io, "MultiPauliPropagationCache with $(length(prop_cache)) terms over $(nzones(prop_cache)) zones:")

@@ -6,27 +6,27 @@
 ##
 ###
 
-# _merge!() only dispatches to sortedtailmerge! when:
-# sortedprefix(term_sum) / length(term_sum) > _TAILMERGE_SORTEDPREFIX_FRACTION
-# below it, a full re-sort is cheaper.
+# `_mergeandtruncatebysorting!` only takes the tail merge when the sorted prefix covers more than this fraction
+# of the active terms; below it, a full re-sort is cheaper.
 const _TAILMERGE_SORTEDPREFIX_FRACTION = 0.4
 
 """
-    sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing)
+    sortedtailmerge!(prop_cache::AbstractPropagationCache; thread=true)
 
-Merges the sorted head against the unsorted tail (see file header) and updates
-`activesize`/`sortedprefix`. Set `thread=false` to force sequential execution.
-
-`truncfunc(term, merged_coeff)`, if given, drops a term when it returns `true`. It sees the merged
-coefficient, so contributions can still cancel before the term is judged.
+Sort the terms past the sorted prefix and merge them into the head, combining equal terms with `mergefunc`, so that every active term is in the sorted prefix afterwards.
 """
-function sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true, truncfunc=nothing)
+sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=true) =
+    _sortedtailmergeandtruncate!(nothing, prop_cache; thread)
+
+# The same, dropping the pairs `truncfunc` rejects as they are written when there is one. It sees the
+# merged coefficient, so contributions can still cancel before the term is judged, and it is applied
+# even when there is no tail, since the head may have been rescaled since it was last truncated.
+function _sortedtailmergeandtruncate!(truncfunc::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
     n_old = sortedprefix(mainsum(prop_cache))
     n_new = activesize(prop_cache)
     n_tail = n_new - n_old
     if n_tail == 0
-        setsortedprefix!(mainsum(prop_cache), n_old)
-        return prop_cache
+        return _truncate!(truncfunc, prop_cache; thread)
     end
 
     main_terms, main_coeffs, aux_terms, aux_coeffs = _mainauxarrays(prop_cache)
@@ -39,7 +39,7 @@ function sortedtailmerge!(prop_cache::AbstractPropagationCache; thread::Bool=tru
     AK.sortperm!(tail_perm, unsorted_tail_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
     tail_terms, tail_coeffs = _tailscratch(aux_terms, aux_coeffs, n_new, n_tail, main_terms, main_coeffs)
-    permuteviaindices!(tail_terms, tail_coeffs, unsorted_tail_terms, unsorted_tail_coeffs, tail_perm; thread)
+    @inbounds permuteviaindices!(tail_terms, tail_coeffs, unsorted_tail_terms, unsorted_tail_coeffs, tail_perm; thread)
 
     return _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs, n_old,
         tail_terms, tail_coeffs, n_tail, truncfunc, thread)
@@ -58,40 +58,54 @@ end
 function _mergesortedhead!(prop_cache, aux_terms, aux_coeffs, main_terms, main_coeffs, n_old::Int,
     tail_terms, tail_coeffs, n_tail::Int, truncfunc, thread::Bool, distinct_tail::Val=Val(false))
 
+    # the merge indexes the head, the tail and the output up to these counts without bounds checks
+    _checkfits(n_old, main_terms, main_coeffs)
+    _checkfits(n_tail, tail_terms, tail_coeffs)
+    _checkfits(n_old + n_tail, aux_terms, aux_coeffs)
+
     task_partitioner, n_tasks = _preparetasks(n_old, thread)
 
     if n_tasks == 1
         merged_count = _tailmerge_write!(aux_terms, aux_coeffs, 1,
             main_terms, main_coeffs, 1, n_old, tail_terms, tail_coeffs, 1, n_tail, truncfunc, Val(true), distinct_tail)
     else
-        # slice and partition the two-pointer merge across threads
+        # slice and partition the two-pointer merge across threads; the slices are kept monotone, so
+        # they partition the tail whatever the head holds
         tail_bounds_per_task = Vector{Int}(undef, n_tasks + 1)
         tail_bounds_per_task[1] = 1
         tail_bounds_per_task[n_tasks+1] = n_tail + 1
         @inbounds for task_id in 1:(n_tasks-1)
             head_chunk_boundary_term = main_terms[task_partitioner[task_id].stop]
-            tail_bounds_per_task[task_id+1] = searchsortedlast(tail_terms, head_chunk_boundary_term) + 1
+            tail_bounds_per_task[task_id+1] = max(tail_bounds_per_task[task_id], searchsortedlast(tail_terms, head_chunk_boundary_term) + 1)
         end
 
         # dry run: each task counts its own merged output size (unknown ahead of time due to collisions)
         merged_counts_per_task = Vector{Int}(undef, n_tasks)
-        _eachtask(n_tasks) do task_id
+        function count_merged!(task_id)
             head_range = task_partitioner[task_id]
             merged_counts_per_task[task_id] = _tailmerge_write!(aux_terms, aux_coeffs, 1,
                 main_terms, main_coeffs, head_range.start, head_range.stop,
                 tail_terms, tail_coeffs, tail_bounds_per_task[task_id], tail_bounds_per_task[task_id+1] - 1, truncfunc, Val(false), distinct_tail)
         end
+        _eachtask(count_merged!, n_tasks)
 
         # prefix sum over the per-task counts gives each task its exact final write offset
         write_offsets_per_task = _offsetsfromcounts(merged_counts_per_task)
         merged_count = write_offsets_per_task[end] - 1
 
-        # real pass: each task redoes the same merge, now writing directly into its final position
-        _eachtask(n_tasks) do task_id
+        # real pass: each task redoes the same merge, now writing directly into its final position;
+        # a task writes at most as many pairs as its head and tail slices hold, so never past aux
+        written_per_task = Vector{Int}(undef, n_tasks)
+        function write_merged!(task_id)
             head_range = task_partitioner[task_id]
-            _tailmerge_write!(aux_terms, aux_coeffs, write_offsets_per_task[task_id],
+            written_per_task[task_id] = _tailmerge_write!(aux_terms, aux_coeffs, write_offsets_per_task[task_id],
                 main_terms, main_coeffs, head_range.start, head_range.stop,
                 tail_terms, tail_coeffs, tail_bounds_per_task[task_id], tail_bounds_per_task[task_id+1] - 1, truncfunc, Val(true), distinct_tail)
+        end
+        _eachtask(write_merged!, n_tasks)
+
+        if written_per_task != merged_counts_per_task
+            _throwreplaymismatch()
         end
     end
 
@@ -104,7 +118,9 @@ end
 # mergefunc, in order. Returns (merged_coeff, run_length, next_tail_j).
 # A tail the caller declares duplicate-free has no run to fold.
 @inline function _foldtailrun(tail_terms, tail_coeffs, tail_j, tail_hi, tail_term, seed, ::Val{DistinctTail}=Val(false)) where {DistinctTail}
-    DistinctTail && return seed, 0, tail_j
+    if DistinctTail
+        return seed, 0, tail_j
+    end
 
     merged_coeff = seed
     run_length = 0
@@ -140,19 +156,25 @@ end
                     mergefunc(head_coeffs[head_i], tail_coeffs[tail_j]), distinct_tail)
                 write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, merged_coeff, truncfunc, Val(DoWrite))
                 head_i += 1
-                (head_i > head_hi || tail_j > tail_hi) && break
+                if head_i > head_hi || tail_j > tail_hi
+                    break
+                end
                 head_term = head_terms[head_i]
                 tail_term = tail_terms[tail_j]
             elseif head_term < tail_term
                 write_pos = _writekept!(out_terms, out_coeffs, write_pos, head_term, head_coeffs[head_i], truncfunc, Val(DoWrite))
                 head_i += 1
-                head_i > head_hi && break
+                if head_i > head_hi
+                    break
+                end
                 head_term = head_terms[head_i]
             else
                 # tail term has no match in the head (yet): merge its own run of duplicates first
                 merged_coeff, _, tail_j = _foldtailrun(tail_terms, tail_coeffs, tail_j + 1, tail_hi, tail_term, tail_coeffs[tail_j], distinct_tail)
                 write_pos = _writekept!(out_terms, out_coeffs, write_pos, tail_term, merged_coeff, truncfunc, Val(DoWrite))
-                tail_j > tail_hi && break
+                if tail_j > tail_hi
+                    break
+                end
                 tail_term = tail_terms[tail_j]
             end
         end
@@ -172,7 +194,7 @@ end
 
 # `_writeandadvance!` past `truncfunc`; with no truncfunc the test is compiled away
 @inline function _writekept!(out_terms, out_coeffs, write_pos, term, coeff, truncfunc::F, ::Val{DoWrite}) where {F,DoWrite}
-    if truncfunc !== nothing && truncfunc(term, coeff)
+    if truncfunc !== nothing && (@inline truncfunc(term, coeff))
         return write_pos
     end
     return _writeandadvance!(out_terms, out_coeffs, write_pos, term, coeff, Val(DoWrite))

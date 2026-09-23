@@ -1,4 +1,4 @@
-# Data types
+# Data Types
 
 ## PauliString
 ```@autodocs

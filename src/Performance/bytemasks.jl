@@ -59,7 +59,7 @@ end
 # `nothing` when the words cannot be read directly, or the gate spreads over more than two of them
 function _wordmask(gate_mask::TT, terms) where {TT}
     little_endian = Base.ENDIAN_BOM == 0x04030201
-    (!little_endian || !(terms isa Vector) || sizeof(TT) % 8 != 0) && return nothing
+    (!little_endian || !(terms isa Vector{TT}) || !isbitstype(TT) || sizeof(TT) % 8 != 0) && return nothing
 
     bits = PropagationBase._masksetbits(gate_mask)
     isempty(bits) && return nothing
@@ -85,7 +85,7 @@ Wrap `gate_mask` for the two-byte path, or return it unchanged when that path do
 function _bytemask(gate_mask::TT, terms) where {TT}
     # the byte reads assume little-endian layout; ENDIAN_BOM is a constant, so the test folds away
     little_endian = Base.ENDIAN_BOM == 0x04030201
-    (!little_endian || sizeof(TT) < _MIN_LOCAL_BYTES || !(terms isa Vector)) && return gate_mask
+    (!little_endian || sizeof(TT) < _MIN_LOCAL_BYTES || !(terms isa Vector{TT}) || !isbitstype(TT)) && return gate_mask
 
     bits = PropagationBase._masksetbits(gate_mask)
     isempty(bits) && return gate_mask
@@ -104,8 +104,9 @@ end
 
 ### Hooks used by the fused gate loop
 
-_bytesof(terms::Vector, ::ByteMask) = Ptr{UInt8}(pointer(terms))
-_bytesof(terms::Vector, ::WordMask) = Ptr{UInt64}(pointer(terms))
+# the reads stride by the mask's type, so only an array of that type is read through a pointer
+_bytesof(terms::Vector{TT}, ::ByteMask{TT}) where {TT} = Ptr{UInt8}(pointer(terms))
+_bytesof(terms::Vector{TT}, ::WordMask{TT}) where {TT} = Ptr{UInt64}(pointer(terms))
 _bytesof(terms, gate_mask) = terms
 
 @inline _byteat(bytes::Ptr{UInt8}, ii::Int, m::ByteMask{TT}, k::Int) where {TT} =
@@ -116,13 +117,13 @@ _bytesof(terms, gate_mask) = terms
 
 """
     _gatecommutes(gate_mask, terms, bytes, ii)
-    _gateproduct(gate_mask, pstr, bytes, ii)
+    _gatesign(gate_mask, terms, bytes, ii)
 
-Commutation check and rotation product for the Pauli string at index `ii`, where `bytes` is `_bytesof(terms, gate_mask)`.
+Commutation check and rotation sign for the Pauli string at index `ii`, where `bytes` is `_bytesof(terms, gate_mask)`.
 Any mask that is neither a `ByteMask` nor a `WordMask` falls back to reading the whole Pauli string.
 """
 @inline _gatecommutes(gate_mask, terms, bytes, ii) = PauliPropagation.commutes(gate_mask, (@inbounds terms[ii]))
-@inline _gateproduct(gate_mask, pstr, bytes, ii) = PauliPropagation.paulirotationproduct(gate_mask, pstr)
+@inline _gatesign(gate_mask, terms, bytes, ii) = last(PauliPropagation.paulirotationproduct(gate_mask, (@inbounds terms[ii])))
 
 # the words anticommute independently, so the string commutes when they do so an even number of times
 @inline function _gatecommutes(m::WordMask{TT,N}, terms, words, ii) where {TT,N}
@@ -134,11 +135,11 @@ Any mask that is neither a `ByteMask` nor a `WordMask` falls back to reading the
 end
 
 # the words contribute independent factors of im, so their exponents add
-@inline function _gateproduct(m::WordMask{TT,N}, pstr, words, ii) where {TT,N}
+@inline function _gatesign(m::WordMask{TT,N}, terms, words, ii) where {TT,N}
     exponent = sum(ntuple(k -> PauliPropagation._calculatesignexponent(m.words[k], _wordat(words, ii, m, k)), Val(N)))
 
     # as in `paulirotationproduct`: sign == real(im * im^exponent)
-    return pstr ⊻ m.mask, (exponent & 2) - 1
+    return (exponent & 2) - 1
 end
 
 # two bytes commute overall when they anticommute in the same number of places, so when they agree
@@ -148,10 +149,10 @@ end
 end
 
 # the two bytes contribute independent factors of im, so their exponents add
-@inline function _gateproduct(m::ByteMask, pstr, bytes, ii)
+@inline function _gatesign(m::ByteMask, terms, bytes, ii)
     exponent = PauliPropagation._calculatesignexponent(m.bytes[1], _byteat(bytes, ii, m, 1)) +
                PauliPropagation._calculatesignexponent(m.bytes[2], _byteat(bytes, ii, m, 2))
 
     # as in `paulirotationproduct`: sign == real(im * im^exponent)
-    return pstr ⊻ m.mask, (exponent & 2) - 1
+    return (exponent & 2) - 1
 end

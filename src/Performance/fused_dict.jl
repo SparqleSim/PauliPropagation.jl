@@ -75,14 +75,16 @@ stock `applymergetruncate!`.
 """
 function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotation, prop_cache::PauliPropagation.PauliPropagationCache, theta;
     fused::Bool=false,
-    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing, kwargs...)
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing,
+    thread::Bool=true, kwargs...)
 
     # invoke function from library
     if !fused
         return _invokedefault(gate, prop_cache, theta;
-            min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, kwargs...)
+            min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
+    _checkunusedkwargs(kwargs)
     psum = PB.storage(mainsum(prop_cache))
     gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
     cos_val, sin_val = cos(theta), sin(theta)

@@ -21,6 +21,14 @@ _storagetype(x) = _thrownotimplemented(typeof(x), :StorageType)
 # often this is a Dict{TermType,CoeffType} but it can be anything
 storage(term_sum::TS) where TS<:AbstractTermSum = _thrownotimplemented(TS, :storage)
 
+"""
+    mergefunc(coeff1, coeff2)
+
+How the coefficients of two equal terms combine, by addition unless overloaded for a coefficient type.
+`add!` and every merge combine through it.
+"""
+mergefunc(coeff1, coeff2) = coeff1 + coeff2
+
 
 """
     sortedprefix(term_sum::AbstractTermSum)
@@ -94,17 +102,18 @@ end
 # binary-search the known-sorted (and thus dedup) prefix for at most one match, then
 # linear-scan the remaining tail summing all matches (duplicates may still be present there)
 function _getcoeff(::ArrayStorage, term_sum::AbstractTermSum, trm)
-    terms_vec, coeffs_vec = storage(term_sum)
     n_sorted = sortedprefix(term_sum)
+    if n_sorted == length(term_sum)
+        return getmergedcoeff(term_sum, trm)
+    end
+
+    terms_vec, coeffs_vec = storage(term_sum)
 
     val = zero(coefftype(term_sum))
 
-    if n_sorted > 0
-        sorted_view = view(terms_vec, 1:n_sorted)
-        i = searchsortedfirst(sorted_view, trm)
-        if i <= n_sorted && sorted_view[i] == trm
-            val += coeffs_vec[i]
-        end
+    i = searchsortedfirst(terms_vec, trm, 1, n_sorted, Base.Order.Forward)
+    if i <= n_sorted && terms_vec[i] == trm
+        val += coeffs_vec[i]
     end
 
     for i in (n_sorted+1):length(terms_vec)
@@ -116,8 +125,18 @@ function _getcoeff(::ArrayStorage, term_sum::AbstractTermSum, trm)
     return val
 end
 
-# this assumes everything is merged and de-duplicated
-# may result in wrong results if not
+# the number of terms `getcoeff` visits: a dictionary finds a term at once, an array sum bisects
+# its sorted prefix and scans the rest
+_lookupcost(term_sum::AbstractTermSum) = _lookupcost(StorageType(term_sum), term_sum)
+_lookupcost(::DictStorage, term_sum::AbstractTermSum) = 1
+_lookupcost(::StorageType, term_sum::AbstractTermSum) = length(term_sum)
+
+function _lookupcost(::ArrayStorage, term_sum::AbstractTermSum)
+    n_sorted = sortedprefix(term_sum)
+    return length(term_sum) - n_sorted + ndigits(n_sorted; base=2)
+end
+
+# this requires every term to be merged and de-duplicated
 function getmergedcoeff(term_sum::AbstractTermSum, trm)
     return _getmergedcoeff(StorageType(term_sum), term_sum, trm)
 end
@@ -127,23 +146,14 @@ function _getmergedcoeff(::DictStorage, term_sum::AbstractTermSum, trm)
     return _getcoeff(DictStorage(), term_sum, trm)
 end
 
-# binary-search the known-sorted prefix, linear-scan only the remainder
+# binary-search a fully sorted, duplicate-free sum
 function _getmergedcoeff(::ArrayStorage, term_sum::AbstractTermSum, trm)
+    @assert sortedprefix(term_sum) == length(term_sum) "getmergedcoeff requires a fully sorted term sum"
     terms_vec, coeffs_vec = storage(term_sum)
-    n_sorted = sortedprefix(term_sum)
 
-    if n_sorted > 0
-        sorted_view = view(terms_vec, 1:n_sorted)
-        i = searchsortedfirst(sorted_view, trm)
-        if i <= n_sorted && sorted_view[i] == trm
-            return coeffs_vec[i]
-        end
-    end
-
-    for i in (n_sorted+1):length(terms_vec)
-        if terms_vec[i] == trm
-            return coeffs_vec[i]
-        end
+    i = searchsortedfirst(terms_vec, trm)
+    if i <= length(terms_vec) && terms_vec[i] == trm
+        return coeffs_vec[i]
     end
 
     return zero(coefftype(term_sum))
@@ -248,7 +258,7 @@ end
 @inline function _add!(::DictStorage, term_sum::AbstractTermSum, term, coeff)
     dict_storage = storage(term_sum)
     if haskey(dict_storage, term)
-        dict_storage[term] += coeff
+        dict_storage[term] = mergefunc(dict_storage[term], coeff)
     else
         dict_storage[term] = coeff
     end
@@ -259,7 +269,7 @@ end
     terms_vec, coeffs_vec = storage(term_sum)
     ind = findfirst(t -> t == term, terms_vec)
     if !isnothing(ind)
-        coeffs_vec[ind] += coeff
+        coeffs_vec[ind] = mergefunc(coeffs_vec[ind], coeff)
     else
         push!(terms_vec, term)
         push!(coeffs_vec, coeff)
@@ -327,26 +337,6 @@ end
     else
         delta = coeff - old_coeff
         _add!(ST, term_sum, term, delta)
-    end
-    return term_sum
-end
-
-"""
-    mapcoeffs!(f, term_sum::AbstractTermSum)
-
-Replace every coefficient of `term_sum` by `f(coeff)`, leaving the terms as they are.
-Calls `_mapcoeffs!(StorageType(term_sum), f, term_sum)` internally.
-For custom behavior, overload `storage()` and/or `_mapcoeffs!` for the specific TermSum type.
-"""
-mapcoeffs!(f::F, term_sum::AbstractTermSum) where {F} = _mapcoeffs!(StorageType(term_sum), f, term_sum)
-
-_mapcoeffs!(::DictStorage, f::F, term_sum::AbstractTermSum) where {F} = (map!(f, values(storage(term_sum))); term_sum)
-_mapcoeffs!(::ArrayStorage, f::F, term_sum::AbstractTermSum) where {F} = (map!(f, coefficients(term_sum), coefficients(term_sum)); term_sum)
-
-# super slow default
-function _mapcoeffs!(::StorageType, f::F, term_sum::AbstractTermSum) where {F}
-    for (term, coeff) in term_sum
-        set!(term_sum, term, f(coeff))
     end
     return term_sum
 end

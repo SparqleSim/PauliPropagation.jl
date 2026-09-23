@@ -78,6 +78,9 @@ _withworkers(f::F, target::AbstractPropagationCache, thread::Bool) where {F} =
 _withworkers(::StorageType, f::F) where {F} = f()
 _withworkers(::ArrayStorage, f::F) where {F} = withworkers(f)
 
+# A propagation over a multi sum keeps its workers up from the first gate to the last.
+_withworkers(::MultiSumStorage, f::F) where {F} = withworkers(f)
+
 """
     applymergetruncate!(gate, prop_cache::AbstractPropagationCache; kwargs...)
     applymergetruncate!(gate, prop_cache::AbstractPropagationCache, parameter; kwargs...)
@@ -88,38 +91,33 @@ All terms are then merged and deduplicated into the main term sum.
 Truncations are performed after merging.
 This function can be overwritten for a custom gate if the lower-level functions `applytoall!`, and `apply` are not sufficient.
 """
-function applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args...; kwargs...)
-    apply_merge_truncate!() = _applymergetruncate!(gate, prop_cache, args...; kwargs...)
-    return _with_threads_freed_for(apply_merge_truncate!, StorageType(prop_cache))
-end
-
-# the array kernels of AcceleratedKernels start tasks of their own, which the workers make room for
-_with_threads_freed_for(f::F, ::StorageType) where {F} = f()
-_with_threads_freed_for(f::F, ::ArrayStorage) where {F} = _with_threads_freed_for(f)
-
-function _applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args...; kwargs...)
+function applymergetruncate!(gate, prop_cache::AbstractPropagationCache, args...; thread::Bool=true, kwargs...)
     # args is usually expected to be empty or contain a parameter for the gate
     # prop_cache is modified in place
-    applytoall!(gate, prop_cache, args...; kwargs...)
+    applytoall!(gate, prop_cache, args...; thread, kwargs...)
 
     # usually this merges from some auxillary term sum into the main term sum
     # for vector-based caches, it deduplicates within the main term sum
-    if requiresmerging(gate)
-        merge!(prop_cache; kwargs...)
+    if requiresmerging(gate, prop_cache)
+        merge!(prop_cache; thread)
     end
 
-    truncate!(prop_cache; kwargs...)
+    truncate!(prop_cache; thread, kwargs...)
 
     return
 end
 
 """
-    requiresmerging(gate)::Bool
+    requiresmerging(gate, prop_cache::AbstractPropagationCache)::Bool
 
-Helper function that indicates whether merging is required after applying a gate.
-Can be overloaded for custom gates.
+Helper function that indicates whether merging is required after applying `gate` to `prop_cache`.
 Defaults to `true`.
+Overload it to return `false` for a gate and cache whose `applytoall!` never creates duplicate terms.
+Such an `applytoall!` must then leave all terms in `mainsum(prop_cache)` and `auxsum(prop_cache)` empty, because nothing is moved back afterwards.
 """
+requiresmerging(gate, prop_cache::AbstractPropagationCache) = requiresmerging(gate)
+
+# one-argument fallback so gate-only overloads keep working
 requiresmerging(gate) = true
 
 """
@@ -128,43 +126,18 @@ requiresmerging(gate) = true
 
 1st-level function below `propagate!` that applies one gate to all terms in the main term sum `term_sum = mainsum(prop_cache)`, 
 potentially using an auxiliary term sum `aux_term_sum = auxsum(prop_cache)` in the process. 
-After this functions, all terms remaining in `term_sum` and `aux_term_sum` are merged.
+After this function, all terms remaining in `term_sum` and `aux_term_sum` are merged, unless `requiresmerging(gate, prop_cache)` is `false`,
+in which case all terms must be left in `term_sum` and `aux_term_sum` must be empty.
+By default, `apply(gate, term, coeff, args...; kwargs...)` is mapped over every term with `flatmap!`, which every storage implements,
+so a custom gate only needs `apply`.
+The default implementation consumes `thread` to control that mapping; it does not forward `thread` to per-term `apply` calls.
 This function can be overwritten for a custom gate if the lower-level function `apply()` is not sufficient.
 In particular, this function can be used to manipulate both `term_sum` and `aux_term_sum` at the same time to reduce memory movement.
 Note that manipulating `term_sum` on anything other than the current term will likely lead to errors.
 """
-function applytoall!(gate, prop_cache::AbstractPropagationCache, args...; kwargs...)
-    term_sum = mainsum(prop_cache)
-    aux_term_sum = auxsum(prop_cache)
-
-    # Loop over all terms in term_sum and apply the gate to them.
-    for (term, coeff) in term_sum
-        # this is expected to return a tuple of (new_term, new_coeff) pairs
-        # other non-allocating iterables are also possible
-        terms_and_coeffs = apply(gate, term, coeff, args...; kwargs...)
-
-        # simple looped add! into aux_term_sum
-        _batch_add!(aux_term_sum, terms_and_coeffs)
-    end
-
-    # Empty term_sum because everything was moved into aux_term_sum. They will later be swapped.
-    # If we want to reduce unnecessary Pauli string movement, we can overload applygatetoall!()
-    empty!(term_sum)
-
-    # by default we can already swap the term sums here
-    # merge!(prop_cache) will then likely not do anything
-    swapsums!(prop_cache)
-
-    # in general sortedness will not be preserved
-    setsortedprefix!(mainsum(prop_cache), 0)
-
-    return
-end
-
-@inline function _batch_add!(storage, terms_and_coeffs)
-    for (term, coeff) in terms_and_coeffs
-        add!(storage, term, coeff)
-    end
+function applytoall!(gate, prop_cache::AbstractPropagationCache, args...; thread::Bool=true, kwargs...)
+    apply_gate(term, coeff) = apply(gate, term, coeff, args...; kwargs...)
+    return flatmap!(apply_gate, prop_cache; thread)
 end
 
 
@@ -177,6 +150,8 @@ Is expected to return a tuple of (new_term, new_coeff) pairs.
 This function must be overloaded for each custom gate type.
 Common mistakes are to return a single pair instead of a tuple of pairs, 
 such as `(new_term, new_coeff)`, instead of `((new_term, new_coeff),)`.
+On an array sum, several tasks call `apply` once to count the pairs and once to write them, possibly at the same time on different terms,
+so it must return the same pairs for the same term every time and must not return a one-shot iterator.
 
 Example:
 ```julia

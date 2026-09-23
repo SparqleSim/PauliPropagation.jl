@@ -27,9 +27,6 @@ Splitting a `PauliSum` gives zones of `PauliSum`s and splitting a `VectorPauliSu
 `n_zones` must be a power of two, which makes the zone assignment linear in the Pauli string and lets `PauliRotation` and the other gates that branch by a fixed bitmask take a faster path.
 See `ZoneMap`.
 
-`mcpropagate()` and `resample()` take a `MultiPauliSum` and resample it zone by zone; `mcsample()` gathers it into a `VectorPauliSum` and splits the result back.
-`rewindgradient()` runs both of its sweeps zone by zone.
-
 # Examples
 ```julia
 MultiPauliSum(4)                                # empty, on 4 qubits, over as many zones as threads
@@ -41,6 +38,14 @@ struct MultiPauliSum{TS<:AbstractPauliSum,ZM<:ZoneMap} <: AbstractPauliSum
     nqubits::Int
     zones::Vector{TS}
     zonemap::ZM
+
+    # a zone is looked up by the index the map assigns without a bounds check
+    function MultiPauliSum(nqubits::Integer, zones::Vector{TS}, zonemap::ZM) where {TS<:AbstractPauliSum,ZM<:ZoneMap}
+        if length(zones) != nzones(zonemap)
+            throw(ArgumentError("got $(length(zones)) zones for a zone map of $(nzones(zonemap))."))
+        end
+        return new{TS,ZM}(nqubits, zones, zonemap)
+    end
 end
 
 MultiPauliSum(psum::AbstractPauliSum, n_zones::Integer=defaultnzones()) =
@@ -86,17 +91,3 @@ end
 Base.convert(::Type{PauliSum}, msum::MultiPauliSum) = PauliSum(msum)
 Base.convert(::Type{VectorPauliSum}, msum::MultiPauliSum) = VectorPauliSum(msum)
 
-"""
-    mcsample(circuit, msum::MultiPauliSum, params=nothing; squared=false, heisenberg=true, thread=true, kwargs...)
-
-Monte Carlo path sampling of a `MultiPauliSum` (see `mcsample`).
-`msum` is gathered into a `VectorPauliSum` and split back over the same zones on return, leaving `msum` unchanged.
-"""
-function PropagationBase.mcsample(circuit, msum::MultiPauliSum, params=nothing; kwargs...)
-    vpsum = mcsample!(circuit, VectorPauliSum(msum), params; kwargs...)
-    return add!(emptylike(msum), vpsum)
-end
-
-function PropagationBase.mcsample!(circuit, msum::MultiPauliSum, params=nothing; kwargs...)
-    throw(ArgumentError("`mcsample!` is not defined for `MultiPauliSum`. Use the out-of-place `mcsample`, or convert via `VectorPauliSum(msum)`."))
-end
