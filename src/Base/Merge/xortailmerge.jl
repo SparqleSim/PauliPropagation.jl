@@ -253,12 +253,9 @@ function _xorsortedboxmergeandtruncate!(groups, truncfunc::F, prop_cache::Abstra
     n_old = activesize(prop_cache)
 
     # the head keeps its place, the sorted tail lands past it or stays in the box, and the merge
-    # writes both into aux: room for all of them in main and aux alike, and half as much again
+    # writes both into aux: room for all of them in main and aux alike
     n_new = n_old + n_tail
-    if capacity(prop_cache) < n_new
-        n_room = n_new + n_tail
-        resize!(prop_cache, n_room + n_room >> 1)
-    end
+    _ensurecapacity!(prop_cache, n_new)
     main_terms, main_coeffs, aux_terms, aux_coeffs = _mainauxarrays(prop_cache)
 
     # ping-pong pair A: the box, in place

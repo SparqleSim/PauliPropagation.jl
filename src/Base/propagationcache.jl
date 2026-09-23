@@ -213,8 +213,7 @@ function _add!(::ArrayStorage, prop_cache::AbstractPropagationCache, term_sum::A
 
     # the merge that follows takes its scratch from the room beyond the appended terms, so a cache
     # that is only grown to hold them makes the merge allocate a tail of its own on every gate
-    n_room = n_new + (n_new - n_old)
-    capacity(prop_cache) < n_room && resize!(prop_cache, n_room + n_room >> 1)
+    _ensurecapacity!(prop_cache, n_new + (n_new - n_old))
 
     copyto!(terms(mainsum(prop_cache)), n_old + 1, terms(term_sum), 1, length(term_sum))
     copyto!(coefficients(mainsum(prop_cache)), n_old + 1, coefficients(term_sum), 1, length(term_sum))
@@ -254,20 +253,41 @@ Base.resize!(prop_cache::AbstractPropagationCache, n::Int) = _resize!(StorageTyp
 
 _resize!(::DictStorage, prop_cache::AbstractPropagationCache, n::Int) = (sizehint!(storage(mainsum(prop_cache)), n); prop_cache)
 
+# A cache on the CPU that grows between the rounds of a propagation is copied into fresh arrays by
+# the workers. The arrays are copied whole, as `resize!` would, because a serial pass grows in the
+# middle of writing. A zone grows inside a round, on the one thread that works it, with `resize!`.
 function _resize!(::ArrayStorage, prop_cache::AbstractPropagationCache, n::Int)
-    resize!(mainsum(prop_cache), n)
-    resize!(auxsum(prop_cache), n)
-    resize!(flags(prop_cache), n)
-    resize!(indices(prop_cache), n)
+    if n > capacity(prop_cache) && _iscpuarray(prop_cache) && _currentworkers() !== nothing
+        main_psum, aux_psum = mainsum(prop_cache), auxsum(prop_cache)
+        main_terms, main_coeffs, aux_terms, aux_coeffs, new_flags, new_indices = _copyinparallel(
+            (terms(main_psum), coefficients(main_psum), terms(aux_psum), coefficients(aux_psum), flags(prop_cache), indices(prop_cache)), n)
+        _setarrays!(prop_cache, (main_terms, main_coeffs), (aux_terms, aux_coeffs), new_flags, new_indices)
+    else
+        resize!(mainsum(prop_cache), n)
+        resize!(auxsum(prop_cache), n)
+        resize!(flags(prop_cache), n)
+        resize!(indices(prop_cache), n)
+    end
     setactivesize!(prop_cache, min(activesize(prop_cache), n))
     return prop_cache
 end
 
+# Gives the cache new arrays. The main and aux arrays are each the terms and the coefficients of
+# that sum, as `storage` returns them. The sums themselves stay, only their arrays are replaced, so
+# the sum handed to `propagate!` is still the one `extractsum!` finds.
+_setarrays!(prop_cache::AbstractPropagationCache, main_arrays, aux_arrays, new_flags, new_indices) =
+    _thrownotimplemented(prop_cache, :_setarrays!)
+
 _resize!(::StorageType, prop_cache::AbstractPropagationCache, n::Int) = _thrownotimplemented(prop_cache, :resize!)
 
-# room for at least `n` terms, grown in geometric steps so that growing stays rare
-function _growto!(prop_cache::AbstractPropagationCache, n::Int)
-    capacity(prop_cache) < n && resize!(prop_cache, n + n >> 1)
+# Room for at least `n` terms, which a pass asks for before it writes that many. 
+# On the CPU, array resize costs address space until it is written, not memory. 
+# A larger factor saves a few percent more, but an array over twice the need can be refused
+function _ensurecapacity!(prop_cache::AbstractPropagationCache, n::Int)
+    if capacity(prop_cache) < n
+        new_capacity = _iscpuarray(prop_cache) ? 2n : round(Int, 1.5 * n)
+        resize!(prop_cache, new_capacity)
+    end
     return prop_cache
 end
 

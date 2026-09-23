@@ -139,6 +139,15 @@ end
 PropagationBase.indices(prop_cache::VectorPauliPropagationCache) = prop_cache.indices
 PropagationBase.flags(prop_cache::VectorPauliPropagationCache) = prop_cache.flags
 
+function PropagationBase._setarrays!(prop_cache::VectorPauliPropagationCache, main_arrays, aux_arrays, new_flags, new_indices)
+    psum, aux_psum = mainsum(prop_cache), auxsum(prop_cache)
+    psum.terms, psum.coeffs = main_arrays
+    aux_psum.terms, aux_psum.coeffs = aux_arrays
+    prop_cache.flags = new_flags
+    prop_cache.indices = new_indices
+    return prop_cache
+end
+
 
 function Base.show(io::IO, prop_cache::VectorPauliPropagationCache)
     println(io, "VectorPropagationCache with $(prop_cache.active_size) terms:")
