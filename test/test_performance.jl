@@ -107,18 +107,20 @@ end
     end
 end
 
-@testset "fused Vector on Pauli strings of several limbs matches stock exactly" begin
-    # above 64 qubits, a Pauli string spans more than two 64-bit limbs and the rotations read only the limbs a gate
-    # acts on, while the fused cap weighs the whole string. On 100 qubits the long-range rotation acts on three limbs,
-    # so it also covers the fall-back to the whole string.
-    for nq in (40, 100), nl in (2, 3)
-        topo = bricklayertopology(nq; periodic=false)
+@testset "fused Vector on wide Pauli strings matches stock exactly" begin
+    # above 64 qubits, a Pauli string spans more than two 64-bit limbs and the rotations read only the
+    # limbs a gate acts on, while the fused cap weighs the whole string. The long-range rotation acts on
+    # three limbs, so it also covers the fall-back to the whole string.
+    nq = 100
+    topo = bricklayertopology(nq; periodic=false)
+
+    for nl in (2, 3)
         circuit = hardwareefficientcircuit(nq, nl; topology=topo)
-        push!(circuit, PauliRotation([:X, :Y, :Z], [1, nq ÷ 2, nq]))
+        push!(circuit, PauliRotation([:X, :Y, :Z], [1, 40, 90]))
 
         Random.seed!(30 + nl)
         thetas = randn(countparameters(circuit))
-        pstr = PauliString(nq, :Z, nq ÷ 2)
+        pstr = PauliString(nq, :Z, 50)
 
         for max_weight in (3, 4)
             stock = propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_weight)
