@@ -75,7 +75,7 @@ function _flatmapserially!(f::F, prop_cache, n_old::Int) where {F}
     for ii in 1:n_old
         for (term, coefficient) in @inline f((@inbounds main_terms[ii]), (@inbounds main_coefficients[ii]))
             if write_pos > length(aux_terms)
-                _growto!(prop_cache, write_pos)
+                _ensurecapacity!(prop_cache, write_pos)
                 main_terms, main_coefficients, aux_terms, aux_coefficients = _mainauxarrays(prop_cache)
             end
             write_pos = _writeandadvance!(aux_terms, aux_coefficients, write_pos, term, coefficient, Val(true))
@@ -97,7 +97,7 @@ function _flatmapintasks!(f::F, prop_cache, task_partitioner, n_tasks::Int) wher
 
     offsets = _offsetsfromcounts(counts)
     n_new = offsets[end] - 1
-    _growto!(prop_cache, n_new)
+    _ensurecapacity!(prop_cache, n_new)
 
     # each task writes within the room its count reserved and reports what it made
     written = Vector{Int}(undef, n_tasks)
@@ -144,7 +144,7 @@ function _flatmapflagged!(f::F, prop_cache; thread::Bool=true) where {F}
     AK.accumulate!(+, counts; init=0, max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
     n_new = lastactiveindex(prop_cache)
-    _growto!(prop_cache, n_new)
+    _ensurecapacity!(prop_cache, n_new)
 
     main_terms, main_coefficients, aux_terms, aux_coefficients = _mainauxarrays(prop_cache)
     write_ends = activeindices(prop_cache)

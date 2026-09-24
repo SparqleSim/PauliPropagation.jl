@@ -213,8 +213,7 @@ function _add!(::ArrayStorage, prop_cache::AbstractPropagationCache, term_sum::A
 
     # the merge that follows takes its scratch from the room beyond the appended terms, so a cache
     # that is only grown to hold them makes the merge allocate a tail of its own on every gate
-    n_room = n_new + (n_new - n_old)
-    capacity(prop_cache) < n_room && resize!(prop_cache, n_room + n_room >> 1)
+    _ensurecapacity!(prop_cache, n_new + (n_new - n_old))
 
     copyto!(terms(mainsum(prop_cache)), n_old + 1, terms(term_sum), 1, length(term_sum))
     copyto!(coefficients(mainsum(prop_cache)), n_old + 1, coefficients(term_sum), 1, length(term_sum))
@@ -265,9 +264,13 @@ end
 
 _resize!(::StorageType, prop_cache::AbstractPropagationCache, n::Int) = _thrownotimplemented(prop_cache, :resize!)
 
-# room for at least `n` terms, grown in geometric steps so that growing stays rare
-function _growto!(prop_cache::AbstractPropagationCache, n::Int)
-    capacity(prop_cache) < n && resize!(prop_cache, n + n >> 1)
+# Room for at least `n` terms, which a pass asks for before it writes that many.
+# On the CPU, room costs no memory until it is written, so it grows by more than on a GPU.
+function _ensurecapacity!(prop_cache::AbstractPropagationCache, n::Int)
+    if capacity(prop_cache) < n
+        new_capacity = _iscpuarray(prop_cache) ? 2n : round(Int, 1.5 * n)
+        resize!(prop_cache, new_capacity)
+    end
     return prop_cache
 end
 

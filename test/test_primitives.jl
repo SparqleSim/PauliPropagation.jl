@@ -559,6 +559,56 @@ end
     @test PB.activesize(PP.VectorPauliPropagationCache(deepcopy(small), similar(small), falses(4), zeros(Int, 4), 4)) == 4
 end
 
+@testset "An array cache grows with the workers" begin
+    nq = 16
+    # large enough that the copy is split into tasks when there are several threads
+    n = 4 * PB._MIN_ELEMS_PER_TASK
+    input_terms = UInt32.(1:n)
+    input_coeffs = randn(n)
+    vpsum = VectorPauliSum(nq, copy(input_terms), copy(input_coeffs), n)
+    cache = PropagationCache(vpsum)
+    main_sum, aux_sum = mainsum(cache), auxsum(cache)
+    old_terms = PB.terms(main_sum)
+
+    # a pass run as part of a round never sees the workers, so it cannot open a round of its own
+    seen_in_round = fill(true, Threads.nthreads())
+    function record_workers!(task_id)
+        seen_in_round[task_id] = PB._currentworkers() !== nothing
+    end
+    function grow_and_record()
+        resize!(cache, 3n)
+        PB._eachtask(record_workers!, Threads.nthreads())
+    end
+    PB.withworkers(grow_and_record)
+    @test !any(seen_in_round)
+
+    # the arrays are replaced, the sums are not, and every term is where it was
+    if Threads.nthreads() > 1
+        @test PB.terms(main_sum) !== old_terms
+    end
+    @test capacity(cache) == 3n
+    @test mainsum(cache) === main_sum && auxsum(cache) === aux_sum
+    @test length(PB.flags(cache)) == length(PB.indices(cache)) == 3n
+    @test PB.activeterms(cache) == input_terms && PB.activecoeffs(cache) == input_coeffs
+    @test extractsum!(cache, vpsum) === vpsum && PB.terms(vpsum) == input_terms
+
+    # a serial pass that outgrows the cache in the middle of writing keeps what it wrote
+    n_active = 1000
+    n_pairs = 50
+    pairs_cache = PropagationCache(VectorPauliSum(nq, UInt32.(1:n_active), ones(n_active), 0))
+    resize!(pairs_cache, 2 * PB._MIN_ELEMS_PER_TASK)
+    old_aux_terms = PB.terms(auxsum(pairs_cache))
+    make_pairs(term, coefficient) = ((term + UInt32(k) << 16, coefficient * k) for k in 1:n_pairs)
+    make_pairs!() = PB.flatmap!(make_pairs, pairs_cache)
+    PB.withworkers(make_pairs!)
+
+    if Threads.nthreads() > 1
+        @test PB.terms(mainsum(pairs_cache)) !== old_aux_terms
+    end
+    @test PB.activeterms(pairs_cache) == [term + UInt32(k) << 16 for term in UInt32.(1:n_active) for k in 1:n_pairs]
+    @test PB.activecoeffs(pairs_cache) == [Float64(k) for _ in 1:n_active for k in 1:n_pairs]
+end
+
 # the kernels that index by a permutation or by the sorted prefix check the range themselves
 @testset "Array kernels check the ranges they index without bounds checks" begin
     nq = 16
