@@ -9,7 +9,8 @@ Unlike traditional simulators which simulate a circuit $\mathcal{E}$ evolving th
 
 Pauli propagation is related to the so-called (extended) stabilizer simulation, but is fundamentally different from, for example, tensor networks. It offers a distinct approach that can handle different regimes of quantum dynamics.
 
-Implemented in Julia, `PauliPropagation.jl` combines high-performance computation (using features such as multiple dispatch) with an accessible and high-level interface.  
+Implemented in Julia, `PauliPropagation.jl` combines high-performance computation (using features such as multiple dispatch) with an accessible and high-level interface. 
+To get the most performance out of this library, read the *Performance Considerations* section below and study the [advanced performance notebook](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/advanced_performance.ipynb). 
 
 ## Installation
 
@@ -99,7 +100,9 @@ max_weight = 6 # maximum Pauli weight
 min_abs_coeff = 1e-4 # minimal coefficient magnitude
 
 ## propagate through the circuit
-init_pauli_sum = PauliSum(pstr)  # you can also propagate `pstr` or VectorPauliSum(pstr)
+init_pauli_sum = PauliSum(pstr)  # you can also propagate `pstr` 
+# init_pauli_sum = VectorPauliSum(pstr)  # for faster propagation on library gates
+
 pauli_sum = propagate(circuit, init_pauli_sum, parameters; max_weight, min_abs_coeff)
 ```
 The output `pauli_sum` gives us an approximation of propagated Pauli strings
@@ -131,11 +134,12 @@ Therefore, the trace is equivalent to the sum over the coefficients of Pauli str
 A few tips to get the most performance out of PauliPropagation.jl, in particular in the `propagate(...)` function:
 - Pretty much always use at least coefficient truncation via `propagate(...; min_abs_coeff)`. Start high (e.g., `1e-3`) and gradually decrease until expectation values stabilize.
 - For common gates, the `VectorPauliSum` is currently more performant.
-- If you can, start Julia with more threads, for example via `Julia -t 8` if you have 8 fast threads. `VectorPauliSum` is inherently multithreaded, which you can toggle off via `propagation(...; thread=false)` if you are multithreading outside `propagate()`. For small Pauli sums, single-threaded propagation can be faster, but at scale with many threads, multithreading can be an order of magnitude faster. 
+- If you can, start Julia with more threads, for example via `Julia -t 8` if you have 8 fast threads. `VectorPauliSum` is inherently multithreaded, which you can toggle off via `propagate(...; thread=false)` if you are multithreading outside `propagate()`. For small Pauli sums, single-threaded propagation can be faster, but at scale with many threads, multithreading can be an order of magnitude faster. 
+- Maximize multithreading capabilities by wrapping your Pauli sum (ideally `VectorPauliSum`) into the `MultiPauliSum`.
 - When propagating gate by gate or layer by layer, consider using the in-place `propagate!(...)` function that mutates the incoming `PauliSum`/`VectorPauliSum`.
 - For maximal performance that may yield slightly different results to default behavior, you can import our `PauliPropagation.Performance` module and run `Performance.propagate!(...)`.
 
-Take a look at the `examples/advanced_performance.ipynb` notebook for more details.
+Take a look at the `examples/advanced_performance.ipynb` notebook for more details ([link](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/advanced_performance.ipynb)).
  
 
 ## Important Notes and Caveats
@@ -148,7 +152,7 @@ Take a look at the `examples/advanced_performance.ipynb` notebook for more detai
 All of the above can be addressed by writing the additional missing code due to the nice extensibility of Julia.
 
 ## Automatic Gradients
-`PauliPropagation.jl` has always been automatically differentiable via standard Julia libraries such as `ForwardDiff.jl` and `ReverseDiff.jl`. Starting version `0.8`, we provide a custom `rewindgradient(...)`  that only requires two propagation through the circuit and at most double the memory to compute an entire gradient vector. It is compatible with all truncations that are supported by `propagate()`. See the `8-automatic-differentiation.ipynb` notebook in the example folder.
+`PauliPropagation.jl` has always been automatically differentiable via standard Julia libraries such as `ForwardDiff.jl` and `ReverseDiff.jl`. Starting version `0.8`, we provide a custom `rewindgradient(...)`  that only requires two propagation through the circuit and at most double the memory to compute an entire gradient vector. It is compatible with all truncations that are supported by `propagate()`. See the `8-automatic-differentiation.ipynb` notebook in the example folder ([link](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/8-automatic-differentiation.ipynb)). This design is adapted from the publication ``Backpropagating Pauli Propagation'' by Lin et al. (arXiv:2607.15184).
 
 ## Randomized Evolution
 Starting with version `0.8`, we provide an `mcpropagate(...; max_size)` function. It propagates as usual, truncates if you pass truncation parameters, and when the number of terms exceeds `max_size`, it resamples down to a `resampling_size` (default `max_size / 2`) via an unbiased procedure. This in principle allows one to arbitrarily trade memory for averaging time, but note that all coefficients become increasingly large and inaccurate the more often it must resample. See the `mcpropagate.ipynb` notebook in the examples folder.

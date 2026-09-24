@@ -24,8 +24,8 @@ include("./bytemasks.jl")
 include("./fused_dict.jl")
 
 
-# VectorPauliSum overloads for the rotation gates and PauliNoise
-include("./fused_vector.jl")
+# VectorPauliSum and MultiPauliSum overloads for the rotation gates
+include("./fused_rotations.jl")
 
 
 """

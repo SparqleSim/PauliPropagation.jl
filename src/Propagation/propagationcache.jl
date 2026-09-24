@@ -70,6 +70,22 @@ mutable struct VectorPauliPropagationCache{VPS<:VectorPauliSum,VB,VI} <: Abstrac
 
     # we will over-allocate the arrays and keep track of the non-empty size
     active_size::Int
+
+    # the array kernels index all four arrays up to the active size without bounds checks, and
+    # write at positions they accumulate in `indices`, which must not wrap
+    function VectorPauliPropagationCache(psum::VPS, aux_psum::VPS, flags::VB, indices::VI, active_size::Int) where {VPS<:VectorPauliSum,VB,VI}
+        n = length(psum)
+        if !(length(aux_psum) == length(flags) == length(indices) == n)
+            throw(ArgumentError("psum, aux_psum, flags and indices must have the same length."))
+        end
+        if eltype(indices) !== Int
+            throw(ArgumentError("indices must hold Int, got $(eltype(indices))."))
+        end
+        if !(0 <= active_size <= n)
+            throw(ArgumentError("active_size must be between 0 and the length of psum, got $active_size for $n."))
+        end
+        return new{VPS,VB,VI}(psum, aux_psum, flags, indices, active_size)
+    end
 end
 
 # An overload for generality
@@ -111,7 +127,14 @@ function PauliSum(prop_cache::VectorPauliPropagationCache; thread::Bool=true)
 end
 
 PropagationBase.activesize(prop_cache::VectorPauliPropagationCache) = prop_cache.active_size
-PropagationBase.setactivesize!(prop_cache::VectorPauliPropagationCache, new_size::Int) = (prop_cache.active_size = new_size; prop_cache)
+
+function PropagationBase.setactivesize!(prop_cache::VectorPauliPropagationCache, new_size::Int)
+    if !(0 <= new_size <= capacity(prop_cache))
+        throw(ArgumentError("active size must be between 0 and the capacity, got $new_size for $(capacity(prop_cache))."))
+    end
+    prop_cache.active_size = new_size
+    return prop_cache
+end
 
 PropagationBase.indices(prop_cache::VectorPauliPropagationCache) = prop_cache.indices
 PropagationBase.flags(prop_cache::VectorPauliPropagationCache) = prop_cache.flags
@@ -130,13 +153,4 @@ function Base.show(io::IO, prop_cache::VectorPauliPropagationCache)
         end
         println(io, prop_cache.psum.coeffs[i], " * $(pauli_string)")
     end
-end
-
-
-function Base.resize!(prop_cache::VectorPauliPropagationCache, n_new::Int)
-    resize!(prop_cache.psum, n_new)
-    resize!(prop_cache.aux_psum, n_new)
-    resize!(prop_cache.flags, n_new)
-    resize!(prop_cache.indices, n_new)
-    return prop_cache
 end

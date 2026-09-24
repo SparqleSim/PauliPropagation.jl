@@ -45,7 +45,7 @@ In `propagate()` the Pauli sum `psum` is deepcopied and passed into the in-place
 Parameters for the parametrized gates in `circ` are given by `thetas`, and need to be passed as if the circuit was applied as written in the Schrödinger picture.
 If thetas are not passed, the circuit must contain only non-parametrized `StaticGates`.
 Default truncations are `min_abs_coeff`, `max_weight`, `max_freq`, and `max_sins`.
-`max_freq`, and `max_sins` will lead to automatic conversion if the coefficients are not already wrapped in suitable `PathProperties` objects.
+`max_freq`, and `max_sins` are only supported for a `PauliSum` and will lead to automatic conversion if the coefficients are not already wrapped in suitable `PathProperties` objects.
 A custom truncation function can be passed as `customtruncfunc` with the signature customtruncfunc(pstr::PauliStringType, coefficient)::Bool.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread,
 allowing efficient multi-threading on a higher level (e.g. `Threads.@threads for _ in 1:10; propagate(...; thread=false); end`).
@@ -170,23 +170,6 @@ function PropagationBase.mcsample!(circuit, tsum::AbstractPauliSum, params=nothi
     return PropagationBase._propagate!(PropagationBase.mcapplytoall!, circuit, tsum, params; kwargs...)
 end
 
-"""
-    resample(psum::PauliSum, target_size::Integer; resample_func=nothing, squared=false, thread=true, kwargs...)
-
-Resampling of a `PauliSum` (see `resample`).
-`psum` is converted into a `VectorPauliSum` and converted back on return, leaving `psum` unchanged.
-"""
-function PropagationBase.resample(psum::PauliSum, target_size::Integer, resample_args...; kwargs...)
-    vpsum = resample!(VectorPauliSum(psum), target_size, resample_args...; kwargs...)
-    return PauliSum(vpsum)
-end
-
-
-function PropagationBase.resample!(psum::PauliSum, target_size::Integer, resample_args...; kwargs...)
-    throw(ArgumentError("`resample!` is not defined for `PauliSum`. Use the out-of-place `resample`, or convert via `VectorPauliSum(psum)`."))
-end
-
-
 # Shared prelude for the Pauli-specific `propagate!`/`mcpropagate!`/`mcsample!` methods
 # promote a single gate/param into a list, 
 # validate the parameter count, 
@@ -206,8 +189,8 @@ end
 ### TRUNCATE
 
 """
-truncate!(psum::AbstractPauliSum; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, kwargs...)    
-truncate!(prop_cache::AbstractPauliPropagationCache; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, kwargs...)
+truncate!(psum::AbstractPauliSum; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread=true, kwargs...)
+truncate!(prop_cache::AbstractPauliPropagationCache; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread=true, kwargs...)
 
 Truncation function for `AbstractPauliPropagationCache`s that combines multiple truncation criteria.
 The default truncation criteria are:
@@ -219,32 +202,43 @@ A custom truncation function can be passed as `customtruncfunc` with the signatu
 
 This function combines all truncation criteria into a single truncation function `truncfunc()` calls PropagationBase.truncate!(truncfunc, prop_cache).
 """
-function PropagationBase.truncate!(
-    pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
-    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing,
-    customtruncfunc=nothing, kwargs...
-    )
+function PropagationBase.truncate!(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
+    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-    # if we use min_rel_coeff, compute the maximum absolute coefficient
-    # this must be written in a single line to avoid Julia closure problems and boxing (wow)
-    min_coeff = isnothing(min_rel_coeff) ? min_abs_coeff : max(min_rel_coeff * maxabscoeff(pobj), min_abs_coeff)
+    truncfunc = buildtruncfunc(pobj;
+        min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread)
+    return truncate!(truncfunc, pobj; thread, kwargs...)
+end
 
-    function truncfunc(pstr, coeff)
-        is_truncated = false
-        if truncateweight(pstr, max_weight)
-            is_truncated = true
-        elseif truncatemincoeff(coeff, min_coeff)
-            is_truncated = true
-        elseif truncatefrequency(coeff, max_freq)
-            is_truncated = true
-        elseif truncatesins(coeff, max_sins)
-            is_truncated = true
-        elseif !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff)
-            is_truncated = true
+"""
+    buildtruncfunc(pobj; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf,
+                   max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing,
+                   thread=true)
+
+Build a predicate that combines the supported truncation criteria. When
+`min_rel_coeff` is specified, its absolute threshold is calculated from the
+largest coefficient currently in `pobj` and captured by the returned function.
+"""
+function buildtruncfunc(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
+    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true)
+
+    effective_min_abs_coeff = isnothing(min_rel_coeff) ? min_abs_coeff :
+        max(min_rel_coeff * maxabscoeff(pobj; thread), min_abs_coeff)
+
+    # `let` prevents the effective threshold from being captured in a `Core.Box`.
+    # The predicate is called in the innermost propagation loops, so it must retain
+    # concrete captures to avoid type-erased calls and per-call allocations.
+    return let effective_min_abs_coeff = effective_min_abs_coeff
+        function truncfunc(pstr, coeff)
+            truncateweight(pstr, max_weight) && return true
+            truncatemincoeff(coeff, effective_min_abs_coeff) && return true
+            truncatefrequency(coeff, max_freq) && return true
+            truncatesins(coeff, max_sins) && return true
+            return !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff)
         end
 
-        return is_truncated
+        return truncfunc
     end
-
-    return truncate!(truncfunc, pobj; kwargs...)
 end

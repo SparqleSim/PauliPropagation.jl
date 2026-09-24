@@ -1,5 +1,7 @@
 using PauliPropagation
-using PauliPropagation.PropagationBase
+const PP = PauliPropagation
+import PauliPropagation.PropagationBase
+const PB = PauliPropagation.PropagationBase
 using Test
 using Random
 
@@ -41,9 +43,15 @@ using Random
 
     include("test_inplace.jl")
 
+    include("test_primitives.jl")
+
+    include("test_mergeandtruncate.jl")
+
     include("test_gradient.jl")
 
     include("test_xortailmerge.jl")
+
+    include("test_multipaulisum.jl")
 
     include("test_montecarlo.jl")
 

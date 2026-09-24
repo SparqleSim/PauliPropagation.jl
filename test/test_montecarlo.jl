@@ -1,6 +1,6 @@
 using Test
 using PauliPropagation
-using PauliPropagation.PropagationBase
+const PP = PauliPropagation
 using Random
 
 
@@ -11,7 +11,7 @@ using Random
     pstr = PauliString(nq, :Z, 1)
 
     # mcsample! only mutates the active view in place: sums are never swapped or resized
-    prop_cache = VectorPauliPropagationCache(VectorPauliSum(pstr))
+    prop_cache = PropagationCache(VectorPauliSum(pstr))
     main_before, aux_before = mainsum(prop_cache), auxsum(prop_cache)
     @test mcsample!(gate, prop_cache, theta) === prop_cache
     @test mainsum(prop_cache) === main_before
@@ -179,6 +179,41 @@ end
 end
 
 
+@testset "mcapplytoall! is written for every Pauli sum" begin
+    nq = 3
+    gate = PauliRotation([:X, :X], [1, 2])
+    gate_mask = symboltoint(nq, [:X, :X], [1, 2])
+    theta = 0.7
+    terms = [symboltoint(nq, :Z, 1), symboltoint(nq, :Z, 3), symboltoint(nq, [:Y, :Z], [2, 3])]
+    branches = Set(vcat(terms, [first(PP.paulirotationproduct(gate_mask, term)) for term in terms]))
+
+    # every term keeps one of its two branches, with unit weight when sampling squared coefficients
+    for psum in (PauliSum(nq, Dict(term => 1.0 for term in terms)), VectorPauliSum(nq, copy(terms), ones(3)))
+        sampled = mcapplytoall!(gate, psum, theta; squared=true, thread=false)
+        @test length(sampled) == 3
+        @test all(term in branches for (term, _) in sampled)
+        @test all(abs(coeff) ≈ 1 for coeff in coefficients(sampled))
+    end
+
+    # path properties count the branch a term keeps, and a Clifford gate counts nothing
+    Random.seed!(7)
+    plain = mcapplytoall!(gate, VectorPauliSum(nq, copy(terms), ones(3)), theta; thread=false)
+    Random.seed!(7)
+    tracked = mcapplytoall!(gate, VectorPauliSum(nq, copy(terms), PauliFreqTracker.(ones(3))), theta; thread=false)
+
+    @test paulis(tracked) == paulis(plain)
+    @test [coeff.coeff for coeff in coefficients(tracked)] ≈ coefficients(plain)
+    for (term, coeff) in zip(terms, coefficients(tracked))
+        @test coeff.freq == coeff.nsins + coeff.ncos == !commutes(gate_mask, term)
+    end
+
+    counts = [(coeff.nsins, coeff.ncos, coeff.freq) for coeff in coefficients(tracked)]
+    mcapplytoall!(CliffordGate(:H, 1), plain; thread=false)
+    mcapplytoall!(CliffordGate(:H, 1), tracked; thread=false)
+    @test [coeff.coeff for coeff in coefficients(tracked)] ≈ coefficients(plain)
+    @test [(coeff.nsins, coeff.ncos, coeff.freq) for coeff in coefficients(tracked)] == counts
+end
+
 @testset "mcsample converts PauliString and PauliSum inputs" begin
     nq = 3
     circuit = efficientsu2circuit(nq, 1)
@@ -292,23 +327,23 @@ end
     # count and the weight it carries land close to, but not always exactly at, their targets
     term_tol = 3
 
-    prop_cache = VectorPauliPropagationCache(deepcopy(psum))
-    total_before = sum(activecoeffs(prop_cache))
-    resample!(prop_cache, target_size; resample_func=systematic_resample!)
-    @test abs(activesize(prop_cache) - target_size) <= term_tol
-    @test isapprox(sum(activecoeffs(prop_cache)), total_before; atol=term_tol * total_before / target_size)
+    prop_cache = PropagationCache(deepcopy(psum))
+    total_before = sum(PP.activecoeffs(prop_cache))
+    resample!(prop_cache, target_size; resample_func=PP.systematic_resample!)
+    @test abs(PP.activesize(prop_cache) - target_size) <= term_tol
+    @test isapprox(sum(PP.activecoeffs(prop_cache)), total_before; atol=term_tol * total_before / target_size)
 
     # target_size equal to the current size is allowed, only exceeding it is an error
-    same_size_cache = VectorPauliPropagationCache(deepcopy(psum))
-    resample!(same_size_cache, n; resample_func=systematic_resample!)
-    @test abs(activesize(same_size_cache) - n) <= term_tol
+    same_size_cache = PropagationCache(deepcopy(psum))
+    resample!(same_size_cache, n; resample_func=PP.systematic_resample!)
+    @test abs(PP.activesize(same_size_cache) - n) <= term_tol
 
-    over_cache = VectorPauliPropagationCache(deepcopy(psum))
+    over_cache = PropagationCache(deepcopy(psum))
     @test_throws ArgumentError resample!(over_cache, n + 1)
 
     # out-of-place resample leaves the input psum untouched
     original = deepcopy(psum)
-    result = resample(psum, target_size; resample_func=systematic_resample!)
+    result = resample(psum, target_size; resample_func=PP.systematic_resample!)
     @test psum == original
     @test abs(length(result) - target_size) <= term_tol
 end
@@ -340,15 +375,15 @@ end
     target_size = max(1, n ÷ 2)
     term_tol = 3
 
-    # multinomial_resample! draws exactly target_size samples, so its count is always exact
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
-    resample!(cache, target_size; resample_func=multinomial_resample!)
-    @test activesize(cache) == target_size
+    # multinomial_resample! keeps every term drawn, so at most target_size terms survive
+    cache = PropagationCache(deepcopy(base_psum))
+    resample!(cache, target_size; resample_func=PP.multinomial_resample!)
+    @test 1 <= PP.activesize(cache) <= target_size
 
-    for f in (systematic_resample!, semideterministic_systematic_resample!)
-        cache = VectorPauliPropagationCache(deepcopy(base_psum))
+    for f in (PP.systematic_resample!, PP.semideterministic_systematic_resample!)
+        cache = PropagationCache(deepcopy(base_psum))
         resample!(cache, target_size; resample_func=f)
-        @test 1 <= activesize(cache) <= target_size + term_tol
+        @test 1 <= PP.activesize(cache) <= target_size + term_tol
     end
 end
 
@@ -361,21 +396,21 @@ end
     target_size = max(1, n ÷ 2)
     term_tol = 3
 
-    # multinomial_resample! draws exactly target_size samples, so its count is always exact
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
-    resample!(cache, target_size; resample_func=multinomial_resample!)
-    @test activesize(cache) == target_size
+    # multinomial_resample! keeps every term drawn, so at most target_size terms survive
+    cache = PropagationCache(deepcopy(base_psum))
+    resample!(cache, target_size; resample_func=PP.multinomial_resample!)
+    @test 1 <= PP.activesize(cache) <= target_size
 
     # the deduplicating variants' comb step is quantized, so the survivor count can land a
     # few terms above target_size, and may also land well below it if many terms deduplicate
-    for f in (systematic_resample!, semideterministic_systematic_resample!)
-        cache = VectorPauliPropagationCache(deepcopy(base_psum))
+    for f in (PP.systematic_resample!, PP.semideterministic_systematic_resample!)
+        cache = PropagationCache(deepcopy(base_psum))
         resample!(cache, target_size; resample_func=f)
-        @test 1 <= activesize(cache) <= target_size + term_tol
+        @test 1 <= PP.activesize(cache) <= target_size + term_tol
     end
 end
 
-@testset "resample converts PauliSum inputs" begin
+@testset "resample takes a PauliSum" begin
     nq = 4
     pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), rand() + 0.1) for _ in 1:30]
     psum = PauliSum(pstrs)
@@ -387,10 +422,10 @@ end
     @test 1 <= length(resampled) <= target_size + 3
     @test sum(abs, coefficients(resampled)) ≈ sum(abs, coefficients(psum)) rtol = 0.3
 
-    # the input is converted, not consumed
+    # out of place leaves the input untouched, in place resamples it
     @test length(psum) == n
-
-    @test_throws ArgumentError resample!(psum, target_size)
+    resample!(psum, target_size)
+    @test 1 <= length(psum) <= target_size + 3
 end
 
 
@@ -400,12 +435,90 @@ end
     base_psum = merge!(VectorPauliSum(pstrs))
     target_size = 5
 
-    # under squared=true, multinomial_resample! assigns every survivor the same weight share
-    # of the *squared* 2-norm: |coeff| = sqrt(sum(abs2) / target_size). If squared were dropped
-    # on the way to the resampler, the magnitude would be the 1-norm share sum(abs) / target_size.
-    squared_share = sqrt(sum(abs2, coefficients(base_psum)) / target_size)
+    # under squared=true, multinomial_resample! gives every survivor its draws' share of the *squared*
+    # 2-norm, |coeff|^2 = n_draws * sum(abs2) / target_size, which conserves that norm. If squared were
+    # dropped on the way to the resampler, the 1-norm would be conserved instead.
+    cache = PropagationCache(deepcopy(base_psum))
+    resample!(cache, target_size; resample_func=PP.multinomial_resample!, squared=true)
+    @test sum(abs2, PP.activecoeffs(cache)) ≈ sum(abs2, coefficients(base_psum))
+end
 
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
-    resample!(cache, target_size; resample_func=multinomial_resample!, squared=true)
-    @test all(isapprox(abs(c), squared_share) for c in activecoeffs(cache))
+
+@testset "mcpropagate! on a MultiPauliSum runs zone by zone" begin
+    nq = 5
+    nl = 4
+    circuit = efficientsu2circuit(nq, nl)
+    thetas = randn(countparameters(circuit))
+    pstr = PauliString(nq, :Z, 2)
+
+    exact_psum = propagate(circuit, pstr, thetas; min_abs_coeff=0)
+
+    # with either kind of zone, and below max_size bit-for-bit the same computation as propagate!
+    for seed in (VectorPauliSum(pstr), PauliSum(pstr)), n_zones in (1, 4)
+        msum = mcpropagate(circuit, MultiPauliSum(seed, n_zones), thetas; max_size=10^9, min_abs_coeff=0)
+        @test msum isa MultiPauliSum
+        @test length(msum) == length(exact_psum)
+        @test all(coeff == getcoeff(exact_psum, term) for (term, coeff) in msum)
+
+        # resampling bounds the ensemble, through either resampling strategy
+        max_size = 10
+        for squared in (false, true)
+            result = mcpropagate(circuit, MultiPauliSum(seed, n_zones), thetas; max_size, squared, min_abs_coeff=1e-8)
+            @test !isempty(result)
+            @test length(result) <= max_size
+        end
+    end
+end
+
+
+@testset "resample! on a MultiPauliSum resamples zone by zone" begin
+    nq = 6
+    circuit = efficientsu2circuit(nq, 3)
+    thetas = randn(countparameters(circuit))
+    psum = propagate(circuit, PauliString(nq, :Z, 2), thetas; min_abs_coeff=0)
+    n = length(psum)
+    target_size = n ÷ 3
+    # the calibrated comb aims the expected survivor count at target_size, and the count fluctuates around it
+    term_tol = target_size ÷ 20
+    total_weight = sum(abs, coefficients(psum))
+
+    for seed in (VectorPauliSum(psum), psum), thread in (true, false)
+        msum = MultiPauliSum(seed, 4)
+
+        # the comb of the systematic strategies conserves the total weight, and only keeps terms of the sum
+        for f in (PP.semideterministic_systematic_resample!, PP.systematic_resample!, PP.multinomial_resample!)
+            cache = PropagationCache(deepcopy(msum))
+            resample!(cache, target_size; resample_func=f, thread)
+            @test 1 <= length(cache) <= target_size + term_tol
+            @test sum(abs, coefficients(cache)) ≈ total_weight rtol = 0.01
+            @test all(sign(coeff) == sign(getcoeff(psum, term)) for (term, coeff) in zip(paulis(cache), coefficients(cache)))
+        end
+
+        # the resampled coefficients conserve the squared 2-norm when resampling squared
+        squared_norm = sum(abs2, coefficients(psum))
+        for f in (PP.systematic_resample!, PP.multinomial_resample!)
+            cache = PropagationCache(deepcopy(msum))
+            resample!(cache, target_size; resample_func=f, squared=true, thread)
+            @test sum(abs2, coefficients(cache)) ≈ squared_norm rtol = 0.01
+        end
+        cache = PropagationCache(deepcopy(msum))
+        @test_throws ArgumentError resample!(cache, target_size; squared=true, resample_func=PP.semideterministic_systematic_resample!)
+
+        # out-of-place resampling leaves the input untouched and returns the same type
+        result = resample(msum, target_size)
+        @test result isa MultiPauliSum
+        @test length(msum) == n
+        @test 1 <= length(result) <= target_size + term_tol
+    end
+
+    # the terms stay where they are, so sorted vector zones stay sorted
+    cache = PropagationCache(MultiPauliSum(VectorPauliSum(psum), 4))
+    merge!(cache)
+    resample!(cache, target_size)
+    @test all(PP.sortedprefix(mainsum(zonecache)) == PP.activesize(zonecache) for zonecache in PP.zonecaches(cache))
+
+    # every zone keeps only what it owns
+    for (zone_id, zone) in enumerate(zones(PP.activesum(cache)))
+        @test all(zoneof(mainsum(cache), term) == zone_id for term in paulis(zone))
+    end
 end

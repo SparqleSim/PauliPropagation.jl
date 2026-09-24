@@ -11,21 +11,14 @@
 
 
 """
-    symmetrymerge(mapfunc, psum::AbstractPauliSum; thread=true) -> AbstractPauliSum
+    symmetrymerge(mapfunc, psum::AbstractPauliSum; thread=true)
+    symmetrymerge(mapfunc, prop_cache::AbstractPauliPropagationCache; thread=true)
 
-Merge equivalent Pauli strings in `psum` under a symmetry mapping.
-Each Pauli string is transformed using `mapfunc(pstr)` to its canonical
-representative, and identical representatives are combined.
-On the `VectorPauliSum` backend, `thread=false` turns off multithreading, the same as in `propagate`.
-
-# Arguments
-- `mapfunc`: A callable mapping each integer Pauli string (`PauliStringType`) 
-  to its canonical representative. It must be constant on symmetry orbits, 
-  i.e. equivalent Pauli strings must map to the same integer.
-- `psum`: A `PauliSum` or `VectorPauliSum` containing Pauli strings and coefficients.
-
-# Returns
-A new Pauli sum of the same type where symmetric terms have been merged.
+Merge equivalent Pauli strings under a symmetry mapping, returning a copy.
+Each Pauli string is transformed using `mapfunc(pstr)` to its canonical representative,
+and identical representatives are combined.
+`mapfunc` must be constant on symmetry orbits, i.e. equivalent Pauli strings must map to the same integer.
+On array-backed sums, `thread=false` turns off multithreading, the same as in `propagate`.
 
 # Example
 ```julia
@@ -36,47 +29,25 @@ add!(psum, :Z, 6)
 symmetrymerge(pstr -> _translatetolowestinteger(pstr, nqubits(psum)), psum)
 ```
 """
-# `mapfunc` is left unrestricted (no `<:Function`) so that any callable can be used.
-function symmetrymerge(mapfunc::F, psum::AbstractPauliSum; thread::Bool=true) where F
-    return symmetrymerge!(mapfunc, deepcopy(psum); thread)
-end
-
+symmetrymerge(mapfunc::F, thing::Union{AbstractPauliSum,AbstractPauliPropagationCache}; thread::Bool=true) where {F} =
+    symmetrymerge!(mapfunc, deepcopy(thing); thread)
 
 """
-    symmetrymerge!(mapfunc, psum::PauliSum; thread=true)
-    symmetrymerge!(mapfunc, psum::VectorPauliSum; thread=true)
-    symmetrymerge!(mapfunc, prop_cache::VectorPauliPropagationCache; thread=true)
+    symmetrymerge!(mapfunc, psum::AbstractPauliSum; thread=true)
+    symmetrymerge!(mapfunc, prop_cache::AbstractPauliPropagationCache; thread=true)
 
 In-place version of [`symmetrymerge`](@ref).
 Returns the merged `psum` or `prop_cache`, which is the same object that was passed in.
-The dict-backed `PauliSum` method accepts `thread` for a uniform interface but runs serially.
 """
-function symmetrymerge!(mapfunc::F, psum::PauliSum; thread::Bool=true) where F
-    merged_psum = similar(psum)
-    # TODO: make this work for a `mapfunc` that also modifies the coefficient
-    for (pstr, coeff) in psum
-        add!(merged_psum, mapfunc(pstr), coeff)
-    end
-
-    # dict keys cannot be remapped in place, so merge into a fresh sum
-    # and move the result into the caller's psum
-    copy!(psum, merged_psum)
-    return psum
+function symmetrymerge!(mapfunc::F, psum::AbstractPauliSum; thread::Bool=true) where {F}
+    prop_cache = PropagationCache(psum)
+    symmetrymerge!(mapfunc, prop_cache; thread)
+    return extractsum!(prop_cache, psum)
 end
 
-function symmetrymerge!(mapfunc::F, psum::VectorPauliSum; thread::Bool=true) where F
-    cache = PropagationCache(psum)
-    symmetrymerge!(mapfunc, cache; thread)
-    return extractsum!(cache, psum)
-end
-
-function symmetrymerge!(mapfunc::F, prop_cache::VectorPauliPropagationCache; thread::Bool=true) where F
-    AK.map!(mapfunc, activeterms(prop_cache), activeterms(prop_cache); max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-    # remapping the terms destroys the sorted order that `merge!` relies on via the 
-    # sorted-prefix marker; reset it so `merge!` performs a full sort and deduplication
-    setsortedprefix!(mainsum(prop_cache), 0)
-    merge!(prop_cache; thread)
-    return prop_cache
+function symmetrymerge!(mapfunc::F, prop_cache::AbstractPauliPropagationCache; thread::Bool=true) where {F}
+    mapterms!(mapfunc, prop_cache; thread)
+    return merge!(prop_cache; thread)
 end
 
 
@@ -84,6 +55,7 @@ end
 
 """
     translationmerge(psum::AbstractPauliSum; thread=true)
+    translationmerge(prop_cache::AbstractPauliPropagationCache; thread=true)
 
 Merge Pauli strings related by translations of a periodic 1D chain.
 
@@ -98,22 +70,26 @@ translationmerge(psum)
 )
 ```
 """
-translationmerge(psum::AbstractPauliSum; thread::Bool=true) = symmetrymerge(_translationmapper(psum), psum; thread)
+translationmerge(thing::Union{AbstractPauliSum,AbstractPauliPropagationCache}; thread::Bool=true) =
+    symmetrymerge(_translationmapper(thing), thing; thread)
 
 """
-    translationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache})
+    translationmerge!(psum::AbstractPauliSum; thread=true)
+    translationmerge!(prop_cache::AbstractPauliPropagationCache; thread=true)
 
 In-place version of [`translationmerge`](@ref) for a periodic 1D chain.
 """
-translationmerge!(psum; thread::Bool=true) = symmetrymerge!(_translationmapper(psum), psum; thread)
+translationmerge!(thing; thread::Bool=true) = symmetrymerge!(_translationmapper(thing), thing; thread)
 
-function _translationmapper(psum)
-    nq = nqubits(psum)
+function _translationmapper(thing)
+    nq = nqubits(thing)
     return pstr -> _translatetolowestinteger(pstr, nq)
 end
 
+
 """
     translationmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; thread=true)
+    translationmerge(prop_cache::AbstractPauliPropagationCache, nx::Integer, ny::Integer; thread=true)
 
 Merge Pauli strings related by translations of a periodic `nx` x `ny` grid.
 Sites are numbered row by row, site `(x, y)` being qubit `(y - 1) * nx + x`,
@@ -130,26 +106,27 @@ translationmerge(psum, 3, 2)
 )
 ```
 """
-function translationmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; thread::Bool=true)
-    return symmetrymerge(_translationmapper(psum, nx, ny), psum; thread)
+function translationmerge(thing::Union{AbstractPauliSum,AbstractPauliPropagationCache}, nx::Integer, ny::Integer; thread::Bool=true)
+    return symmetrymerge(_translationmapper(thing, nx, ny), thing; thread)
 end
 
 """
-    translationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}, nx::Integer, ny::Integer)
+    translationmerge!(psum::AbstractPauliSum, nx::Integer, ny::Integer; thread=true)
+    translationmerge!(prop_cache::AbstractPauliPropagationCache, nx::Integer, ny::Integer; thread=true)
 
 In-place version of [`translationmerge`](@ref) for a periodic `nx` x `ny` grid.
 """
-function translationmerge!(psum, nx::Integer, ny::Integer; thread::Bool=true)
-    return symmetrymerge!(_translationmapper(psum, nx, ny), psum; thread)
+function translationmerge!(thing, nx::Integer, ny::Integer; thread::Bool=true)
+    return symmetrymerge!(_translationmapper(thing, nx, ny), thing; thread)
 end
 
 # builds and returns the canonicalization function; the merge itself
 # happens in `symmetrymerge`/`symmetrymerge!`
-function _translationmapper(psum, nx::Integer, ny::Integer)
-    _checkgridsize(psum, nx, ny)
+function _translationmapper(thing, nx::Integer, ny::Integer)
+    _checkgridsize(thing, nx, ny)
 
     # precompute masks once to accelerate shifting
-    main_mask, wrap_mask = _computeshiftleftmasks(paulitype(psum), nx, ny)
+    main_mask, wrap_mask = _computeshiftleftmasks(paulitype(thing), nx, ny)
 
     return pstr -> _translatetolowestinteger(pstr, nx, ny, main_mask, wrap_mask)
 end
@@ -159,6 +136,7 @@ end
 
 """
     reflectionmerge(psum::AbstractPauliSum; thread=true)
+    reflectionmerge(prop_cache::AbstractPauliPropagationCache; thread=true)
 
 Merge Pauli strings related by reflection of a 1D chain, 
 i.e. by reversing the order of the qubits.
@@ -174,10 +152,12 @@ reflectionmerge(psum)
 )
 ```
 """
-reflectionmerge(psum::AbstractPauliSum; thread::Bool=true) = symmetrymerge(_reflectionmapper(psum), psum; thread)
+reflectionmerge(thing::Union{AbstractPauliSum,AbstractPauliPropagationCache}; thread::Bool=true) =
+    symmetrymerge(_reflectionmapper(thing), thing; thread)
 
 """
-    reflectionmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}; thread=true)
+    reflectionmerge!(psum::AbstractPauliSum; thread=true)
+    reflectionmerge!(prop_cache::AbstractPauliPropagationCache; thread=true)
 
 In-place version of [`reflectionmerge`](@ref) for a 1D chain.
 """
@@ -187,6 +167,7 @@ _reflectionmapper(psum) = _lowestpermutationmapper((_chainreflection(nqubits(psu
 
 """
     reflectionmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; axes=(:x, :y), thread=true)
+    reflectionmerge(prop_cache::AbstractPauliPropagationCache, nx::Integer, ny::Integer; axes=(:x, :y), thread=true)
 
 Merge Pauli strings related by reflections of an `nx` x `ny` grid.
 Sites are numbered row by row, site `(x, y)` being qubit `(y - 1) * nx + x`,
@@ -209,12 +190,13 @@ reflectionmerge(psum, 3, 2)
 )
 ```
 """
-function reflectionmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; axes=(:x, :y), thread::Bool=true)
-    return symmetrymerge(_reflectionmapper(psum, nx, ny, axes), psum; thread)
+function reflectionmerge(thing::Union{AbstractPauliSum,AbstractPauliPropagationCache}, nx::Integer, ny::Integer; axes=(:x, :y), thread::Bool=true)
+    return symmetrymerge(_reflectionmapper(thing, nx, ny, axes), thing; thread)
 end
 
 """
-    reflectionmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}, nx::Integer, ny::Integer; axes=(:x, :y), thread=true)
+    reflectionmerge!(psum::AbstractPauliSum, nx::Integer, ny::Integer; axes=(:x, :y), thread=true)
+    reflectionmerge!(prop_cache::AbstractPauliPropagationCache, nx::Integer, ny::Integer; axes=(:x, :y), thread=true)
 
 In-place version of [`reflectionmerge`](@ref) for an `nx` x `ny` grid.
 """
@@ -232,6 +214,7 @@ end
 
 """
     permutationmerge(psum::AbstractPauliSum; thread=true)
+    permutationmerge(prop_cache::AbstractPauliPropagationCache; thread=true)
 
 Merge Pauli strings related by any permutation of the qubits, 
 as in a system with all-to-all connectivity.
@@ -252,10 +235,12 @@ permutationmerge(psum)
 )
 ```
 """
-permutationmerge(psum::AbstractPauliSum; thread::Bool=true) = symmetrymerge(_permutationcanonicalform, psum; thread)
+permutationmerge(thing::Union{AbstractPauliSum,AbstractPauliPropagationCache}; thread::Bool=true) =
+    symmetrymerge(_permutationcanonicalform, thing; thread)
 
 """
-    permutationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}; thread=true)
+    permutationmerge!(psum::AbstractPauliSum; thread=true)
+    permutationmerge!(prop_cache::AbstractPauliPropagationCache; thread=true)
 
 In-place version of [`permutationmerge`](@ref).
 """
@@ -263,7 +248,9 @@ permutationmerge!(psum; thread::Bool=true) = symmetrymerge!(_permutationcanonica
 
 """
     permutationmerge(psum::AbstractPauliSum, blocks; thread=true)
-    permutationmerge!(psum::Union{VectorPauliSum, VectorPauliPropagationCache}, blocks; thread=true)
+    permutationmerge(prop_cache::AbstractPauliPropagationCache, blocks; thread=true)
+    permutationmerge!(psum::AbstractPauliSum, blocks; thread=true)
+    permutationmerge!(prop_cache::AbstractPauliPropagationCache, blocks; thread=true)
 
 Merge Pauli strings related by permutations within each of the contiguous site blocks
 `blocks = ((lo_1, hi_1), ..., (lo_k, hi_k))`, i.e. under `S_{B_1} x ... x S_{B_k}`.
@@ -286,9 +273,9 @@ permutationmerge(psum, ((1, 2), (3, 4)))   # swaps within {1,2} and within {3,4}
 )
 ```
 """
-function permutationmerge(psum::AbstractPauliSum, blocks; thread::Bool=true)
-    _checkblocks(nqubits(psum), blocks)
-    return symmetrymerge(pstr -> _permutationcanonicalform(pstr, blocks), psum; thread)
+function permutationmerge(thing::Union{AbstractPauliSum,AbstractPauliPropagationCache}, blocks; thread::Bool=true)
+    _checkblocks(nqubits(thing), blocks)
+    return symmetrymerge(pstr -> _permutationcanonicalform(pstr, blocks), thing; thread)
 end
 
 function permutationmerge!(psum, blocks; thread::Bool=true)
