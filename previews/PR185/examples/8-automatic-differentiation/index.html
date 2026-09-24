@@ -46,7 +46,7 @@ thetas = randn(nparams)</code></pre><p>One expectation evaluation</p><pre><code 
 max_weight = 5
 
 @time psum = propagate(circuit, H, thetas; min_abs_coeff, max_weight);
-overlapwithzero(psum)</code></pre><pre><code class="nohighlight hljs">  2.175236 seconds (1.99 M allocations: 105.556 MiB, 1.93% gc time, 99.40% compilation time)
+overlapwithzero(psum)</code></pre><pre><code class="nohighlight hljs">  1.980442 seconds (1.99 M allocations: 105.588 MiB, 2.17% gc time, 99.47% compilation time)
 
 
 
@@ -56,7 +56,7 @@ overlapwithzero(psum)</code></pre><pre><code class="nohighlight hljs">  2.175236
     # this function is not fully type-stable because min_abs_coeff and max_weight are global variables
     psum = propagate(circuit, H, thetas; min_abs_coeff, max_weight);
     return overlapwithzero(psum)
-end</code></pre><pre><code class="nohighlight hljs">naivelossfunction (generic function with 1 method)</code></pre><p>The loss works</p><pre><code class="language-julia hljs">@time naivelossfunction(thetas)</code></pre><pre><code class="nohighlight hljs">  2.498322 seconds (8.36 M allocations: 436.176 MiB, 12.14% gc time, 99.60% compilation time)
+end</code></pre><pre><code class="nohighlight hljs">naivelossfunction (generic function with 1 method)</code></pre><p>The loss works</p><pre><code class="language-julia hljs">@time naivelossfunction(thetas)</code></pre><pre><code class="nohighlight hljs">  2.594231 seconds (9.53 M allocations: 496.551 MiB, 10.59% gc time, 99.62% compilation time)
 
 
 
@@ -84,14 +84,14 @@ using ForwardDiff: gradient
 
     return lossfunction
 end</code></pre><pre><code class="nohighlight hljs">generate_lossfunction (generic function with 1 method)</code></pre><pre><code class="language-julia hljs"># define the loss function that works with AD
-lossfunction = generate_lossfunction(circuit, H, min_abs_coeff, max_weight)</code></pre><pre><code class="language-julia hljs">@time lossfunction(thetas)</code></pre><pre><code class="nohighlight hljs">  0.043085 seconds (24.40 k allocations: 1.283 MiB, 76.91% compilation time)
+lossfunction = generate_lossfunction(circuit, H, min_abs_coeff, max_weight)</code></pre><pre><code class="language-julia hljs">@time lossfunction(thetas)</code></pre><pre><code class="nohighlight hljs">  0.041788 seconds (24.40 k allocations: 1.283 MiB, 76.15% compilation time)
 
 
 
 
 
 7.266319836543831</code></pre><p>And gradients work.</p><pre><code class="language-julia hljs"># the gradients of the first ZZ layer is 
-@time gradient(lossfunction, thetas)</code></pre><pre><code class="nohighlight hljs">  3.203026 seconds (3.55 M allocations: 222.193 MiB, 3.19% gc time, 80.84% compilation time)
+@time gradient(lossfunction, thetas)</code></pre><pre><code class="nohighlight hljs">  3.124025 seconds (3.55 M allocations: 222.273 MiB, 2.74% gc time, 71.02% compilation time)
 
 
 
@@ -124,7 +124,7 @@ lossfunction = generate_lossfunction(circuit, H, min_abs_coeff, max_weight)</cod
   0.492212711204039
  -0.1518033382788791
  -0.020242571118084987</code></pre><h3 id="A-simpler-alternative:-rewindgradient"><a class="docs-heading-anchor" href="#A-simpler-alternative:-rewindgradient">A simpler alternative: <code>rewindgradient</code></a><a id="A-simpler-alternative:-rewindgradient-1"></a><a class="docs-heading-anchor-permalink" href="#A-simpler-alternative:-rewindgradient" title="Permalink"></a></h3><p>PauliPropagation also has a gradient function built specifically for circuits like this one: <code>rewindgradient</code>. It computes the expectation value and the full gradient together, in a single pass over the circuit, directly on a <code>VectorPauliSum</code> — no coefficient-type conversion and no closures needed for speed.</p><pre><code class="language-julia hljs">@time expec, grad = rewindgradient(circuit, VectorPauliSum(H), thetas, overlapwithzero; min_abs_coeff, max_weight)
-expec</code></pre><pre><code class="nohighlight hljs">  9.087166 seconds (9.68 M allocations: 523.867 MiB, 1.81% gc time, 99.75% compilation time)
+expec</code></pre><pre><code class="nohighlight hljs">  8.181487 seconds (9.64 M allocations: 521.555 MiB, 2.72% gc time, 99.68% compilation time)
 
 
 
@@ -196,6 +196,8 @@ plot!(nparams_list, t_rg_list, marker=:o, label=&quot;rewindgradient&quot;)</cod
 [91m[1mERROR: [22m[39mLoadError: ArgumentError: Path to conda environment is not valid: /home/runner/.julia/conda/3/x86_64
 Stacktrace:
   [1] [0m[1mprefix[22m[0m[1m([22m[90mpath[39m::[0mString[0m[1m)[22m
+
+
  [90m   @[39m [35mConda[39m [90m~/.julia/packages/Conda/05AVg/src/[39m[90m[4mConda.jl:52[24m[39m
   [2] top-level scope
  [90m   @[39m [90m~/.julia/packages/Conda/05AVg/src/[39m[90m[4mConda.jl:57[24m[39m
@@ -250,7 +252,7 @@ Stacktrace:
 in expression starting at /home/runner/.julia/packages/Conda/05AVg/src/Conda.jl:1
 in expression starting at stdin:5
 [36m[1m┌ [22m[39m[36m[1mInfo: [22m[39mSkipping precompilation due to precompilable error. Importing IJuliaExt [6e0e26ac-fb43-584e-b323-fdbabcf95812].
-[36m[1m└ [22m[39m  exception = Error when precompiling module, potentially caused by a __precompile__(false) declaration in the module.</code></pre><p><img src="../8-automatic-differentiation_files/8-automatic-differentiation_35_5.png" alt="png"/></p><p><strong>Accuracy lost to truncation.</strong> A finite difference runs the circuit twice per parameter — once nudged up, once down — and each of those two runs makes its own truncation decisions. Small differences in which terms get dropped between the two runs can swing the result a lot. <code>ForwardDiff</code> and <code>rewindgradient</code> both differentiate a single truncated run instead, so they tend to stay closer to the untruncated answer.</p><pre><code class="language-julia hljs">using LinearAlgebra
+[36m[1m└ [22m[39m  exception = Error when precompiling module, potentially caused by a __precompile__(false) declaration in the module.</code></pre><p><img src="../8-automatic-differentiation_files/8-automatic-differentiation_35_6.png" alt="png"/></p><p><strong>Accuracy lost to truncation.</strong> A finite difference runs the circuit twice per parameter — once nudged up, once down — and each of those two runs makes its own truncation decisions. Small differences in which terms get dropped between the two runs can swing the result a lot. <code>ForwardDiff</code> and <code>rewindgradient</code> both differentiate a single truncated run instead, so they tend to stay closer to the untruncated answer.</p><pre><code class="language-julia hljs">using LinearAlgebra
 
 Random.seed!(4)
 nl_acc = 10
@@ -275,4 +277,4 @@ end
 
 plot(xscale=:log10, yscale=:log10, xticks=(cutoffs, string.(cutoffs)), xlabel=&quot;Truncation Threshold&quot;, ylabel=&quot;Gradient Relative Error&quot;, legend=:topleft)
 plot!(cutoffs, fad_errors, marker=:o, label=&quot;ForwardDiff&quot;)
-plot!(cutoffs, rg_errors, marker=:o, label=&quot;rewindgradient&quot;)</code></pre><p><img src="../8-automatic-differentiation_files/8-automatic-differentiation_37_0.png" alt="png"/></p><p>You are now ready to go! Plug either gradient function into your favorite optimizer and see what happens.</p><p>Remember: </p><ul><li>These gradients are approximate when using truncation, and the size of that error is not the exactly the same for every method. We have found finite differences to be more inaccurate, but <code>ForwardDiff</code> and <code>rewindgradient</code> are very similar.</li><li><code>rewindgradient</code> needs only one pass over the circuit no matter how many parameters it has, so for circuits with many parameters it is typically both faster and more accurate under truncation than finite differences.</li><li>Forward-mode differentiation (<code>ForwardDiff.jl</code>) scales linearly with the number of parameters, in addition to the extra runtime of simulating a deeper circuit.</li><li>Reverse-mode differentiation can be faster, and drastically so when the gradient is compiled, at the cost of large memory overheads.</li><li>You can also propagate each Pauli term in the Hamiltonian individually and add up their gradients. That can be easily multithreaded, but make sure that each <code>propagate</code> and <code>rewindgradient</code> are passed the <code>thread=false</code> kwarg to not compete with the outer threading. </li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../7-custom-pathproperties/">« 7. Record custom path properties</a><a class="docs-footer-nextpage" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Thursday 24 September 2026 10:14">Thursday 24 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+plot!(cutoffs, rg_errors, marker=:o, label=&quot;rewindgradient&quot;)</code></pre><p><img src="../8-automatic-differentiation_files/8-automatic-differentiation_37_0.png" alt="png"/></p><p>You are now ready to go! Plug either gradient function into your favorite optimizer and see what happens.</p><p>Remember: </p><ul><li>These gradients are approximate when using truncation, and the size of that error is not the exactly the same for every method. We have found finite differences to be more inaccurate, but <code>ForwardDiff</code> and <code>rewindgradient</code> are very similar.</li><li><code>rewindgradient</code> needs only one pass over the circuit no matter how many parameters it has, so for circuits with many parameters it is typically both faster and more accurate under truncation than finite differences.</li><li>Forward-mode differentiation (<code>ForwardDiff.jl</code>) scales linearly with the number of parameters, in addition to the extra runtime of simulating a deeper circuit.</li><li>Reverse-mode differentiation can be faster, and drastically so when the gradient is compiled, at the cost of large memory overheads.</li><li>You can also propagate each Pauli term in the Hamiltonian individually and add up their gradients. That can be easily multithreaded, but make sure that each <code>propagate</code> and <code>rewindgradient</code> are passed the <code>thread=false</code> kwarg to not compete with the outer threading. </li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../7-custom-pathproperties/">« 7. Record custom path properties</a><a class="docs-footer-nextpage" href="../9-advanced-custom-gates/">9. Advanced - How to Define Custom Gates »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Thursday 24 September 2026 11:56">Thursday 24 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
