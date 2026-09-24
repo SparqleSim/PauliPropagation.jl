@@ -1,7 +1,7 @@
 ###
 ##
 # Variants of `applymergetruncate!` for the rotation gates on a VectorPauliSum, and on a MultiPauliSum,
-# that branch and merge in one call: the rule reads only the bytes the gate touches, a product too
+# that branch and merge in one call: the rule reads only the limbs the gate acts on, a product too
 # heavy to ever be kept is never made, and the coefficient truncations are paid in the merge of the
 # branch, which trusts the order the branch left instead of checking it.
 ##
@@ -69,7 +69,7 @@ function _fusedrotation!(gate, prop_cache, kept_val, new_val, on_commuting::Bool
     end
 
     mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
-    rule = LocalRotationRule(_gatemask(mask, _localterms(prop_cache)), kept_val, new_val, on_commuting)
+    rule = LocalRotationRule(_limbmask(mask), kept_val, new_val, on_commuting)
     capped_rule = isinf(max_weight) ? rule : WeightCapped(rule, mask, max_weight)
 
     truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
@@ -77,18 +77,13 @@ function _fusedrotation!(gate, prop_cache, kept_val, new_val, on_commuting::Bool
     return xorbranchmergeandtruncate!(capped_rule, truncfunc, prop_cache, mask; thread)
 end
 
-# the terms whose array type decides which local read applies; every zone holds the same kind
-_localterms(prop_cache::PauliPropagation.VectorPauliPropagationCache) = terms(mainsum(prop_cache))
-_localterms(prop_cache::PauliPropagation.MultiPauliPropagationCache) = terms(first(zones(prop_cache)))
-
-
 ### The rules
 
 """
     LocalRotationRule(gate_mask, kept_val, new_val, on_commuting)
 
-The rule of a rotation for `xorbranch!`, deciding from the bytes or words that `gate_mask` touches when it is a `ByteMask` or a `WordMask`,
-and from the whole Pauli string otherwise.
+The rule of a rotation for `xorbranch!`. The array kernels decide from the limbs that `gate_mask` acts on when it is a `LimbMask`,
+and every other mask or storage from the whole Pauli string.
 A term that commutes with the gate branches when `on_commuting`, and one that anticommutes otherwise.
 """
 struct LocalRotationRule{M,C}
@@ -98,11 +93,12 @@ struct LocalRotationRule{M,C}
     on_commuting::Bool
 end
 
-# the array kernels come with an index, and read through the bytes
+# the array kernels come with an index, so the rule reads the Pauli string only as far as `_gateandterm` needs,
+# and the coefficient only when the term branches
 @inline function PropagationBase.ruleat(rule::LocalRotationRule, terms, coefficients, ii::Int)
-    bytes = _bytesof(terms, rule.gate_mask)
-    if _gatecommutes(rule.gate_mask, terms, bytes, ii) == rule.on_commuting
-        sign = _gatesign(rule.gate_mask, terms, bytes, ii)
+    gate, pstr = _gateandterm(rule.gate_mask, terms, ii)
+    if commutes(gate, pstr) == rule.on_commuting
+        _, sign = PauliPropagation.paulirotationproduct(gate, pstr)
         coeff = @inbounds coefficients[ii]
         return Branch(coeff * rule.kept_val, coeff * rule.new_val * sign)
     else
@@ -112,9 +108,9 @@ end
 
 # every other storage comes with the term
 @inline function (rule::LocalRotationRule)(pstr, coeff)
-    mask = _plainmask(rule.gate_mask)
-    if commutes(mask, pstr) == rule.on_commuting
-        _, sign = PauliPropagation.paulirotationproduct(mask, pstr)
+    gate = _plainmask(rule.gate_mask)
+    if commutes(gate, pstr) == rule.on_commuting
+        _, sign = PauliPropagation.paulirotationproduct(gate, pstr)
         return Branch(coeff * rule.kept_val, coeff * rule.new_val * sign)
     else
         return Unchanged()

@@ -16,8 +16,8 @@ const AK = AcceleratedKernels
 include("./truncation.jl")
 
 
-# Byte-local masks for one- and two-qubit gates on wide Pauli strings
-include("./bytemasks.jl")
+# Limb-local reads for one- and two-qubit gates on Pauli strings wider than one limb
+include("./limbmasks.jl")
 
 
 # PauliSum overload for PauliRotation

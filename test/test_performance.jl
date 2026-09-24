@@ -107,20 +107,18 @@ end
     end
 end
 
-@testset "fused Vector on wide Pauli strings matches stock exactly" begin
-    # from 96 qubits on, a Pauli string is wider than a machine word and the fused rotations read
-    # only the bytes a gate touches. The long-range rotation is too spread out for that, so it also
+@testset "fused Vector on Pauli strings of several limbs matches stock exactly" begin
+    # above 32 qubits, a Pauli string spans several 64-bit limbs and the fused rotations read only
+    # the limbs a gate acts on. On 100 qubits the long-range rotation acts on three limbs, so it also
     # covers the fall-back to the whole string.
-    nq = 100
-    topo = bricklayertopology(nq; periodic=false)
-
-    for nl in (2, 3)
+    for nq in (40, 100), nl in (2, 3)
+        topo = bricklayertopology(nq; periodic=false)
         circuit = hardwareefficientcircuit(nq, nl; topology=topo)
-        push!(circuit, PauliRotation([:X, :Y, :Z], [1, 40, 90]))
+        push!(circuit, PauliRotation([:X, :Y, :Z], [1, nq ÷ 2, nq]))
 
         Random.seed!(30 + nl)
         thetas = randn(countparameters(circuit))
-        pstr = PauliString(nq, :Z, 50)
+        pstr = PauliString(nq, :Z, nq ÷ 2)
 
         for max_weight in (3, 4)
             stock = propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_weight)
@@ -133,6 +131,33 @@ end
             @test fused == unthreaded
         end
     end
+end
+
+@testset "a rotation decides from the limbs it acts on as from the whole Pauli string" begin
+    # commutation and sign add up over the limbs, so for every term, reading only the limbs a gate
+    # acts on, next to each other or far apart, has to give the outcome that the whole string gives
+    Random.seed!(5)
+    for nq in (40, 100, 1000)
+        TT = getinttype(nq)
+        terms = rand(TT, 256)
+        coeffs = randn(length(terms))
+
+        for (symbols, qinds) in (([:X], [1]), ([:Y, :Z], [2, 3]), ([:Z, :X], [32, 33]), ([:X, :Y], [5, nq]), ([:Y], [nq]))
+            gate_mask = symboltoint(TT, symbols, qinds)
+            limb_mask = Performance._limbmask(gate_mask)
+            @test limb_mask isa Performance.LimbMask
+
+            for on_commuting in (false, true)
+                limb_rule = Performance.LocalRotationRule(limb_mask, 0.6, 0.8, on_commuting)
+                whole_rule = Performance.LocalRotationRule(gate_mask, 0.6, 0.8, on_commuting)
+                @test all(PB.ruleat(limb_rule, terms, coeffs, ii) == whole_rule(terms[ii], coeffs[ii]) for ii in eachindex(terms))
+            end
+        end
+    end
+
+    # a gate on three limbs, and a term type of one limb, are read whole
+    @test Performance._limbmask(symboltoint(getinttype(100), [:X, :Y, :Z], [1, 50, 100])) isa getinttype(100)
+    @test Performance._limbmask(symboltoint(getinttype(30), [:X, :Y], [1, 30])) isa getinttype(30)
 end
 
 @testset "fused Dict and fused Vector agree with each other and with stock within a small tolerance under coefficient truncation" begin
