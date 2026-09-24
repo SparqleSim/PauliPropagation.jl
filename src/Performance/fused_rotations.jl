@@ -15,7 +15,7 @@ const FusedCache = Union{PauliPropagation.VectorPauliPropagationCache,PauliPropa
 Fused overload of `applymergetruncate!` for `PauliRotation` -- see file header.
 Only used when `fused=true`; otherwise falls through (via `invoke`) to default behavior.
 """
-function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotation, prop_cache::FusedCache, theta;
+@inline function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotation, prop_cache::FusedCache, theta;
     fused::Bool=false,
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing,
     thread::Bool=true, kwargs...)
@@ -36,7 +36,7 @@ end
 Fused overload of `applymergetruncate!` for `ImaginaryPauliRotation` -- see file header.
 Only used when `fused=true`; otherwise falls through (via `invoke`) to default behavior.
 """
-function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPauliRotation, prop_cache::FusedCache, tau;
+@inline function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPauliRotation, prop_cache::FusedCache, tau;
     fused::Bool=false, normalize_coeffs::Bool=true,
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing,
     thread::Bool=true, kwargs...)
