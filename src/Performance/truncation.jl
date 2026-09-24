@@ -5,7 +5,8 @@
 ###
 
 # Hands the gate back to the library's own `applymergetruncate!`, the method one step less specific
-# than every overload in this module. Used by each of them when it cannot fuse.
+# than every overload in this module. Used by each of them when it cannot fuse. The overloads are
+# inlined, so that a call without `fused`, as every stock propagation makes, compiles this path alone.
 @inline _invokedefault(gate, prop_cache, param; kwargs...) =
     invoke(PauliPropagation.applymergetruncate!,
         Tuple{typeof(gate),PauliPropagation.AbstractPauliPropagationCache,typeof(param)},
