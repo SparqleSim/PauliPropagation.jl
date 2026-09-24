@@ -73,6 +73,23 @@ Base.@nospecializeinfer function _eachtask(@nospecialize(f), n_tasks::Int)
     return
 end
 
+# The array to keep in place of `array`, with room for `n` elements. During a propagation, a growing
+# array on the CPU is copied into a new one by the workers, each copying its own stripe; otherwise
+# `array` itself is resized.
+function _resizearray(array, n::Int)
+    if n <= length(array) || !_iscpuarray(array) || _currentworkers() === nothing
+        return resize!(array, n)
+    end
+    resized_array = similar(array, n)
+    task_partitioner, n_tasks = _preparetasks(length(array), true)
+    function copy_stripe!(task_id)
+        chunk = task_partitioner[task_id]
+        copyto!(resized_array, chunk.start, array, chunk.start, length(chunk))
+    end
+    _eachtask(copy_stripe!, n_tasks)
+    return resized_array
+end
+
 
 ### The workers of a propagation
 
@@ -80,6 +97,7 @@ mutable struct Workers
     @atomic round::Int          # bumped once per round; a worker runs when it sees it move
     @atomic pending::Int        # workers that have not finished the current round
     @atomic stop::Bool
+    inround::Bool               # set by the owner while it works its share of a round
     job::Any                    # the f of the current round, boxed once for all workers to call
     n_tasks::Int                # the number of tasks of the current round
     error::Any                  # an exception a worker hit, rethrown by the owner
@@ -91,7 +109,8 @@ mutable struct Workers
 end
 
 # The workers of the propagation in progress, if any. They take one round at a time from their
-# owner alone, so a propagation started meanwhile from another task spawns its tasks instead.
+# owner alone, so a propagation started meanwhile from another task spawns its tasks instead, and
+# so does a pass that the owner runs as its share of a round.
 mutable struct WorkerSlot
     @atomic current::Union{Nothing,Workers}
 end
@@ -99,7 +118,7 @@ const _WORKERS = WorkerSlot(nothing)
 
 function _currentworkers()
     workers = @atomic :acquire _WORKERS.current
-    return (workers !== nothing && workers.owner === current_task()) ? workers : nothing
+    return (workers !== nothing && workers.owner === current_task() && !workers.inround) ? workers : nothing
 end
 
 """
@@ -120,7 +139,7 @@ function withworkers(f::F) where {F}
     owner_id = something(findfirst(==(Threads.threadid()), thread_ids), 0)
     (owner_id == 0 || !current_task().sticky) && return _onpoolthread(f, first(thread_ids))
 
-    workers = Workers(0, 0, false, nothing, 0, nothing, Task[], length(thread_ids), owner_id,
+    workers = Workers(0, 0, false, false, nothing, 0, nothing, Task[], length(thread_ids), owner_id,
         current_task(), Threads.Condition())
     (@atomicreplace _WORKERS.current nothing => workers).success || return f()
 
@@ -187,6 +206,7 @@ Base.@nospecializeinfer function _round!(@nospecialize(f), workers::Workers, n_t
     # gate's rule and mask, each as wide as a term
     workers.job = f
     workers.n_tasks = n_tasks
+    workers.inround = true
     @atomic :release workers.pending = length(workers.tasks)
     _nextround!(workers)
 
@@ -196,6 +216,7 @@ Base.@nospecializeinfer function _round!(@nospecialize(f), workers::Workers, n_t
     while (@atomic :acquire workers.pending) > 0
         _spinwait()
     end
+    workers.inround = false
 
     if workers.error !== nothing
         err = workers.error
