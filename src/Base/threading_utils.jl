@@ -79,7 +79,8 @@ mutable struct Workers
     @atomic round::Int          # bumped once per round; a worker runs when it sees it move
     @atomic pending::Int        # workers that have not finished the current round
     @atomic stop::Bool
-    job::Any                    # (f, n_tasks) of the current round
+    job::Any                    # the f of the current round, boxed once for all workers to call
+    n_tasks::Int                # the number of tasks of the current round
     error::Any                  # an exception a worker hit, rethrown by the owner
     tasks::Vector{Task}
     n_workers::Int              # one per thread of the default pool
@@ -118,7 +119,7 @@ function withworkers(f::F) where {F}
     owner_id = something(findfirst(==(Threads.threadid()), thread_ids), 0)
     (owner_id == 0 || !current_task().sticky) && return _onpoolthread(f, first(thread_ids))
 
-    workers = Workers(0, 0, false, nothing, nothing, Task[], length(thread_ids), owner_id,
+    workers = Workers(0, 0, false, nothing, 0, nothing, Task[], length(thread_ids), owner_id,
         current_task(), Threads.Condition())
     (@atomicreplace _WORKERS.current nothing => workers).success || return f()
 
@@ -181,7 +182,10 @@ function _round!(f::F, workers::Workers, n_tasks::Int) where {F}
     # stopped from outside, by an interrupt of the task that waits for the owner
     (@atomic :acquire workers.stop) && throw(InterruptException())
 
-    workers.job = (f, n_tasks)
+    # f on its own: a worker that took it out of a tuple would copy it, and a closure holds the
+    # gate's rule and mask, each as wide as a term
+    workers.job = f
+    workers.n_tasks = n_tasks
     @atomic :release workers.pending = length(workers.tasks)
     _nextround!(workers)
 
@@ -208,7 +212,7 @@ function _workerloop(workers::Workers, worker_id::Int)
         seen = _awaitround(workers, seen)
         (@atomic workers.stop) && return
 
-        f, n_tasks = workers.job::Tuple{Any,Int}
+        f, n_tasks = workers.job, workers.n_tasks
         try
             _worktasks(f, worker_id, workers.n_workers, n_tasks)
         catch err
