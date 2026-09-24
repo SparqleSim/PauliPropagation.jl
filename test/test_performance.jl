@@ -133,31 +133,35 @@ end
     end
 end
 
-@testset "a rotation decides from the limbs it acts on as from the whole Pauli string" begin
-    # commutation and sign add up over the limbs, so for every term, reading only the limbs a gate
-    # acts on, next to each other or far apart, has to give the outcome that the whole string gives
+@testset "a rotation's rule decides from the limbs it acts on as from the whole Pauli string" begin
+    # commutation and sign add up over the limbs, so for every term, the library's rule built for and asked about
+    # only the limbs a gate acts on, next to each other or far apart, has to give the outcome of the whole strings
     Random.seed!(5)
     for nq in (40, 100, 1000)
         TT = getinttype(nq)
         terms = rand(TT, 256)
         coeffs = randn(length(terms))
+        prop_cache = PauliPropagation.VectorPauliPropagationCache(VectorPauliSum(nq, copy(terms), copy(coeffs)))
 
         for (symbols, qinds) in (([:X], [1]), ([:Y, :Z], [2, 3]), ([:Z, :X], [32, 33]), ([:X, :Y], [5, nq]), ([:Y], [nq]))
-            gate_mask = symboltoint(TT, symbols, qinds)
-            limb_mask = Performance._limbmask(gate_mask)
-            @test limb_mask isa Performance.LimbMask
+            for gate in (PauliRotation(symbols, qinds), ImaginaryPauliRotation(symbols, qinds))
+                makerule(gate_mask) = PauliPropagation._branchrule(gate, prop_cache, 0.3; gate_mask)
+                whole_rule = makerule(symboltoint(TT, symbols, qinds))
+                limb_rule = Performance._onlimbs(makerule, symboltoint(TT, symbols, qinds))
+                @test limb_rule isa Performance.OnLimbs
 
-            for on_commuting in (false, true)
-                limb_rule = Performance.LocalRotationRule(limb_mask, 0.6, 0.8, on_commuting)
-                whole_rule = Performance.LocalRotationRule(gate_mask, 0.6, 0.8, on_commuting)
+                # the array kernels ask through `ruleat`, every other storage with the whole term
                 @test all(PB.ruleat(limb_rule, terms, coeffs, ii) == whole_rule(terms[ii], coeffs[ii]) for ii in eachindex(terms))
+                @test all(limb_rule(terms[ii], coeffs[ii]) == whole_rule(terms[ii], coeffs[ii]) for ii in eachindex(terms))
             end
         end
     end
 
-    # a gate on three limbs, and a term type of one limb, are read whole
-    @test Performance._limbmask(symboltoint(getinttype(100), [:X, :Y, :Z], [1, 50, 100])) isa getinttype(100)
-    @test Performance._limbmask(symboltoint(getinttype(30), [:X, :Y], [1, 30])) isa getinttype(30)
+    # a gate on three limbs, and a term type of one limb, are asked about whole
+    wide_mask = symboltoint(getinttype(100), [:X, :Y, :Z], [1, 50, 100])
+    @test Performance._onlimbs(identity, wide_mask) === wide_mask
+    narrow_mask = symboltoint(getinttype(30), [:X, :Y], [1, 30])
+    @test Performance._onlimbs(identity, narrow_mask) === narrow_mask
 end
 
 @testset "fused Dict and fused Vector agree with each other and with stock within a small tolerance under coefficient truncation" begin

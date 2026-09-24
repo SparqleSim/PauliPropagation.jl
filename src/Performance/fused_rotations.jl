@@ -1,9 +1,9 @@
 ###
 ##
 # Variants of `applymergetruncate!` for the rotation gates on a VectorPauliSum, and on a MultiPauliSum,
-# that branch and merge in one call: the rule reads only the limbs the gate acts on, a product too
-# heavy to ever be kept is never made, and the coefficient truncations are paid in the merge of the
-# branch, which trusts the order the branch left instead of checking it.
+# that branch and merge in one call by the library's own rule: the rule is asked only about the limbs
+# the gate acts on, a product too heavy to ever be kept is never made, and the coefficient truncations
+# are paid in the merge of the branch, which trusts the order the branch left instead of checking it.
 ##
 ###
 
@@ -26,7 +26,7 @@ Only used when `fused=true`; otherwise falls through (via `invoke`) to default b
     end
 
     _checkunusedkwargs(kwargs)
-    return _fusedrotation!(gate, prop_cache, cos(theta), sin(theta), false;
+    return _fusedrotation!(gate, prop_cache, theta;
         min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
 end
 
@@ -47,7 +47,7 @@ Only used when `fused=true`; otherwise falls through (via `invoke`) to default b
     end
 
     _checkunusedkwargs(kwargs)
-    _fusedrotation!(gate, prop_cache, cosh(tau), sinh(tau), true;
+    _fusedrotation!(gate, prop_cache, tau;
         min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
 
     # an empty sum has no identity coefficient to normalize by
@@ -58,63 +58,20 @@ Only used when `fused=true`; otherwise falls through (via `invoke`) to default b
     return prop_cache
 end
 
-# Both rotations branch by the gate's Pauli string: a `PauliRotation` the terms that anticommute
-# with it, an `ImaginaryPauliRotation` the ones that commute.
-function _fusedrotation!(gate, prop_cache, kept_val, new_val, on_commuting::Bool;
+# Both rotations branch by the library's rule of the gate, built for and asked about only the limbs the gate acts on
+# wherever `_onlimbs` can. Only a new term can be heavier than the term it came from, and the cap makes none above
+# `max_weight`, so the merge truncates by coefficient alone.
+function _fusedrotation!(gate, prop_cache, param;
     min_abs_coeff::Real, max_weight::Real, max_freq::Real, max_sins::Real, customtruncfunc, thread::Bool)
 
-    PauliPropagation._check_qind_range(nqubits(prop_cache), gate.qinds)
-    if isempty(prop_cache)
-        return prop_cache
-    end
-
-    mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
-    rule = LocalRotationRule(_limbmask(mask), kept_val, new_val, on_commuting)
+    mask = PauliPropagation._branchmask(gate, prop_cache)
+    makerule(gate_mask) = PauliPropagation._branchrule(gate, prop_cache, param; gate_mask)
+    rule = _onlimbs(makerule, mask)
     capped_rule = isinf(max_weight) ? rule : WeightCapped(rule, mask, max_weight)
 
-    truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
+    truncfunc(pstr, coeff) = _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
 
     return xorbranchmergeandtruncate!(capped_rule, truncfunc, prop_cache, mask; thread)
-end
-
-### The rules
-
-"""
-    LocalRotationRule(gate_mask, kept_val, new_val, on_commuting)
-
-The rule of a rotation for `xorbranch!`. The array kernels decide from the limbs that `gate_mask` acts on when it is a `LimbMask`,
-and every other mask or storage from the whole Pauli string.
-A term that commutes with the gate branches when `on_commuting`, and one that anticommutes otherwise.
-"""
-struct LocalRotationRule{M,C}
-    gate_mask::M
-    kept_val::C
-    new_val::C
-    on_commuting::Bool
-end
-
-# the array kernels come with an index, so the rule reads the Pauli string only as far as `_gateandterm` needs,
-# and the coefficient only when the term branches
-@inline function PropagationBase.ruleat(rule::LocalRotationRule, terms, coefficients, ii::Int)
-    gate, pstr = _gateandterm(rule.gate_mask, terms, ii)
-    if commutes(gate, pstr) == rule.on_commuting
-        _, sign = PauliPropagation.paulirotationproduct(gate, pstr)
-        coeff = @inbounds coefficients[ii]
-        return Branch(coeff * rule.kept_val, coeff * rule.new_val * sign)
-    else
-        return Unchanged()
-    end
-end
-
-# every other storage comes with the term
-@inline function (rule::LocalRotationRule)(pstr, coeff)
-    gate = _plainmask(rule.gate_mask)
-    if commutes(gate, pstr) == rule.on_commuting
-        _, sign = PauliPropagation.paulirotationproduct(gate, pstr)
-        return Branch(coeff * rule.kept_val, coeff * rule.new_val * sign)
-    else
-        return Unchanged()
-    end
 end
 
 """

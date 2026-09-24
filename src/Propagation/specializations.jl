@@ -22,10 +22,11 @@ end
 
 # The rule of a gate that branches by `_branchmask`, for `xorbranch!`, which also validates the
 # gate against the cache. A coefficient type that branches differently overloads it for its cache.
-function _branchrule(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta)
+# A rotation's rule can also be built for the limbs of `gate_mask` that hold the whole gate, and then
+# decides from the same limbs of every Pauli string.
+function _branchrule(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta; gate_mask=_branchmask(gate, prop_cache))
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    gate_mask = _branchmask(gate, prop_cache)
     cos_val = cos(theta)
     sin_val = sin(theta)
 
@@ -109,10 +110,9 @@ function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::A
     return xorbranch!(_branchrule(gate, prop_cache, tau), prop_cache, _branchmask(gate, prop_cache); thread)
 end
 
-function _branchrule(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau)
+function _branchrule(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau; gate_mask=_branchmask(gate, prop_cache))
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    gate_mask = _branchmask(gate, prop_cache)
     cosh_val = cosh(tau)
     sinh_val = sinh(tau)
 

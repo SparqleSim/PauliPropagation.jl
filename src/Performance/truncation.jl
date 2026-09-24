@@ -33,7 +33,8 @@ it produces terms.
 
 A product below the threshold on its own still shifts a term it collides with, so dropping it as it
 is produced leaves that term artificially large, and more terms then clear the threshold than
-should. Weight is not tested here, but in `_fusedtruncfunc`, which reads the Pauli string alone.
+should. Weight is not tested here: the rotations on a VectorPauliSum or MultiPauliSum never make a
+term above `max_weight` (`WeightCapped`), and the dictionary path tests it in `_fusedtruncfunc`.
 """
 @inline function _coefftruncfunc(pstr, coeff; min_abs_coeff, max_freq, max_sins, customtruncfunc)
     PauliPropagation.truncatemincoeff(coeff, min_abs_coeff) && return true

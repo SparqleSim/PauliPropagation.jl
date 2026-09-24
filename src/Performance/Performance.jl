@@ -17,7 +17,7 @@ include("./truncation.jl")
 
 
 # Limb-local reads for one- and two-qubit gates on Pauli strings wider than one limb
-include("./limbmasks.jl")
+include("./limbreads.jl")
 
 
 # PauliSum overload for PauliRotation
