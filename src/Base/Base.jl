@@ -143,11 +143,7 @@ export
     Branch
 
 include("./NTupleInteger/limbreads.jl")
-export
-    onlimbs,
-    OnLimbs,
-    limbspan,
-    limbwindow
+export onlimbs
 
 include("./Merge/Merge.jl")
 export

@@ -23,8 +23,8 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::AbstractPa
     return xorbranch!(_branchrule(gate, prop_cache, theta), prop_cache, _branchmask(gate, prop_cache); thread)
 end
 
-# The rule of a rotation for `xorbranch!`, which also validates the gate against the cache.
-# A coefficient type that branches differently overloads it for its cache.
+# The rule of a gate that branches by `_branchmask`, for `xorbranch!`, which also validates the
+# gate against the cache. A coefficient type that branches differently overloads it for its cache.
 function _branchrule(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
     return onlimbs(_rotationrule, _branchmask(gate, prop_cache), cos(theta), sin(theta))

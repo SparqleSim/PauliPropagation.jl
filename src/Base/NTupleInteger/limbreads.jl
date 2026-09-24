@@ -11,9 +11,9 @@
 """
     onlimbs(buildrule, mask, args...)
 
-The rule `buildrule(mask, args...)` of `xorbranch!`, which has to read a term only through `mask`. Where the terms span
-more 64-bit limbs than `mask` acts on, the rule is built for those limbs of `mask` instead, and an `OnLimbs` asks it
-about the same limbs of every term. Called once per gate, never per term.
+The rule `buildrule(mask, args...)` of `xorbranch!`, which has to read a term only through `mask`.
+Where the terms span more 64-bit limbs than `mask` acts on, the rule is built for those limbs of `mask` instead, and an `OnLimbs` asks it about the same limbs of every term.
+Called once per gate, never per term.
 """
 function onlimbs(buildrule::F, mask, args::Vararg{Any,K}) where {F,K}
     inds = limbspan(mask)
@@ -47,23 +47,23 @@ end
 """
     limbspan(mask)
 
-The first and last 64-bit limb of `mask` that are not zero, or `nothing` when more than two are, when none is,
-or when the terms have at most two limbs, so that a whole term is as cheap to read.
+The first and last 64-bit limb of `mask` that are not zero, or `nothing` when more than two are, 
+when none is, or when the terms have at most two limbs, so that a whole term is as cheap to read.
 """
 limbspan(mask) = nothing
 function limbspan(mask::NTupleInteger)
-    acted_on = findall(!iszero, mask.limbs)
-    if isempty(acted_on) || length(acted_on) > 2 || length(mask.limbs) <= 2
+    n_acted_on = count(!iszero, mask.limbs)
+    if n_acted_on == 0 || n_acted_on > 2 || length(mask.limbs) <= 2
         return nothing
     end
-    return (first(acted_on), last(acted_on))
+    return (findfirst(!iszero, mask.limbs)::Int, findlast(!iszero, mask.limbs)::Int)
 end
 
 """
     limbwindow(term, inds)
 
-The limbs `inds` of `term` as one `NTupleInteger{2}`. A window within one limb names it twice, and the second copy is
-left empty so that it changes nothing.
+The limbs `inds` of `term` as one `NTupleInteger{2}`.
+A window within one limb names it twice, and the second copy is left empty so that it changes nothing.
 """
 @inline function limbwindow(term::NTupleInteger, inds::NTuple{2,Int})
     second = inds[1] == inds[2] ? zero(UInt64) : term.limbs[inds[2]]

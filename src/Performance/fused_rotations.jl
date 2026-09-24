@@ -58,8 +58,7 @@ Only used when `fused=true`; otherwise falls through (via `invoke`) to default b
     return prop_cache
 end
 
-# Both rotations branch by the library's rule of the gate, which reads only the limbs the gate acts on where it can,
-# capped at `max_weight`, so that the merge only meets a term above it among the terms it was given.
+# Both rotations branch by the library's rule of the gate, capped so that no new term above `max_weight` is made.
 function _fusedrotation!(gate, prop_cache, param;
     min_abs_coeff::Real, max_weight::Real, max_freq::Real, max_sins::Real, customtruncfunc, thread::Bool)
 
@@ -86,24 +85,23 @@ end
 
 @inline function (capped::WeightCapped)(pstr, coeff)
     branched = capped.rule(pstr, coeff)
-    if branched isa Branch
-        return _capweight(capped, branched, pstr)
-    end
-    return branched
+    return _capweight(capped, branched, pstr)
 end
 
 @inline function PropagationBase.ruleat(capped::WeightCapped, terms, coefficients, ii::Int)
     branched = PropagationBase.ruleat(capped.rule, terms, coefficients, ii)
     if branched isa Branch
         return _capweight(capped, branched, (@inbounds terms[ii]))
+    else
+        return branched
     end
-    return branched
 end
 
 # a term whose new term is too heavy only keeps its own coefficient
-@inline function _capweight(capped::WeightCapped, branched::Branch, pstr)
-    if PauliPropagation.truncateweight(pstr ⊻ capped.mask, capped.max_weight)
+@inline function _capweight(capped::WeightCapped, branched, pstr)
+    if branched isa Branch && PauliPropagation.truncateweight(pstr ⊻ capped.mask, capped.max_weight)
         return Kept(branched.kept)
+    else
+        return branched
     end
-    return branched
 end
