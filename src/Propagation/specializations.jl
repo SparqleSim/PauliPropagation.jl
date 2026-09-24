@@ -4,6 +4,9 @@
 # Pauli string is a rule for `xorbranch!`, one that only rescales coefficients a function for
 # `mapcoeffsbypair!`, and one with a single output per input a transform for `map!`.
 # The storage decides how each of them runs.
+# The rule of a gate for `xorbranch!` is built from the gate's own Pauli string, its mask, and numbers
+# alone, so it reads a Pauli string only through the mask, and `onlimbs` builds it for only the limbs
+# the gate acts on where the Pauli strings span more.
 ##
 ###
 
@@ -20,16 +23,15 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::AbstractPa
     return xorbranch!(_branchrule(gate, prop_cache, theta), prop_cache, _branchmask(gate, prop_cache); thread)
 end
 
-# The rule of a gate that branches by `_branchmask`, for `xorbranch!`, which also validates the
-# gate against the cache. A coefficient type that branches differently overloads it for its cache.
-# A rotation's rule can also be built for the limbs of `gate_mask` that hold the whole gate, and then
-# decides from the same limbs of every Pauli string.
-function _branchrule(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta; gate_mask=_branchmask(gate, prop_cache))
+# The rule of a rotation for `xorbranch!`, which also validates the gate against the cache.
+# A coefficient type that branches differently overloads it for its cache.
+function _branchrule(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
+    return onlimbs(_rotationrule, _branchmask(gate, prop_cache), cos(theta), sin(theta))
+end
 
-    cos_val = cos(theta)
-    sin_val = sin(theta)
-
+# a Pauli string that anticommutes with `gate_mask` keeps `cos_val` of its coefficient and branches with `sin_val`
+function _rotationrule(gate_mask, cos_val, sin_val)
     function rotate(pstr, coeff)
         if commutes(gate_mask, pstr)
             return Unchanged()
@@ -110,12 +112,13 @@ function PropagationBase.applytoall!(gate::ImaginaryPauliRotation, prop_cache::A
     return xorbranch!(_branchrule(gate, prop_cache, tau), prop_cache, _branchmask(gate, prop_cache); thread)
 end
 
-function _branchrule(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau; gate_mask=_branchmask(gate, prop_cache))
+function _branchrule(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
+    return onlimbs(_imaginaryrotationrule, _branchmask(gate, prop_cache), cosh(tau), sinh(tau))
+end
 
-    cosh_val = cosh(tau)
-    sinh_val = sinh(tau)
-
+# a Pauli string that commutes with `gate_mask` keeps `cosh_val` of its coefficient and branches with `sinh_val`
+function _imaginaryrotationrule(gate_mask, cosh_val, sinh_val)
     # the sign of paulirotationproduct is also the minus sign in
     # e^{-τ/2 P} Q e^{-τ/2 P} = cosh(τ) Q - sinh(τ) PQ for commuting P and Q
     function rotate(pstr, coeff)
@@ -235,15 +238,19 @@ end
 function _branchrule(gate::AmplitudeDampingNoise, prop_cache::AbstractPauliPropagationCache, gamma)
     _check_qind_range(nqubits(prop_cache), gate.qind)
     _check_noise_strength(AmplitudeDampingNoise, gamma)
+    return onlimbs(_dampingrule, _branchmask(gate, prop_cache), gamma)
+end
 
-    qind = gate.qind
+# The mask holds Z on the damped qubit, so a Pauli string shares none of its bits there for I, both for Z,
+# and one for X and Y.
+function _dampingrule(gate_mask, gamma)
     damp_val = sqrt(1 - gamma)
 
     function damp(pstr, coeff)
-        pauli = getpauli(pstr, qind)
-        if pauli == 0
+        pauli = pstr & gate_mask
+        if iszero(pauli)
             return Unchanged()
-        elseif pauli == 3
+        elseif pauli == gate_mask
             return Branch((1 - gamma) * coeff, gamma * coeff)
         else
             return Kept(damp_val * coeff)

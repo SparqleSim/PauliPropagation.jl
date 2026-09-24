@@ -12,12 +12,8 @@ using AcceleratedKernels
 const AK = AcceleratedKernels
 
 
-# Truncation shared by the fused gate applications
-include("./truncation.jl")
-
-
-# Limb-local reads for one- and two-qubit gates on Pauli strings wider than one limb
-include("./limbreads.jl")
+# Dispatch shared by the fused gate applications
+include("./dispatch.jl")
 
 
 # PauliSum overload for PauliRotation

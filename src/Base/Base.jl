@@ -8,7 +8,7 @@ using Random
 include("./utils.jl")
 export tonumber
 
-include("./wide_integers.jl")
+include("./NTupleInteger/datatype.jl")
 export NTupleInteger
 
 include("./threading_utils.jl")
@@ -141,6 +141,13 @@ export
     Unchanged,
     Kept,
     Branch
+
+include("./NTupleInteger/limbreads.jl")
+export
+    onlimbs,
+    OnLimbs,
+    limbspan,
+    limbwindow
 
 include("./Merge/Merge.jl")
 export

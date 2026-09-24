@@ -274,4 +274,90 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
         @test lines[1][1] == 'X' && lines[1][40] == 'Y' && lines[3][40] == 'Z'
         @test count(==('I'), join(lines)) == 117
     end
+
+    @testset "a gate that branches by a Pauli string decides from the limbs it acts on as from the whole string" begin
+        # commutation, the sign and the Paulis under the mask add up over the limbs, so for every term, the rule built
+        # for and asked about only the limbs a gate acts on, next to each other or far apart, has to decide as the rule
+        # built for the whole mask
+        wholerule(::PauliRotation, gate_mask) = PP._rotationrule(gate_mask, cos(0.3), sin(0.3))
+        wholerule(::ImaginaryPauliRotation, gate_mask) = PP._imaginaryrotationrule(gate_mask, cosh(0.3), sinh(0.3))
+        wholerule(::AmplitudeDampingNoise, gate_mask) = PP._dampingrule(gate_mask, 0.3)
+
+        rng = MersenneTwister(5)
+        for nq in (40, 100, 1000)
+            TT = getinttype(nq)
+            terms = rand(rng, TT, 256)
+            coeffs = randn(rng, length(terms))
+            prop_cache = PP.VectorPauliPropagationCache(VectorPauliSum(nq, copy(terms), copy(coeffs)))
+
+            gates = Any[AmplitudeDampingNoise(qind) for qind in (1, 32, 33, nq)]
+            for (symbols, qinds) in (([:X], [1]), ([:Y, :Z], [2, 3]), ([:Z, :X], [32, 33]), ([:X, :Y], [5, nq]), ([:Y], [nq]))
+                push!(gates, PauliRotation(symbols, qinds), ImaginaryPauliRotation(symbols, qinds))
+            end
+
+            for gate in gates
+                gate_mask = PP._branchmask(gate, prop_cache)
+                whole_rule = wholerule(gate, gate_mask)
+                rule = PP._branchrule(gate, prop_cache, 0.3)
+                @test (rule isa PB.OnLimbs) == !isnothing(PB.limbspan(gate_mask))
+
+                # the array kernels ask through `ruleat`, every other storage with the whole term
+                @test all(PB.ruleat(rule, terms, coeffs, ii) == whole_rule(terms[ii], coeffs[ii]) for ii in eachindex(terms))
+                @test all(rule(terms[ii], coeffs[ii]) == whole_rule(terms[ii], coeffs[ii]) for ii in eachindex(terms))
+            end
+        end
+
+        # a gate within one limb or across two is asked about those; one on three limbs, or on Pauli strings of at
+        # most two limbs, is asked about the whole string
+        @test PB.limbspan(symboltoint(getinttype(100), [:X, :Y], [2, 3])) == (1, 1)
+        @test PB.limbspan(symboltoint(getinttype(100), [:Z, :X], [32, 33])) == (1, 2)
+        @test isnothing(PB.limbspan(symboltoint(getinttype(100), [:X, :Y, :Z], [1, 50, 100])))
+        @test isnothing(PB.limbspan(symboltoint(getinttype(40), [:X], [40])))
+        @test isnothing(PB.limbspan(symboltoint(getinttype(30), [:X, :Y], [1, 30])))
+    end
+
+    @testset "a circuit across a limb boundary propagates as on the qubits of one word" begin
+        # the same circuit on qubits 1 to 20 of a machine word, and on qubits 55 to 74 of four limbs, where it straddles
+        # the boundary between the second and third limb, must give the same Pauli strings, shifted
+        nq_small, nq_wide, offset = 20, 100, 54
+        Random.seed!(7)
+        circuit = Gate[]
+        for _ in 1:3
+            append!(circuit, (PauliRotation(:X, q) for q in 1:nq_small))
+            append!(circuit, (PauliRotation(:Y, q) for q in 1:nq_small))
+            append!(circuit, (PauliRotation([:Z, :Z], [q, q + 1]) for q in 1:nq_small-1))
+            append!(circuit, (CliffordGate(:CNOT, [q, q + 1]) for q in 2:4:nq_small-1))
+            push!(circuit, PauliRotation([:Y, :X], [1, nq_small]), AmplitudeDampingNoise(nq_small ÷ 2 + 1))
+        end
+        # in [0, 1), as the damping strength must be
+        thetas = rand(countparameters(circuit))
+
+        shiftgate(gate::PauliRotation) = PauliRotation(gate.symbols, gate.qinds .+ offset)
+        shiftgate(gate::CliffordGate) = CliffordGate(gate.symbol, gate.qinds .+ offset)
+        shiftgate(gate::AmplitudeDampingNoise) = AmplitudeDampingNoise(gate.qind + offset)
+        towide(pstr) = getinttype(nq_wide)(pstr) << (2 * offset)
+
+        # the shifted terms of `small` against those of `wide`, whose coefficients `samecoeff` compares
+        function sameshifted(small, wide, samecoeff)
+            small_dict = Dict(towide(pstr) => coeff for (pstr, coeff) in zip(paulis(small), coefficients(small)))
+            wide_dict = Dict(zip(paulis(wide), coefficients(wide)))
+            return keys(small_dict) == keys(wide_dict) &&
+                   all(samecoeff(small_dict[pstr], wide_dict[pstr]) for pstr in keys(small_dict))
+        end
+
+        for T in (PauliSum, VectorPauliSum)
+            small = propagate(circuit, T(PauliString(nq_small, :Z, 10)), thetas; min_abs_coeff=0.0)
+            wide = propagate(shiftgate.(circuit), T(PauliString(nq_wide, :Z, 10 + offset)), thetas; min_abs_coeff=0.0)
+            @test length(small) > 1000
+            @test sameshifted(small, wide, (a, b) -> isapprox(a, b; rtol=1e-12, atol=1e-15))
+        end
+
+        # the rule of a rotation on path properties reads the limbs as well
+        rotations = filter(gate -> gate isa PauliRotation, circuit)
+        rotation_thetas = randn(countparameters(rotations))
+        small = propagate(rotations, PauliString(nq_small, :Z, 10, PauliFreqTracker(1.0)), rotation_thetas; min_abs_coeff=0.0)
+        wide = propagate(shiftgate.(rotations), PauliString(nq_wide, :Z, 10 + offset, PauliFreqTracker(1.0)), rotation_thetas; min_abs_coeff=0.0)
+        @test length(small) > 500
+        @test sameshifted(small, wide, (a, b) -> a.freq == b.freq && isapprox(tonumber(a), tonumber(b); rtol=1e-12, atol=1e-15))
+    end
 end
