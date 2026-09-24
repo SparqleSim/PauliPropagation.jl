@@ -145,7 +145,7 @@ end
 
 # a term whose new term is too heavy only keeps its own coefficient
 @inline function _capweight(capped::WeightCapped, branched, pstr)
-    if branched isa Branch && _truncateweight(pstr ⊻ capped.mask, capped.max_weight)
+    if branched isa Branch && PauliPropagation.truncateweight(pstr ⊻ capped.mask, capped.max_weight)
         return Kept(branched.kept)
     else
         return branched
