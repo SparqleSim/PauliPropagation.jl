@@ -64,7 +64,11 @@ function _mergeandtruncate!(::DictStorage, truncfunc::F, prop_cache::AbstractPro
         term_sum2, term_sum1 = term_sum1, term_sum2
     end
 
-    mergewith!(mergefunc, storage(term_sum1), storage(term_sum2))
+    if _hasdictinternals(storage(term_sum1)) && _hasdictinternals(storage(term_sum2))
+        _mergewith_internals!(storage(term_sum1), storage(term_sum2))
+    else
+        mergewith!(mergefunc, storage(term_sum1), storage(term_sum2))
+    end
     empty!(term_sum2)
 
     setmainsum!(prop_cache, term_sum1)

@@ -91,6 +91,10 @@ end
 # Two terms never create the same new term, so each is set rather than added. 
 # Returns the number of terms the rule touched.
 function _branchdict!(rule::F, term_sum, new_sum, mask) where {F}
+    if _hasdictinternals(storage(term_sum))
+        return _branchdict_internals!(rule, storage(term_sum), new_sum, mask)
+    end
+
     n_touched = 0
 
     for (term, coefficient) in term_sum

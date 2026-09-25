@@ -44,9 +44,14 @@ end
 
 ### Dictionary storage
 
-# Updating values while iterating is supported by `Dict`; defer deletions until the walk is over.
 function _mapandtruncate!(::DictStorage, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
     dict = storage(mainsum(prop_cache))
+    if _hasdictinternals(dict)
+        _mapandtruncate_internals!(mapfunc, truncfunc, dict)
+        return prop_cache
+    end
+
+    # Updating values while iterating is supported by `Dict`; defer deletions until the walk is over.
     dropped = Vector{keytype(dict)}()
 
     for (term, coefficient) in dict

@@ -167,6 +167,9 @@ end
 
 @inline function _iterate(::DictStorage, term_sum::AbstractTermSum, args...)
     dict_storage = storage(term_sum)
+    if _hasdictinternals(dict_storage)
+        return _iterate_internals(dict_storage, args...)
+    end
     return iterate(dict_storage, args...)
 end
 
@@ -257,6 +260,11 @@ end
 
 @inline function _add!(::DictStorage, term_sum::AbstractTermSum, term, coeff)
     dict_storage = storage(term_sum)
+    if _hasdictinternals(dict_storage) && term isa keytype(dict_storage)
+        _add_internals!(dict_storage, term, coeff)
+        return term_sum
+    end
+
     if haskey(dict_storage, term)
         dict_storage[term] = mergefunc(dict_storage[term], coeff)
     else

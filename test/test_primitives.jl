@@ -230,6 +230,45 @@ end
     @test coefficients(cpu_cache) == coefficients(portable_cache)
 end
 
+@testset "Dictionary storage walked through its slots" begin
+    # the dictionary walks run on this Julia, instead of falling back to the public interface
+    @test PB._DICT_INTERNALS
+
+    nq = 8
+    rng = MersenneTwister(5)
+    dict_sum = PauliSum(nq)
+    for _ in 1:4000
+        add!(dict_sum, symboltoint(rand(rng, (:I, :X, :Y, :Z), nq)), randn(rng))
+    end
+
+    # a filter that leaves few terms rebuilds the table smaller, and keeps every term it should
+    keep_large(pstr, coeff) = abs(coeff) > 2.5
+    filtered = filter(keep_large, dict_sum)
+    @test PB.storage(filtered) == filter(entry -> abs(entry.second) > 2.5, PB.storage(dict_sum))
+    @test 16 * length(filtered) < length(PB.storage(dict_sum).slots)
+    @test 16 * length(filtered) >= length(PB.storage(filtered).slots)
+
+    # iterating visits the pairs Base visits, in its order, on a full and on a sparse table
+    sparse_sum = deepcopy(dict_sum)
+    for pstr in collect(keys(PB.storage(sparse_sum)))[1:end-50]
+        delete!(PB.storage(sparse_sum), pstr)
+    end
+    @test collect(dict_sum) == collect(PB.storage(dict_sum))
+    @test collect(sparse_sum) == collect(PB.storage(sparse_sum))
+
+    # a coefficient mapped by its pair is written back to its own term
+    double_odd(pstr, coeff) = isodd(pstr) ? 2 * coeff : coeff
+    @test PB.storage(mapcoeffsbypair!(double_odd, deepcopy(dict_sum))) == Dict(pstr => double_odd(pstr, coeff) for (pstr, coeff) in PB.storage(dict_sum))
+
+    # a rule that changes the sum it is applied to is stopped before the walk reads the tables again
+    cache = PropagationCache(deepcopy(dict_sum))
+    function delete_own_term(pstr, coeff)
+        delete!(PB.storage(mainsum(cache)), pstr)
+        return PB.Unchanged()
+    end
+    @test_throws ArgumentError PB.xorbranch!(delete_own_term, cache, symboltoint(nq, :X, 1))
+end
+
 @testset "Flat map primitive" begin
     nq = 4
     rng = MersenneTwister(11)

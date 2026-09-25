@@ -191,6 +191,10 @@ mapslots!(weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCach
 
 function _mapslots!(::DictStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; kwargs...) where {W,F}
     main_sum = mainsum(prop_cache)
+    if _hasdictinternals(storage(main_sum))
+        _mapslots_internals!(weight_func, new_coeff_func, storage(main_sum))
+        return prop_cache
+    end
 
     slot_end = zero(real(numcoefftype(prop_cache)))
     for (term, coeff) in main_sum
