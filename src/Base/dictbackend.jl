@@ -110,50 +110,23 @@ function _mapslots_internals!(weight_func::W, new_coeff_func::F, dict) where {W,
     return dict
 end
 
-# Adds every entry of `source` into `dict`, combining equal terms with `mergefunc`, as `mergewith!(mergefunc, dict, source)`.
-function _mergewith_internals!(dict::Dict, source::Dict)
-    # grow the table to hold both, as `mergewith!` does from Julia 1.11 on, but never shrink it
-    n_entries = length(dict) + length(source)
-    if 3 * n_entries > 2 * length(dict.slots)
-        sizehint!(dict, n_entries)
-    end
-
-    slots, source_keys, source_vals = _dicttables(source)
-    age = source.age
-
-    for i in _FilledSlots(slots)
-        _add_internals!(dict, (@inbounds source_keys[i]), (@inbounds source_vals[i]))
-        _checkunchanged(source, age)
-    end
-
-    return dict
-end
-
 # The entry in the first filled slot from `i` on and the slot to go on from, as `iterate(dict, i)`.
 # The tables are read at every step, so the entry is found within them even if the dictionary changed in between.
-@inline function _iterate_internals(dict::Dict, i::Int=1)
+@inline function _iterate_internals(dict::Dict{K,V}, i::Int=1) where {K,V}
     if isempty(dict)
         return nothing
     end
+    # a state before the first slot ends the iteration, as for an array, so the slots are never read before their start
+    if i < 1
+        return nothing
+    end
     slots, dict_keys, dict_vals = _dicttables(dict)
-    next = iterate(_FilledSlots(slots), max(i, 1))
+    next = iterate(_FilledSlots(slots), i)
     if next === nothing
         return nothing
     end
     slot, next_slot = next
-    return Pair((@inbounds dict_keys[slot]), (@inbounds dict_vals[slot])), next_slot
-end
-
-
-### Shrinking
-
-# A dictionary keeps its table when entries are deleted, and every walk visits the whole table,
-# so a filter that leaves fewer entries than a sixteenth of the slots rebuilds the table with room for twice the entries.
-function _shrinkifsparse!(dict)
-    if _hasdictinternals(dict) && 16 * length(dict) < length(dict.slots)
-        sizehint!(dict, 2 * length(dict))
-    end
-    return dict
+    return Pair{K,V}((@inbounds dict_keys[slot]), (@inbounds dict_vals[slot])), next_slot
 end
 
 
@@ -273,10 +246,6 @@ function _dictinternalsagree()
             reference[term] = -reference[term]
         end
     end
-
-    source = Dict{UInt64,Float64}(UInt64(k) * 0x9e3779b97f4a7c15 => 1.0 for k in 1500:2500)
-    _mergewith_internals!(walked, source)
-    mergewith!(+, reference, source)
 
     n_filled = count(i -> Base.isslotfilled(walked, i), eachindex(walked.slots))
     if !(n_visited == n_entries && walked == reference && n_filled == length(walked) && length(walked.slots) % 8 == 0)
