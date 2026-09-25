@@ -384,4 +384,12 @@ end
 
     @test all(islinear(MultiPauliSum(psum, n_zones)) for n_zones in (1, 2, 4, 8))
     @test PP.zonemap(MultiPauliSum(psum, 8)) isa PP.ZoneMap
+
+    # the same on terms wider than a machine word
+    wide_psum = VectorPauliSum([PauliString(100, [:X, :Z], [q, q + 1]) for q in 1:99])
+    wide_msum = MultiPauliSum(wide_psum, 8)
+    @test all(all(zoneof(wide_msum, term) == zone_id for term in paulis(zone)) for (zone_id, zone) in enumerate(wide_msum.zones))
+    wide_terms_and_masks = zip(rand(paulitype(wide_psum), 100), rand(paulitype(wide_psum), 100))
+    @test all(zoneof(wide_msum, term ⊻ mask) - 1 == (zoneof(wide_msum, term) - 1) ⊻ (zoneof(wide_msum, mask) - 1)
+              for (term, mask) in wide_terms_and_masks)
 end

@@ -219,6 +219,8 @@ end
 Build a predicate that combines the supported truncation criteria. When
 `min_rel_coeff` is specified, its absolute threshold is calculated from the
 largest coefficient currently in `pobj` and captured by the returned function.
+The coefficient is tested before the Pauli weight, and without a `max_weight` the
+weight is not tested at all.
 """
 function buildtruncfunc(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
@@ -231,14 +233,20 @@ function buildtruncfunc(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCac
     # The predicate is called in the innermost propagation loops, so it must retain
     # concrete captures to avoid type-erased calls and per-call allocations.
     return let effective_min_abs_coeff = effective_min_abs_coeff
-        function truncfunc(pstr, coeff)
-            truncateweight(pstr, max_weight) && return true
+        function coefftruncfunc(pstr, coeff)
             truncatemincoeff(coeff, effective_min_abs_coeff) && return true
             truncatefrequency(coeff, max_freq) && return true
             truncatesins(coeff, max_sins) && return true
             return !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff)
         end
 
+        # Decided once here rather than for every term: a predicate that never reads the Pauli string lets
+        # the loops calling it move each string they keep without first handing it to the predicate.
+        if isinf(max_weight)
+            return coefftruncfunc
+        end
+
+        truncfunc(pstr, coeff) = coefftruncfunc(pstr, coeff) || truncateweight(pstr, max_weight)
         return truncfunc
     end
 end

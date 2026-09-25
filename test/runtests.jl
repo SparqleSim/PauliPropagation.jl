@@ -15,6 +15,8 @@ using Random
 
     include("test_paulialgebra_utils.jl")
 
+    include("test_wideintegers.jl")
+
     include("test_noisechannels.jl")
 
     include("test_circuits.jl")

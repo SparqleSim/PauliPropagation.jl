@@ -1,9 +1,9 @@
 ###
 ##
 # Variants of `applymergetruncate!` for the rotation gates on a VectorPauliSum, and on a MultiPauliSum,
-# that branch and merge in one call: the rule reads only the bytes the gate touches, a product too
-# heavy to ever be kept is never made, and the coefficient truncations are paid in the merge of the
-# branch, which trusts the order the branch left instead of checking it.
+# that branch and merge in one call by the library's own rule: the rule is asked only about the limbs
+# the gate acts on, a product too heavy to ever be kept is never made, and the truncations are paid
+# in the merge of the branch, which trusts the order the branch left instead of checking it.
 ##
 ###
 
@@ -26,7 +26,7 @@ Only used when `fused=true`; otherwise falls through (via `invoke`) to default b
     end
 
     _checkunusedkwargs(kwargs)
-    return _fusedrotation!(gate, prop_cache, cos(theta), sin(theta), false;
+    return _fusedrotation!(gate, prop_cache, theta;
         min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
 end
 
@@ -47,7 +47,7 @@ Only used when `fused=true`; otherwise falls through (via `invoke`) to default b
     end
 
     _checkunusedkwargs(kwargs)
-    _fusedrotation!(gate, prop_cache, cosh(tau), sinh(tau), true;
+    _fusedrotation!(gate, prop_cache, tau;
         min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
 
     # an empty sum has no identity coefficient to normalize by
@@ -58,67 +58,16 @@ Only used when `fused=true`; otherwise falls through (via `invoke`) to default b
     return prop_cache
 end
 
-# Both rotations branch by the gate's Pauli string: a `PauliRotation` the terms that anticommute
-# with it, an `ImaginaryPauliRotation` the ones that commute.
-function _fusedrotation!(gate, prop_cache, kept_val, new_val, on_commuting::Bool;
+# Both rotations branch by the library's rule of the gate, capped so that no new term above `max_weight` is made.
+function _fusedrotation!(gate, prop_cache, param;
     min_abs_coeff::Real, max_weight::Real, max_freq::Real, max_sins::Real, customtruncfunc, thread::Bool)
 
-    PauliPropagation._check_qind_range(nqubits(prop_cache), gate.qinds)
-    if isempty(prop_cache)
-        return prop_cache
-    end
-
-    mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
-    rule = LocalRotationRule(_gatemask(mask, _localterms(prop_cache)), kept_val, new_val, on_commuting)
+    mask = PauliPropagation._branchmask(gate, prop_cache)
+    rule = PauliPropagation._branchrule(gate, prop_cache, param)
     capped_rule = isinf(max_weight) ? rule : WeightCapped(rule, mask, max_weight)
-
-    truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
+    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
 
     return xorbranchmergeandtruncate!(capped_rule, truncfunc, prop_cache, mask; thread)
-end
-
-# the terms whose array type decides which local read applies; every zone holds the same kind
-_localterms(prop_cache::PauliPropagation.VectorPauliPropagationCache) = terms(mainsum(prop_cache))
-_localterms(prop_cache::PauliPropagation.MultiPauliPropagationCache) = terms(first(zones(prop_cache)))
-
-
-### The rules
-
-"""
-    LocalRotationRule(gate_mask, kept_val, new_val, on_commuting)
-
-The rule of a rotation for `xorbranch!`, deciding from the bytes or words that `gate_mask` touches when it is a `ByteMask` or a `WordMask`,
-and from the whole Pauli string otherwise.
-A term that commutes with the gate branches when `on_commuting`, and one that anticommutes otherwise.
-"""
-struct LocalRotationRule{M,C}
-    gate_mask::M
-    kept_val::C
-    new_val::C
-    on_commuting::Bool
-end
-
-# the array kernels come with an index, and read through the bytes
-@inline function PropagationBase.ruleat(rule::LocalRotationRule, terms, coefficients, ii::Int)
-    bytes = _bytesof(terms, rule.gate_mask)
-    if _gatecommutes(rule.gate_mask, terms, bytes, ii) == rule.on_commuting
-        sign = _gatesign(rule.gate_mask, terms, bytes, ii)
-        coeff = @inbounds coefficients[ii]
-        return Branch(coeff * rule.kept_val, coeff * rule.new_val * sign)
-    else
-        return Unchanged()
-    end
-end
-
-# every other storage comes with the term
-@inline function (rule::LocalRotationRule)(pstr, coeff)
-    mask = _plainmask(rule.gate_mask)
-    if commutes(mask, pstr) == rule.on_commuting
-        _, sign = PauliPropagation.paulirotationproduct(mask, pstr)
-        return Branch(coeff * rule.kept_val, coeff * rule.new_val * sign)
-    else
-        return Unchanged()
-    end
 end
 
 """
@@ -126,6 +75,7 @@ end
 
 A rule of `xorbranch!` whose new terms above `max_weight` are not made.
 They could never be kept, and this way they are never written or sorted.
+They are weighed on the whole Pauli string, also when `rule` is asked about only some of its limbs.
 """
 struct WeightCapped{R,TT,W<:Real}
     rule::R
@@ -149,7 +99,7 @@ end
 
 # a term whose new term is too heavy only keeps its own coefficient
 @inline function _capweight(capped::WeightCapped, branched, pstr)
-    if branched isa Branch && _truncateweight(pstr ⊻ capped.mask, capped.max_weight)
+    if branched isa Branch && PauliPropagation.truncateweight(pstr ⊻ capped.mask, capped.max_weight)
         return Kept(branched.kept)
     else
         return branched

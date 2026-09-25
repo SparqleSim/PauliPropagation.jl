@@ -38,8 +38,10 @@ PropagationBase.numcoefftype(::Type{PauliFreqTracker{T}}) where {T<:Number} = T
 # through `splitapply` so that the coefficients keep their record of the path.
 function _branchrule(gate::PauliRotation, prop_cache::PauliPropagationCache{PauliSum{TT,PProp}}, theta) where {TT,PProp<:PathProperties}
     _check_qind_range(nqubits(prop_cache), gate.qinds)
-    gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
+    return onlimbs(_pathrotationrule, _branchmask(gate, prop_cache), theta)
+end
 
+function _pathrotationrule(gate_mask, theta)
     function rotate(pstr, coeff)
         if commutes(gate_mask, pstr)
             return Unchanged()
