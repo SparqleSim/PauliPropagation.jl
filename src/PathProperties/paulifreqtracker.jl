@@ -54,12 +54,12 @@ end
 
 ## Specializations for PauliRotations that increment the nsins, ncos, and freq
 # can be used by all PathProperties types that have the necessary fields `ncos`, `nsins`, and `freq`
-function splitapply(gate_mask::Integer, pstr::PauliStringType, coeff::PProp, theta; kwargs...) where {PProp<:PathProperties}
+function splitapply(gate_mask::Integer, pstr::PauliStringType, coeff::PProp, theta) where {PProp<:PathProperties}
     # increments ncos and freq field if applicable
-    coeff1 = _applycos(coeff, theta; kwargs...)
+    coeff1 = _applycos(coeff, theta)
     new_pstr, sign = paulirotationproduct(gate_mask, pstr)
     # increments nsins and freq field if applicable
-    coeff2 = _applysin(coeff, theta, sign; kwargs...)
+    coeff2 = _applysin(coeff, theta, sign)
 
     return pstr, coeff1, new_pstr, coeff2
 end
@@ -67,13 +67,13 @@ end
 # These also work for other PathProperties types that have a `coeff` field defined
 # Multiply sin(theta) * sign to the `coeff` field of a `PathProperties` object.
 # Increments the `nsins` and `freq` fields by 1 if applicable.
-function _applysin(pth::PProp, theta, sign=1; kwargs...) where {PProp<:PathProperties}
+function _applysin(pth::PProp, theta, sign=1) where {PProp<:PathProperties}
     fields = fieldnames(PProp)
 
     if :coeff ∉ fields
         throw(
             "The $(PProp) object does not have a field `coeff` to use the `_applysin` operation. " *
-            "Consider defining _applysin(pth::$(PProp), theta, sign; kwargs...)"
+            "Consider defining _applysin(pth::$(PProp), theta, sign)"
         )
     end
 
@@ -98,13 +98,13 @@ end
 
 # Multiply cos(theta) * sign to the `coeff` field of a `PathProperties` object.
 # Increments the `ncos` and `freq` fields by 1 if applicable.
-function _applycos(pth::PProp, theta, sign=1; kwargs...) where {PProp<:PathProperties}
+function _applycos(pth::PProp, theta, sign=1) where {PProp<:PathProperties}
     fields = fieldnames(PProp)
 
     if :coeff ∉ fields
         throw(
             "The $(PProp) object does not have a field `coeff` to use the `_applysin` operation. " *
-            "Consider defining _applycos(pth::$(PProp), theta, sign; kwargs...)"
+            "Consider defining _applycos(pth::$(PProp), theta, sign)"
         )
     end
 

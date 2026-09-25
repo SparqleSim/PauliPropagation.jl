@@ -511,7 +511,8 @@ function Base.:(==)(term_sum1::AbstractTermSum, term_sum2::AbstractTermSum)
 end
 
 function Base.:(≈)(term_sum1::AbstractTermSum, term_sum2::AbstractTermSum; approx_kwargs...)
-    return _comparison(≈, merge(term_sum1), merge(term_sum2))
+    coeffsapprox(coeff1, coeff2) = isapprox(coeff1, coeff2; approx_kwargs...)
+    return _comparison(coeffsapprox, merge(term_sum1), merge(term_sum2))
 end
 
 

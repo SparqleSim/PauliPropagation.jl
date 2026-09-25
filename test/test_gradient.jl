@@ -233,6 +233,12 @@ end
         end
     end
 
+    @testset "The Schrödinger picture is rejected" begin
+        circuit = [PauliRotation(:X, 1), PauliRotation(:Y, 2)]
+        psum = PauliSum(PauliString(2, :Z, 1))
+        @test_throws ArgumentError rewindgradient(circuit, psum, [0.3, 0.4], overlapwithzero; heisenberg=false)
+    end
+
     @testset "Random small circuits" begin
         Random.seed!(33)
 

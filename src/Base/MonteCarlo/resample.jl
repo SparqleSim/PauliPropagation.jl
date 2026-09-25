@@ -189,7 +189,7 @@ and is given the coefficient `new_coeff_func(coeff, slot_start, slot_end)` in pl
 mapslots!(weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F} =
     _mapslots!(StorageType(prop_cache), weight_func, new_coeff_func, prop_cache; thread)
 
-function _mapslots!(::DictStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; kwargs...) where {W,F}
+function _mapslots!(::DictStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F}
     main_sum = mainsum(prop_cache)
 
     slot_end = zero(real(numcoefftype(prop_cache)))

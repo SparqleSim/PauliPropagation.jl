@@ -150,7 +150,7 @@ end
 # a Clifford gate maps distinct Pauli strings to distinct Pauli strings
 PropagationBase.requiresmerging(::CliffordGate, ::AbstractPauliPropagationCache) = false
 
-function PropagationBase.apply(gate::CliffordGate, pstr, coeff, lookup_map; kwargs...)
+function PropagationBase.apply(gate::CliffordGate, pstr, coeff, lookup_map)
     # the lookup array carries the new Paulis + sign for every occuring old Pauli combination
 
     qinds = gate.qinds

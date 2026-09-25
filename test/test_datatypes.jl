@@ -143,6 +143,14 @@ end
         @test result_vecpsum ≈ complex_psum
     end
 
+    @testset "≈ passes atol and rtol to the coefficients" begin
+        psum1 = PauliSum(PauliString(3, :X, 1, 1.0))
+        psum2 = PauliSum(PauliString(3, :X, 1, 1.5))
+        @test !(psum1 ≈ psum2)
+        @test isapprox(psum1, psum2; atol=1.0)
+        @test isapprox(VectorPauliSum(psum1), VectorPauliSum(psum2); rtol=0.5)
+    end
+
     @testset "+ PauliSum" begin
         psum1 = PauliSum(3)
         add!(psum1, [:I, :I, :Y], 1:3, 1.0)

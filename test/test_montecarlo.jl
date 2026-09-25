@@ -236,6 +236,9 @@ end
 
     @test_throws ArgumentError mcsample!(circuit, pstr, thetas)
     @test_throws ArgumentError mcsample!(circuit, psum, thetas)
+
+    # a keyword that sampling does not take is refused, not dropped
+    @test_throws MethodError mcsample(circuit, psum, thetas; squard=true)
 end
 
 

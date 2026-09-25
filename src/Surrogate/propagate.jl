@@ -53,23 +53,23 @@ end
 
 ## For Pauli Rotations
 # overloads for _applycos and _applysins defined in PathProperties/paulifreqtracker.jl
-function _applycos(path::NodePathProperties, theta, sign=1; kwargs...)
+function _applycos(path::NodePathProperties, theta, sign=1)
     # the parameter encodes the parameter index 
     param_idx = theta
     return NodePathProperties(_buildcosnode(path.node, param_idx, sign), path.nsins, path.ncos + 1, path.freq + 1)
 end
 
-function _buildcosnode(node::CircuitNode, param_idx, sign=1; kwargs...)
+function _buildcosnode(node::CircuitNode, param_idx, sign=1)
     return PauliRotationNode(parents=[node], trig_inds=[1], signs=[sign], param_idx=param_idx)
 end
 
-function _applysin(path::NodePathProperties, theta, sign=1; kwargs...)
+function _applysin(path::NodePathProperties, theta, sign=1)
     # the parameter encodes the parameter index 
     param_idx = theta
     return NodePathProperties(_buildsinnode(path.node, param_idx, sign), path.nsins + 1, path.ncos, path.freq + 1)
 end
 
-function _buildsinnode(node::CircuitNode, param_idx, sign=1; kwargs...)
+function _buildsinnode(node::CircuitNode, param_idx, sign=1)
     return PauliRotationNode(parents=[node], trig_inds=[-1], signs=[sign], param_idx=param_idx)
 end
 
@@ -97,14 +97,14 @@ end
 
 Base.:*(pth::NodePathProperties, sign::Number) = NodePathProperties(_multiplysign(pth.node, sign), pth.nsins, pth.ncos, pth.freq)
 
-function _multiplysign(pauli_node::PauliRotationNode, sign; kwargs...)
+function _multiplysign(pauli_node::PauliRotationNode, sign)
     for ii in eachindex(pauli_node.signs)
         pauli_node.signs[ii] *= sign
     end
     return pauli_node
 end
 
-function _multiplysign(eval_endnode::EvalEndNode, sign; kwargs...)
+function _multiplysign(eval_endnode::EvalEndNode, sign)
     eval_endnode.coefficient *= sign
     return eval_endnode
 end
