@@ -35,13 +35,49 @@ using Test
 
     @testset "Tree Tracking Inputs" begin
         pstr = PauliString(3, [:Z, :X], [2, 3])
-        circ = [PauliRotation(:X, 2), CliffordGate(:CNOT, [1, 2]), DepolarizingNoise(2), AmplitudeDampingNoise(3), PauliRotation(:Y, 1)]
-        thetas = [0.3, 0.05, 0.1, 0.7]
+        circ = [PauliRotation(:X, 2), AmplitudeDampingNoise(2), AmplitudeDampingNoise(2), CliffordGate(:CNOT, [1, 2]), DepolarizingNoise(2), AmplitudeDampingNoise(3), PauliRotation(:Y, 1)]
+        thetas = [0.3, 0.4, 0.2, 0.05, 0.1, 0.7]
 
         reset_tree!()
         tracked = propagate_with_tree_tracking(circ, PauliSum(pstr), thetas)
-        @test !isempty(EVOLUTION_EDGES)
         @test tracked ≈ propagate(circ, PauliSum(pstr), thetas)
+
+        # The gates act last to first on IZX.
+        # RY commutes, amplitude damping scales X by sqrt(0.9), depolarizing noise scales Z by 0.95 and CNOT maps IZX to ZZX.
+        # Each amplitude damping on qubit 2 splits ZZX into 1 - gamma ZZX and gamma ZIX, and the two ZIX merge.
+        # RX splits ZZX into cos(0.3) ZZX and sin(0.3) ZYX and commutes with ZIX.
+        # Each node is listed below its parent with the gate that created it and the coefficient of the edge,
+        # so the merge node and its child are listed below both parents.
+        function treelines(node_id, indent)
+            lines = String[]
+            for edge in EVOLUTION_EDGES
+                if edge.parent_id == node_id
+                    child = EVOLUTION_TREE[edge.child_id]
+                    push!(lines, rstrip("$(indent)$(child.pauli_string) $(child.gate_applied) $(edge.coefficient)"))
+                    append!(lines, treelines(edge.child_id, indent * "  "))
+                end
+            end
+            return lines
+        end
+        input_id = only(id for (id, node) in EVOLUTION_TREE if isnothing(node.gate_applied))
+        @test length(EVOLUTION_TREE) == 13
+        @test [EVOLUTION_TREE[input_id].pauli_string; treelines(input_id, "  ")] == [
+            "IZX",
+            "  IZX RY 1",
+            "    IZX AmplitudeDampingNoise 0.949",
+            "      IZX DepolarizingNoise 0.95",
+            "        ZZX CNOT 1.0",
+            "          ZZX AmplitudeDampingNoise 0.8",
+            "            ZZX AmplitudeDampingNoise 0.6",
+            "              ZZX RX 0.955",
+            "              ZYX RX 0.296",
+            "            ZIX AmplitudeDampingNoise 0.4",
+            "              ZIX MERGE",
+            "                ZIX RX 1",
+            "          ZIX AmplitudeDampingNoise 0.2",
+            "            ZIX MERGE",
+            "              ZIX RX 1",
+        ]
 
         @test_throws ArgumentError propagate_with_tree_tracking(circ, VectorPauliSum(pstr), thetas)
         @test_throws ArgumentError propagate_with_tree_tracking(circ, MultiPauliSum(pstr), thetas)
