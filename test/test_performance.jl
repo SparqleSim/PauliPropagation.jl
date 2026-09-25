@@ -75,6 +75,10 @@ end
     max_size = 20
     bounded = Performance.mcpropagate(circuit, MultiPauliSum(VectorPauliSum(pstr), 4), thetas; min_abs_coeff, fused=true, max_size)
     @test 0 < length(bounded) <= max_size
+
+    # squared is the resampling's, and never reaches the fused rotations
+    squared = Performance.mcpropagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff, fused=true, max_size, squared=true)
+    @test 0 < length(squared) <= max_size
 end
 
 @testset "fused Dict, fused Vector and stock propagation agree exactly without coefficient truncation" begin

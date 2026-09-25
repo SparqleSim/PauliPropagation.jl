@@ -137,12 +137,12 @@ _fusedapplymergetruncate!(gate::TGate, prop_cache; kwargs...) =
 
 # `PauliPropagation.applymergetruncateresample!` with the fused step applying the gate
 function _fusedapplymergetruncateresample!(gate, prop_cache, args...; max_size::Real,
-    resampling_size::Integer=round(Int, max_size / 2), resample_func=nothing, thread::Bool=true, kwargs...)
+    resampling_size::Integer=round(Int, max_size / 2), resample_func=nothing, squared::Bool=false, thread::Bool=true, kwargs...)
 
     _fusedapplymergetruncate!(gate, prop_cache, args...; thread, kwargs...)
 
     if length(prop_cache) > max_size
-        resample!(prop_cache, resampling_size; resample_func, thread, kwargs...)
+        resample!(prop_cache, resampling_size; resample_func, squared, thread)
     end
 
     return prop_cache
