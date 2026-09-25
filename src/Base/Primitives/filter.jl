@@ -28,14 +28,14 @@ function _filter!(::DictStorage, keep, prop_cache::AbstractPropagationCache; thr
     return prop_cache
 end
 
-# filters through the slots where the internals of the dictionary are known, then shrinks a table the filter left sparse
+# filters through the slots where the internals of the dictionary are known
 function _filterdict!(keep::F, dict) where {F}
     if _hasdictinternals(dict)
         _filter_internals!(keep, dict)
     else
         Base.filter!(entry -> keep(entry.first, entry.second), dict)
     end
-    return _shrinkifsparse!(dict)
+    return dict
 end
 
 # a term sum filters through a propagation cache of its own
