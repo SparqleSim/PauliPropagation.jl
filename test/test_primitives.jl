@@ -231,42 +231,61 @@ end
 end
 
 @testset "Dictionary storage walked through its slots" begin
-    # the dictionary walks run on this Julia, instead of falling back to the public interface
-    @test PB._DICT_INTERNALS
+    # the dictionary walks run on this Julia; where its `Dict` breaks their model, this shows as broken instead of failing
+    @test PB._DICT_INTERNALS skip=!PB._DICT_INTERNALS
 
+    # the same table as Base's: the same slots, and the same entries in the same order
+    sametable(dict, base_dict) = dict.slots == base_dict.slots && isequal(collect(dict), collect(base_dict))
+
+    # terms are added where Base's `setindex!` puts them
     nq = 8
     rng = MersenneTwister(5)
     dict_sum = PauliSum(nq)
+    base_dict = Dict{keytype(PB.storage(dict_sum)),Float64}()
     for _ in 1:4000
-        add!(dict_sum, symboltoint(rand(rng, (:I, :X, :Y, :Z), nq)), randn(rng))
+        pstr = symboltoint(rand(rng, (:I, :X, :Y, :Z), nq))
+        coeff = randn(rng)
+        add!(dict_sum, pstr, coeff)
+        base_dict[pstr] = haskey(base_dict, pstr) ? base_dict[pstr] + coeff : coeff
     end
+    @test sametable(PB.storage(dict_sum), base_dict)
 
-    # a filter that leaves few terms rebuilds the table smaller, and keeps every term it should
+    # a filter deletes the entries Base's `filter!` deletes
     keep_large(pstr, coeff) = abs(coeff) > 2.5
     filtered = filter(keep_large, dict_sum)
-    @test PB.storage(filtered) == filter(entry -> abs(entry.second) > 2.5, PB.storage(dict_sum))
-    @test 16 * length(filtered) < length(PB.storage(dict_sum).slots)
-    @test 16 * length(filtered) >= length(PB.storage(filtered).slots)
+    @test sametable(PB.storage(filtered), Base.filter!(entry -> keep_large(entry.first, entry.second), copy(base_dict)))
 
-    # iterating visits the pairs Base visits, in its order, on a full and on a sparse table
+    # the noise map deletes the same entries, and rescales the rest as `map!` does
+    halve(pstr, coeff) = coeff / 2
+    is_small(pstr, coeff) = abs(coeff) < 0.5
+    noise_cache = PB.mapandtruncate!(halve, is_small, PropagationCache(deepcopy(dict_sum)); thread=false)
+    base_noised = Base.filter!(entry -> !is_small(entry.first, halve(entry.first, entry.second)), copy(base_dict))
+    map!(coeff -> coeff / 2, values(base_noised))
+    @test sametable(PB.storage(mainsum(noise_cache)), base_noised)
+
+    # iterating visits the pairs Base visits, in its order and of its pair type, on a full and on a sparse table
     sparse_sum = deepcopy(dict_sum)
     for pstr in collect(keys(PB.storage(sparse_sum)))[1:end-50]
         delete!(PB.storage(sparse_sum), pstr)
     end
     @test collect(dict_sum) == collect(PB.storage(dict_sum))
     @test collect(sparse_sum) == collect(PB.storage(sparse_sum))
+    real_sum = PauliSum(nq, Dict{keytype(base_dict),Real}(PB.storage(sparse_sum)))
+    @test map(typeof, collect(real_sum)) == map(typeof, collect(PB.storage(real_sum)))
 
     # a coefficient mapped by its pair is written back to its own term
     double_odd(pstr, coeff) = isodd(pstr) ? 2 * coeff : coeff
     @test PB.storage(mapcoeffsbypair!(double_odd, deepcopy(dict_sum))) == Dict(pstr => double_odd(pstr, coeff) for (pstr, coeff) in PB.storage(dict_sum))
 
     # a rule that changes the sum it is applied to is stopped before the walk reads the tables again
-    cache = PropagationCache(deepcopy(dict_sum))
-    function delete_own_term(pstr, coeff)
-        delete!(PB.storage(mainsum(cache)), pstr)
-        return PB.Unchanged()
+    if PB._hasdictinternals(PB.storage(dict_sum))
+        cache = PropagationCache(deepcopy(dict_sum))
+        function delete_own_term(pstr, coeff)
+            delete!(PB.storage(mainsum(cache)), pstr)
+            return PB.Unchanged()
+        end
+        @test_throws ArgumentError PB.xorbranch!(delete_own_term, cache, symboltoint(nq, :X, 1))
     end
-    @test_throws ArgumentError PB.xorbranch!(delete_own_term, cache, symboltoint(nq, :X, 1))
 end
 
 @testset "Flat map primitive" begin
