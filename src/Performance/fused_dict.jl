@@ -67,22 +67,13 @@ end
 _check_dict_internals()
 
 """
-    applymergetruncate!(gate::PauliRotation, prop_cache::PauliPropagationCache, theta; fused::Bool=false, min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, kwargs...)
+    _fusedapplymergetruncate!(gate::PauliRotation, prop_cache::PauliPropagationCache, theta; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, kwargs...)
 
-Fused overload that truncates during gate application by walking and mutating the backing `Dict`
-through its internal slot array. Only used when `fused=true`; otherwise falls through unchanged to
-stock `applymergetruncate!`.
+Fused variant of `applymergetruncate!` that truncates during gate application by walking and mutating the backing `Dict` through its internal slot array.
 """
-@inline function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotation, prop_cache::PauliPropagation.PauliPropagationCache, theta;
-    fused::Bool=false,
+function _fusedapplymergetruncate!(gate::PauliPropagation.PauliRotation, prop_cache::PauliPropagation.PauliPropagationCache, theta;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing,
     thread::Bool=true, kwargs...)
-
-    # invoke function from library
-    if !fused
-        return _invokedefault(gate, prop_cache, theta;
-            min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
-    end
 
     _checkunusedkwargs(kwargs)
     psum = PB.storage(mainsum(prop_cache))
