@@ -73,7 +73,7 @@ Draws `target_size` terms with replacement, each with probability proportional t
 The terms stay where they are, so at most `target_size` of them survive and a sorted sum stays sorted.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
-function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, thread::Bool=true, kwargs...)
+function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, thread::Bool=true)
     weight_func = squared ? abs2 : abs
     total_weight = mapreducecoeffs(weight_func, +, prop_cache; thread)
     weight_per_draw = total_weight / target_size
@@ -97,7 +97,7 @@ The number of surviving terms is often close to, and generally at most, `target_
 See `calibrate`/`rtol`/`atol` for tuning how closely the comb step is chosen to hit `target_size` unique survivors.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
-function systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, calibrate=true, rtol=0.01, atol=0, thread::Bool=true, kwargs...)
+function systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, calibrate=true, rtol=0.01, atol=0, thread::Bool=true)
     weight_func = squared ? abs2 : abs
     total_weight = mapreducecoeffs(weight_func, +, prop_cache; thread)
 
@@ -142,7 +142,7 @@ the remaining slots are filled by systematic comb resampling over what is left, 
 `squared=true` is disallowed.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
-function semideterministic_systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread::Bool=true, kwargs...)
+function semideterministic_systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread::Bool=true)
     if squared
         throw(ArgumentError("semideterministic_systematic_resample! does not support squared=true."))
     end
@@ -189,7 +189,7 @@ and is given the coefficient `new_coeff_func(coeff, slot_start, slot_end)` in pl
 mapslots!(weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F} =
     _mapslots!(StorageType(prop_cache), weight_func, new_coeff_func, prop_cache; thread)
 
-function _mapslots!(::DictStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; kwargs...) where {W,F}
+function _mapslots!(::DictStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F}
     main_sum = mainsum(prop_cache)
 
     slot_end = zero(real(numcoefftype(prop_cache)))

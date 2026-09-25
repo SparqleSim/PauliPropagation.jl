@@ -73,7 +73,7 @@ function format_pauli_string(pstr::PauliString)
     return inttostring(pstr.term, pstr.nqubits)
 end
 
-function PropagationBase.merge!(prop_cache::PauliPropagationCache{PauliSum{TT, PauliTreeTracker{CT}}}; kwargs...) where {TT,CT<:Number}
+function PropagationBase.merge!(prop_cache::PauliPropagationCache{PauliSum{TT, PauliTreeTracker{CT}}}; thread::Bool=true) where {TT,CT<:Number}
     psum1 = mainsum(prop_cache)
     psum2 = auxsum(prop_cache)
 
@@ -160,7 +160,7 @@ end
 
 ### Specialized methods for gate applications
 
-function splitapply(gate::PauliRotation, gate_mask::Integer, pstr::Integer, coeff::PauliTreeTracker, theta; nqubits::Int, kwargs...)
+function splitapply(gate::PauliRotation, gate_mask::Integer, pstr::Integer, coeff::PauliTreeTracker, theta; nqubits::Int)
     # Get the gate name for labeling - extract first symbol from gate.symbols
     gate_symbol = isempty(gate.symbols) ? "?" : prod(string(sym) for sym in gate.symbols)
     gate_name = "R$(gate_symbol)"
@@ -220,7 +220,7 @@ function PropagationBase.applytoall!(gate::PauliRotation, prop_cache::PauliPropa
         end
 
         # Apply the gate and track the split
-        pstr, coeff1, new_pstr, coeff2 = splitapply(gate, gate_mask, pstr, coeff, theta; nqubits=psum.nqubits, kwargs...)
+        pstr, coeff1, new_pstr, coeff2 = splitapply(gate, gate_mask, pstr, coeff, theta; nqubits=psum.nqubits)
 
         # Set the coefficient of the original Pauli string
         set!(psum, pstr, coeff1)
@@ -251,7 +251,7 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::PauliPropag
     # Loop over all Pauli strings and their coefficients in the Pauli sum
     for (pstr, coeff) in psum
         # Apply the Clifford gate to get the new Pauli string and coefficient
-        new_pstr, new_coeff_value = only(apply(gate, pstr, coeff.coeff, lookup_map; kwargs...))
+        new_pstr, new_coeff_value = only(apply(gate, pstr, coeff.coeff, lookup_map))
 
         # Create a new child tracker for the transformed Pauli string
         edge_num = new_coeff_value / coeff.coeff

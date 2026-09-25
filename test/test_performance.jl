@@ -26,6 +26,24 @@ using PauliPropagation.Performance
     # fused-less propagate call returns
     Performance.propagate(circuit, pstr, thetas; min_abs_coeff, fused=true)
     @test propagate(circuit, pstr, thetas; min_abs_coeff) == stock_dict
+
+    # stock propagation never dispatches into the module
+    for prop_cache in PropagationCache.((PauliSum(pstr), VectorPauliSum(pstr), MultiPauliSum(VectorPauliSum(pstr), 2)))
+        @test which(applymergetruncate!, Tuple{PauliRotation,typeof(prop_cache),Float64}).module === PauliPropagation
+    end
+end
+
+@testset "Performance refuses path properties unless fused=false" begin
+    nq = 3
+    circuit = [PauliRotation(:X, 1), CliffordGate(:CNOT, [1, 2]), PauliRotation([:Z, :Z], [2, 3])]
+    thetas = [0.3, 0.7]
+    pstr = PauliString(nq, :Z, 1)
+
+    @test_throws ArgumentError Performance.propagate(circuit, wrapcoefficients(pstr, PauliFreqTracker), thetas)
+    @test_throws ArgumentError Performance.propagate(circuit, pstr, thetas; max_freq=1)
+    @test_throws ArgumentError Performance.mcpropagate(circuit, pstr, thetas; max_size=10, max_sins=1)
+
+    @test Performance.propagate(circuit, pstr, thetas; max_freq=1, fused=false) == propagate(circuit, pstr, thetas; max_freq=1)
 end
 
 @testset "Performance.mcpropagate matches Performance.propagate exactly below the resampling threshold" begin
@@ -57,6 +75,10 @@ end
     max_size = 20
     bounded = Performance.mcpropagate(circuit, MultiPauliSum(VectorPauliSum(pstr), 4), thetas; min_abs_coeff, fused=true, max_size)
     @test 0 < length(bounded) <= max_size
+
+    # squared is the resampling's, and never reaches the fused rotations
+    squared = Performance.mcpropagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff, fused=true, max_size, squared=true)
+    @test 0 < length(squared) <= max_size
 end
 
 @testset "fused Dict, fused Vector and stock propagation agree exactly without coefficient truncation" begin

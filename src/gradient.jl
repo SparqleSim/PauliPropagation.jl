@@ -17,6 +17,7 @@ Noise channels are not supported, frozen or not, because the backward sweep cann
 `overlapwithzero`, `overlapwithplus`, `overlapwithcomputational`, `overlapwithmaxmixed`, or
 `overlapwithpaulisum`.
 Both sweeps run with the gate implementations of the type of `psum`, so a `MultiPauliSum` runs them zone by zone.
+The propagation is in the Heisenberg picture, and `heisenberg=false` is not supported.
 `kwargs` are passed on to `applymergetruncate!` in the forward sweep and the operator side of the
 backward sweep.
 Returns `(expec, grad)`.
@@ -37,10 +38,13 @@ function rewindgradient!(circuit, psum::AbstractPauliSum, params, overlapfunc; k
     return rewindgradient!(circuit, PropagationCache(psum), params, overlapfunc; kwargs...)
 end
 
-function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
+function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc; heisenberg::Bool=true, thread::Bool=true, kwargs...)
     # check that the only parameterized gates are PauliRotations
     @assert all(gate -> isa(gate, StaticGate) || gate isa PauliRotation, circuit) "All parameterized gates must be PauliRotations."
     @assert all(_isrewindable, circuit) "Noise channels are not supported because they cannot be undone."
+    if !heisenberg
+        throw(ArgumentError("`rewindgradient` does not support `heisenberg=false`, because its backward sweep undoes a Heisenberg-picture propagation."))
+    end
 
     # forward sweep: ordinary Heisenberg propagation, exactly as in `propagate`.
     propagate!(circuit, forward_cache, params; thread, kwargs...)

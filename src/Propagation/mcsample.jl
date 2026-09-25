@@ -8,14 +8,14 @@
 ###
 
 """
-    mcapplytoall!(gate, psum::AbstractPauliSum, [param]; squared=false, thread=true, kwargs...)
+    mcapplytoall!(gate, psum::AbstractPauliSum, [param]; squared=false, thread=true)
 
 1st-level function below `mcsample!` that stochastically applies one `gate` to every term in `psum`,
 in place. This is the Monte Carlo analogue of `applytoall!`: instead of branching a term into two,
 it randomly keeps one branch, reweighted to remain unbiased. Must be overloaded for each custom gate type.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
-function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::AbstractPauliSum; squared::Bool=false, thread::Bool=true, kwargs...)
+function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::AbstractPauliSum; squared::Bool=false, thread::Bool=true)
     _check_qind_range(nqubits(psum), gate.qinds)
 
     lookup_map = clifford_map[gate.symbol]
@@ -29,7 +29,7 @@ function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::AbstractPauliSu
     return map!(permute, psum; thread)
 end
 
-function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::AbstractPauliSum, theta; squared::Bool=false, thread::Bool=true, kwargs...)
+function PropagationBase.mcapplytoall!(gate::PauliRotation, psum::AbstractPauliSum, theta; squared::Bool=false, thread::Bool=true)
     _check_qind_range(nqubits(psum), gate.qinds)
 
     gate_mask = symboltoint(paulitype(psum), gate.symbols, gate.qinds)

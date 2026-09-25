@@ -10,20 +10,13 @@
 const FusedCache = Union{PauliPropagation.VectorPauliPropagationCache,PauliPropagation.MultiPauliPropagationCache}
 
 """
-    applymergetruncate!(gate::PauliRotation, prop_cache, theta; fused::Bool=false, kwargs...)
+    _fusedapplymergetruncate!(gate::PauliRotation, prop_cache, theta; kwargs...)
 
-Fused overload of `applymergetruncate!` for `PauliRotation` -- see file header.
-Only used when `fused=true`; otherwise falls through (via `invoke`) to default behavior.
+Fused variant of `applymergetruncate!` for `PauliRotation` -- see file header.
 """
-@inline function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotation, prop_cache::FusedCache, theta;
-    fused::Bool=false,
+function _fusedapplymergetruncate!(gate::PauliPropagation.PauliRotation, prop_cache::FusedCache, theta;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing,
     thread::Bool=true, kwargs...)
-
-    if !fused
-        return _invokedefault(gate, prop_cache, theta;
-            min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
-    end
 
     _checkunusedkwargs(kwargs)
     return _fusedrotation!(gate, prop_cache, cos(theta), sin(theta), false;
@@ -31,20 +24,14 @@ Only used when `fused=true`; otherwise falls through (via `invoke`) to default b
 end
 
 """
-    applymergetruncate!(gate::ImaginaryPauliRotation, prop_cache, tau; fused::Bool=false, normalize_coeffs=true, kwargs...)
+    _fusedapplymergetruncate!(gate::ImaginaryPauliRotation, prop_cache, tau; normalize_coeffs=true, kwargs...)
 
-Fused overload of `applymergetruncate!` for `ImaginaryPauliRotation` -- see file header.
-Only used when `fused=true`; otherwise falls through (via `invoke`) to default behavior.
+Fused variant of `applymergetruncate!` for `ImaginaryPauliRotation` -- see file header.
 """
-@inline function PauliPropagation.applymergetruncate!(gate::PauliPropagation.ImaginaryPauliRotation, prop_cache::FusedCache, tau;
-    fused::Bool=false, normalize_coeffs::Bool=true,
+function _fusedapplymergetruncate!(gate::PauliPropagation.ImaginaryPauliRotation, prop_cache::FusedCache, tau;
+    normalize_coeffs::Bool=true,
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing,
     thread::Bool=true, kwargs...)
-
-    if !fused
-        return _invokedefault(gate, prop_cache, tau;
-            normalize_coeffs, min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
-    end
 
     _checkunusedkwargs(kwargs)
     _fusedrotation!(gate, prop_cache, cosh(tau), sinh(tau), true;

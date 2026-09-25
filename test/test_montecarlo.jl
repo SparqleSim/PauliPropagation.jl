@@ -236,6 +236,9 @@ end
 
     @test_throws ArgumentError mcsample!(circuit, pstr, thetas)
     @test_throws ArgumentError mcsample!(circuit, psum, thetas)
+
+    # a keyword that sampling does not take is refused, not dropped
+    @test_throws MethodError mcsample(circuit, psum, thetas; squard=true)
 end
 
 
@@ -340,6 +343,9 @@ end
 
     over_cache = PropagationCache(deepcopy(psum))
     @test_throws ArgumentError resample!(over_cache, n + 1)
+
+    # a keyword that the strategy does not take is refused, not dropped
+    @test_throws MethodError resample!(PropagationCache(deepcopy(psum)), target_size; resample_func=PP.systematic_resample!, calibrat=false)
 
     # out-of-place resample leaves the input psum untouched
     original = deepcopy(psum)
