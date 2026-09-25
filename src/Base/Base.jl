@@ -114,6 +114,8 @@ export
     coeffcumsum,
     coeffcumsum!
 
+include("./dictbackend.jl")
+
 include("./gates.jl")
 export
     Gate,

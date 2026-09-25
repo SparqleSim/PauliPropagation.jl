@@ -81,8 +81,9 @@ function mapreducecoeffs(mapper, reducer, thing::Union{AbstractTermSum,AbstractP
     return _mapreducecoeffs(StorageType(thing), mapper, reducer, thing; init, neutral, thread)
 end
 
-_mapreducecoeffs(::DictStorage, mapper, reducer, thing; init, neutral, thread::Bool) =
-    mapreduce(mapper, reducer, coefficients(thing); init)
+# a dictionary reduces its coefficients over its pairs, whose iteration reads the slots eight at a time where it can
+_mapreducecoeffs(::DictStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O} =
+    _mapreduce(DictStorage(), (_, coefficient) -> mapper(coefficient), reducer, thing; init, neutral, thread)
 
 function _mapreducecoeffs(::ArrayStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O}
     active_coefficients = coefficients(thing)

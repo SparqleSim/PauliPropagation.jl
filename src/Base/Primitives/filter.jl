@@ -19,13 +19,23 @@ Base.filter!(keep, thing::Union{AbstractTermSum,AbstractPropagationCache}; threa
     _filter!(StorageType(thing), keep, thing; thread)
 
 function _filter!(::DictStorage, keep, term_sum::AbstractTermSum; thread::Bool=true)
-    Base.filter!(entry -> keep(entry.first, entry.second), storage(term_sum))
+    _filterdict!(keep, storage(term_sum))
     return term_sum
 end
 
 function _filter!(::DictStorage, keep, prop_cache::AbstractPropagationCache; thread::Bool=true)
-    Base.filter!(entry -> keep(entry.first, entry.second), storage(mainsum(prop_cache)))
+    _filterdict!(keep, storage(mainsum(prop_cache)))
     return prop_cache
+end
+
+# filters through the slots where the internals of the dictionary are known, then shrinks a table the filter left sparse
+function _filterdict!(keep::F, dict) where {F}
+    if _hasdictinternals(dict)
+        _filter_internals!(keep, dict)
+    else
+        Base.filter!(entry -> keep(entry.first, entry.second), dict)
+    end
+    return _shrinkifsparse!(dict)
 end
 
 # a term sum filters through a propagation cache of its own
