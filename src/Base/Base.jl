@@ -158,6 +158,7 @@ export
     resample,
     resample!,
     mapslots!,
+    mapslotsandtruncate!,
     multinomial_resample!,
     systematic_resample!,
     semideterministic_systematic_resample!

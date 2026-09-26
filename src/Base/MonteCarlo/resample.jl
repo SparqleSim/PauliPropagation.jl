@@ -4,7 +4,7 @@
 ##
 ###
 # Every strategy lays teeth on the cumulative weight of the terms and keeps each term with the weight
-# of the teeth that fall into its slot, so all it asks of the storage is `mapreducecoeffs` and `mapslots!`.
+# of the teeth that fall into its slot, so all it asks of the storage is `mapreducecoeffs` and `mapslotsandtruncate!`.
 
 ## RE-SAMPLING
 """
@@ -82,8 +82,7 @@ function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size
     sorted_draws = sort!(rand(typeof(total_weight), target_size) .* total_weight)
     new_coeff_func(coeff, slot_start, slot_end) = _compute_new_coeff(_count_draws(sorted_draws, slot_start, slot_end), weight_per_draw, coeff, squared)
 
-    mapslots!(weight_func, new_coeff_func, prop_cache; thread)
-    return truncate!(prop_cache; min_abs_coeff=eps(), thread)
+    return mapslotsandtruncate!(weight_func, new_coeff_func, _truncatezero, prop_cache; thread)
 end
 
 # draws are independent of the incoming terms, so any target_size is reachable
@@ -106,8 +105,7 @@ function systematic_resample!(prop_cache::AbstractPropagationCache, target_size:
     comb_offset = rand() * comb_step
     new_coeff_func(coeff, slot_start, slot_end) = _compute_new_coeff(_count_combteeth(comb_step, comb_offset, slot_start, slot_end), comb_step, coeff, squared)
 
-    mapslots!(weight_func, new_coeff_func, prop_cache; thread)
-    return truncate!(prop_cache; min_abs_coeff=eps(), thread)
+    return mapslotsandtruncate!(weight_func, new_coeff_func, _truncatezero, prop_cache; thread)
 end
 
 # scales the comb step toward keeping `target_size` unique terms; when resampling we can overshoot if rtol is small
@@ -157,10 +155,10 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
     n_comb_slots = target_size - mapreducecoeffs(is_kept, +, prop_cache; init=0, thread)
     comb_step = n_comb_slots > 0 ? mapreducecoeffs(weight_func, +, prop_cache; thread) / n_comb_slots : zero(keep_threshold)
     comb_offset = rand() * comb_step
-    new_coeff_func(coeff, slot_start, slot_end) = is_kept(coeff) ? coeff : _compute_new_coeff(_count_combteeth(comb_step, comb_offset, slot_start, slot_end), comb_step, coeff, squared)
+    # both are computed and one is selected, since a branch on the scattered kept terms is often mispredicted
+    new_coeff_func(coeff, slot_start, slot_end) = ifelse(is_kept(coeff), coeff, _compute_new_coeff(_count_combteeth(comb_step, comb_offset, slot_start, slot_end), comb_step, coeff, squared))
 
-    mapslots!(weight_func, new_coeff_func, prop_cache; thread)
-    return truncate!(prop_cache; min_abs_coeff=eps(), thread)
+    return mapslotsandtruncate!(weight_func, new_coeff_func, _truncatezero, prop_cache; thread)
 end
 
 # how many teeth of a comb of `comb_step`, shifted by `comb_offset`, fall into `[slot_start, slot_end)`; a step of zero lays no teeth
@@ -177,6 +175,9 @@ _count_draws(sorted_draws, slot_start, slot_end) = searchsortedfirst(sorted_draw
 _compute_new_coeff(n_teeth, weight_per_tooth, coeff, squared::Bool) =
     squared ? sqrt(n_teeth * weight_per_tooth) * sign(coeff)^2 : n_teeth * weight_per_tooth * sign(coeff)
 
+# a term that no tooth or draw falls into is given a zero coefficient
+_truncatezero(term, coeff) = truncatemincoeff(coeff, eps())
+
 
 ## SLOTS ON THE CUMULATIVE WEIGHT
 """
@@ -187,8 +188,35 @@ and is given the coefficient `new_coeff_func(coeff, slot_start, slot_end)` in pl
 `thread=false` runs on the calling thread alone.
 """
 mapslots!(weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F} =
-    _mapslots!(StorageType(prop_cache), weight_func, new_coeff_func, prop_cache; thread)
+    mapslotsandtruncate!(weight_func, new_coeff_func, nothing, prop_cache; thread)
 
+"""
+    mapslotsandtruncate!(weight_func, new_coeff_func, truncfunc, prop_cache::AbstractPropagationCache; thread=true)
+
+Like `mapslots!`, but drops every term for which `truncfunc(term, new_coeff)` returns `true`.
+The kept terms stay in the order they had.
+On a multithreaded CPU array, `weight_func` and `truncfunc` are called twice for every term, so they must return the same for the same arguments each time.
+"""
+mapslotsandtruncate!(weight_func::W, new_coeff_func::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F,G} =
+    _mapslotsandtruncate!(StorageType(prop_cache), weight_func, new_coeff_func, truncfunc, prop_cache; thread)
+
+# A dictionary gives its terms their new coefficients and then truncates.
+function _mapslotsandtruncate!(storage::DictStorage, weight_func::W, new_coeff_func::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F,G}
+    _mapslots!(storage, weight_func, new_coeff_func, prop_cache)
+    return _truncate!(truncfunc, prop_cache; thread)
+end
+
+# An array on the CPU truncates as it walks the slots; an array elsewhere walks them and then truncates.
+function _mapslotsandtruncate!(storage::ArrayStorage, weight_func::W, new_coeff_func::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F,G}
+    if _iscpuarray(prop_cache)
+        return _mapslotsandtruncatecpu!(weight_func, new_coeff_func, truncfunc, prop_cache; thread)
+    end
+
+    _mapslots!(storage, weight_func, new_coeff_func, prop_cache; thread)
+    return _truncate!(truncfunc, prop_cache; thread)
+end
+
+# the walks of the storages that truncate after them
 function _mapslots!(::DictStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; kwargs...) where {W,F}
     main_sum = mainsum(prop_cache)
 
@@ -219,24 +247,139 @@ function _mapslots!(::ArrayStorage, weight_func::W, new_coeff_func::F, prop_cach
     return prop_cache
 end
 
+# One task walks the slots from zero and compacts in place, since it writes at or behind the term it just read;
+# without a `truncfunc`, every term keeps its place.
+function _mapslotsandtruncatecpu!(weight_func::W, new_coeff_func::F, truncfunc::G, prop_cache; thread::Bool=true) where {W,F,G}
+    n = activesize(prop_cache)
+    task_partitioner, n_tasks = _preparetasks(n, thread)
+
+    if n_tasks == 1
+        main_terms, main_coefficients = terms(mainsum(prop_cache)), coefficients(mainsum(prop_cache))
+        n_kept, n_sorted_kept = _mapslotsinplace!(weight_func, new_coeff_func, truncfunc, main_terms, main_coefficients, 1, n,
+            zero(real(numcoefftype(prop_cache))), sortedprefix(mainsum(prop_cache)), Val(truncfunc !== nothing))
+        setactivesize!(prop_cache, n_kept)
+        setsortedprefix!(mainsum(prop_cache), n_sorted_kept)
+        return prop_cache
+    end
+
+    return _mapslotsintasks!(weight_func, new_coeff_func, truncfunc, prop_cache, task_partitioner, n_tasks)
+end
+
+# Several tasks first sum the weights of their parts, so that each knows where its slots start,
+# then give their terms the new coefficients in place and count what they keep, then write that into the auxiliary arrays.
+# Without a `truncfunc`, every term keeps its place and nothing is written.
+function _mapslotsintasks!(weight_func::W, new_coeff_func::F, truncfunc::G, prop_cache, task_partitioner, n_tasks::Int) where {W,F,G}
+    n_sorted = sortedprefix(mainsum(prop_cache))
+    main_terms, main_coefficients, aux_terms, aux_coefficients = _mainauxarrays(prop_cache)
+    no_weight = zero(real(numcoefftype(prop_cache)))
+
+    chunk_weights = Vector{typeof(no_weight)}(undef, n_tasks)
+    function sum_chunk_weight!(task_id)
+        chunk = task_partitioner[task_id]
+        chunk_weights[task_id] = sum(weight_func, view(main_coefficients, chunk))
+    end
+    _eachtask(sum_chunk_weight!, n_tasks)
+    chunk_slot_starts = pushfirst!(cumsum(chunk_weights), no_weight)
+
+    kept_counts = Vector{Int}(undef, n_tasks)
+    sorted_kept_counts = Vector{Int}(undef, n_tasks)
+    function map_and_count!(task_id)
+        chunk = task_partitioner[task_id]
+        kept_counts[task_id], sorted_kept_counts[task_id] = _mapslotsinplace!(weight_func, new_coeff_func, truncfunc, main_terms, main_coefficients,
+            chunk.start, chunk.stop, chunk_slot_starts[task_id], n_sorted, Val(false))
+    end
+    _eachtask(map_and_count!, n_tasks)
+
+    if truncfunc === nothing
+        return prop_cache
+    end
+
+    offsets = _offsetsfromcounts(kept_counts)
+
+    written = Vector{Int}(undef, n_tasks)
+    function write_kept!(task_id)
+        chunk = task_partitioner[task_id]
+        written[task_id] = _compactwrite!(truncfunc, aux_terms, aux_coefficients, offsets[task_id], offsets[task_id+1] - 1,
+            main_terms, main_coefficients, chunk.start, chunk.stop)
+    end
+    _eachtask(write_kept!, n_tasks)
+
+    if written != kept_counts
+        _throwreplaymismatch()
+    end
+    return _commitwrite!(prop_cache, offsets[end] - 1, sum(sorted_kept_counts))
+end
+
+# Walks terms[lo:hi] on slots from `slot_start` on and gives every term its new coefficient in place.
+# With `Compact`, the kept terms move to the front of the range; otherwise every term stays where it is.
+# Returns the number of kept terms and how many of them came from the first `n_sorted`.
+# A dropped term is written too and overwritten by the next, so that random drops cost no mispredicted branch.
+@inline function _mapslotsinplace!(weight_func::W, new_coeff_func::F, truncfunc::G, terms, coefficients, lo, hi,
+    slot_start, n_sorted, ::Val{Compact}) where {W,F,G,Compact}
+
+    write_pos = lo
+    n_sorted_kept = 0
+    slot_end = slot_start
+
+    @inbounds for ii in lo:hi
+        term = terms[ii]
+        coeff = coefficients[ii]
+        slot_start = slot_end
+        slot_end += @inline weight_func(coeff)
+        new_coeff = @inline new_coeff_func(coeff, slot_start, slot_end)
+        is_kept = truncfunc === nothing || !(@inline truncfunc(term, new_coeff))
+
+        if Compact
+            terms[write_pos] = term
+            coefficients[write_pos] = new_coeff
+        else
+            coefficients[ii] = new_coeff
+        end
+        write_pos += is_kept
+        n_sorted_kept += is_kept & (ii <= n_sorted)
+    end
+
+    return write_pos - lo, n_sorted_kept
+end
+
+# Writes the terms of terms[lo:hi] that `truncfunc` keeps from `write_start` on and returns how many it kept.
+# As in `_mapslotsinplace!`, a dropped term is written and then overwritten, but nothing is written past `write_stop`, where the next task's part begins.
+@inline function _compactwrite!(truncfunc::G, output_terms, output_coefficients, write_start, write_stop, terms, coefficients, lo, hi) where {G}
+    write_pos = write_start
+
+    @inbounds for ii in lo:hi
+        term = terms[ii]
+        coeff = coefficients[ii]
+        is_kept = !(@inline truncfunc(term, coeff))
+
+        if write_pos <= write_stop
+            output_terms[write_pos] = term
+            output_coefficients[write_pos] = coeff
+        end
+        write_pos += is_kept
+    end
+
+    return write_pos - write_start
+end
+
 
 # The slots of a zone follow the slots of all earlier zones. Zone weights are first reduced with
 # the map-reduce primitive, then each zone maps its local slots with the appropriate offset.
-function _mapslots!(::MultiSumStorage, weight_func::W, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F}
+function _mapslotsandtruncate!(::MultiSumStorage, weight_func::W, new_coeff_func::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W,F,G}
     total_zone_weight(zonecache) = mapreducecoeffs(weight_func, +, zonecache; thread=false)
     zone_weights = _zonevalues(total_zone_weight, real(numcoefftype(prop_cache)), prop_cache, thread)
     zone_slot_starts = pushfirst!(cumsum(zone_weights), zero(eltype(zone_weights)))
 
-    map_zone_slots!(zone_id) = _map_shifted_slots!(weight_func, new_coeff_func, zonecaches(prop_cache)[zone_id], zone_slot_starts[zone_id])
+    map_zone_slots!(zone_id) = _map_shifted_slots!(weight_func, new_coeff_func, truncfunc, zonecaches(prop_cache)[zone_id], zone_slot_starts[zone_id])
     _eachzone(map_zone_slots!, prop_cache, thread)
 
-    return prop_cache
+    return _syncsums!(prop_cache)
 end
 
-# `mapslots!` on one zone, with its slots starting at `zone_slot_start` instead of at zero.
-function _map_shifted_slots!(weight_func::W, new_coeff_func::F, zonecache, zone_slot_start) where {W,F}
-    shifted_new_coeff_func(coeff, slot_start, slot_end) = new_coeff_func(coeff, zone_slot_start + slot_start, zone_slot_start + slot_end)
-    return mapslots!(weight_func, shifted_new_coeff_func, zonecache; thread=false)
+# `mapslotsandtruncate!` on one zone, with its slots starting at `zone_slot_start` instead of at zero.
+function _map_shifted_slots!(weight_func::W, new_coeff_func::F, truncfunc::G, zonecache, zone_slot_start) where {W,F,G}
+    shifted_new_coeff_func(coeff, slot_start, slot_end) = @inline new_coeff_func(coeff, zone_slot_start + slot_start, zone_slot_start + slot_end)
+    return mapslotsandtruncate!(weight_func, shifted_new_coeff_func, truncfunc, zonecache; thread=false)
 end
 
 # a real-valued buffer of length(coeffs), in the memory of `dst` when the coefficients are real

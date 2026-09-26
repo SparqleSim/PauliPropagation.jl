@@ -522,3 +522,51 @@ end
         @test all(zoneof(mainsum(cache), term) == zone_id for term in paulis(zone))
     end
 end
+
+
+@testset "mapslotsandtruncate! gives the same slots on any number of tasks" begin
+    PB = PP.PropagationBase
+    n = 4 * PB._MIN_ELEMS_PER_TASK
+    rng = MersenneTwister(11)
+    input_terms = UInt64.(1:n)
+    # dyadic coefficients sum exactly in any order, so every split of the terms lays the same slots
+    input_coeffs = [rand(rng, (-1, 1)) * rand(rng, 1:64) / 8 for _ in 1:n]
+    n_sorted = n ÷ 3
+    comb_step = sum(abs, input_coeffs) / (n ÷ 2)
+    new_coeff_func(coeff, slot_start, slot_end) = PB._compute_new_coeff(PB._count_combteeth(comb_step, comb_step / 3, slot_start, slot_end), comb_step, coeff, false)
+
+    serial = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
+    PP.mapslotsandtruncate!(abs, new_coeff_func, PB._truncatezero, serial; thread=false)
+    @test 0 < length(serial) < n
+
+    task_partitioner = PB.AK.TaskPartitioner(n, 4, 1)
+    in_tasks = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
+    PB._mapslotsintasks!(abs, new_coeff_func, PB._truncatezero, in_tasks, task_partitioner, task_partitioner.num_tasks)
+    @test PB.activeterms(in_tasks) == PB.activeterms(serial)
+    @test PB.activecoeffs(in_tasks) == PB.activecoeffs(serial)
+
+    # the terms are their own positions, so the kept ones among the first n_sorted are the sorted prefix
+    n_sorted_kept = count(<=(n_sorted), PB.activeterms(serial))
+    @test PB.sortedprefix(mainsum(serial)) == n_sorted_kept
+    @test PB.sortedprefix(mainsum(in_tasks)) == n_sorted_kept
+
+    # a new coefficient can be costly to find, as for multinomial draws, so every term asks for one only once
+    n_calls = Threads.Atomic{Int}(0)
+    function counted_new_coeff_func(coeff, slot_start, slot_end)
+        Threads.atomic_add!(n_calls, 1)
+        return new_coeff_func(coeff, slot_start, slot_end)
+    end
+    counted = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
+    PB._mapslotsintasks!(abs, counted_new_coeff_func, PB._truncatezero, counted, task_partitioner, task_partitioner.num_tasks)
+    @test n_calls[] == n
+
+    # without a truncation, every term keeps its place and gets the coefficient of its slot
+    serial = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
+    PP.mapslots!(abs, new_coeff_func, serial; thread=false)
+    in_tasks = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
+    PB._mapslotsintasks!(abs, new_coeff_func, nothing, in_tasks, task_partitioner, task_partitioner.num_tasks)
+    @test PB.activeterms(serial) == PB.activeterms(in_tasks) == input_terms
+    @test PB.activecoeffs(in_tasks) == PB.activecoeffs(serial)
+    @test count(iszero, PB.activecoeffs(serial)) > 0
+    @test PB.sortedprefix(mainsum(serial)) == PB.sortedprefix(mainsum(in_tasks)) == n_sorted
+end
