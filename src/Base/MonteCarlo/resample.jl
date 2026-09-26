@@ -108,28 +108,28 @@ function systematic_resample!(prop_cache::AbstractPropagationCache, target_size:
     return mapslotsandtruncate!(weight_func, new_coeff_func, _truncatezero, prop_cache; thread)
 end
 
-# scales the comb step toward keeping `target_size` unique terms; when resampling we can overshoot if rtol is small
+# The comb step that keeps `target_size` unique terms in expectation, to within the tolerances. A comb keeps every term
+# that weighs at least its step and every lighter one with probability weight / step. That expected count is concave in
+# the inverse step, so Newton's steps from `total_weight / target_size`, which keeps at most `target_size`, never overshoot.
 function _calibrate_prob_step(weight_func::W, prop_cache::AbstractPropagationCache, total_weight, target_size; rtol::Real, atol::Real, thread::Bool) where {W}
-    # the weights and tolerances are always real, also for complex coefficients
-    RT = typeof(total_weight)
+    lowest_n_unique = (1 - rtol) * target_size - atol
 
-    # a comb of step `1 / inv_step` keeps a term with probability `min(1, weight * inv_step)`, so these sum to the
-    # mean number of unique samples (or something close to it); `inv_step` is an argument since it changes below
-    expected_n_unique(inv_step) = mapreducecoeffs(coeff -> min(1.0, weight_func(coeff) * inv_step), +, prop_cache; thread)
-
-    inv_step = target_size / total_weight
-
-    tolsatisfied(r) = ((1.0 - rtol) * target_size - atol) / target_size <= r <= 1.0 - eps(RT)
-    for i in 1:5
-        ratio = expected_n_unique(inv_step) / target_size
-
-        if tolsatisfied(ratio)
-            return 1 / inv_step
+    step = total_weight / target_size
+    for _ in 1:5
+        n_heavy, light_weight = _heavyandlight(weight_func, step, prop_cache; thread)
+        if n_heavy + light_weight / step >= lowest_n_unique || iszero(light_weight)
+            return step
         end
-
-        inv_step /= ratio
+        step = light_weight / (target_size - n_heavy)
     end
-    return 1 / inv_step
+    return step
+end
+
+# how many terms weigh at least `step`, and the weight of all the others; `step` is an argument since it changes in the loop above
+function _heavyandlight(weight_func::W, step, prop_cache::AbstractPropagationCache; thread::Bool) where {W}
+    is_heavy(coeff) = weight_func(coeff) >= step
+    light_weight(coeff) = is_heavy(coeff) ? zero(step) : weight_func(coeff)
+    return _countandweigh(is_heavy, light_weight, prop_cache; thread)
 end
 
 """
@@ -152,8 +152,9 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
     is_kept(coeff) = abs(coeff) > keep_threshold
     weight_func(coeff) = is_kept(coeff) ? zero(keep_threshold) : abs(coeff)
 
-    n_comb_slots = target_size - mapreducecoeffs(is_kept, +, prop_cache; init=0, thread)
-    comb_step = n_comb_slots > 0 ? mapreducecoeffs(weight_func, +, prop_cache; thread) / n_comb_slots : zero(keep_threshold)
+    n_kept, comb_weight = _countandweigh(is_kept, weight_func, prop_cache; thread)
+    n_comb_slots = target_size - n_kept
+    comb_step = n_comb_slots > 0 ? comb_weight / n_comb_slots : zero(keep_threshold)
     comb_offset = rand() * comb_step
     # both are computed and one is selected, since a branch on the scattered kept terms is often mispredicted
     new_coeff_func(coeff, slot_start, slot_end) = ifelse(is_kept(coeff), coeff, _compute_new_coeff(_count_combteeth(comb_step, comb_offset, slot_start, slot_end), comb_step, coeff, squared))
@@ -390,3 +391,51 @@ function _realweightbuffer(dst, coeffs)
         return similar(coeffs, real(eltype(coeffs)))
     end
 end
+
+
+## COUNT AND WEIGHT IN ONE PASS
+# How many coefficients `count_func` accepts, and the sum of `weight_func` over all of them.
+_countandweigh(count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool=true) where {C,W} =
+    _countandweigh(StorageType(prop_cache), count_func, weight_func, prop_cache; thread)
+
+# a dictionary, or any other storage walked in order, sums both in the same walk
+function _countandweigh(::StorageType, count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool=true) where {C,W}
+    no_weight = zero(real(numcoefftype(prop_cache)))
+    count_and_weight(coeff) = (count_func(coeff), weight_func(coeff))
+    return mapreducecoeffs(count_and_weight, _addpairs, prop_cache; init=(0, no_weight), neutral=(0, no_weight), thread)
+end
+
+# An array on the CPU is counted and weighed by every task with two accumulators, which vectorize where a pair does not.
+# An array elsewhere is reduced twice.
+function _countandweigh(::ArrayStorage, count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool=true) where {C,W}
+    if !_iscpuarray(prop_cache)
+        return mapreducecoeffs(count_func, +, prop_cache; init=0, thread), mapreducecoeffs(weight_func, +, prop_cache; thread)
+    end
+
+    active_coeffs = coefficients(prop_cache)
+    task_partitioner, n_tasks = _preparetasks(length(active_coeffs), thread)
+    counts = zeros(Int, n_tasks)
+    weights = zeros(real(numcoefftype(prop_cache)), n_tasks)
+    function count_and_weigh_part!(task_id)
+        count = 0
+        weight = zero(eltype(weights))
+        @inbounds @simd for ii in task_partitioner[task_id]
+            count += count_func(active_coeffs[ii])
+            weight += weight_func(active_coeffs[ii])
+        end
+        counts[task_id] = count
+        weights[task_id] = weight
+    end
+    _eachtask(count_and_weigh_part!, n_tasks)
+
+    return sum(counts), sum(weights)
+end
+
+# every zone counts and weighs on its own thread
+function _countandweigh(::MultiSumStorage, count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool=true) where {C,W}
+    zone_count_and_weight(zonecache) = _countandweigh(count_func, weight_func, zonecache; thread=false)
+    zone_values = _zonevalues(zone_count_and_weight, Tuple{Int,real(numcoefftype(prop_cache))}, prop_cache, thread)
+    return reduce(_addpairs, zone_values)
+end
+
+_addpairs(pair1, pair2) = (pair1[1] + pair2[1], pair1[2] + pair2[2])

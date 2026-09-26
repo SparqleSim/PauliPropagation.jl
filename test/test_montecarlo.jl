@@ -570,3 +570,39 @@ end
     @test count(iszero, PB.activecoeffs(serial)) > 0
     @test PB.sortedprefix(mainsum(serial)) == PB.sortedprefix(mainsum(in_tasks)) == n_sorted
 end
+
+
+@testset "the calibrated comb step keeps the target in expectation" begin
+    PB = PP.PropagationBase
+    n = 4 * PB._MIN_ELEMS_PER_TASK
+    rng = MersenneTwister(5)
+    # log-normal magnitudes over several decades, as in propagated sums
+    coeffs = randn(rng, n) .* exp.(1.5 .* randn(rng, n))
+    vpsum = VectorPauliSum(32, UInt64.(1:n), coeffs)
+    total_weight = sum(abs, coeffs)
+    expected_n_unique(step) = sum(coeff -> min(1.0, abs(coeff) / step), coeffs)
+
+    # every storage lands within the tolerance below the target, also when nearly every term has to survive
+    for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum), target_size in (n ÷ 10, n ÷ 2, n - n ÷ 100)
+        cache = PropagationCache(makesum(deepcopy(vpsum)))
+        step = PB._calibrate_prob_step(abs, cache, total_weight, target_size; rtol=0.01, atol=0, thread=true)
+        @test 0.99 * target_size <= expected_n_unique(step) <= target_size * (1 + 1e-9)
+    end
+end
+
+
+@testset "one pass counts and weighs as two reductions do, on every storage" begin
+    PB = PP.PropagationBase
+    n = 4 * PB._MIN_ELEMS_PER_TASK
+    rng = MersenneTwister(6)
+    coeffs = randn(rng, n)
+    vpsum = VectorPauliSum(32, UInt64.(1:n), coeffs)
+    is_positive(coeff) = coeff > 0
+    negative_weight(coeff) = is_positive(coeff) ? 0.0 : abs(coeff)
+
+    for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum, vps -> MultiPauliSum(PauliSum(vps), 4)), thread in (true, false)
+        n_positive, weight = PB._countandweigh(is_positive, negative_weight, PropagationCache(makesum(deepcopy(vpsum))); thread)
+        @test n_positive == count(is_positive, coeffs)
+        @test weight ≈ sum(negative_weight, coeffs)
+    end
+end
