@@ -524,7 +524,7 @@ end
 end
 
 
-@testset "the interval walk keeps the same terms on any number of tasks" begin
+@testset "setting the coefficients keeps the same terms on any number of tasks" begin
     PB = PP.PropagationBase
     n = 4 * PB._MIN_ELEMS_PER_TASK
     rng = MersenneTwister(11)
@@ -539,15 +539,15 @@ end
     newcache() = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
 
     serial = newcache()
-    _, intervals = PB._weigh_terms(abs, serial; thread=false)
-    PB._walk_intervals!(intervals, teeth_count_func, new_coeff_func, serial; thread=false)
+    _, serial_interval_starts = PB._weigh_terms(abs, serial; thread=false)
+    PB._set_coeffs_and_drop_zeros!(abs, teeth_count_func, new_coeff_func, serial, serial_interval_starts; thread=false)
     @test 0 < length(serial) < n
 
     task_partitioner = PB.AK.TaskPartitioner(n, 4, 1)
     n_tasks = task_partitioner.num_tasks
     interval_starts = [sum(abs, view(input_coeffs, 1:first(task_partitioner[task_id])-1); init=0.0) for task_id in 1:n_tasks]
     in_tasks = newcache()
-    PB._walk_intervals_in_tasks!(abs, teeth_count_func, new_coeff_func, in_tasks, interval_starts, task_partitioner, n_tasks)
+    PB._set_coeffs_and_drop_zeros_in_tasks!(abs, teeth_count_func, new_coeff_func, in_tasks, interval_starts, task_partitioner, n_tasks)
     @test PB.activeterms(in_tasks) == PB.activeterms(serial)
     @test PB.activecoeffs(in_tasks) == PB.activecoeffs(serial)
 
@@ -562,11 +562,11 @@ end
         Threads.atomic_add!(n_calls, 1)
         return new_coeff_func(coeff, n_teeth)
     end
-    PB._walk_intervals_in_tasks!(abs, teeth_count_func, counted_new_coeff_func, newcache(), interval_starts, task_partitioner, n_tasks)
+    PB._set_coeffs_and_drop_zeros_in_tasks!(abs, teeth_count_func, counted_new_coeff_func, newcache(), interval_starts, task_partitioner, n_tasks)
     @test n_calls[] == n
 
     # the walk takes the terms in as many chunks as they were weighed in
-    @test_throws ArgumentError PB._walk_intervals!(PB._Intervals(abs, [0.0, 0.5]), teeth_count_func, new_coeff_func, newcache(); thread=false)
+    @test_throws ArgumentError PB._set_coeffs_and_drop_zeros!(abs, teeth_count_func, new_coeff_func, newcache(), [0.0, 0.5]; thread=false)
 end
 
 

@@ -7,9 +7,9 @@
 # the terms, lays teeth over the intervals (a comb at a random offset, or random draws), and keeps each term with the
 # weight of the teeth in its interval.
 #
-# A strategy weighs the terms with `_weigh_terms`, which returns their total weight and their intervals, chooses its
-# teeth from that total, and hands the intervals and the teeth to `_walk_intervals!`, which gives every term its new
-# coefficient and drops the terms without teeth.
+# A strategy weighs the terms with `_weigh_terms`, which returns their total weight and where their intervals start,
+# chooses its teeth from that total, and hands the teeth and the interval starts to `_set_coeffs_and_drop_zeros!`,
+# which gives every term its new coefficient and drops the terms whose new coefficient is zero.
 
 ## RE-SAMPLING
 """
@@ -79,7 +79,8 @@ The terms stay where they are, so at most `target_size` of them survive and a so
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, thread::Bool=true, kwargs...)
-    total_weight, intervals = _weigh_terms(_get_weight_func(squared), prop_cache; thread)
+    weight_func = _get_weight_func(squared)
+    total_weight, interval_starts = _weigh_terms(weight_func, prop_cache; thread)
     weight_per_draw = total_weight / target_size
 
     # the draws are teeth at random positions, sorted so that the draws below a position are found by a search
@@ -87,7 +88,7 @@ function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size
     draw_count_func(position) = searchsortedfirst(sorted_draws, position) - 1
     new_coeff_func(coeff, n_draws) = _compute_new_coeff(n_draws, weight_per_draw, coeff, squared)
 
-    return _walk_intervals!(intervals, draw_count_func, new_coeff_func, prop_cache; thread)
+    return _set_coeffs_and_drop_zeros!(weight_func, draw_count_func, new_coeff_func, prop_cache, interval_starts; thread)
 end
 
 # draws are independent of the incoming terms, so any target_size is reachable
@@ -103,13 +104,13 @@ See `calibrate`/`rtol`/`atol` for tuning how closely the comb spacing is chosen 
 """
 function systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, calibrate=true, rtol=0.01, atol=1, thread::Bool=true, kwargs...)
     weight_func = _get_weight_func(squared)
-    total_weight, intervals = _weigh_terms(weight_func, prop_cache; thread)
+    total_weight, interval_starts = _weigh_terms(weight_func, prop_cache; thread)
 
     comb_spacing = _get_systematic_spacing(weight_func, prop_cache, total_weight, target_size; calibrate, rtol, atol, thread)
     teeth_count_func = _build_teeth_count_func(comb_spacing)
     new_coeff_func(coeff, n_teeth) = _compute_new_coeff(n_teeth, comb_spacing, coeff, squared)
 
-    return _walk_intervals!(intervals, teeth_count_func, new_coeff_func, prop_cache; thread)
+    return _set_coeffs_and_drop_zeros!(weight_func, teeth_count_func, new_coeff_func, prop_cache, interval_starts; thread)
 end
 
 # A comb spacing of total_weight / target_size generally keeps fewer than target_size unique terms, so a calibrated comb
@@ -181,7 +182,7 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
     end
 
     # one pass counts the kept terms and weighs the others, whose intervals share the teeth the kept terms leave
-    n_kept, total_comb_weight, comb_intervals = _count_and_weigh_terms(is_kept, comb_weight, prop_cache; thread)
+    n_kept, total_comb_weight, comb_interval_starts = _count_and_weigh_terms(is_kept, comb_weight, prop_cache; thread)
     comb_spacing = _get_comb_spacing(total_comb_weight, target_size - n_kept)
     teeth_count_func = _build_teeth_count_func(comb_spacing)
 
@@ -191,7 +192,7 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
         return ifelse(is_kept(coeff), coeff, comb_coeff)
     end
 
-    return _walk_intervals!(comb_intervals, teeth_count_func, new_coeff_func, prop_cache; thread)
+    return _set_coeffs_and_drop_zeros!(comb_weight, teeth_count_func, new_coeff_func, prop_cache, comb_interval_starts; thread)
 end
 
 # the weight of a term's interval: its absolute value, or its absolute square when resampling squared
@@ -250,31 +251,25 @@ _apply_sign(magnitude, coeff) = magnitude * sign(coeff)
 # tell it where its intervals start, so that in the second pass every chunk walks its intervals without waiting for the
 # others.
 
-# Where the interval of every term lies: each is as wide as `weight_func` of the term's coefficient and starts where the
-# interval of the term before it ends, from where the intervals of its chunk start.
-struct _Intervals{W,V}
-    weight_func::W
-    chunk_interval_starts::V
-end
-
-# the total weight of the terms, and their intervals
+# The total weight of the terms, and where their intervals start: one start for every chunk, from which the intervals
+# of its terms follow one after the other, each as wide as `weight_func` of the term's coefficient.
 function _weigh_terms(weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W}
-    _, total_weight, intervals = _count_and_weigh_terms(_count_none, weight_func, prop_cache; thread)
-    return total_weight, intervals
+    _, total_weight, interval_starts = _count_and_weigh_terms(_count_none, weight_func, prop_cache; thread)
+    return total_weight, interval_starts
 end
 
 _count_none(coeff) = false
 
-# how many terms `count_func` accepts, found in the same pass, the total weight of the terms, and their intervals
+# how many terms `count_func` accepts, found in the same pass, and what `_weigh_terms` returns
 function _count_and_weigh_terms(count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool=true) where {C,W}
     n_counted, total_weight, chunk_weights = _count_and_weigh_chunks(count_func, weight_func, prop_cache; thread)
-    chunk_interval_starts = similar(chunk_weights)
+    interval_starts = similar(chunk_weights)
     interval_start = zero(eltype(chunk_weights))
     for chunk_id in eachindex(chunk_weights)
-        chunk_interval_starts[chunk_id] = interval_start
+        interval_starts[chunk_id] = interval_start
         interval_start += chunk_weights[chunk_id]
     end
-    return n_counted, total_weight, _Intervals(weight_func, chunk_interval_starts)
+    return n_counted, total_weight, interval_starts
 end
 
 # How many terms `count_func` accepts, the sum of `weight_func` over all terms, and that sum for every chunk, in the
@@ -336,19 +331,19 @@ end
 end
 
 
-## WALKING THE SLOTS
+## SETTING THE COEFFICIENTS AND DROPPING ZEROS
 # Walks the intervals in the order of the terms, gives every term `new_coeff_func(coeff, n_teeth)` for the
 # `n_teeth = teeth_count_func(interval_end) - teeth_count_func(interval_start)` in its interval, and drops the terms
-# whose new coefficient is zero. The kept terms stay in the order they had. `intervals` must come from weighing the
-# same terms.
-function _walk_intervals!(intervals::_Intervals, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache; thread::Bool) where {T,F}
-    return _walk_intervals!(StorageType(prop_cache), intervals.weight_func, teeth_count_func, new_coeff_func, prop_cache, intervals.chunk_interval_starts; thread)
+# whose new coefficient is zero. The kept terms stay in the order they had. `interval_starts` must come from
+# `_weigh_terms` with the same `weight_func` on the same terms.
+function _set_coeffs_and_drop_zeros!(weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, interval_starts; thread::Bool) where {W,T,F}
+    return _set_coeffs_and_drop_zeros!(StorageType(prop_cache), weight_func, teeth_count_func, new_coeff_func, prop_cache, interval_starts; thread)
 end
 
 _has_zero_coeff(term, coeff) = iszero(coeff)
 
 # a dictionary gives its terms their new coefficients in one walk and then drops those without
-function _walk_intervals!(::StorageType, weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, chunk_interval_starts; thread::Bool) where {W,T,F}
+function _set_coeffs_and_drop_zeros!(::StorageType, weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, chunk_interval_starts; thread::Bool) where {W,T,F}
     main_sum = mainsum(prop_cache)
     interval_end = only(chunk_interval_starts)
     teeth_below_end = teeth_count_func(interval_end)
@@ -364,9 +359,9 @@ end
 # One task walks the intervals of an array on the CPU and compacts in place, since it writes at or behind the term it
 # just read; several tasks do so each in their chunk and then copy what they kept one after the other into the
 # auxiliary arrays.
-function _walk_intervals!(::ArrayStorage, weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, chunk_interval_starts; thread::Bool) where {W,T,F}
+function _set_coeffs_and_drop_zeros!(::ArrayStorage, weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, chunk_interval_starts; thread::Bool) where {W,T,F}
     if !_iscpuarray(prop_cache)
-        return _walk_intervals_on_device!(weight_func, teeth_count_func, new_coeff_func, prop_cache, only(chunk_interval_starts); thread)
+        return _set_coeffs_and_drop_zeros_on_device!(weight_func, teeth_count_func, new_coeff_func, prop_cache, only(chunk_interval_starts); thread)
     end
 
     task_partitioner, n_tasks = _preparetasks(activesize(prop_cache), thread)
@@ -374,18 +369,18 @@ function _walk_intervals!(::ArrayStorage, weight_func::W, teeth_count_func::T, n
         throw(ArgumentError("the terms were weighed in $(length(chunk_interval_starts)) chunks but are walked in $n_tasks"))
     end
     if n_tasks > 1
-        return _walk_intervals_in_tasks!(weight_func, teeth_count_func, new_coeff_func, prop_cache, chunk_interval_starts, task_partitioner, n_tasks)
+        return _set_coeffs_and_drop_zeros_in_tasks!(weight_func, teeth_count_func, new_coeff_func, prop_cache, chunk_interval_starts, task_partitioner, n_tasks)
     end
 
     main_sum = mainsum(prop_cache)
-    n_kept, n_sorted_kept = _walk_intervals_and_compact!(weight_func, teeth_count_func, new_coeff_func, terms(main_sum), coefficients(main_sum),
+    n_kept, n_sorted_kept = _set_coeffs_and_compact!(weight_func, teeth_count_func, new_coeff_func, terms(main_sum), coefficients(main_sum),
         1, activesize(prop_cache), only(chunk_interval_starts), sortedprefix(main_sum))
     setactivesize!(prop_cache, n_kept)
     setsortedprefix!(main_sum, n_sorted_kept)
     return prop_cache
 end
 
-function _walk_intervals_in_tasks!(weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache, chunk_interval_starts, task_partitioner, n_tasks::Int) where {W,T,F}
+function _set_coeffs_and_drop_zeros_in_tasks!(weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache, chunk_interval_starts, task_partitioner, n_tasks::Int) where {W,T,F}
     main_terms, main_coefficients, aux_terms, aux_coefficients = _mainauxarrays(prop_cache)
     n_sorted = sortedprefix(mainsum(prop_cache))
 
@@ -393,7 +388,7 @@ function _walk_intervals_in_tasks!(weight_func::W, teeth_count_func::T, new_coef
     sorted_kept_counts = Vector{Int}(undef, n_tasks)
     function walk_chunk!(task_id)
         chunk = task_partitioner[task_id]
-        kept_counts[task_id], sorted_kept_counts[task_id] = _walk_intervals_and_compact!(weight_func, teeth_count_func, new_coeff_func,
+        kept_counts[task_id], sorted_kept_counts[task_id] = _set_coeffs_and_compact!(weight_func, teeth_count_func, new_coeff_func,
             main_terms, main_coefficients, chunk.start, chunk.stop, chunk_interval_starts[task_id], n_sorted)
     end
     _eachtask(walk_chunk!, n_tasks)
@@ -414,7 +409,7 @@ end
 # the end of the interval before, so each position is counted once. Returns the number of kept terms and how many of
 # them came from the first `n_sorted`. A dropped term is written too and overwritten by the next, so that random drops
 # cost no mispredicted branch.
-@inline function _walk_intervals_and_compact!(weight_func::W, teeth_count_func::T, new_coeff_func::F, terms, coefficients, lo, hi, interval_start, n_sorted) where {W,T,F}
+@inline function _set_coeffs_and_compact!(weight_func::W, teeth_count_func::T, new_coeff_func::F, terms, coefficients, lo, hi, interval_start, n_sorted) where {W,T,F}
     write_pos = lo
     n_sorted_kept = 0
     interval_end = interval_start
@@ -440,7 +435,7 @@ end
 
 # An array off the CPU finds every interval from a scan of the weights, in the auxiliary coefficients when those are
 # real, gives every term its coefficient independently, and then drops those without.
-function _walk_intervals_on_device!(weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache, interval_start; thread::Bool) where {W,T,F}
+function _set_coeffs_and_drop_zeros_on_device!(weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache, interval_start; thread::Bool) where {W,T,F}
     active_coeffs = activecoeffs(prop_cache)
     interval_ends = _get_real_buffer(coefficients(auxsum(prop_cache)), active_coeffs)
     AK.map!(weight_func, interval_ends, active_coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
@@ -466,14 +461,14 @@ function _get_real_buffer(dst, coeffs)
 end
 
 # every zone walks on its own thread, from where the zones before it end
-function _walk_intervals!(::MultiSumStorage, weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, zone_interval_starts; thread::Bool) where {W,T,F}
+function _set_coeffs_and_drop_zeros!(::MultiSumStorage, weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, zone_interval_starts; thread::Bool) where {W,T,F}
     if length(zone_interval_starts) != nzones(prop_cache)
         throw(ArgumentError("the terms were weighed in $(length(zone_interval_starts)) chunks but are walked in $(nzones(prop_cache)) zones"))
     end
 
     function walk_zone!(zone_id)
         zonecache = zonecaches(prop_cache)[zone_id]
-        _walk_intervals!(StorageType(zonecache), weight_func, teeth_count_func, new_coeff_func, zonecache, (zone_interval_starts[zone_id],); thread=false)
+        _set_coeffs_and_drop_zeros!(StorageType(zonecache), weight_func, teeth_count_func, new_coeff_func, zonecache, (zone_interval_starts[zone_id],); thread=false)
     end
     _eachzone(walk_zone!, prop_cache, thread)
 
