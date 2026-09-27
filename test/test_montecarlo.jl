@@ -599,9 +599,11 @@ end
     negative_weight(coeff) = is_positive(coeff) ? 0.0 : abs(coeff)
 
     for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum, vps -> MultiPauliSum(PauliSum(vps), 4)), thread in (true, false)
-        n_positive, total_weight, chunk_weights = PB._count_and_weigh_chunks(is_positive, negative_weight, PropagationCache(makesum(deepcopy(vpsum))); thread)
+        n_positive, total_weight, interval_starts = PB._count_and_weigh_terms(is_positive, negative_weight, PropagationCache(makesum(deepcopy(vpsum))); thread)
         @test n_positive == count(is_positive, coeffs)
         @test total_weight ≈ sum(negative_weight, coeffs)
-        @test sum(chunk_weights) ≈ total_weight
+        # the first chunk starts at zero and every other one where the chunks before it end, within the total
+        @test iszero(first(interval_starts))
+        @test issorted(interval_starts) && last(interval_starts) < total_weight
     end
 end

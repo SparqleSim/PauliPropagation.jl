@@ -150,7 +150,7 @@ function _count_heavy_and_weigh_light(weight_func::W, spacing, prop_cache::Abstr
         end
         return weight_func(coeff)
     end
-    n_heavy, total_light_weight, _ = _count_and_weigh_chunks(is_heavy, light_weight, prop_cache; thread)
+    n_heavy, total_light_weight, _ = _count_and_weigh_terms(is_heavy, light_weight, prop_cache; thread)
     return n_heavy, total_light_weight
 end
 
@@ -262,7 +262,7 @@ _count_none(coeff) = false
 
 # how many terms `count_func` accepts, found in the same pass, and what `_weigh_terms` returns
 function _count_and_weigh_terms(count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool=true) where {C,W}
-    n_counted, total_weight, chunk_weights = _count_and_weigh_chunks(count_func, weight_func, prop_cache; thread)
+    n_counted, total_weight, chunk_weights = _count_and_weigh_chunks(StorageType(prop_cache), count_func, weight_func, prop_cache; thread)
     interval_starts = similar(chunk_weights)
     interval_start = zero(eltype(chunk_weights))
     for chunk_id in eachindex(chunk_weights)
@@ -272,10 +272,8 @@ function _count_and_weigh_terms(count_func::C, weight_func::W, prop_cache::Abstr
     return n_counted, total_weight, interval_starts
 end
 
-# How many terms `count_func` accepts, the sum of `weight_func` over all terms, and that sum for every chunk, in the
-# order the walk takes them.
-_count_and_weigh_chunks(count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool=true) where {C,W} =
-    _count_and_weigh_chunks(StorageType(prop_cache), count_func, weight_func, prop_cache; thread)
+# Every storage counts and weighs its terms chunk by chunk: how many terms `count_func` accepts, the sum of
+# `weight_func` over all terms, and that sum for every chunk, in the order the second pass takes them.
 
 # a dictionary is one chunk
 function _count_and_weigh_chunks(::StorageType, count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool) where {C,W}
@@ -310,7 +308,7 @@ end
 # a multi sum is one chunk per zone, every zone counted and weighed on its own thread
 function _count_and_weigh_chunks(::MultiSumStorage, count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool) where {C,W}
     function count_and_weigh_zone(zonecache)
-        n_counted, zone_weight, _ = _count_and_weigh_chunks(count_func, weight_func, zonecache; thread=false)
+        n_counted, zone_weight, _ = _count_and_weigh_chunks(StorageType(zonecache), count_func, weight_func, zonecache; thread=false)
         return (n_counted, zone_weight)
     end
     zone_counts_and_weights = _zonevalues(count_and_weigh_zone, Tuple{Int,real(numcoefftype(prop_cache))}, prop_cache, thread)
