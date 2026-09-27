@@ -323,7 +323,7 @@ end
     n = length(psum)
     target_size = max(1, n ÷ 2)
 
-    # systematic_resample!'s comb step is quantized and randomly offset, so both the survivor
+    # systematic_resample!'s comb spacing is quantized and randomly offset, so both the survivor
     # count and the weight it carries land close to, but not always exactly at, their targets
     term_tol = 3
 
@@ -401,7 +401,7 @@ end
     resample!(cache, target_size; resample_func=PP.multinomial_resample!)
     @test 1 <= PP.activesize(cache) <= target_size
 
-    # the deduplicating variants' comb step is quantized, so the survivor count can land a
+    # the deduplicating variants' comb spacing is quantized, so the survivor count can land a
     # few terms above target_size, and may also land well below it if many terms deduplicate
     for f in (PP.systematic_resample!, PP.semideterministic_systematic_resample!)
         cache = PropagationCache(deepcopy(base_psum))
@@ -524,24 +524,30 @@ end
 end
 
 
-@testset "mapslotsandtruncate! gives the same slots on any number of tasks" begin
+@testset "the interval walk keeps the same terms on any number of tasks" begin
     PB = PP.PropagationBase
     n = 4 * PB._MIN_ELEMS_PER_TASK
     rng = MersenneTwister(11)
     input_terms = UInt64.(1:n)
-    # dyadic coefficients sum exactly in any order, so every split of the terms lays the same slots
+    # dyadic coefficients sum exactly in any order, so every split of the terms gives them the same intervals
     input_coeffs = [rand(rng, (-1, 1)) * rand(rng, 1:64) / 8 for _ in 1:n]
     n_sorted = n ÷ 3
-    comb_step = sum(abs, input_coeffs) / (n ÷ 2)
-    new_coeff_func(coeff, slot_start, slot_end) = PB._compute_new_coeff(PB._count_combteeth(comb_step, comb_step / 3, slot_start, slot_end), comb_step, coeff, false)
+    comb_spacing = sum(abs, input_coeffs) / (n ÷ 2)
+    # a comb whose teeth sit a third of the spacing past every multiple of it
+    teeth_count_func(position) = floor(position / comb_spacing - 1 / 3)
+    new_coeff_func(coeff, n_teeth) = PB._compute_new_coeff(n_teeth, comb_spacing, coeff, false)
+    newcache() = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
 
-    serial = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
-    PP.mapslotsandtruncate!(abs, new_coeff_func, PB._truncatezero, serial; thread=false)
+    serial = newcache()
+    _, intervals = PB._weigh_terms(abs, serial; thread=false)
+    PB._walk_intervals!(intervals, teeth_count_func, new_coeff_func, serial; thread=false)
     @test 0 < length(serial) < n
 
     task_partitioner = PB.AK.TaskPartitioner(n, 4, 1)
-    in_tasks = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
-    PB._mapslotsintasks!(abs, new_coeff_func, PB._truncatezero, in_tasks, task_partitioner, task_partitioner.num_tasks)
+    n_tasks = task_partitioner.num_tasks
+    interval_starts = [sum(abs, view(input_coeffs, 1:first(task_partitioner[task_id])-1); init=0.0) for task_id in 1:n_tasks]
+    in_tasks = newcache()
+    PB._walk_intervals_in_tasks!(abs, teeth_count_func, new_coeff_func, in_tasks, interval_starts, task_partitioner, n_tasks)
     @test PB.activeterms(in_tasks) == PB.activeterms(serial)
     @test PB.activecoeffs(in_tasks) == PB.activecoeffs(serial)
 
@@ -552,27 +558,19 @@ end
 
     # a new coefficient can be costly to find, as for multinomial draws, so every term asks for one only once
     n_calls = Threads.Atomic{Int}(0)
-    function counted_new_coeff_func(coeff, slot_start, slot_end)
+    function counted_new_coeff_func(coeff, n_teeth)
         Threads.atomic_add!(n_calls, 1)
-        return new_coeff_func(coeff, slot_start, slot_end)
+        return new_coeff_func(coeff, n_teeth)
     end
-    counted = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
-    PB._mapslotsintasks!(abs, counted_new_coeff_func, PB._truncatezero, counted, task_partitioner, task_partitioner.num_tasks)
+    PB._walk_intervals_in_tasks!(abs, teeth_count_func, counted_new_coeff_func, newcache(), interval_starts, task_partitioner, n_tasks)
     @test n_calls[] == n
 
-    # without a truncation, every term keeps its place and gets the coefficient of its slot
-    serial = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
-    PP.mapslots!(abs, new_coeff_func, serial; thread=false)
-    in_tasks = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
-    PB._mapslotsintasks!(abs, new_coeff_func, nothing, in_tasks, task_partitioner, task_partitioner.num_tasks)
-    @test PB.activeterms(serial) == PB.activeterms(in_tasks) == input_terms
-    @test PB.activecoeffs(in_tasks) == PB.activecoeffs(serial)
-    @test count(iszero, PB.activecoeffs(serial)) > 0
-    @test PB.sortedprefix(mainsum(serial)) == PB.sortedprefix(mainsum(in_tasks)) == n_sorted
+    # the walk takes the terms in as many chunks as they were weighed in
+    @test_throws ArgumentError PB._walk_intervals!(PB._Intervals(abs, [0.0, 0.5]), teeth_count_func, new_coeff_func, newcache(); thread=false)
 end
 
 
-@testset "the calibrated comb step keeps the target in expectation" begin
+@testset "the calibrated comb spacing keeps the target in expectation" begin
     PB = PP.PropagationBase
     n = 4 * PB._MIN_ELEMS_PER_TASK
     rng = MersenneTwister(5)
@@ -580,13 +578,13 @@ end
     coeffs = randn(rng, n) .* exp.(1.5 .* randn(rng, n))
     vpsum = VectorPauliSum(32, UInt64.(1:n), coeffs)
     total_weight = sum(abs, coeffs)
-    expected_n_unique(step) = sum(coeff -> min(1.0, abs(coeff) / step), coeffs)
+    expected_n_unique(spacing) = sum(coeff -> min(1.0, abs(coeff) / spacing), coeffs)
 
     # every storage lands within the tolerance below the target, also when nearly every term has to survive
     for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum), target_size in (n ÷ 10, n ÷ 2, n - n ÷ 100)
         cache = PropagationCache(makesum(deepcopy(vpsum)))
-        step = PB._calibrate_prob_step(abs, cache, total_weight, target_size; rtol=0.01, atol=0, thread=true)
-        @test 0.99 * target_size <= expected_n_unique(step) <= target_size * (1 + 1e-9)
+        spacing = PB._calibrate_comb_spacing(abs, cache, total_weight, target_size; rtol=0.01, atol=0, thread=true)
+        @test 0.99 * target_size <= expected_n_unique(spacing) <= target_size * (1 + 1e-9)
     end
 end
 
@@ -601,8 +599,9 @@ end
     negative_weight(coeff) = is_positive(coeff) ? 0.0 : abs(coeff)
 
     for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum, vps -> MultiPauliSum(PauliSum(vps), 4)), thread in (true, false)
-        n_positive, weight = PB._countandweigh(is_positive, negative_weight, PropagationCache(makesum(deepcopy(vpsum))); thread)
+        n_positive, total_weight, chunk_weights = PB._count_and_weigh_chunks(is_positive, negative_weight, PropagationCache(makesum(deepcopy(vpsum))); thread)
         @test n_positive == count(is_positive, coeffs)
-        @test weight ≈ sum(negative_weight, coeffs)
+        @test total_weight ≈ sum(negative_weight, coeffs)
+        @test sum(chunk_weights) ≈ total_weight
     end
 end
