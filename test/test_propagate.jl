@@ -106,8 +106,10 @@ end
         wide_pstr = PauliString(100, getinttype(100)(pstr.term), pstr.coeff)
         dwide = propagate(circ, wide_pstr, thetas; min_abs_coeff=0, max_weight=max_weight)
         dwidevec = propagate(circ, VectorPauliSum(wide_pstr), thetas; min_abs_coeff=0, max_weight=max_weight)
-        @test overlapwithzero(dwide) ≈ overlapwithzero(dwidevec) ≈ overlapwithzero(dnum)
-        @test overlapwithplus(dwide) ≈ overlapwithplus(dwidevec) ≈ overlapwithplus(dnum)
+        wide_msum = MultiPauliSum(VectorPauliSum(wide_pstr), 4)
+        dwidemulti = propagate(circ, wide_msum, thetas; min_abs_coeff=0, max_weight=max_weight)
+        @test overlapwithzero(dwide) ≈ overlapwithzero(dwidevec) ≈ overlapwithzero(dwidemulti) ≈ overlapwithzero(dnum)
+        @test overlapwithplus(dwide) ≈ overlapwithplus(dwidevec) ≈ overlapwithplus(dwidemulti) ≈ overlapwithplus(dnum)
     end
 
     # Test frequency truncation

@@ -30,6 +30,8 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
         @test getinttype(96) == NTupleInteger{3}
         @test getinttype(97) == NTupleInteger{4}
         @test getinttype(2500) == NTupleInteger{79}
+        @test getinttype(UInt(100)) === getinttype(big(100)) === NTupleInteger{4}
+        @test getinttype(Int32(20)) === UInt64
         @test isbitstype(getinttype(1000))
         @test sizeof(getinttype(1000)) == 8 * 32
         @test Base.aligned_sizeof(getinttype(1000)) == 8 * 32
@@ -97,6 +99,7 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
             bit_counts &= count_zeros(x) == 64 * N - count_ones(bx)
             bit_counts &= trailing_zeros(x) == (iszero(x) ? 64 * N : trailing_zeros(bx))
             bit_counts &= leading_zeros(x) == 64 * N - ndigits(bx; base=2) + (iszero(x) ? 1 : 0)
+            bit_counts &= PB.anylimbs(identity, x) == !iszero(bx)
             conversions &= x % UInt64 == bx % UInt64
             conversions &= x % UInt8 == bx % UInt8
             conversions &= x % Int16 == bx % Int16
@@ -126,12 +129,14 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
         @test shifts
 
         # values that fit a machine word hash and compare as that word
-        @test hash(T(5)) == hash(5) == hash(UInt64(5)) == hash(T(5), zero(UInt))
+        @test hash(T(5)) == hash(5) == hash(UInt64(5)) && hash(T(5), zero(UInt)) == hash(5, zero(UInt))
         @test hash(T(5), UInt(17)) == hash(5, UInt(17))
         @test T(5) == 5 && 5 == T(5) && T(5) != 6 && T(5) == UInt8(5) && T(5) == UInt128(5) && T(5) == BigInt(5)
         @test isless(T(5), 6) && isless(4, T(5)) && !isless(T(5), 5) && !isless(T(5), -1) && isless(-1, T(5))
         @test T(5) < 6 && 4 < T(5) && T(5) <= 5 && 5 <= T(5) && !(T(5) < -3) && -3 < T(5)
+        @test !(T(5) <= -1) && -1 <= T(5) && T(5) >= -1 && !(-1 >= T(5))
         @test T(5) + 1 == 6 && 1 + T(5) == 6 && T(5) - 1 == 4 && 7 - T(5) == 2
+        @test T(1) + (UInt128(1) << 70) == (UInt128(1) << 70) + 1
         @test typemax(T) + 1 == 0 && zero(T) - 1 == typemax(T)
         @test max(T(5), T(9)) == 9 && min(T(5), T(9)) == 5 && abs(T(5)) === T(5) && cmp(T(5), T(9)) == -1
         @test Int(T(5)) == 5 && UInt8(T(5)) == 0x05 && UInt128(T(5)) == 5 && UInt64(T(5)) == 5
@@ -216,6 +221,13 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
             counts &= county(a) == count(==(2), ps)
             counts &= countz(a) == count(==(3), ps)
             counts &= containsXorY(a) == any(p -> p == 1 || p == 2, ps)
+            counts &= containsYorZ(a) == any(p -> p == 2 || p == 3, ps)
+
+            # only I and X means no Y or Z, only I and Z no X or Y, and a lone X or Z sits in the last limb
+            x_only = a & PauliPropagation.alternatingmask(a)
+            z_only = x_only | (x_only << 1)
+            counts &= !containsYorZ(x_only) && !containsXorY(z_only)
+            counts &= containsXorY(setpauli(zero(T), :X, nq)) && containsYorZ(setpauli(zero(T), :Z, nq))
 
             # the bits above the qubits are never read by a Pauli read
             high = a | ~used_bits
@@ -232,7 +244,7 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
             writes &= setpauli(a, :Y, q) == setpauli(a, 2, q)
 
             # several Paulis gathered into the low bits, up to 32 in one word and more in the full type, and windows
-            # of up to 32 and of more Paulis
+            # of up to 32 and of more Paulis, one of them in the last limb
             qinds = shuffle(rng, 1:nq)[1:5]
             packed = getpauli(a, qinds)
             reads &= packed isa T
@@ -245,6 +257,7 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
             reads &= window isa T
             reads &= [Int(getpauli(window, i)) for i in 1:32] == ps[q1:q1+31]
             reads &= getpauli(a, q1, q1) == ps[q1]
+            reads &= getpauli(a, nq, nq) == ps[nq]
             long_window = getpauli(a, q1, nq)
             reads &= long_window isa T
             reads &= [Int(getpauli(long_window, i)) for i in 1:nq-q1+1] == ps[q1:nq]
@@ -304,7 +317,7 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
         wholerule(::AmplitudeDampingNoise, gate_mask) = PP._dampingrule(gate_mask, 0.3)
 
         rng = MersenneTwister(5)
-        for nq in (100, 1000)
+        for nq in (40, 100, 1000)
             TT = getinttype(nq)
             terms = rand(rng, TT, 256)
             coeffs = randn(rng, length(terms))
@@ -327,12 +340,12 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
             end
         end
 
-        # a gate within one limb or across two is asked about those; one on three limbs, or on Pauli strings of at
-        # most two limbs, is asked about the whole string
+        # a gate within one limb or across two is asked about those, and a `UInt128` about both its limbs; one on three
+        # limbs, or on Pauli strings of one machine word, is asked about the whole string
         @test PB.limbspan(symboltoint(getinttype(100), [:X, :Y], [2, 3])) == (1, 1)
         @test PB.limbspan(symboltoint(getinttype(100), [:Z, :X], [32, 33])) == (1, 2)
         @test isnothing(PB.limbspan(symboltoint(getinttype(100), [:X, :Y, :Z], [1, 50, 100])))
-        @test isnothing(PB.limbspan(symboltoint(getinttype(40), [:X], [40])))
+        @test PB.limbspan(symboltoint(getinttype(40), [:X], [40])) == (1, 2)
         @test isnothing(PB.limbspan(symboltoint(getinttype(30), [:X, :Y], [1, 30])))
     end
 

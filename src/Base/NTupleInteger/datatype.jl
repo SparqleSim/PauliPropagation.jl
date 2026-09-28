@@ -13,6 +13,8 @@ An unsigned integer of `N` 64-bit limbs, little-endian: `limbs[1]` holds the low
 Every operation is unrolled over the limbs at compile time.
 It is the term type of a Pauli sum on more than 64 qubits, see `getinttype`.
 Values convert to and from the machine integers and `BigInt`, compare with them, and hash like the values of those types they equal.
+They do not convert to or compare with floating-point numbers.
+A single Pauli read with `getpauli(pstr, index)` comes back as a `UInt64`.
 """
 struct NTupleInteger{N} <: Unsigned
     limbs::NTuple{N,UInt64}
@@ -70,6 +72,7 @@ Base.convert(::Type{T}, x::NTupleInteger) where {T<:Union{Base.BitInteger,BigInt
 # negative value that a conversion to an unsigned type cannot
 Base.promote_rule(::Type{NTupleInteger{N}}, ::Type{NTupleInteger{M}}) where {N,M} = NTupleInteger{max(N, M)}
 Base.promote_rule(::Type{NTupleInteger{N}}, ::Type{<:Union{Base.BitInteger,Bool}}) where {N} = NTupleInteger{N}
+Base.promote_rule(::Type{NTupleInteger{N}}, ::Type{<:Union{Int128,UInt128}}) where {N} = NTupleInteger{max(N, 2)}
 Base.promote_rule(::Type{NTupleInteger{N}}, ::Type{BigInt}) where {N} = BigInt
 
 function Base.UInt64(x::NTupleInteger)
@@ -175,6 +178,23 @@ end
         Base.@_inline_meta
         $(checks...)
         return $(64 * N)
+    end
+end
+
+# `Base` hashes an integer through it from Julia 1.13 on
+Base.top_set_bit(x::NTupleInteger{N}) where {N} = 64 * N - leading_zeros(x)
+
+"""
+    anylimbs(f, x::NTupleInteger)
+
+Whether `f(limb)` is nonzero for any 64-bit limb of `x`, with `f` taking and returning a `UInt64`.
+"""
+@generated function anylimbs(f::F, x::NTupleInteger{N}) where {F,N}
+    return quote
+        Base.@_inline_meta
+        flags = zero(UInt64)
+        Base.Cartesian.@nexprs $N k -> (flags |= f(x.limbs[k]))
+        return !iszero(flags)
     end
 end
 
@@ -320,10 +340,14 @@ Base.:<(x::NTupleInteger, y::Union{Base.BitInteger,Bool}) = isless(x, y)
 Base.:<(y::Union{Base.BitInteger,Bool}, x::NTupleInteger) = isless(y, x)
 Base.:<(x::NTupleInteger, y::BigInt) = isless(x, y)
 Base.:<(y::BigInt, x::NTupleInteger) = isless(y, x)
+Base.:<=(x::NTupleInteger, y::Union{Base.BitInteger,Bool}) = !isless(y, x)
+Base.:<=(y::Union{Base.BitInteger,Bool}, x::NTupleInteger) = !isless(x, y)
 
 # A value hashes as the machine integer or `BigInt` it compares equal to: as a word if it fits one,
 # as a `Float64` if it has at most 53 significant bits, else as its power of two and the words of its odd part.
 @generated function Base.hash(x::NTupleInteger{N}, h::UInt) where {N}
+    # from Julia 1.13 on, `Base` hashes the value's bytes from its lowest nonzero byte, not the words of its odd part
+    by_bytes = VERSION >= v"1.13-"
     return quote
         Base.@_inline_meta
         rest = zero(UInt64)
@@ -338,6 +362,9 @@ Base.:<(y::BigInt, x::NTupleInteger) = isless(y, x)
             return hash(ldexp(Float64(odd.limbs[1]), pow), h)
         end
         h = Base.hash_integer(pow, h)
+        if $by_bytes
+            return Base.hash_integer(x >> (8 * (pow ÷ 8)), h)
+        end
         top = $N - (leading_zeros(odd) >> 6)
         Base.Cartesian.@nexprs $N k -> begin
             if k <= top

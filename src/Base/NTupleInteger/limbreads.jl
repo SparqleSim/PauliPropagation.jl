@@ -49,8 +49,10 @@ end
 
 The first and last 64-bit limb of `mask` that are not zero, or `nothing` when more than two are, 
 when none is, or when the terms have at most two limbs, so that a whole term is as cheap to read.
+A `UInt128` is read as both its limbs instead, since the rules are faster on them than on the whole 128-bit value.
 """
 limbspan(mask) = nothing
+limbspan(mask::UInt128) = (1, 2)
 function limbspan(mask::NTupleInteger)
     n_acted_on = count(!iszero, mask.limbs)
     if n_acted_on == 0 || n_acted_on > 2 || length(mask.limbs) <= 2
@@ -69,3 +71,6 @@ A window within one limb names it twice, and the second copy is left empty so th
     second = inds[1] == inds[2] ? zero(UInt64) : term.limbs[inds[2]]
     return NTupleInteger{2}((term.limbs[inds[1]], second))
 end
+
+# the window of a `UInt128` is always both its limbs
+limbwindow(term::UInt128, ::NTuple{2,Int}) = NTupleInteger{2}(term)

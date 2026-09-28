@@ -21,7 +21,8 @@ function getinttype(nqubits::Integer)
         return UInt128
     end
 
-    return NTupleInteger{cld(nbits, 64)}
+    # an `Int` limb count, so that every integer type of `nqubits` gives the same type
+    return NTupleInteger{Int(cld(nbits, 64))}
 end
 
 

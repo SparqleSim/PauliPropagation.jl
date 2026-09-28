@@ -9,7 +9,7 @@ include("./utils.jl")
 export tonumber
 
 include("./NTupleInteger/datatype.jl")
-export NTupleInteger
+export NTupleInteger, anylimbs
 
 include("./threading_utils.jl")
 export maxtasks, withworkers

@@ -80,6 +80,10 @@ _countbitx(pstr::NTupleInteger) = _countlimbs(_xlimb, pstr)
 _countbity(pstr::NTupleInteger) = _countlimbs(_ylimb, pstr)
 _countbitz(pstr::NTupleInteger) = _countlimbs(_zlimb, pstr)
 
+# one flagged pair in any limb decides, where the generic versions count them all
+containsXorY(pstr::NTupleInteger) = anylimbs(_xylimb, pstr)
+containsYorZ(pstr::NTupleInteger) = anylimbs(_yzlimb, pstr)
+
 # A Pauli of a chunked string comes back as a `UInt64`, since nothing reads it from the whole value.
 # The limb index is checked against the tuple.
 @inline function _getpaulibits(pstr::NTupleInteger, index::Integer)
