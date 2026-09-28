@@ -120,7 +120,7 @@ function _calibrate_comb_spacing(weight_func::W, prop_cache::AbstractPropagation
     lowest_n_unique = (1 - rtol) * target_size - atol
 
     spacing = total_weight / target_size
-    for _ in 1:5
+    for _ in 1:10
         n_heavy, light_weight = _count_heavy_and_weigh_light(weight_func, spacing, prop_cache; thread)
         if n_heavy + light_weight / spacing >= lowest_n_unique || iszero(light_weight)
             return spacing

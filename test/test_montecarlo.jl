@@ -524,6 +524,60 @@ end
 end
 
 
+@testset "averaged over every comb offset, the new coefficients are the incoming ones" begin
+    PB = PP.PropagationBase
+    n = 40
+    coeffs = randn(MersenneTwister(9), n) .* exp.(randn(MersenneTwister(10), n))
+    vpsum = VectorPauliSum(32, UInt64.(1:n), coeffs)
+    spacing = sum(abs, coeffs) / 15
+    new_coeff_func(coeff, n_teeth) = PB._compute_new_coeff(n_teeth, spacing, coeff, false)
+
+    for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum)
+        tsum = makesum(deepcopy(vpsum))
+        # the result only changes where a tooth crosses the end of an interval, so one walk per stretch of offsets
+        # between such crossings, weighted by its length, gives the exact mean
+        interval_ends = cumsum(abs.(collect(coefficients(tsum))))
+        edges = unique!(sort!([0.0; mod.(interval_ends ./ spacing, 1.0); 1.0]))
+        mean_coeffs = zeros(n)
+        for (lo, hi) in zip(edges[1:end-1], edges[2:end])
+            offset = (lo + hi) / 2
+            teeth_count_func(position) = floor(position / spacing - offset)
+            cache = PropagationCache(deepcopy(tsum))
+            _, interval_starts = PB._weigh_terms(abs, cache; thread=false)
+            PB._set_coeffs_and_drop_zeros!(abs, teeth_count_func, new_coeff_func, cache, interval_starts; thread=false)
+            for (term, coeff) in zip(paulis(cache), coefficients(cache))
+                mean_coeffs[term] += (hi - lo) * coeff
+            end
+        end
+        @test mean_coeffs ≈ coeffs rtol = 1e-12
+    end
+end
+
+
+@testset "at any comb offset, the calibrated comb misses its expectations by less than one tooth" begin
+    PB = PP.PropagationBase
+    n = 1000
+    target_size = n ÷ 2
+    # heaviest first, so that the terms lighter than a tooth form one run, of which the comb hits floor or ceil of the
+    # expected number
+    coeffs = sort!(randn(MersenneTwister(11), n) .* exp.(randn(MersenneTwister(12), n)); by=abs, rev=true)
+    vpsum = VectorPauliSum(32, UInt64.(1:n), coeffs)
+    total_weight = sum(abs, coeffs)
+    spacing = PB._calibrate_comb_spacing(abs, PropagationCache(deepcopy(vpsum)), total_weight, target_size; rtol=0.01, atol=1, thread=false)
+    expected_n_kept = sum(coeff -> min(1.0, abs(coeff) / spacing), coeffs)
+
+    # the bounds hold for every offset, so each resampling may lay its comb anywhere
+    for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum), _ in 1:3
+        cache = PropagationCache(makesum(deepcopy(vpsum)))
+        PB.systematic_resample!(cache, target_size)
+        @test abs(sum(abs, coefficients(cache)) - total_weight) <= (1 + 1e-9) * spacing
+        if makesum === identity
+            @test floor(expected_n_kept) <= length(cache) <= ceil(expected_n_kept)
+        end
+    end
+end
+
+
 @testset "setting the coefficients keeps the same terms on any number of tasks" begin
     PB = PP.PropagationBase
     n = 4 * PB._MIN_ELEMS_PER_TASK
