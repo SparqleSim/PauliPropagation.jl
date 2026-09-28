@@ -3,26 +3,23 @@
 # Resampling: reduces the number of terms in a TermSum by randomly sampling from the coefficient distribution
 ##
 ###
-# Every strategy gives each term an interval of [0, total_weight) as wide as its weight, the intervals in the order of
-# the terms, lays teeth over the intervals (a comb at a random offset, or random draws), and keeps each term with the
-# weight of the teeth in its interval.
-#
-# A strategy weighs the terms with `_weigh_terms`, which returns their total weight and where their intervals start,
-# chooses its teeth from that total, and hands the teeth and the interval starts to `_set_coeffs_and_drop_zeros!`,
-# which gives every term its new coefficient and drops the terms whose new coefficient is zero.
+# Every strategy lines the terms up on [0, total_weight), each on an interval as wide as its weight, lays teeth on that
+# line (a comb or random draws), and gives each term the weight of the teeth in its interval; terms without teeth are
+# dropped. `_weigh_terms` finds where the intervals start and `_set_coeffs_and_drop_zeros!` walks them.
 
 ## RE-SAMPLING
 """
     resample(tsum::AbstractTermSum, target_size::Integer; resample_func=nothing, squared=false, thread=true, kwargs...)
 
-Resamples `tsum` down (close) to `target_size` terms.
-Renormalizes the survivors so that the sum stays an unbiased estimator of incoming sum.
-If `squared=true`, resampling is performed on the absolute square of the coefficients and
-is not an unbiased estimator of the incoming sum.
+Resamples `tsum` down to about `target_size` terms, reweighting the survivors so that the result is an unbiased estimate of `tsum`.
+With `squared=true`, terms are sampled by their squared coefficients, and the result is no longer unbiased.
+`resample_func` defaults to `semideterministic_systematic_resample!`, or to `multinomial_resample!` when `squared=true`.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function resample(tsum::AbstractTermSum, target_size::Integer, resample_args...; kwargs...)
-    return resample!(deepcopy(tsum), target_size, resample_args...; kwargs...)
+    resampled = deepcopy(tsum)
+    resample!(resampled, target_size, resample_args...; kwargs...)
+    return resampled
 end
 
 """
@@ -32,22 +29,20 @@ end
 In-place version of `resample`. See `resample` for details.
 """
 function resample!(tsum::AbstractTermSum, target_size::Integer, resample_args...; kwargs...)
-    prop_cache = resample!(PropagationCache(tsum), target_size, resample_args...; kwargs...)
+    prop_cache = PropagationCache(tsum)
+    resample!(prop_cache, target_size, resample_args...; kwargs...)
 
-    # extract the original tsum
-    return extractsum!(prop_cache, tsum)
+    # the resampled terms go back into `tsum`
+    extractsum!(prop_cache, tsum)
+    return tsum
 end
 
 function resample!(prop_cache::AbstractPropagationCache, target_size, resample_args...; resample_func=nothing, squared=false, resample_kwargs...)
     @assert target_size > 0 "target_size must be positive"
 
-    # resample_func is expected to take prop_cache and target_size as arguments
-    # anything else needs to be wrapped into a closure
-
     if isnothing(resample_func)
         if !squared
-            # faster and almost as accurate as calibrated systematic_resample!,
-            # but not compatible with 2-norm sampling
+            # about as accurate as the calibrated systematic_resample!, and faster
             resample_func = semideterministic_systematic_resample!
         else
             # 2-norm sampling usually draws a few independent samples
@@ -62,8 +57,7 @@ function resample!(prop_cache::AbstractPropagationCache, target_size, resample_a
     return prop_cache
 end
 
-# Most resamplers keep each incoming term at most once, so they can only ever shrink the sum.
-# Resamplers that draw independently, like multinomial_resample!, overload this to accept any size.
+# a resampler that keeps each term at most once cannot grow the sum; multinomial_resample! overloads this
 function _check_target_size(resample_func, active_size, target_size)
     if target_size > active_size
         throw(ArgumentError("$resample_func cannot grow $active_size terms to target_size $target_size. Use multinomial_resample!."))
@@ -74,8 +68,8 @@ end
 """
     multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread=true)
 
-Draws `target_size` terms with replacement, each with probability proportional to its weight, and keeps every term drawn with the weight of all of its draws.
-The terms stay where they are, so at most `target_size` of them survive and a sorted sum stays sorted.
+Draws `target_size` times with replacement, each term with probability proportional to its absolute coefficient (squared with `squared=true`), and keeps every drawn term with the weight of its draws.
+At most `target_size` terms survive, in their original order, so a sorted sum stays sorted.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, thread::Bool=true, kwargs...)
@@ -83,49 +77,45 @@ function multinomial_resample!(prop_cache::AbstractPropagationCache, target_size
     total_weight, interval_starts = _weigh_terms(weight_func, prop_cache; thread)
     weight_per_draw = total_weight / target_size
 
-    # the draws are teeth at random positions, sorted so that the draws below a position are found by a search
+    # sorted, so that the draws below a position are found by binary search
     sorted_draws = sort!(rand(typeof(total_weight), target_size) .* total_weight)
     draw_count_func(position) = searchsortedfirst(sorted_draws, position) - 1
     new_coeff_func(coeff, n_draws) = _compute_new_coeff(n_draws, weight_per_draw, coeff, squared)
 
-    return _set_coeffs_and_drop_zeros!(weight_func, draw_count_func, new_coeff_func, prop_cache, interval_starts; thread)
+    _set_coeffs_and_drop_zeros!(weight_func, draw_count_func, new_coeff_func, prop_cache, interval_starts; thread)
+    return prop_cache
 end
 
-# draws are independent of the incoming terms, so any target_size is reachable
+# independent draws can reach any target_size
 _check_target_size(::typeof(multinomial_resample!), active_size, target_size) = nothing
 
 """
-    systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, calibrate=true, rtol=0.01, atol=0, thread=true)
+    systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, calibrate=true, rtol=0.01, atol=1, thread=true)
 
-Low variance resampling technique that returns unique terms.
-The number of surviving terms is often close to, and generally at most, `target_size`.
-See `calibrate`/`rtol`/`atol` for tuning how closely the comb spacing is chosen to hit `target_size` unique survivors.
+Low-variance resampling: an evenly spaced comb at a random offset is laid over the terms' weights, and every term it hits is kept once, with the weight of its teeth.
+The number of survivors is usually close to, and rarely more than, `target_size`.
+With `calibrate=true`, the comb spacing is narrowed until the expected number of survivors reaches `(1 - rtol) * target_size - atol`.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared::Bool=false, calibrate=true, rtol=0.01, atol=1, thread::Bool=true, kwargs...)
     weight_func = _get_weight_func(squared)
     total_weight, interval_starts = _weigh_terms(weight_func, prop_cache; thread)
 
-    comb_spacing = _get_systematic_spacing(weight_func, prop_cache, total_weight, target_size; calibrate, rtol, atol, thread)
+    comb_spacing = if calibrate
+        _calibrate_comb_spacing(weight_func, prop_cache, total_weight, target_size; rtol, atol, thread)
+    else
+        total_weight / target_size
+    end
     teeth_count_func = _build_teeth_count_func(comb_spacing)
     new_coeff_func(coeff, n_teeth) = _compute_new_coeff(n_teeth, comb_spacing, coeff, squared)
 
-    return _set_coeffs_and_drop_zeros!(weight_func, teeth_count_func, new_coeff_func, prop_cache, interval_starts; thread)
+    _set_coeffs_and_drop_zeros!(weight_func, teeth_count_func, new_coeff_func, prop_cache, interval_starts; thread)
+    return prop_cache
 end
 
-# A comb spacing of total_weight / target_size generally keeps fewer than target_size unique terms, so a calibrated comb
-# narrows the spacing until it keeps about that many.
-function _get_systematic_spacing(weight_func::W, prop_cache, total_weight, target_size; calibrate::Bool, rtol::Real, atol::Real, thread::Bool) where {W}
-    if calibrate
-        return _calibrate_comb_spacing(weight_func, prop_cache, total_weight, target_size; rtol, atol, thread)
-    end
-    return total_weight / target_size
-end
-
-# The comb spacing that keeps `target_size` unique terms in expectation, to within the tolerances. A comb keeps every
-# term that weighs at least its spacing and every lighter one with probability weight / spacing. That expected count is
-# concave in the inverse spacing, so Newton iterations from `total_weight / target_size`, which keeps at most
-# `target_size`, never overshoot.
+# The comb spacing that keeps `target_size` unique terms in expectation, to within the tolerances. A comb keeps a term
+# with probability min(1, weight / spacing), and Newton steps from total_weight / target_size approach the target from
+# below.
 function _calibrate_comb_spacing(weight_func::W, prop_cache::AbstractPropagationCache, total_weight, target_size; rtol::Real, atol::Real, thread::Bool) where {W}
     lowest_n_unique = (1 - rtol) * target_size - atol
 
@@ -140,8 +130,8 @@ function _calibrate_comb_spacing(weight_func::W, prop_cache::AbstractPropagation
     return spacing
 end
 
-# how many terms weigh at least `spacing`, and the weight of all the others; `spacing` is an argument since it changes
-# in the loop above
+# the number of terms weighing at least `spacing` and the total weight of the others; a function of its own, so that
+# its closures capture a `spacing` that does not change
 function _count_heavy_and_weigh_light(weight_func::W, spacing, prop_cache::AbstractPropagationCache; thread::Bool) where {W}
     is_heavy(coeff) = weight_func(coeff) >= spacing
     function light_weight(coeff)
@@ -157,10 +147,8 @@ end
 """
     semideterministic_systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread=true)
 
-Terms whose weight exceeds the average weight per surviving term, `total_weight / target_size`, are always kept;
-the rest of `target_size` is filled by systematic comb resampling over the other terms, and a term that several teeth
-hit is kept once with their combined weight.
-`squared=true` is disallowed.
+Keeps every term whose absolute coefficient exceeds the sum of all absolute coefficients divided by `target_size` as it is, and fills the rest of `target_size` by systematic resampling of the other terms.
+`squared=true` is not supported.
 `thread=false` disables multithreading in every function on the `VectorPauliSum` backend that can multithread.
 """
 function semideterministic_systematic_resample!(prop_cache::AbstractPropagationCache, target_size::Integer; squared=false, thread::Bool=true, kwargs...)
@@ -170,8 +158,7 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
 
     @assert 0 < target_size <= length(prop_cache) "target_size must be between 1 and length(prop_cache)"
 
-    # a term above the average weight per surviving term is kept as it is, with an empty interval under the comb
-    # that runs over the others
+    # kept terms get empty intervals, so the comb runs over the other terms only
     keep_threshold = mapreducecoeffs(abs, +, prop_cache; thread) / target_size
     is_kept(coeff) = abs(coeff) > keep_threshold
     function comb_weight(coeff)
@@ -181,21 +168,28 @@ function semideterministic_systematic_resample!(prop_cache::AbstractPropagationC
         return abs(coeff)
     end
 
-    # one pass counts the kept terms and weighs the others, whose intervals share the teeth the kept terms leave
+    # one pass counts the kept terms and weighs the others
     n_kept, total_comb_weight, comb_interval_starts = _count_and_weigh_terms(is_kept, comb_weight, prop_cache; thread)
-    comb_spacing = _get_comb_spacing(total_comb_weight, target_size - n_kept)
+    # without teeth left for the comb, its spacing is zero
+    n_comb_teeth = target_size - n_kept
+    comb_spacing = if n_comb_teeth > 0
+        total_comb_weight / n_comb_teeth
+    else
+        zero(total_comb_weight)
+    end
     teeth_count_func = _build_teeth_count_func(comb_spacing)
 
-    # both coefficients are computed and one is selected, since a branch on the scattered kept terms is often mispredicted
+    # computes both and selects one, since a branch on the scattered kept terms is often mispredicted
     function new_coeff_func(coeff, n_teeth)
         comb_coeff = _compute_new_coeff(n_teeth, comb_spacing, coeff, false)
         return ifelse(is_kept(coeff), coeff, comb_coeff)
     end
 
-    return _set_coeffs_and_drop_zeros!(comb_weight, teeth_count_func, new_coeff_func, prop_cache, comb_interval_starts; thread)
+    _set_coeffs_and_drop_zeros!(comb_weight, teeth_count_func, new_coeff_func, prop_cache, comb_interval_starts; thread)
+    return prop_cache
 end
 
-# the weight of a term's interval: its absolute value, or its absolute square when resampling squared
+# a term's weight: the absolute value of its coefficient, or its absolute square when resampling squared
 function _get_weight_func(squared::Bool)
     if squared
         return abs2
@@ -203,34 +197,21 @@ function _get_weight_func(squared::Bool)
     return abs
 end
 
-# the spacing of a comb that lays `n_teeth` teeth over `total_weight`; without teeth, the spacing is zero
-function _get_comb_spacing(total_weight, n_teeth)
-    if n_teeth > 0
-        return total_weight / n_teeth
-    end
-    return zero(total_weight)
-end
-
-# Builds the function that counts the teeth below a position in [0, total_weight), for a comb of `comb_spacing` laid at
-# a uniformly random offset, the one random number of a systematic resampling; every call lays a new comb. An interval
-# holds the teeth below its end less those below its start. The spacing is inverted once, so that every interval
-# multiplies where it would divide.
+# a function counting the teeth below a position, for a comb of `comb_spacing` at a random offset; every call lays a
+# new comb
 function _build_teeth_count_func(comb_spacing)
-    teeth_per_weight = _get_teeth_per_weight(comb_spacing)
+    # a comb of spacing zero lays no teeth
+    teeth_per_weight = if iszero(comb_spacing)
+        zero(comb_spacing)
+    else
+        inv(comb_spacing)
+    end
     offset = rand(typeof(comb_spacing))
     return position -> floor(position * teeth_per_weight - offset)
 end
 
-# a comb of spacing zero lays no teeth
-function _get_teeth_per_weight(comb_spacing)
-    if iszero(comb_spacing)
-        return zero(comb_spacing)
-    end
-    return inv(comb_spacing)
-end
-
-# the coefficient a term keeps for `n_teeth` teeth worth `weight_per_tooth` each, with the sign it had;
-# when resampling squared, the weight is the absolute square of the coefficient
+# the new coefficient for `n_teeth` teeth of `weight_per_tooth` each, with the original sign; when resampling squared,
+# the weight is the absolute square of the coefficient
 function _compute_new_coeff(n_teeth, weight_per_tooth, coeff, squared::Bool)
     if squared
         return sqrt(n_teeth * weight_per_tooth) * sign(coeff)^2
@@ -238,21 +219,17 @@ function _compute_new_coeff(n_teeth, weight_per_tooth, coeff, squared::Bool)
     return _apply_sign(n_teeth * weight_per_tooth, coeff)
 end
 
-# `magnitude` with the sign of a real `coeff`, which copysign sets in fewer instructions than a multiplication by
-# `sign(coeff)`, or with the phase of a complex one
+# `magnitude` with the sign or complex phase of `coeff`; copysign is cheaper than multiplying by sign(coeff)
 _apply_sign(magnitude, coeff::Real) = copysign(magnitude, coeff)
 _apply_sign(magnitude, coeff) = magnitude * sign(coeff)
 
 
 ## WEIGHING THE TERMS, CHUNK BY CHUNK
-# Weighing the terms and walking their intervals are two passes over the terms, both chunk by chunk. A chunk is a
-# stretch of terms that one thread walks: one per task of an array on the CPU, one per zone of a multi sum, and a
-# single one for any other storage. The first pass weighs every chunk, and the weights of the chunks before a chunk
-# tell it where its intervals start, so that in the second pass every chunk walks its intervals without waiting for the
-# others.
+# A chunk is a stretch of terms that one thread walks: a task's range of a CPU array, a zone of a multi sum, or the
+# whole sum otherwise. Weighing the chunks first tells each one where its intervals start, so that the chunks can then
+# be walked in parallel.
 
-# The total weight of the terms, and where their intervals start: one start for every chunk, from which the intervals
-# of its terms follow one after the other, each as wide as `weight_func` of the term's coefficient.
+# the total weight of the terms, and where the intervals of each chunk start
 function _weigh_terms(weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool=true) where {W}
     _, total_weight, interval_starts = _count_and_weigh_terms(_count_none, weight_func, prop_cache; thread)
     return total_weight, interval_starts
@@ -260,7 +237,7 @@ end
 
 _count_none(coeff) = false
 
-# how many terms `count_func` accepts, found in the same pass, and what `_weigh_terms` returns
+# as `_weigh_terms`, and how many terms `count_func` accepts, in the same pass
 function _count_and_weigh_terms(count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool=true) where {C,W}
     n_counted, total_weight, chunk_weights = _count_and_weigh_chunks(StorageType(prop_cache), count_func, weight_func, prop_cache; thread)
     interval_starts = similar(chunk_weights)
@@ -272,8 +249,7 @@ function _count_and_weigh_terms(count_func::C, weight_func::W, prop_cache::Abstr
     return n_counted, total_weight, interval_starts
 end
 
-# Every storage counts and weighs its terms chunk by chunk: how many terms `count_func` accepts, the sum of
-# `weight_func` over all terms, and that sum for every chunk, in the order the second pass takes them.
+# Each storage returns the count, the total weight and the weight of every chunk, in walking order.
 
 # a dictionary is one chunk
 function _count_and_weigh_chunks(::StorageType, count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool) where {C,W}
@@ -286,7 +262,7 @@ function _count_and_weigh_chunks(::StorageType, count_func::C, weight_func::W, p
     return n_counted, total_weight, [total_weight]
 end
 
-# an array on the CPU is one chunk per task; an array elsewhere is one chunk, reduced twice
+# an array is one chunk per task on the CPU, and one chunk elsewhere
 function _count_and_weigh_chunks(::ArrayStorage, count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool) where {C,W}
     coeffs = coefficients(prop_cache)
     if !_iscpuarray(coeffs)
@@ -305,7 +281,7 @@ function _count_and_weigh_chunks(::ArrayStorage, count_func::C, weight_func::W, 
     return sum(chunk_counts), sum(chunk_weights), chunk_weights
 end
 
-# a multi sum is one chunk per zone, every zone counted and weighed on its own thread
+# a multi sum is one chunk per zone, each on its own thread
 function _count_and_weigh_chunks(::MultiSumStorage, count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool) where {C,W}
     function count_and_weigh_zone(zonecache)
         n_counted, zone_weight, _ = _count_and_weigh_chunks(StorageType(zonecache), count_func, weight_func, zonecache; thread=false)
@@ -316,8 +292,7 @@ function _count_and_weigh_chunks(::MultiSumStorage, count_func::C, weight_func::
     return sum(first, zone_counts_and_weights), sum(zone_weights), zone_weights
 end
 
-# How many of coeffs[range] `count_func` accepts, and the sum of `weight_func` over them,
-# in two accumulators that vectorize where a pair would not.
+# the count and the weight of coeffs[range], in two accumulators, which vectorize where a tuple would not
 @inline function _count_and_weigh_range(count_func::C, weight_func::W, coeffs, range) where {C,W}
     n_counted = 0
     total_weight = zero(real(eltype(coeffs)))
@@ -330,17 +305,15 @@ end
 
 
 ## SETTING THE COEFFICIENTS AND DROPPING ZEROS
-# Walks the intervals in the order of the terms, gives every term `new_coeff_func(coeff, n_teeth)` for the
-# `n_teeth = teeth_count_func(interval_end) - teeth_count_func(interval_start)` in its interval, and drops the terms
-# whose new coefficient is zero. The kept terms stay in the order they had. `interval_starts` must come from
-# `_weigh_terms` with the same `weight_func` on the same terms.
+# Gives every term `new_coeff_func(coeff, n_teeth)` for the teeth in its interval and drops the terms whose new
+# coefficient is zero; the others keep their order. `interval_starts` must come from `_weigh_terms` with the same
+# `weight_func`.
 function _set_coeffs_and_drop_zeros!(weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, interval_starts; thread::Bool) where {W,T,F}
-    return _set_coeffs_and_drop_zeros!(StorageType(prop_cache), weight_func, teeth_count_func, new_coeff_func, prop_cache, interval_starts; thread)
+    _set_coeffs_and_drop_zeros!(StorageType(prop_cache), weight_func, teeth_count_func, new_coeff_func, prop_cache, interval_starts; thread)
+    return prop_cache
 end
 
-_has_zero_coeff(term, coeff) = iszero(coeff)
-
-# a dictionary gives its terms their new coefficients in one walk and then drops those without
+# a dictionary sets all coefficients in one walk, then drops the zeros
 function _set_coeffs_and_drop_zeros!(::StorageType, weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, chunk_interval_starts; thread::Bool) where {W,T,F}
     main_sum = mainsum(prop_cache)
     interval_end = only(chunk_interval_starts)
@@ -351,30 +324,23 @@ function _set_coeffs_and_drop_zeros!(::StorageType, weight_func::W, teeth_count_
         teeth_below_end = teeth_count_func(interval_end)
         set!(main_sum, term, new_coeff_func(coeff, teeth_below_end - teeth_below_start))
     end
-    return _truncate!(_has_zero_coeff, prop_cache; thread)
+    filtercoeffs!(!iszero, prop_cache; thread)
+    return prop_cache
 end
 
-# One task walks the intervals of an array on the CPU and compacts in place, since it writes at or behind the term it
-# just read; several tasks do so each in their chunk and then copy what they kept one after the other into the
+# On the CPU, every task compacts its chunk in place; with several tasks, the kept terms are then copied into the
 # auxiliary arrays.
 function _set_coeffs_and_drop_zeros!(::ArrayStorage, weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, chunk_interval_starts; thread::Bool) where {W,T,F}
     if !_iscpuarray(prop_cache)
-        return _set_coeffs_and_drop_zeros_on_device!(weight_func, teeth_count_func, new_coeff_func, prop_cache, only(chunk_interval_starts); thread)
+        _set_coeffs_and_drop_zeros_on_device!(weight_func, teeth_count_func, new_coeff_func, prop_cache, only(chunk_interval_starts); thread)
+        return prop_cache
     end
 
     task_partitioner, n_tasks = _preparetasks(activesize(prop_cache), thread)
     if length(chunk_interval_starts) != n_tasks
         throw(ArgumentError("the terms were weighed in $(length(chunk_interval_starts)) chunks but are walked in $n_tasks"))
     end
-    if n_tasks > 1
-        return _set_coeffs_and_drop_zeros_in_tasks!(weight_func, teeth_count_func, new_coeff_func, prop_cache, chunk_interval_starts, task_partitioner, n_tasks)
-    end
-
-    main_sum = mainsum(prop_cache)
-    n_kept, n_sorted_kept = _set_coeffs_and_compact!(weight_func, teeth_count_func, new_coeff_func, terms(main_sum), coefficients(main_sum),
-        1, activesize(prop_cache), only(chunk_interval_starts), sortedprefix(main_sum))
-    setactivesize!(prop_cache, n_kept)
-    setsortedprefix!(main_sum, n_sorted_kept)
+    _set_coeffs_and_drop_zeros_in_tasks!(weight_func, teeth_count_func, new_coeff_func, prop_cache, chunk_interval_starts, task_partitioner, n_tasks)
     return prop_cache
 end
 
@@ -391,6 +357,13 @@ function _set_coeffs_and_drop_zeros_in_tasks!(weight_func::W, teeth_count_func::
     end
     _eachtask(walk_chunk!, n_tasks)
 
+    # a single chunk is already compacted in place
+    if n_tasks == 1
+        setactivesize!(prop_cache, only(kept_counts))
+        setsortedprefix!(mainsum(prop_cache), only(sorted_kept_counts))
+        return prop_cache
+    end
+
     offsets = _offsetsfromcounts(kept_counts)
     function copy_kept!(task_id)
         chunk_start = task_partitioner[task_id].start
@@ -399,14 +372,13 @@ function _set_coeffs_and_drop_zeros_in_tasks!(weight_func::W, teeth_count_func::
     end
     _eachtask(copy_kept!, n_tasks)
 
-    return _commitwrite!(prop_cache, offsets[end] - 1, sum(sorted_kept_counts))
+    _commitwrite!(prop_cache, offsets[end] - 1, sum(sorted_kept_counts))
+    return prop_cache
 end
 
-# Walks terms[lo:hi] on intervals from `interval_start` on, gives every term the coefficient for the teeth in its
-# interval, and moves the terms it keeps to the front of the range. The teeth below an interval's start are those below
-# the end of the interval before, so each position is counted once. Returns the number of kept terms and how many of
-# them came from the first `n_sorted`. A dropped term is written too and overwritten by the next, so that random drops
-# cost no mispredicted branch.
+# Sets the coefficients of terms[lo:hi] and moves the kept terms to the front of the range. Returns how many were kept
+# and how many of those were among the first `n_sorted`. A dropped term is written too and overwritten by the next, so
+# that random drops cost no mispredicted branch.
 @inline function _set_coeffs_and_compact!(weight_func::W, teeth_count_func::T, new_coeff_func::F, terms, coefficients, lo, hi, interval_start, n_sorted) where {W,T,F}
     write_pos = lo
     n_sorted_kept = 0
@@ -431,8 +403,8 @@ end
     return write_pos - lo, n_sorted_kept
 end
 
-# An array off the CPU finds every interval from a scan of the weights, in the auxiliary coefficients when those are
-# real, gives every term its coefficient independently, and then drops those without.
+# Off the CPU, a prefix sum of the weights gives every interval, each term is set independently, and then the zeros are
+# dropped.
 function _set_coeffs_and_drop_zeros_on_device!(weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache, interval_start; thread::Bool) where {W,T,F}
     active_coeffs = activecoeffs(prop_cache)
     interval_ends = _get_real_buffer(coefficients(auxsum(prop_cache)), active_coeffs)
@@ -446,10 +418,11 @@ function _set_coeffs_and_drop_zeros_on_device!(weight_func::W, teeth_count_func:
         active_coeffs[term_index] = new_coeff_func(coeff, n_teeth)
     end
 
-    return _truncate!(_has_zero_coeff, prop_cache; thread)
+    filtercoeffs!(!iszero, prop_cache; thread)
+    return prop_cache
 end
 
-# a real-valued buffer of length(coeffs), in the memory of `dst` when the coefficients are real
+# a real-valued buffer of length(coeffs), reusing `dst` when the coefficients are real
 function _get_real_buffer(dst, coeffs)
     if eltype(coeffs) <: Real
         return view(dst, 1:length(coeffs))
@@ -458,7 +431,7 @@ function _get_real_buffer(dst, coeffs)
     end
 end
 
-# every zone walks on its own thread, from where the zones before it end
+# each zone walks on its own thread, starting where the zones before it end
 function _set_coeffs_and_drop_zeros!(::MultiSumStorage, weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, zone_interval_starts; thread::Bool) where {W,T,F}
     if length(zone_interval_starts) != nzones(prop_cache)
         throw(ArgumentError("the terms were weighed in $(length(zone_interval_starts)) chunks but are walked in $(nzones(prop_cache)) zones"))
@@ -470,5 +443,6 @@ function _set_coeffs_and_drop_zeros!(::MultiSumStorage, weight_func::W, teeth_co
     end
     _eachzone(walk_zone!, prop_cache, thread)
 
-    return _syncsums!(prop_cache)
+    _syncsums!(prop_cache)
+    return prop_cache
 end
