@@ -108,9 +108,9 @@ end
 end
 
 @testset "fused Vector on wide Pauli strings matches stock exactly" begin
-    # from 96 qubits on, a Pauli string is wider than a machine word and the fused rotations read
-    # only the bytes a gate touches. The long-range rotation is too spread out for that, so it also
-    # covers the fall-back to the whole string.
+    # above 64 qubits, a Pauli string spans more than two 64-bit limbs and the rotations read only the
+    # limbs a gate acts on, while the fused cap weighs the whole string. The long-range rotation acts on
+    # three limbs, so it also covers the fall-back to the whole string.
     nq = 100
     topo = bricklayertopology(nq; periodic=false)
 

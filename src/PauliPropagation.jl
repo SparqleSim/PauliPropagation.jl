@@ -69,7 +69,8 @@ export
     commutes,
     commutator,
     trace,
-    getinttype
+    getinttype,
+    NTupleInteger
 
 include("PauliTransferMatrix/PauliTransferMatrix.jl")
 export

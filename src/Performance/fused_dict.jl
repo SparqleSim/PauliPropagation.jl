@@ -89,7 +89,7 @@ stock `applymergetruncate!`.
     gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
     cos_val, sin_val = cos(theta), sin(theta)
 
-    truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
+    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
 
     touched = Tuple{keytype(psum),valtype(psum)}[]
     # bounded above by one push per filled, non-commuting slot -- a tighter bound than the raw
