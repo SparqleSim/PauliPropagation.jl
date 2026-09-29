@@ -28,7 +28,9 @@ println(&quot;The representative integer is &quot;, rep_int)
 println(&quot;The representative Pauli string is XII: &quot;, PauliString(nq, :X, 1).term)</code></pre><pre><code class="nohighlight hljs">Integer representation of PauliString(nqubits: 3, 1.0 * IXI)
 
  is 4
-The representative integer is 1
+The representative integer is 
+
+1
 The representative Pauli string is XII: 1</code></pre><pre><code class="language-julia hljs"># To get the effective representation of the original Pauli string, we can do:
 translationmerge(p)</code></pre><pre><code class="nohighlight hljs">PauliSum(nqubits: 3, 1 Pauli term: 
  3.0 * XII
@@ -68,15 +70,15 @@ println(inttostring(pstr2.term, nx, ny))
 pstr3 = PauliString(nq, [:Z, :X, :Y], [4, 6, 2])
 println(&quot;The integer representation of &quot;, pstr3, &quot; is &quot;, pstr3.term)
 println(&quot;The 2d visualization of &quot;, pstr3, &quot; is:&quot; )
-println(inttostring(pstr3.term, nx, ny))</code></pre><pre><code class="nohighlight hljs">The integer representation of PauliString(nqubits: 6, 1.0 * IXIYIZ)
-
- is 3204
+println(inttostring(pstr3.term, nx, ny))</code></pre><pre><code class="nohighlight hljs">The integer representation of PauliString(nqubits: 6, 1.0 * IXIYIZ) is 3204
 The 2d visualization of PauliString(nqubits: 6, 1.0 * IXIYIZ) is:
 IX
 IY
 IZ
 
-The integer representation of PauliString(nqubits: 6, 1.0 * IYIZIX) is 1224
+The integer representation of 
+
+PauliString(nqubits: 6, 1.0 * IYIZIX) is 1224
 The 2d visualization of PauliString(nqubits: 6, 1.0 * IYIZIX) is:
 IY
 IZ
@@ -227,9 +229,9 @@ Layer 3 with merging type: none
 Layer 5 with merging type: none</code></pre><pre><code class="language-julia hljs"># Check the results:
 results</code></pre><pre><code class="nohighlight hljs">4-element Vector{Any}:
  (merging = :full, layer = 3, nterms = 1422, overlap = 0.7309034078384145)
- (merging = :full, layer = 5, nterms = 12172, overlap = 0.5258230815192093)
- (merging = :none, layer = 3, nterms = 1972, overlap = 0.7309034078384143)
- (merging = :none, layer = 5, nterms = 34617, overlap = 0.5258230802947046)</code></pre><pre><code class="language-julia hljs"># verify that the expectatin values of symmetry merged Pauli strings are the same as those without merging
+ (merging = :full, layer = 5, nterms = 12172, overlap = 0.5258230815192094)
+ (merging = :none, layer = 3, nterms = 1972, overlap = 0.7309034078384145)
+ (merging = :none, layer = 5, nterms = 34617, overlap = 0.5258230802947044)</code></pre><pre><code class="language-julia hljs"># verify that the expectatin values of symmetry merged Pauli strings are the same as those without merging
 for l in layers
     overlap_none = filter(r -&gt; r.merging == :none &amp;&amp; r.layer == l, results)[1].overlap
     overlap_full = filter(r -&gt; r.merging == :full &amp;&amp; r.layer == l, results)[1].overlap
@@ -269,9 +271,9 @@ for l in collect(1:maximum(layers))
     end
 end            </code></pre><pre><code class="nohighlight hljs">Initial Pauli string: PauliString(nqubits: 11, 1.0 * IIIIIZIIIII)</code></pre><pre><code class="language-julia hljs">results</code></pre><pre><code class="nohighlight hljs">6-element Vector{Any}:
  (merging = :full, layer = 3, nterms = 1422, overlap = 0.7309034078384145)
- (merging = :full, layer = 5, nterms = 12172, overlap = 0.5258230815192093)
- (merging = :none, layer = 3, nterms = 1972, overlap = 0.7309034078384143)
- (merging = :none, layer = 5, nterms = 34617, overlap = 0.5258230802947046)
+ (merging = :full, layer = 5, nterms = 12172, overlap = 0.5258230815192094)
+ (merging = :none, layer = 3, nterms = 1972, overlap = 0.7309034078384145)
+ (merging = :none, layer = 5, nterms = 34617, overlap = 0.5258230802947044)
  (merging = :sublayer, layer = 3, nterms = 300, overlap = 0.7309034078384145)
  (merging = :sublayer, layer = 5, nterms = 6753, overlap = 0.5258230815192094)</code></pre><p>! Interestingly merging every sublayers reduce the number of Pauli terms even further!</p><pre><code class="language-julia hljs"># verify that the expectatin values of symmetry merged Pauli strings are the same as those without merging
 for l in layers
@@ -280,4 +282,4 @@ for l in layers
     overlap_sublayer = filter(r -&gt; r.merging == :sublayer &amp;&amp; r.layer == l, results)[1].overlap
     @assert isapprox(overlap_none, overlap_full)
     @assert isapprox(overlap_none, overlap_sublayer)
-end</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../PP-Surrogate/">« The Pauli Propagation Surrogate</a><a class="docs-footer-nextpage" href="../visualization_example/">Pauli Evolution Visualization Examples »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Friday 25 September 2026 11:35">Friday 25 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+end</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../PP-Surrogate/">« The Pauli Propagation Surrogate</a><a class="docs-footer-nextpage" href="../visualization_example/">Pauli Evolution Visualization Examples »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 29 September 2026 07:29">Tuesday 29 September 2026</span>. Using Julia version 1.13.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
