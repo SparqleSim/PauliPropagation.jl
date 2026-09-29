@@ -164,7 +164,6 @@ export
     mcapplytoall!,
     resample,
     resample!,
-    mapslots!,
     multinomial_resample!,
     systematic_resample!,
     semideterministic_systematic_resample!
