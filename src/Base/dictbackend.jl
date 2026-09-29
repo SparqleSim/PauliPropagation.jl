@@ -92,17 +92,19 @@ function _mapcoeffsbypair_internals!(transform::F, dict) where {F}
     return dict
 end
 
-# Gives every coefficient of `dict` the one `new_coeff_func` returns for its slot on the cumulative weight, as `_mapslots!`.
-function _mapslots_internals!(weight_func::W, new_coeff_func::F, dict) where {W,F}
+# Gives every coefficient of `dict` the one `new_coeff_func` returns for the teeth in its interval, as `_set_coeffs_and_drop_zeros!` before it drops the zeros.
+function _set_coeffs_internals!(weight_func::W, teeth_count_func::T, new_coeff_func::F, dict, interval_start) where {W,T,F}
     slots, _, dict_vals = _dicttables(dict)
     age = dict.age
-    slot_end = zero(real(numcoefftype(valtype(dict))))
+    interval_end = interval_start
+    teeth_below_end = teeth_count_func(interval_end)
 
     for i in _FilledSlots(slots)
         coeff = @inbounds dict_vals[i]
-        slot_start = slot_end
-        slot_end += weight_func(coeff)
-        new_coeff = new_coeff_func(coeff, slot_start, slot_end)
+        teeth_below_start = teeth_below_end
+        interval_end += weight_func(coeff)
+        teeth_below_end = teeth_count_func(interval_end)
+        new_coeff = new_coeff_func(coeff, teeth_below_end - teeth_below_start)
         _checkunchanged(dict, age)
         @inbounds dict_vals[i] = new_coeff
     end

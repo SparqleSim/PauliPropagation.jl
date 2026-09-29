@@ -253,12 +253,10 @@ end
 
 # a dictionary is one chunk
 function _count_and_weigh_chunks(::StorageType, count_func::C, weight_func::W, prop_cache::AbstractPropagationCache; thread::Bool) where {C,W}
-    n_counted = 0
-    total_weight = zero(real(numcoefftype(prop_cache)))
-    for coeff in coefficients(prop_cache)
-        n_counted += count_func(coeff)
-        total_weight += weight_func(coeff)
-    end
+    count_and_weigh(coeff) = (count_func(coeff), weight_func(coeff))
+    add_counts_and_weights(a, b) = (a[1] + b[1], a[2] + b[2])
+    no_count_or_weight = (0, zero(real(numcoefftype(prop_cache))))
+    n_counted, total_weight = mapreducecoeffs(count_and_weigh, add_counts_and_weights, prop_cache; init=no_count_or_weight, neutral=no_count_or_weight, thread)
     return n_counted, total_weight, [total_weight]
 end
 
@@ -316,6 +314,13 @@ end
 # a dictionary sets all coefficients in one walk, then drops the zeros
 function _set_coeffs_and_drop_zeros!(::StorageType, weight_func::W, teeth_count_func::T, new_coeff_func::F, prop_cache::AbstractPropagationCache, chunk_interval_starts; thread::Bool) where {W,T,F}
     main_sum = mainsum(prop_cache)
+    dict = storage(main_sum)
+    if _hasdictinternals(dict)
+        _set_coeffs_internals!(weight_func, teeth_count_func, new_coeff_func, dict, only(chunk_interval_starts))
+        filtercoeffs!(!iszero, prop_cache; thread)
+        return prop_cache
+    end
+
     interval_end = only(chunk_interval_starts)
     teeth_below_end = teeth_count_func(interval_end)
     for (term, coeff) in main_sum
