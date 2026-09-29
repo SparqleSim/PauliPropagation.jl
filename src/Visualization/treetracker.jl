@@ -242,8 +242,8 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::PauliPropag
     psum = mainsum(prop_cache)
     aux_psum = auxsum(prop_cache)
 
-    # the lookup map, placed on the gate's qubits
-    lookup = _CliffordLookup(TT, gate)
+    # load the lookup map, placed on the gate's qubits
+    lookup_map = _preparecliffordmap(TT, gate)
 
     # Format the gate name for display
     gate_name = string(gate.symbol)
@@ -251,7 +251,7 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::PauliPropag
     # Loop over all Pauli strings and their coefficients in the Pauli sum
     for (pstr, coeff) in psum
         # Apply the Clifford gate to get the new Pauli string and coefficient
-        new_pstr, new_coeff_value = lookup(pstr, coeff.coeff)
+        new_pstr, new_coeff_value = only(apply(gate, pstr, coeff.coeff, lookup_map; kwargs...))
 
         # Create a new child tracker for the transformed Pauli string
         edge_num = new_coeff_value / coeff.coeff

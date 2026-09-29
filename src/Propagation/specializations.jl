@@ -144,9 +144,10 @@ input, so the pair transformation is handled by `map!`.
 function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    lookup = _CliffordLookup(paulitype(prop_cache), gate)
+    lookup_map = _preparecliffordmap(paulitype(prop_cache), gate)
+    transform(term, coefficient) = only(apply(gate, term, coefficient, lookup_map))
 
-    map!(lookup, prop_cache; thread)
+    map!(transform, prop_cache; thread)
     return prop_cache
 end
 
@@ -170,24 +171,25 @@ function PropagationBase.applymergetruncate!(gate::CliffordGate, prop_cache::Abs
 
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    lookup = _CliffordLookup(paulitype(prop_cache), gate)
+    lookup_map = _preparecliffordmap(paulitype(prop_cache), gate)
+    transform(term, coefficient) = only(apply(gate, term, coefficient, lookup_map))
     truncfunc = buildtruncfunc(prop_cache;
         min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
 
-    mapandtruncate!(lookup, truncfunc, prop_cache; thread)
+    mapandtruncate!(transform, truncfunc, prop_cache; thread)
     return prop_cache
 end
 
 # a Clifford gate maps distinct Pauli strings to distinct Pauli strings
 PropagationBase.requiresmerging(::CliffordGate, ::AbstractPauliPropagationCache) = false
 
-# The image of a Pauli string and its coefficient under the gate, so a lookup is the transform that `map!` and `mapandtruncate!` apply.
-function (lookup::_CliffordLookup)(pstr, coeff)
-    # the Paulis on the gate's qubits select the change the gate makes to them, and its sign
+function PropagationBase.apply(gate::CliffordGate, pstr, coeff, lookup_map; kwargs...)
+    # the lookup map, placed on the gate's qubits, carries the change to the Paulis and the sign for every occuring Pauli combination
     # +1 because Julia is 1-indexed and the packed Paulis are 0-indexed
-    index = _gatherpaulis(pstr, lookup.shifts) + 1
+    index = _gatherpaulis(pstr, lookup_map.shifts) + 1
 
-    return pstr ⊻ lookup.changes[index], coeff * lookup.signs[index]
+    # always a length-1 tuple, which will be compiled away
+    return ((pstr ⊻ lookup_map.changes[index], coeff * lookup_map.signs[index]),)
 end
 
 ### Pauli noise
