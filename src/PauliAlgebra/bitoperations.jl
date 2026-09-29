@@ -198,6 +198,11 @@ function _setpaulibits(pstr::PauliStringType, target_pstr::PauliStringType, inde
 end
 
 
+# The 64-bit word of a Pauli string that holds the bit at position `bit`, counted from 0.
+@inline _wordat(pstr::Base.BitUnsigned64, bit::Int) = pstr % UInt64
+@inline _wordat(pstr::PauliStringType, bit::Int) = (pstr >> (bit & ~63)) % UInt64
+
+
 # This mask helps us to parallelize the bit operations over all qubits.
 @generated function alternatingmask(pstr::T) where {T<:PauliStringType}
     # define our super bit mask looking like ....1010101.

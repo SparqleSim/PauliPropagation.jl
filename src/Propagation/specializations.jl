@@ -145,9 +145,54 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::AbstractPau
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
     lookup_map = clifford_map[gate.symbol]
-    transform(term, coefficient) = only(apply(gate, term, coefficient, lookup_map))
+    qinds = gate.qinds
 
-    return map!(transform, prop_cache; thread)
+    # a gate on one or two qubits has its lookup placed on its qubits once, any other gate looks up every term
+    if length(qinds) == 1
+        map!(_cliffordrule(paulitype(prop_cache), (qinds[1],), lookup_map), prop_cache; thread)
+    elseif length(qinds) == 2
+        map!(_cliffordrule(paulitype(prop_cache), (qinds[1], qinds[2]), lookup_map), prop_cache; thread)
+    else
+        transform(term, coefficient) = only(apply(gate, term, coefficient, lookup_map))
+        map!(transform, prop_cache; thread)
+    end
+
+    return prop_cache
+end
+
+# The transform of Pauli strings of type `TT` by the Clifford gate on the qubits `qinds`, for `map!`.
+# Once per gate, every entry of the lookup map is turned into the XOR that takes the Paulis on `qinds` to their image,
+# so a Pauli string needs only its Paulis on `qinds` read to find its XOR and sign.
+function _cliffordrule(::Type{TT}, qinds::NTuple{K,Int}, lookup_map) where {TT,K}
+    _check_qind_range(maxqubits(TT), qinds)
+    bits = map(_bitshiftfromsiteindex, qinds)
+    changes = ntuple(ii -> _placepaulis(TT, (ii - 1) ⊻ first(lookup_map[ii]), qinds), Val(4^K))
+    signs = ntuple(ii -> last(lookup_map[ii]), Val(4^K))
+
+    function transform(pstr, coeff)
+        index = _gatherpaulis(pstr, bits) + 1
+        return pstr ⊻ changes[index], coeff * signs[index]
+    end
+
+    return transform
+end
+
+# the Paulis at the bit positions `bits`, packed with the first one lowest, as the lookup maps index them
+@inline function _gatherpaulis(pstr, bits)
+    paulis = 0
+    for (ii, bit) in enumerate(bits)
+        paulis |= Int((_wordat(pstr, bit) >> (bit & 63)) & 3) << (2 * (ii - 1))
+    end
+    return paulis
+end
+
+# the Pauli string of type `TT` that holds the packed `paulis` on the qubits `qinds`
+function _placepaulis(::Type{TT}, paulis, qinds) where {TT}
+    pstr = zero(TT)
+    for (ii, qind) in enumerate(qinds)
+        pstr = _setpaulibits(pstr, (paulis >> (2 * (ii - 1))) & 3, qind)
+    end
+    return pstr
 end
 
 # a Clifford gate maps distinct Pauli strings to distinct Pauli strings
