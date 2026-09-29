@@ -140,8 +140,10 @@ function _paulimask(::Type{NTupleInteger{N}}, n_sites) where {N}
     return NTupleInteger{N}(ntuple(k -> typemax(UInt64) >> clamp(64 * k - nbits, 0, 64), Val(N)))
 end
 
-# A `UInt128` reads and writes its Paulis through its two limbs as well.
-@inline _getpaulibits(pstr::UInt128, index::Integer) = _getpaulibits(NTupleInteger{2}(pstr), index)
+@inline function _getpaulibits(pstr::UInt128, index::Integer)
+    bit = _bitshiftfromsiteindex(index)
+    return (_wordat(pstr, bit) >> (bit & 63)) & 3
+end
 getpauli(pstr::UInt128, qinds::Union{AbstractVector,Tuple}) = UInt128(getpauli(NTupleInteger{2}(pstr), qinds))
 @inline _setpaulibits(pstr::UInt128, target_pauli::PauliType, index::Integer) = UInt128(_setpaulibits(NTupleInteger{2}(pstr), target_pauli, index))
 @inline _wordat(pstr::UInt128, bit::Int) = ifelse(bit >= 64, (pstr >> 64) % UInt64, pstr % UInt64)

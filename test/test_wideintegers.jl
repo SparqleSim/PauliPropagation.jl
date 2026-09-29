@@ -300,6 +300,12 @@ _signexponent(ps, qs) = sum(_IMPOWER[p+1, q+1] for (p, q) in zip(ps, qs); init=0
         @test PauliPropagation._pauliwindowmask(T, 30, 40) == ((one(T) << 22) - one(T)) << 58
     end
 
+    @testset "a UInt128 reads and writes every Pauli in the half that holds it" begin
+        pstr = rand(MersenneTwister(128), UInt128)
+        @test [getpauli(pstr, q) for q in 1:64] == [(pstr >> (2 * (q - 1))) & 3 for q in 1:64]
+        @test [setpauli(pstr, 2, q) for q in 1:64] == [pstr & ~(UInt128(3) << (2 * (q - 1))) | UInt128(2) << (2 * (q - 1)) for q in 1:64]
+    end
+
     @testset "grid string with rows wider than a machine word" begin
         pstr = symboltoint(120, [:X, :Y, :Z], [1, 40, 120])
         lines = split(inttostring(pstr, 40, 3), "\n"; keepempty=false)
