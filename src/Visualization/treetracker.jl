@@ -251,7 +251,7 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::PauliPropag
     # Loop over all Pauli strings and their coefficients in the Pauli sum
     for (pstr, coeff) in psum
         # Apply the Clifford gate to get the new Pauli string and coefficient
-        new_pstr, new_coeff_value = only(apply(gate, pstr, coeff.coeff, lookup; kwargs...))
+        new_pstr, new_coeff_value = lookup(pstr, coeff.coeff)
 
         # Create a new child tracker for the transformed Pauli string
         edge_num = new_coeff_value / coeff.coeff

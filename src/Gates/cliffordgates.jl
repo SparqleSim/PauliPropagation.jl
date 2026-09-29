@@ -171,7 +171,7 @@ end
 
 # A Clifford lookup map placed on the qubits of a gate, for Pauli strings of type `TT`.
 # For every combination of Paulis on the qubits, it holds the XOR that takes them to their image and the sign,
-# so the gate is applied to a Pauli string by reading its Paulis at `shifts` and one XOR.
+# so calling the lookup on a Pauli string and its coefficient applies the gate by reading its Paulis at `shifts` and one XOR.
 struct _CliffordLookup{TT,K,L}
     shifts::NTuple{K,Int}
     changes::NTuple{L,TT}

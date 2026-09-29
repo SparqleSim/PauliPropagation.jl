@@ -142,5 +142,9 @@ end
     images = [lookupimage(clifford_map[:CNOT], (1, 2), term, coeff) for (term, coeff) in psum]
     @test propagate(CliffordGate(:CNOT, [1, 2]), psum; max_weight=7.0) == PauliSum(10, Dict(image for image in images if countweight(first(image)) <= 7))
 
+    # the gate only flips signs, so without a weight cap or a custom truncation it truncates nothing
+    small_image = lookupimage(clifford_map[:CNOT], (1, 2), first(terms), 1e-12)
+    @test propagate(CliffordGate(:CNOT, [1, 2]), PauliSum(10, Dict(first(terms) => 1e-12))) == PauliSum(10, Dict([small_image]))
+
     reset_clifford_map!()
 end

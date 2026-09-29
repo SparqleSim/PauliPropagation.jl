@@ -22,7 +22,7 @@ function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::AbstractPauliSu
 
     # a Clifford gate is deterministic, and sampling by squared coefficients squares its sign away
     function permute(pstr, coeff)
-        new_pstr, signed_coeff = only(apply(gate, pstr, coeff, lookup))
+        new_pstr, signed_coeff = lookup(pstr, coeff)
         return (new_pstr, squared ? coeff : signed_coeff)
     end
 
