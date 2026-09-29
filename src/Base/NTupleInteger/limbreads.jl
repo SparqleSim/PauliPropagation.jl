@@ -41,6 +41,10 @@ end
     return @inline r.rule(term_limbs, (@inbounds coefficients[ii]))
 end
 
+# a `UInt128` term is read whole and split into its limbs in registers
+@inline ruleat(r::OnLimbs, terms::AbstractVector{UInt128}, coefficients, ii::Int) =
+    @inline r.rule(NTupleInteger{2}(@inbounds terms[ii]), (@inbounds coefficients[ii]))
+
 # every other storage comes with the whole term
 @inline (r::OnLimbs)(term, coefficient) = @inline r.rule(limbwindow(term, r.inds), coefficient)
 
