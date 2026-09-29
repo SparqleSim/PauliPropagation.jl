@@ -18,11 +18,11 @@ it randomly keeps one branch, reweighted to remain unbiased. Must be overloaded 
 function PropagationBase.mcapplytoall!(gate::CliffordGate, psum::AbstractPauliSum; squared::Bool=false, thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(psum), gate.qinds)
 
-    lookup_map = clifford_map[gate.symbol]
+    lookup = _CliffordLookup(paulitype(psum), gate)
 
     # a Clifford gate is deterministic, and sampling by squared coefficients squares its sign away
     function permute(pstr, coeff)
-        new_pstr, signed_coeff = only(apply(gate, pstr, coeff, lookup_map))
+        new_pstr, signed_coeff = only(apply(gate, pstr, coeff, lookup))
         return (new_pstr, squared ? coeff : signed_coeff)
     end
 

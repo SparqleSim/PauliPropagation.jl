@@ -144,79 +144,45 @@ input, so the pair transformation is handled by `map!`.
 function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    lookup_map = clifford_map[gate.symbol]
-    qinds = gate.qinds
+    lookup = _CliffordLookup(paulitype(prop_cache), gate)
+    transform(term, coefficient) = only(apply(gate, term, coefficient, lookup))
 
-    # a gate on one or two qubits has its lookup placed on its qubits once, any other gate looks up every term
-    if length(qinds) == 1
-        map!(_cliffordrule(paulitype(prop_cache), (qinds[1],), lookup_map), prop_cache; thread)
-    elseif length(qinds) == 2
-        map!(_cliffordrule(paulitype(prop_cache), (qinds[1], qinds[2]), lookup_map), prop_cache; thread)
-    else
-        transform(term, coefficient) = only(apply(gate, term, coefficient, lookup_map))
-        map!(transform, prop_cache; thread)
-    end
+    return map!(transform, prop_cache; thread)
+end
 
+"""
+    applymergetruncate!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
+
+Apply a Clifford gate and truncate in one walk.
+The gate never creates duplicate terms, so no merge is needed.
+It changes no coefficient's magnitude either, so a relative threshold `min_rel_coeff` would drop nothing
+that the truncation after the previous gate kept, and is not applied.
+"""
+function PropagationBase.applymergetruncate!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache;
+    thread::Bool=true, min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf,
+    max_sins::Real=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, kwargs...)
+
+    _check_qind_range(nqubits(prop_cache), gate.qinds)
+
+    lookup = _CliffordLookup(paulitype(prop_cache), gate)
+    transform(term, coefficient) = only(apply(gate, term, coefficient, lookup))
+    truncfunc = buildtruncfunc(prop_cache;
+        min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
+
+    mapandtruncate!(transform, truncfunc, prop_cache; thread)
     return prop_cache
-end
-
-# The transform of Pauli strings of type `TT` by the Clifford gate on the qubits `qinds`, for `map!`.
-# Once per gate, every entry of the lookup map is turned into the XOR that takes the Paulis on `qinds` to their image,
-# so a Pauli string needs only its Paulis on `qinds` read to find its XOR and sign.
-function _cliffordrule(::Type{TT}, qinds::NTuple{K,Int}, lookup_map) where {TT,K}
-    _check_qind_range(maxqubits(TT), qinds)
-    bits = map(_bitshiftfromsiteindex, qinds)
-    changes = ntuple(ii -> _placepaulis(TT, (ii - 1) ⊻ first(lookup_map[ii]), qinds), Val(4^K))
-    signs = ntuple(ii -> last(lookup_map[ii]), Val(4^K))
-
-    function transform(pstr, coeff)
-        index = _gatherpaulis(pstr, bits) + 1
-        return pstr ⊻ changes[index], coeff * signs[index]
-    end
-
-    return transform
-end
-
-# the Paulis at the bit positions `bits`, packed with the first one lowest, as the lookup maps index them
-@inline function _gatherpaulis(pstr, bits)
-    paulis = 0
-    for (ii, bit) in enumerate(bits)
-        paulis |= Int((_wordat(pstr, bit) >> (bit & 63)) & 3) << (2 * (ii - 1))
-    end
-    return paulis
-end
-
-# the Pauli string of type `TT` that holds the packed `paulis` on the qubits `qinds`
-function _placepaulis(::Type{TT}, paulis, qinds) where {TT}
-    pstr = zero(TT)
-    for (ii, qind) in enumerate(qinds)
-        pstr = _setpaulibits(pstr, (paulis >> (2 * (ii - 1))) & 3, qind)
-    end
-    return pstr
 end
 
 # a Clifford gate maps distinct Pauli strings to distinct Pauli strings
 PropagationBase.requiresmerging(::CliffordGate, ::AbstractPauliPropagationCache) = false
 
-function PropagationBase.apply(gate::CliffordGate, pstr, coeff, lookup_map; kwargs...)
-    # the lookup array carries the new Paulis + sign for every occuring old Pauli combination
-
-    qinds = gate.qinds
-
-    # this integer carries the active Paulis on its bits
-    lookup_int = getpauli(pstr, qinds)
-
-    # this integer can be used to index into the array returning the new Paulis
-    # +1 because Julia is 1-indexed and lookup_int is 0-indexed
-    partial_pstr, sign = lookup_map[lookup_int+1]
-
-    # insert the bits of the new Pauli into the old Pauli
-    pstr = setpauli(pstr, partial_pstr, qinds)
-
-    coeff *= sign
+function PropagationBase.apply(gate::CliffordGate, pstr, coeff, lookup::_CliffordLookup; kwargs...)
+    # the Paulis on the gate's qubits select the change the gate makes to them, and its sign
+    # +1 because Julia is 1-indexed and the packed Paulis are 0-indexed
+    index = _gatherpaulis(pstr, lookup.shifts) + 1
 
     # always a length-1 tuple, which will be compiled away
-    return ((pstr, coeff),)
+    return ((pstr ⊻ lookup.changes[index], coeff * lookup.signs[index]),)
 end
 
 ### Pauli noise
@@ -262,7 +228,7 @@ function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::Abstr
     damp(pstr, coeff) = isdamped(gate, getpauli(pstr, qind)) ? coeff * damp_val : coeff
     truncfunc = buildtruncfunc(prop_cache;
         min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
-    return mapandtruncate!(damp, truncfunc, prop_cache; thread)
+    return mapcoeffsandtruncate!(damp, truncfunc, prop_cache; thread)
 end
 
 PropagationBase.requiresmerging(::PauliNoise, ::AbstractPauliPropagationCache) = false

@@ -138,6 +138,17 @@ end
     halve_positive(pstr, coeff) = coeff > 0 ? 0.5 * coeff : coeff
     keep_positive(pstr, coeff) = coeff > 0
 
+    # a pair map that moves every term, and a truncation that reads where it went
+    flip_mask = symboltoint(paulitype(dict_sum), fill(:X, nq), 1:nq)
+    flip_and_halve(pstr, coeff) = (pstr ⊻ flip_mask, 0.5 * coeff)
+    trunc_z_first(pstr, coeff) = getpauli(pstr, 1) == 3
+    flipped_reference = PauliSum(nq)
+    for (pstr, coeff) in dict_sum
+        if getpauli(pstr ⊻ flip_mask, 1) != 3
+            add!(flipped_reference, pstr ⊻ flip_mask, 0.5 * coeff)
+        end
+    end
+
     for makesum in (identity, VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 4), psum -> MultiPauliSum(psum, 4))
         branched = PB.xorbranch(rotate, PropagationCache(makesum(dict_sum)), gate_mask)
         PB.xormerge!(branched, gate_mask)
@@ -174,10 +185,15 @@ end
         # term-sum `mapcoeffsbypair!` above always preserves its number of terms.
         trunc_negative(pstr, coeff) = coeff <= 0
         map_and_truncated_cache = PropagationCache(deepcopy(makesum(dict_sum)))
-        PB.mapandtruncate!(halve_positive, trunc_negative, map_and_truncated_cache; thread=false)
+        PB.mapcoeffsandtruncate!(halve_positive, trunc_negative, map_and_truncated_cache; thread=false)
         map_and_truncated = PauliSum(extractsum!(map_and_truncated_cache))
         @test length(map_and_truncated) == count(coeff > 0 for (_, coeff) in dict_sum)
         @test all(getcoeff(map_and_truncated, pstr) ≈ 0.5 * coeff for (pstr, coeff) in dict_sum if coeff > 0)
+
+        # a pair map moves the terms, also between zones
+        flipped_cache = PropagationCache(deepcopy(makesum(dict_sum)))
+        PB.mapandtruncate!(flip_and_halve, trunc_z_first, flipped_cache; thread=false)
+        @test PauliSum(extractsum!(flipped_cache)) ≈ flipped_reference
     end
 
     # a gate finds the terms the gate before it created merged in, where they would otherwise be lost
@@ -215,6 +231,15 @@ end
     @test PauliPropagation.PropagationBase.sortedprefix(mainsum(prop_cache)) == length(prop_cache)
     @test issorted(PauliPropagation.PropagationBase.terms(prop_cache))
 
+    trunc_large(pstr, coeff) = coeff > 1.0
+    PB.mapcoeffsandtruncate!(halve_positive, trunc_large, prop_cache; thread=false)
+    @test PauliPropagation.PropagationBase.sortedprefix(mainsum(prop_cache)) == length(prop_cache)
+    @test issorted(PauliPropagation.PropagationBase.terms(prop_cache))
+
+    # a pair map moves the terms, which then no longer count as sorted
+    PB.mapandtruncate!(flip_and_halve, trunc_z_first, prop_cache; thread=false)
+    @test PauliPropagation.PropagationBase.sortedprefix(mainsum(prop_cache)) == 0
+
     # the kernels for arrays that are not on the CPU agree with the CPU kernels
     cpu_cache = PropagationCache(VectorPauliSum(dict_sum))
     portable_cache = PropagationCache(VectorPauliSum(dict_sum))
@@ -226,6 +251,11 @@ end
     PauliPropagation.PropagationBase._filtercpu!(keep_positive, cpu_cache; thread=false)
     PauliPropagation.PropagationBase.flag!(keep_positive, portable_cache; thread=false)
     PauliPropagation.PropagationBase.filterviaflags!(portable_cache; thread=false)
+    @test PauliPropagation.PropagationBase.terms(cpu_cache) == PauliPropagation.PropagationBase.terms(portable_cache)
+    @test coefficients(cpu_cache) == coefficients(portable_cache)
+
+    PauliPropagation.PropagationBase._mapandtruncatecpu!(flip_and_halve, trunc_z_first, cpu_cache; thread=false)
+    PauliPropagation.PropagationBase._mapandtruncateflagged!(flip_and_halve, trunc_z_first, portable_cache; thread=false)
     @test PauliPropagation.PropagationBase.terms(cpu_cache) == PauliPropagation.PropagationBase.terms(portable_cache)
     @test coefficients(cpu_cache) == coefficients(portable_cache)
 end
@@ -258,7 +288,7 @@ end
     # the noise map deletes the same entries, and rescales the rest as `map!` does
     halve(pstr, coeff) = coeff / 2
     is_small(pstr, coeff) = abs(coeff) < 0.5
-    noise_cache = PB.mapandtruncate!(halve, is_small, PropagationCache(deepcopy(dict_sum)); thread=false)
+    noise_cache = PB.mapcoeffsandtruncate!(halve, is_small, PropagationCache(deepcopy(dict_sum)); thread=false)
     base_noised = Base.filter!(entry -> !is_small(entry.first, halve(entry.first, entry.second)), copy(base_dict))
     map!(coeff -> coeff / 2, values(base_noised))
     @test sametable(PB.storage(mainsum(noise_cache)), base_noised)
@@ -569,7 +599,7 @@ end
 
         for (first_answer, second_answer) in ((never, always), (always, never))
             cache = PropagationCache(deepcopy(vpsum))
-            @test_throws ArgumentError PB.mapandtruncate!(identity_map, replaying(first_answer, second_answer, n), cache; thread=true)
+            @test_throws ArgumentError PB.mapcoeffsandtruncate!(identity_map, replaying(first_answer, second_answer, n), cache; thread=true)
         end
 
         # a sorted head with an appended tail merges through the tail merge, which replays truncfunc

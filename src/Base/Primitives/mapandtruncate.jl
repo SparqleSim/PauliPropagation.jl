@@ -1,10 +1,27 @@
 """
     mapandtruncate!(mapfunc, truncfunc, prop_cache::AbstractPropagationCache; thread=true)
 
+Replace every active `(term, coefficient)` pair by the pair `mapfunc(term, coefficient)` returns, as `map!` does,
+and discard the new pair when `truncfunc(new_term, new_coefficient)` returns `true`.
+This is a propagation-cache primitive: it may use the cache's auxiliary storage to compact the active terms.
+
+It is intended for a gate that deterministically maps every term to one term and can decide, from the new
+pair, that it is truncated. Array storage performs the mapping and compaction in one walk, and any other
+storage writes the new pairs through `flatmap!`.
+
+On a multithreaded CPU array, both functions are called once to count retained terms and again to
+write them. They must therefore be deterministic, replayable, and safe to call concurrently.
+"""
+mapandtruncate!(mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G} =
+    _mapandtruncate!(StorageType(prop_cache), mapfunc, truncfunc, prop_cache; thread)
+
+"""
+    mapcoeffsandtruncate!(mapfunc, truncfunc, prop_cache::AbstractPropagationCache; thread=true)
+
 Map every active coefficient with `mapfunc(term, coefficient)` and discard the mapped pair when
 `truncfunc(term, new_coefficient)` returns `true`. This is a propagation-cache primitive: unlike
 `mapcoeffsbypair!`, it may use the cache's auxiliary storage to compact the active terms.
-`mapandtruncate!` itself constructs the `Kept(new_coefficient)` and `Truncated()` outcomes, so its
+`mapcoeffsandtruncate!` itself constructs the `Kept(new_coefficient)` and `Truncated()` outcomes, so its
 callers only supply the mapping and truncation functions.
 
 It is intended for a gate that deterministically rescales terms and can decide, from the new
@@ -14,40 +31,54 @@ other storage types use their corresponding direct or cache-aware implementation
 On a multithreaded CPU array, both functions are called once to count retained terms and again to
 write them. They must therefore be deterministic, replayable, and safe to call concurrently.
 """
-mapandtruncate!(mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G} =
-    _mapandtruncate!(StorageType(prop_cache), mapfunc, truncfunc, prop_cache; thread)
+mapcoeffsandtruncate!(mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G} =
+    _mapcoeffsandtruncate!(StorageType(prop_cache), mapfunc, truncfunc, prop_cache; thread)
 
 """
     Truncated()
 
-The internal outcome of `mapandtruncate!` for an input term whose mapped coefficient is truncated.
+The internal outcome of `mapandtruncate!` and `mapcoeffsandtruncate!` for an input term whose mapped pair is truncated.
 """
 struct Truncated end
 
+# the new term, and whether it is kept with its new coefficient
 @inline function _mapandtruncateoutcome(mapfunc::F, truncfunc::G, term, coefficient) where {F,G}
+    new_term, new_coefficient = @inline mapfunc(term, coefficient)
+    truncated = @inline truncfunc(new_term, new_coefficient)
+    return new_term, truncated ? Truncated() : Kept(new_coefficient)
+end
+
+@inline function _mapcoeffsandtruncateoutcome(mapfunc::F, truncfunc::G, term, coefficient) where {F,G}
     new_coefficient = @inline mapfunc(term, coefficient)
     truncated = @inline truncfunc(term, new_coefficient)
     return truncated ? Truncated() : Kept(new_coefficient)
 end
 
-# A cache with no specialized storage implementation can still express the operation through the
-# general expansion primitive. `flatmap!` also combines duplicate terms for dictionary-like sums.
+# A cache with no in-place implementation can still express the operation through the general
+# expansion primitive. `flatmap!` also combines duplicate terms for dictionary-like sums, and moves
+# the terms of a multi sum to the zones that own them.
 function _mapandtruncate!(::StorageType, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
     function map_or_drop(term, coefficient)
-        outcome = _mapandtruncateoutcome(mapfunc, truncfunc, term, coefficient)
-        return outcome isa Truncated ? () : ((term, outcome.coefficient),)
+        new_term, outcome = _mapandtruncateoutcome(mapfunc, truncfunc, term, coefficient)
+        return outcome isa Truncated ? () : ((new_term, outcome.coefficient),)
     end
 
     return flatmap!(map_or_drop, prop_cache; thread)
 end
 
+# a coefficient map is a pair map that keeps every term
+function _mapcoeffsandtruncate!(::StorageType, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
+    keep_term(term, coefficient) = (term, @inline mapfunc(term, coefficient))
+    return mapandtruncate!(keep_term, truncfunc, prop_cache; thread)
+end
+
 
 ### Dictionary storage
 
-function _mapandtruncate!(::DictStorage, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
+function _mapcoeffsandtruncate!(::DictStorage, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
     dict = storage(mainsum(prop_cache))
     if _hasdictinternals(dict)
-        _mapandtruncate_internals!(mapfunc, truncfunc, dict)
+        _mapcoeffsandtruncate_internals!(mapfunc, truncfunc, dict)
         return prop_cache
     end
 
@@ -55,7 +86,7 @@ function _mapandtruncate!(::DictStorage, mapfunc::F, truncfunc::G, prop_cache::A
     dropped = Vector{keytype(dict)}()
 
     for (term, coefficient) in dict
-        outcome = _mapandtruncateoutcome(mapfunc, truncfunc, term, coefficient)
+        outcome = _mapcoeffsandtruncateoutcome(mapfunc, truncfunc, term, coefficient)
 
         if outcome isa Truncated
             push!(dropped, term)
@@ -75,9 +106,22 @@ end
 
 ### Array storage
 
-# The retained pairs are compacted in the order they had, so the sorted prefix survives as the
-# number of retained terms it held.
+# The new terms need not keep the order of the old ones, so the sum has no sorted prefix afterwards, as after `map!`.
 function _mapandtruncate!(::ArrayStorage, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
+    _mapandtruncatearrays!(mapfunc, truncfunc, prop_cache; thread)
+    setsortedprefix!(mainsum(prop_cache), 0)
+    return prop_cache
+end
+
+function _mapcoeffsandtruncate!(::ArrayStorage, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
+    keep_term(term, coefficient) = (term, @inline mapfunc(term, coefficient))
+    _mapandtruncatearrays!(keep_term, truncfunc, prop_cache; thread)
+    return prop_cache
+end
+
+# The retained pairs are compacted in the order they had, so the sorted prefix survives as the
+# number of retained terms it held, as long as the terms are kept.
+function _mapandtruncatearrays!(mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
     isempty(prop_cache) && return prop_cache
 
     if _iscpuarray(prop_cache)
@@ -141,17 +185,17 @@ end
     n_sorted_kept = 0
 
     @inbounds for ii in lo:hi
-        outcome = _mapandtruncateoutcome(mapfunc, truncfunc, terms[ii], coefficients[ii])
+        new_term, outcome = _mapandtruncateoutcome(mapfunc, truncfunc, terms[ii], coefficients[ii])
         outcome isa Truncated && continue
 
-        write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos, terms[ii], outcome.coefficient, Val(DoWrite))
+        write_pos = _writeandadvance!(output_terms, output_coefficients, write_pos, new_term, outcome.coefficient, Val(DoWrite))
         ii <= n_sorted && (n_sorted_kept += 1)
     end
 
     return write_pos - write_start, n_sorted_kept
 end
 
-# Every pass is an array kernel, so the arrays may live anywhere: the coefficients are mapped in
+# Every pass is an array kernel, so the arrays may live anywhere: the pairs are mapped in
 # place, and the flags then compact the retained terms.
 function _mapandtruncateflagged!(mapfunc::F, truncfunc::G, prop_cache; thread::Bool=true) where {F,G}
     active_flags = activeflags(prop_cache)
@@ -160,9 +204,10 @@ function _mapandtruncateflagged!(mapfunc::F, truncfunc::G, prop_cache; thread::B
 
     AK.foreachindex(active_flags; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
         @inbounds begin
-            outcome = _mapandtruncateoutcome(mapfunc, truncfunc, active_terms[ii], active_coefficients[ii])
+            new_term, outcome = _mapandtruncateoutcome(mapfunc, truncfunc, active_terms[ii], active_coefficients[ii])
             active_flags[ii] = !(outcome isa Truncated)
             if outcome isa Kept
+                active_terms[ii] = new_term
                 active_coefficients[ii] = outcome.coefficient
             end
         end
@@ -174,8 +219,10 @@ end
 
 ### Multi sum storage
 
-function _mapandtruncate!(::MultiSumStorage, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
-    mapandtruncate_zone!(zone_id) = mapandtruncate!(mapfunc, truncfunc, zonecaches(prop_cache)[zone_id]; thread=false)
-    _eachzone(mapandtruncate_zone!, prop_cache, thread)
+# A new term may belong to another zone, so a multi sum maps pairs through `flatmap!` above, and
+# only coefficients zone by zone.
+function _mapcoeffsandtruncate!(::MultiSumStorage, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
+    mapcoeffsandtruncate_zone!(zone_id) = mapcoeffsandtruncate!(mapfunc, truncfunc, zonecaches(prop_cache)[zone_id]; thread=false)
+    _eachzone(mapcoeffsandtruncate_zone!, prop_cache, thread)
     return _syncsums!(prop_cache)
 end

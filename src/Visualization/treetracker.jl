@@ -242,8 +242,8 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::PauliPropag
     psum = mainsum(prop_cache)
     aux_psum = auxsum(prop_cache)
 
-    # load the lookup map like normal
-    lookup_map = clifford_map[gate.symbol]
+    # the lookup map, placed on the gate's qubits
+    lookup = _CliffordLookup(TT, gate)
 
     # Format the gate name for display
     gate_name = string(gate.symbol)
@@ -251,7 +251,7 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::PauliPropag
     # Loop over all Pauli strings and their coefficients in the Pauli sum
     for (pstr, coeff) in psum
         # Apply the Clifford gate to get the new Pauli string and coefficient
-        new_pstr, new_coeff_value = only(apply(gate, pstr, coeff.coeff, lookup_map; kwargs...))
+        new_pstr, new_coeff_value = only(apply(gate, pstr, coeff.coeff, lookup; kwargs...))
 
         # Create a new child tracker for the transformed Pauli string
         edge_num = new_coeff_value / coeff.coeff
@@ -318,12 +318,19 @@ end
 
 """
     applymergetruncate!(gate::PauliNoise, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, p; kwargs...) where {TT<:PauliStringType,T<:Number}
+    applymergetruncate!(gate::CliffordGate, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}; kwargs...) where {TT<:PauliStringType,T<:Number}
 
 Falls back to the generic apply-then-truncate pipeline instead of the core fast path, so that a tree
 node/edge is still recorded for each transformed Pauli string.
 """
 function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, p; kwargs...) where {TT<:PauliStringType,T<:Number}
     applytoall!(gate, prop_cache, p; kwargs...)
+    truncate!(prop_cache; kwargs...)
+    return prop_cache
+end
+
+function PropagationBase.applymergetruncate!(gate::CliffordGate, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}; kwargs...) where {TT<:PauliStringType,T<:Number}
+    applytoall!(gate, prop_cache; kwargs...)
     truncate!(prop_cache; kwargs...)
     return prop_cache
 end

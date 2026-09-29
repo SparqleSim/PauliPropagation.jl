@@ -167,3 +167,25 @@ function composecliffordmaps(circuit)
     return [(UInt8(pair[1]), Int(pair[2])) for pair in pairs]
 
 end
+
+
+# A Clifford lookup map placed on the qubits of a gate, for Pauli strings of type `TT`.
+# For every combination of Paulis on the qubits, it holds the XOR that takes them to their image and the sign,
+# so the gate is applied to a Pauli string by reading its Paulis at `shifts` and one XOR.
+struct _CliffordLookup{TT,K,L}
+    shifts::NTuple{K,Int}
+    changes::NTuple{L,TT}
+    signs::NTuple{L,Int}
+end
+
+_CliffordLookup(::Type{TT}, gate::CliffordGate, lookup_map=clifford_map[gate.symbol]) where {TT} =
+    _CliffordLookup(TT, gate.qinds, lookup_map, Val(length(gate.qinds)))
+
+# the number of qubits comes as a type, which is dispatched on faster than a tuple of the qubits
+function _CliffordLookup(::Type{TT}, gate_qinds, lookup_map, ::Val{K}) where {TT,K}
+    qinds = ntuple(ii -> gate_qinds[ii], Val(K))
+    shifts = map(_bitshiftfromsiteindex, qinds)
+    changes = ntuple(ii -> setpauli(zero(TT), (ii - 1) ⊻ first(lookup_map[ii]), qinds), Val(4^K))
+    signs = ntuple(ii -> last(lookup_map[ii]), Val(4^K))
+    return _CliffordLookup(shifts, changes, signs)
+end

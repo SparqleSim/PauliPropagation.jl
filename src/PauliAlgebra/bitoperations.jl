@@ -203,6 +203,22 @@ end
 @inline _wordat(pstr::PauliStringType, bit::Int) = (pstr >> (bit & ~63)) % UInt64
 
 
+# This function packs the Paulis at the shifts `shifts` into an `Int`, the first Pauli in the lowest two bits.
+# It is the unchecked `getpauli` on several qubits, with the shifts from `_bitshiftfromsiteindex` computed ahead of time.
+@inline function _gatherpaulis(pstr::PauliStringType, shifts)
+    paulis = 0
+    for (ii, shift) in enumerate(shifts)
+        # read the Pauli from the 64-bit word that holds it, in which it sits at `shift & 63`
+        # a Pauli starts at an even bit, so its two bits never fall into two words
+        pauli = (_wordat(pstr, shift) >> (shift & 63)) & 3
+
+        # place it above the Paulis read before it
+        paulis |= Int(pauli) << (2 * (ii - 1))
+    end
+    return paulis
+end
+
+
 # This mask helps us to parallelize the bit operations over all qubits.
 @generated function alternatingmask(pstr::T) where {T<:PauliStringType}
     # define our super bit mask looking like ....1010101.
