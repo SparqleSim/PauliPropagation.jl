@@ -172,6 +172,19 @@ function _mapactivecoeffsbypair!(transform::F, thing; thread::Bool=true) where {
     return thing
 end
 
+function _mapcoeffsbypair!(::DictStorage, transform::F, term_sum::AbstractTermSum; thread::Bool=true) where {F}
+    dict = storage(term_sum)
+    if _hasdictinternals(dict)
+        _mapcoeffsbypair_internals!(transform, dict)
+        return term_sum
+    end
+
+    for (term, coefficient) in term_sum
+        set!(term_sum, term, transform(term, coefficient))
+    end
+    return term_sum
+end
+
 function _mapcoeffsbypair!(::StorageType, transform, term_sum::AbstractTermSum; thread::Bool=true)
     for (term, coefficient) in term_sum
         set!(term_sum, term, transform(term, coefficient))
