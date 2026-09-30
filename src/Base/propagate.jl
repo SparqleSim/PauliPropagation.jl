@@ -65,6 +65,9 @@ function _propagate!(stepfunc::F, circuit, target, params=nothing; kwargs...) wh
             # free unless `@countpaulis` or `@peakpaulis` installed a counter
             _recordsize!(target)
         end
+
+        # free unless `@countpaulis` or `@peakpaulis` installed a counter
+        _recordsize!(target)
     end
 
     return target

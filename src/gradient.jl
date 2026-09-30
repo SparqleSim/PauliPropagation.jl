@@ -74,8 +74,6 @@ mutable struct _BackwardSweepState{OC,DC}
     k::Int
 end
 
-# the backward sweep is carried by this state instead of a cache, so the operator sum is what is
-# counted and what keeps its zone workers up
 PropagationBase._termcount(state::_BackwardSweepState) = length(state.op_cache)
 PropagationBase._withworkers(f::F, state::_BackwardSweepState, thread::Bool) where {F} =
     PropagationBase._withworkers(f, state.op_cache, thread)
