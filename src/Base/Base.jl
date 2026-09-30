@@ -101,7 +101,8 @@ export
     maxabscoeff,
     flatmap,
     flatmap!,
-    mapandtruncate!
+    mapandtruncate!,
+    mapcoeffsandtruncate!
 
 include("./vectorbackend.jl")
 export

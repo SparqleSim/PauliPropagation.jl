@@ -45,10 +45,9 @@ end
     term = symboltoint(nq, :Y, 1)
 
     # H Y H = -Y, so this gate is a case where conjugation flips the coefficient's sign
-    exact_term, exact_coeff = only(apply(gate, term, 1.0, clifford_map[gate.symbol]))
-    @test exact_coeff ≈ -1.0
+    exact_term, exact_coeff = term, -1.0
 
-    # squared=false: Clifford application is deterministic and matches apply() exactly
+    # squared=false: Clifford application is deterministic and matches the conjugation exactly
     psum1 = VectorPauliSum(nq, [term], [1.0])
     mcapplytoall!(gate, psum1)
     @test only(paulis(psum1)) == exact_term

@@ -243,7 +243,7 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::PauliPropag
     aux_psum = auxsum(prop_cache)
 
     # load the lookup map like normal
-    lookup_map = clifford_map[gate.symbol]
+    lookup_map = _preparecliffordmap(TT, gate)
 
     # Format the gate name for display
     gate_name = string(gate.symbol)
@@ -318,12 +318,19 @@ end
 
 """
     applymergetruncate!(gate::PauliNoise, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, p; kwargs...) where {TT<:PauliStringType,T<:Number}
+    applymergetruncate!(gate::CliffordGate, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}; kwargs...) where {TT<:PauliStringType,T<:Number}
 
 Falls back to the generic apply-then-truncate pipeline instead of the core fast path, so that a tree
 node/edge is still recorded for each transformed Pauli string.
 """
 function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}, p; kwargs...) where {TT<:PauliStringType,T<:Number}
     applytoall!(gate, prop_cache, p; kwargs...)
+    truncate!(prop_cache; kwargs...)
+    return prop_cache
+end
+
+function PropagationBase.applymergetruncate!(gate::CliffordGate, prop_cache::PauliPropagationCache{PauliSum{TT,PauliTreeTracker{T}}}; kwargs...) where {TT<:PauliStringType,T<:Number}
+    applytoall!(gate, prop_cache; kwargs...)
     truncate!(prop_cache; kwargs...)
     return prop_cache
 end

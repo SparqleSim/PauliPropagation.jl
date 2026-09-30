@@ -63,12 +63,14 @@ end
 
 ### Working the zones
 
-# Every zone is read and written by one thread only, so all parallelism comes from the zones. A
-# sum below one task's worth of terms is worked in turn: a round costs tens of microseconds and
-# more with every thread, where a zone that small takes one. So is every sum on one thread, where
-# a task per zone would only be spawned and run in turn.
+# Sums with fewer terms than this (across all zones) work their zones one after another instead of in parallel. 
+# Should typically be lower than `_MIN_ELEMS_PER_TASK` because working on several arrays has overhead.
+const _MIN_TERMS_TO_THREAD_ZONES = 1024
+
+# Each zone is read and written by a single thread, so the zones are what runs in parallel, one task per zone. 
+# Small sums run serially because that may be faster than spawning threads.
 function _eachzone(zonefunc::F, thing, thread::Bool) where {F}
-    if maxtasks(thread) == 1 || length(thing) < _MIN_ELEMS_PER_TASK
+    if maxtasks(thread) == 1 || length(thing) < _MIN_TERMS_TO_THREAD_ZONES
         for zone_id in 1:nzones(thing)
             zonefunc(zone_id)
         end

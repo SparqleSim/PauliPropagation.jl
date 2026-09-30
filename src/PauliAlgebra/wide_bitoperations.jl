@@ -108,7 +108,6 @@ end
 end
 
 # Up to 32 Paulis are gathered in one word, which widens once, instead of shifting the whole value in for every Pauli.
-# Every Clifford gate reads its Paulis this way.
 function getpauli(pstr::NTupleInteger{N}, qinds::Union{AbstractVector,Tuple}) where {N}
     if length(qinds) > 32
         return invoke(getpauli, Tuple{PauliStringType,Any}, pstr, qinds)
@@ -139,6 +138,9 @@ function _paulimask(::Type{NTupleInteger{N}}, n_sites) where {N}
 end
 
 # A `UInt128` reads and writes its Paulis through its two limbs as well.
-@inline _getpaulibits(pstr::UInt128, index::Integer) = _getpaulibits(NTupleInteger{2}(pstr), index)
+@inline function _getpaulibits(pstr::UInt128, index::Integer)
+    bit = _bitshiftfromsiteindex(index)
+    return (PropagationBase._wordat(pstr, bit) >> (bit & 63)) & 3
+end
 getpauli(pstr::UInt128, qinds::Union{AbstractVector,Tuple}) = UInt128(getpauli(NTupleInteger{2}(pstr), qinds))
 @inline _setpaulibits(pstr::UInt128, target_pauli::PauliType, index::Integer) = UInt128(_setpaulibits(NTupleInteger{2}(pstr), target_pauli, index))

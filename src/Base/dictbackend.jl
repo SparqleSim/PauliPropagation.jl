@@ -40,13 +40,13 @@ function _branchdict_internals!(rule::F, dict, new_sum, mask) where {F}
     return n_touched
 end
 
-# Maps every coefficient of `dict` and deletes the entries `truncfunc` drops, as `_mapandtruncate!`.
-function _mapandtruncate_internals!(mapfunc::F, truncfunc::G, dict) where {F,G}
+# Maps every coefficient of `dict` and deletes the entries `truncfunc` drops, as `_mapcoeffsandtruncate!`.
+function _mapcoeffsandtruncate_internals!(mapfunc::F, truncfunc::G, dict) where {F,G}
     slots, dict_keys, dict_vals = _dicttables(dict)
     age = dict.age
 
     for i in _FilledSlots(slots)
-        outcome = _mapandtruncateoutcome(mapfunc, truncfunc, (@inbounds dict_keys[i]), (@inbounds dict_vals[i]))
+        outcome = _mapcoeffsandtruncateoutcome(mapfunc, truncfunc, (@inbounds dict_keys[i]), (@inbounds dict_vals[i]))
         _checkunchanged(dict, age)
 
         if outcome isa Truncated
