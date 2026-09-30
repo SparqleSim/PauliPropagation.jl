@@ -139,7 +139,7 @@ end
 
 # A `UInt128` reads and writes its Paulis through its two limbs as well.
 @inline function _getpaulibits(pstr::UInt128, index::Integer)
-    bit = _bitshiftfromsiteindex(index)
+    bit = _bitshiftfromsiteindex(Int(index))
     return (PropagationBase._wordat(pstr, bit) >> (bit & 63)) & 3
 end
 getpauli(pstr::UInt128, qinds::Union{AbstractVector,Tuple}) = UInt128(getpauli(NTupleInteger{2}(pstr), qinds))
