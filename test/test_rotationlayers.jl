@@ -45,21 +45,21 @@ function layersmatchrotations(layers, thetas, psum; kwargs...)
 end
 
 function testlayersagainstrotations()
-    # in blocks of coefficients up to eight stages, on one limb, on two and on four
+    # in blocks of coefficients of up to eight rotations, on one limb, on two and on four
     for nq in (8, 40, 100)
         rng = MersenneTwister(nq)
         psum = randompaulisum(rng, nq, 12, 3)
         chain = staircasetopology(nq)
         ring = staircasetopology(nq; periodic=true)
-        disjoint_pairs = [(i, i + 1) for i in 1:2:nq-1]
-        distant_pairs = [(i + 3, i) for i in 1:nq-3]
+        disjoint_bonds = [(i, i + 1) for i in 1:2:nq-1]
+        distant_bonds = [(i + 3, i) for i in 1:nq-3]
 
         # rotations that share qubits within a sublayer and rotations that do not, in the order of the qubits and in any other
         layer_sets = (
             [RotationLayer(:X, 1:nq), RotationLayer([:Z, :Z], chain)],
             [RotationLayer(:Y, nq:-1:1), RotationLayer([:X, :X], ring)],
             [RotationLayer(:Z, randperm(rng, nq)), RotationLayer([:Y, :Y], shuffle(rng, chain))],
-            [RotationLayer([:X, :Y], disjoint_pairs), RotationLayer([:Z, :Z], distant_pairs)],
+            [RotationLayer([:X, :Y], disjoint_bonds), RotationLayer([:Z, :Z], distant_bonds)],
         )
 
         # without any truncation only where 4^nq bounds the sum
@@ -76,20 +76,20 @@ function testlayersagainstrotations()
 end
 
 function testanyqubitsandpairs()
-    # some of the qubits in any order, and pairs of any two qubits, which share qubits and come more than once
+    # some of the qubits in any order, and bonds between any two qubits, which share qubits and come more than once
     for nq in (8, 100)
         rng = MersenneTwister(nq)
         psum = randompaulisum(rng, nq, 12, 3)
         some_qubits = randperm(rng, nq)[1:nq÷2]
-        any_pairs = [Tuple(randperm(rng, nq)[1:2]) for _ in 1:nq]
+        any_bonds = [Tuple(randperm(rng, nq)[1:2]) for _ in 1:nq]
 
-        layers = [RotationLayer(:Y, some_qubits), RotationLayer([:Z, :Z], any_pairs),
-            RotationLayer(:X, some_qubits), RotationLayer([:X, :X], any_pairs)]
+        layers = [RotationLayer(:Y, some_qubits), RotationLayer([:Z, :Z], any_bonds),
+            RotationLayer(:X, some_qubits), RotationLayer([:X, :X], any_bonds)]
         thetas = randomangles(rng, layers)
 
-        pair_layer = layers[2]
-        plan = PauliPropagation.SubLayerPlan(pair_layer, pair_layer.sublayers[1], thetas[2], getinttype(nq), nq)
-        @test length(pair_layer.sublayers) > 1
+        bond_layer = layers[2]
+        plan = PauliPropagation._preparesublayer(bond_layer, bond_layer.sublayers[1], thetas[2], getinttype(nq), nq)
+        @test length(bond_layer.sublayers) > 1
         @test plan.overlapping
 
         @test layersmatchrotations(layers, thetas, psum; max_weight=4.0, min_abs_coeff=1e-4)
@@ -97,8 +97,8 @@ function testanyqubitsandpairs()
     end
 end
 
-function testorbitsofmanystages()
-    # heavy Pauli strings anticommute with more rotations than a block of coefficients holds stages for
+function testorbitsofmanyrotations()
+    # heavy Pauli strings anticommute with more rotations than a block of coefficients holds
     nq = 100
     rng = MersenneTwister(nq)
     psum = randompaulisum(rng, nq, 6, 12)
@@ -118,12 +118,12 @@ end
     testlayersagainstrotations()
 end
 
-@testset "RotationLayer on any qubits and pairs" begin
+@testset "RotationLayer on any qubits and bonds" begin
     testanyqubitsandpairs()
 end
 
-@testset "RotationLayer on orbits of many stages" begin
-    testorbitsofmanystages()
+@testset "RotationLayer on orbits of many rotations" begin
+    testorbitsofmanyrotations()
 end
 
 readsingroups = which(PauliPropagation._readsingroups, Tuple{Any})
@@ -132,11 +132,11 @@ readsingroups = which(PauliPropagation._readsingroups, Tuple{Any})
 @testset "RotationLayer with its rotations read one by one" begin
     nq = 8
     layer = RotationLayer([:Z, :Z], staircasetopology(nq))
-    @test isempty(PauliPropagation.SubLayerPlan(layer, layer.sublayers[1], 0.3, getinttype(nq), nq).groups)
+    @test isempty(PauliPropagation._preparesublayer(layer, layer.sublayers[1], 0.3, getinttype(nq), nq).groups)
 
     testlayersagainstrotations()
     testanyqubitsandpairs()
-    testorbitsofmanystages()
+    testorbitsofmanyrotations()
 end
 
 @eval PauliPropagation _readsingroups(groups) = length(groups) <= _MAX_ROTATION_GROUPS
@@ -150,7 +150,7 @@ end
         layers = [RotationLayer(:X, 1:nq), RotationLayer([:Z, :Z], staircasetopology(nq))]
         thetas = randomangles(rng, layers)
         vpsum = propagate(layers, VectorPauliSum(psum), thetas; max_weight=5.0, min_abs_coeff=1e-4)
-        @test !isempty(PauliPropagation.SubLayerPlan(layers[2], layers[2].sublayers[1], thetas[2], getinttype(nq), nq).groups)
+        @test !isempty(PauliPropagation._preparesublayer(layers[2], layers[2].sublayers[1], thetas[2], getinttype(nq), nq).groups)
 
         matches = true
         for (layer, theta) in zip(layers, thetas), sublayer in layer.sublayers, capacity in (length(vpsum), 4 * length(vpsum))
@@ -160,14 +160,16 @@ end
             # with room for all that the tasks write, and with so little that they keep most of it in their buffers
             resize!(by_four_tasks, capacity)
 
-            plan = PauliPropagation.SubLayerPlan(layer, sublayer, theta, paulitype(vpsum), nq)
-            truncation = PauliPropagation.LayerTruncation(buildtruncfunc(by_one_task; min_abs_coeff=1e-4), 5.0)
+            plan = PauliPropagation._preparesublayer(layer, sublayer, theta, paulitype(vpsum), nq)
+            truncation = PauliPropagation._layertruncation(buildtruncfunc(by_one_task; min_abs_coeff=1e-4), 5.0)
             workspace = PauliPropagation.LayerWorkspace(paulitype(vpsum), coefftype(vpsum))
             one_task = PauliPropagation.AK.TaskPartitioner(length(vpsum), 1, 1)
             four_tasks = PauliPropagation.AK.TaskPartitioner(length(vpsum), 4, 1)
 
-            matches &= PauliPropagation._applysublayerintasks!(by_one_task, plan, truncation, workspace, one_task, 1)
-            matches &= PauliPropagation._applysublayerintasks!(by_four_tasks, plan, truncation, workspace, four_tasks, 4)
+            applyrotation!(cache, rotation, angle) = applymergetruncate!(rotation, cache, angle; max_weight=5.0, min_abs_coeff=1e-4)
+            rotateonebyone!(cache) = PauliPropagation._applyrotations!(applyrotation!, cache, layer, sublayer, theta)
+            PauliPropagation._applysublayerintasks!(by_one_task, plan, truncation, workspace, rotateonebyone!, one_task, 1)
+            PauliPropagation._applysublayerintasks!(by_four_tasks, plan, truncation, workspace, rotateonebyone!, four_tasks, 4)
             matches &= length(by_four_tasks) == length(by_one_task)
             matches &= PauliSum(extractsum!(by_four_tasks)) == PauliSum(extractsum!(by_one_task))
             matches &= PauliSum(extractsum!(by_one_task)) != PauliSum(vpsum)
@@ -210,6 +212,11 @@ end
     @test RotationLayer([:Z, :Z], staircasetopology(nq; periodic=true)).sublayers == [collect(1:nq-1), [nq]]
     @test RotationLayer(:X, [1, 1, 2]).sublayers == [[1, 3], [2]]
 
+    # a sublayer is applied in the order of its lowest qubits, and one given explicitly must be in that order or its reverse
+    @test RotationLayer(:X, [3, 1, 2]).sublayers == [[2, 3, 1]]
+    @test RotationLayer([:Z, :Z], [(4, 5), (1, 2), (2, 3)]).sublayers == [[2, 3, 1]]
+    @test_throws ArgumentError RotationLayer([:X], [[1], [2], [3]], [[2, 1, 3]])
+
     rotations, angles = PauliPropagation.torotations(RotationLayer([:Z, :Z], staircasetopology(4; periodic=true)), collect(1.0:4.0))
     @test [rotation.qinds for rotation in rotations] == [[1, 2], [2, 3], [3, 4], [4, 1]]
     @test angles == collect(1.0:4.0)
@@ -221,7 +228,7 @@ end
     rng = MersenneTwister(1)
     psum = randompaulisum(rng, nq, 8, 3)
     thetas = randn(rng, nq - 1)
-    chain_rotations = [PauliRotation([:Z, :Z], pair) for pair in staircasetopology(nq)]
+    chain_rotations = [PauliRotation([:Z, :Z], bond) for bond in staircasetopology(nq)]
     for T in (PauliSum, VectorPauliSum)
         layered = propagate(zz_layer, T(psum), thetas; max_weight=3.0, min_abs_coeff=1e-3)
         reference = propagate(chain_rotations, T(psum), thetas; max_weight=3.0, min_abs_coeff=1e-3)
