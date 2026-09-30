@@ -78,3 +78,9 @@ end
 
 # the window of a `UInt128` is always both its limbs
 limbwindow(term::UInt128, ::NTuple{2,Int}) = NTupleInteger{2}(term)
+
+# The 64-bit word of a term that holds the bit at position `bit`, counted from 0.
+@inline _wordat(term::Base.BitUnsigned64, bit::Int) = term % UInt64
+@inline _wordat(term::Integer, bit::Int) = (term >> (bit & ~63)) % UInt64
+@inline _wordat(term::UInt128, bit::Int) = ifelse(bit >= 64, (term >> 64) % UInt64, term % UInt64)
+@inline _wordat(term::NTupleInteger, bit::Int) = term.limbs[(bit>>6)+1]

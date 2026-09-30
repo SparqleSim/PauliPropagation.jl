@@ -131,9 +131,6 @@ end
     return NTupleInteger{N}(ntuple(j -> ifelse(j == k, (pstr.limbs[j] & keep) | pauli, pstr.limbs[j]), Val(N)))
 end
 
-# the limb that holds a bit
-@inline _wordat(pstr::NTupleInteger, bit::Int) = pstr.limbs[(bit>>6)+1]
-
 # the low `2 * n_sites` bits set, limb by limb: full below the cut, empty above it, partial across it
 function _paulimask(::Type{NTupleInteger{N}}, n_sites) where {N}
     nbits = 2 * n_sites
@@ -142,8 +139,7 @@ end
 
 @inline function _getpaulibits(pstr::UInt128, index::Integer)
     bit = _bitshiftfromsiteindex(index)
-    return (_wordat(pstr, bit) >> (bit & 63)) & 3
+    return (PropagationBase._wordat(pstr, bit) >> (bit & 63)) & 3
 end
 getpauli(pstr::UInt128, qinds::Union{AbstractVector,Tuple}) = UInt128(getpauli(NTupleInteger{2}(pstr), qinds))
 @inline _setpaulibits(pstr::UInt128, target_pauli::PauliType, index::Integer) = UInt128(_setpaulibits(NTupleInteger{2}(pstr), target_pauli, index))
-@inline _wordat(pstr::UInt128, bit::Int) = ifelse(bit >= 64, (pstr >> 64) % UInt64, pstr % UInt64)
