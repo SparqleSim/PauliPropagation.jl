@@ -72,6 +72,12 @@ function _toheisenberg(gate::FrozenGate)
     return freeze(gate_heisenberg, param_heisenberg)
 end
 
+# The rotations of a `RotationLayer` are applied in reverse like the gates of the circuit.
+function _toheisenberg(layer::RotationLayer, theta)
+    reversed_sublayers = [reverse(sublayer) for sublayer in reverse(layer.sublayers)]
+    return RotationLayer(layer.symbols, layer.qinds, reversed_sublayers), theta
+end
+
 # ImaginaryPauliRotation are currently actively disallowed in Heisenberg picture
 # This has to do because we don't know how to handle the normalization
 function _toheisenberg(gate::ImaginaryPauliRotation, τ)
@@ -133,6 +139,13 @@ _toschrodinger(gate, args...) = PropagationBase._thrownotimplemented(gate, :tosc
 # This inverts the sign of `θ`, which can be seen by the conjugation of exp(-i*θ*P/2).
 function _toschrodinger(gate::PauliRotation, θ)
     return gate, -θ
+end
+
+
+# Method to transpose a `RotationLayer` gate for Schrödinger picture propagation.
+# This inverts the sign of every angle, as for a `PauliRotation`.
+function _toschrodinger(layer::RotationLayer, theta)
+    return layer, -theta
 end
 
 

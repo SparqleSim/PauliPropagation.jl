@@ -9,6 +9,7 @@
 
 include("frozengates.jl")
 include("paulirotations.jl")
+include("rotationlayers.jl")
 include("imaginarytime.jl")
 include("cliffordgates.jl")
 include("noisechannels.jl")

@@ -73,6 +73,70 @@ function paulirotationproduct(gate_mask::TT, pstr::TT) where TT
     return new_pstr, sign
 end
 
+### Rotation layers
+
+"""
+    applymergetruncate!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta; thread=true, kwargs...)
+
+Overload of `applymergetruncate!` for `RotationLayer` gates.
+The truncations are applied after every rotation, so the result is that of the rotations propagated one after the other, in the order that `torotations` returns.
+A Pauli sum with numbers as coefficients is propagated orbit by orbit:
+the Pauli strings that the rotations turn into each other are collected, and the rotations mix their coefficients.
+A `VectorPauliSum` is left without duplicate Pauli strings but unsorted.
+Any other coefficient type, and the truncations `max_freq`, `max_sins` and `min_rel_coeff`, propagate the rotations one by one.
+"""
+function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta;
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
+    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
+
+    _rotationanglecheck(layer, theta)
+
+    function applyrotation!(rotation, angle)
+        applymergetruncate!(rotation, prop_cache, angle;
+            min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread, kwargs...)
+        return
+    end
+
+    if !_propagatesinorbits(prop_cache) || !isinf(max_freq) || !isinf(max_sins) || !isnothing(min_rel_coeff)
+        for sublayer in layer.sublayers
+            _applyrotations!(applyrotation!, layer, sublayer, theta)
+        end
+        return
+    end
+
+    # the weights are known within an orbit, so they are left out of the truncation function
+    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, customtruncfunc, thread)
+    _applyinorbits!(applyrotation!, layer, prop_cache, theta, LayerTruncation(truncfunc, max_weight); thread)
+    return
+end
+
+"""
+    applytoall!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta; thread=true, kwargs...)
+
+Overload of `applytoall!` for `RotationLayer` gates.
+The Pauli sum is left merged, so that no merging is required afterwards.
+"""
+function PropagationBase.applytoall!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta; thread::Bool=true, kwargs...)
+    _rotationanglecheck(layer, theta)
+
+    function applyrotation!(rotation, angle)
+        applytoall!(rotation, prop_cache, angle; thread)
+        merge!(prop_cache; thread)
+        return
+    end
+
+    if !_propagatesinorbits(prop_cache)
+        for sublayer in layer.sublayers
+            _applyrotations!(applyrotation!, layer, sublayer, theta)
+        end
+        return prop_cache
+    end
+
+    return _applyinorbits!(applyrotation!, layer, prop_cache, theta, LayerTruncation(_nevertruncate, Inf); thread)
+end
+
+PropagationBase.requiresmerging(::RotationLayer, ::AbstractPauliPropagationCache) = false
+
 ### Imaginary Pauli rotations
 
 """

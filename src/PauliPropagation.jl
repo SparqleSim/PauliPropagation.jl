@@ -84,6 +84,7 @@ export
     ParametrizedGate,
     StaticGate,
     PauliRotation,
+    RotationLayer,
     ImaginaryPauliRotation,
     CliffordGate,
     clifford_map,
