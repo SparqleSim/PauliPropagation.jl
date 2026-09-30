@@ -154,10 +154,9 @@ end
 """
     applymergetruncate!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
 
-Apply a Clifford gate, and truncate in the same walk where the truncation can drop a term.
+Apply a Clifford gate and truncate in the same walk.
 The gate never creates duplicate terms, so no merge is needed.
-It changes only the signs of the coefficients, so the thresholds on coefficients (`min_abs_coeff`, `min_rel_coeff`, `max_freq`, `max_sins`)
-would drop nothing that the truncation after the previous gate kept.
+It changes only the signs of the coefficients, so `min_abs_coeff`, `min_rel_coeff`, `max_freq` and `max_sins` would drop nothing that the truncation after the previous gate kept.
 The terms are therefore truncated only when `max_weight` or `customtruncfunc` is given, and `min_rel_coeff` is never applied.
 """
 function PropagationBase.applymergetruncate!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache;
@@ -184,7 +183,7 @@ end
 PropagationBase.requiresmerging(::CliffordGate, ::AbstractPauliPropagationCache) = false
 
 function PropagationBase.apply(gate::CliffordGate, pstr, coeff, lookup_map; kwargs...)
-    # the lookup map, placed on the gate's qubits, carries the change to the Paulis and the sign for every occuring Pauli combination
+    # the lookup map carries the change to the Paulis + sign for every occurring Pauli combination
     # +1 because Julia is 1-indexed and the packed Paulis are 0-indexed
     index = _gatherpaulis(pstr, lookup_map.shifts) + 1
 

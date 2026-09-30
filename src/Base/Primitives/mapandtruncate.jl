@@ -54,9 +54,8 @@ end
     return truncated ? Truncated() : Kept(new_coefficient)
 end
 
-# A cache with no in-place implementation can still express the operation through the general
-# expansion primitive. `flatmap!` also combines duplicate terms for dictionary-like sums, and moves
-# the terms of a multi sum to the zones that own them.
+# A cache with no specialized storage implementation can still express the operation through the
+# general expansion primitive. `flatmap!` also combines duplicate terms for dictionary-like sums.
 function _mapandtruncate!(::StorageType, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
     function map_or_drop(term, coefficient)
         new_term, outcome = _mapandtruncateoutcome(mapfunc, truncfunc, term, coefficient)
@@ -106,7 +105,7 @@ end
 
 ### Array storage
 
-# The new terms need not keep the order of the old ones, so the sum has no sorted prefix afterwards, as after `map!`.
+# the mapped terms need not keep their order, so the sorted prefix is reset as in `map!`
 function _mapandtruncate!(::ArrayStorage, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
     _mapandtruncatearrays!(mapfunc, truncfunc, prop_cache; thread)
     setsortedprefix!(mainsum(prop_cache), 0)
@@ -120,7 +119,7 @@ function _mapcoeffsandtruncate!(::ArrayStorage, mapfunc::F, truncfunc::G, prop_c
 end
 
 # The retained pairs are compacted in the order they had, so the sorted prefix survives as the
-# number of retained terms it held, as long as the terms are kept.
+# number of retained terms it held.
 function _mapandtruncatearrays!(mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
     isempty(prop_cache) && return prop_cache
 
@@ -219,8 +218,7 @@ end
 
 ### Multi sum storage
 
-# A new term may belong to another zone, so a multi sum maps pairs through `flatmap!` above, and
-# only coefficients zone by zone.
+# a mapped term may belong to another zone, so only coefficients are mapped zone by zone
 function _mapcoeffsandtruncate!(::MultiSumStorage, mapfunc::F, truncfunc::G, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F,G}
     mapcoeffsandtruncate_zone!(zone_id) = mapcoeffsandtruncate!(mapfunc, truncfunc, zonecaches(prop_cache)[zone_id]; thread=false)
     _eachzone(mapcoeffsandtruncate_zone!, prop_cache, thread)

@@ -137,6 +137,7 @@ function _paulimask(::Type{NTupleInteger{N}}, n_sites) where {N}
     return NTupleInteger{N}(ntuple(k -> typemax(UInt64) >> clamp(64 * k - nbits, 0, 64), Val(N)))
 end
 
+# A `UInt128` reads and writes its Paulis through its two limbs as well.
 @inline function _getpaulibits(pstr::UInt128, index::Integer)
     bit = _bitshiftfromsiteindex(index)
     return (PropagationBase._wordat(pstr, bit) >> (bit & 63)) & 3

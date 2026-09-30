@@ -138,7 +138,7 @@ end
     halve_positive(pstr, coeff) = coeff > 0 ? 0.5 * coeff : coeff
     keep_positive(pstr, coeff) = coeff > 0
 
-    # a pair map that moves every term, and a truncation that reads where it went
+    # a pair map that moves every term, and a truncation that reads the new term
     flip_mask = symboltoint(paulitype(dict_sum), fill(:X, nq), 1:nq)
     flip_and_halve(pstr, coeff) = (pstr ⊻ flip_mask, 0.5 * coeff)
     trunc_z_first(pstr, coeff) = getpauli(pstr, 1) == 3

@@ -169,12 +169,10 @@ function composecliffordmaps(circuit)
 end
 
 
-# The lookup map of a Clifford gate placed on its qubits, for Pauli strings of type `TT`.
-# For every combination of Paulis on the qubits, it holds the XOR that takes them to their image and the sign,
-# next to the shifts at which the Paulis are read.
+# Prepares the relevant maps and shifts for a Clifford gate.
 _preparecliffordmap(::Type{TT}, gate::CliffordGate) where {TT} = _preparecliffordmap(TT, gate, Val(length(gate.qinds)))
 
-# the number of qubits comes as a type, which is dispatched on faster than a tuple of the qubits
+# the number of qubits as a type gives the tuples below a fixed length
 function _preparecliffordmap(::Type{TT}, gate::CliffordGate, ::Val{K}) where {TT,K}
     lookup_map = clifford_map[gate.symbol]
     qinds = ntuple(ii -> gate.qinds[ii], Val(K))

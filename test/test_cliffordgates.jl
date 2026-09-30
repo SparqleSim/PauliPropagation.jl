@@ -96,7 +96,7 @@ end
 
 
 @testset "Test Clifford gates on every term type" begin
-    # every map on qubits in both orders and on both sides of a 64-bit word, against the lookup of each term
+    # every map on qubits in both orders and on both sides of a 64-bit word
     clifford_map[:CNOTtransposed] = transposecliffordmap(clifford_map[:CNOT])
 
     # the image of a term under a lookup map, read and written one qubit at a time
@@ -138,7 +138,7 @@ end
     psum = PauliSum(10, Dict(zip(terms, 0.5 .+ rand(rng, length(terms)))))
     @test propagate(CliffordGate(:composed, qinds), psum) == propagate([CliffordGate(gate.symbol, qinds[gate.qinds]) for gate in circuit], psum)
 
-    # the truncation after a gate reads the terms the gate made, so a weight cap counts their new weight
+    # a weight cap counts the weight of the terms the gate made
     images = [lookupimage(clifford_map[:CNOT], (1, 2), term, coeff) for (term, coeff) in psum]
     @test propagate(CliffordGate(:CNOT, [1, 2]), psum; max_weight=7.0) == PauliSum(10, Dict(image for image in images if countweight(first(image)) <= 7))
 

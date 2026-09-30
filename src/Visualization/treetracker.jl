@@ -242,7 +242,7 @@ function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::PauliPropag
     psum = mainsum(prop_cache)
     aux_psum = auxsum(prop_cache)
 
-    # load the lookup map, placed on the gate's qubits
+    # load the lookup map like normal
     lookup_map = _preparecliffordmap(TT, gate)
 
     # Format the gate name for display
