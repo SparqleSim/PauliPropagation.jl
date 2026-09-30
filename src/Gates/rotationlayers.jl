@@ -14,8 +14,14 @@ struct RotationLayer <: ParametrizedGate
     qinds::Vector{Vector{Int}}
     sublayers::Vector{Vector{Int}}
 
-    # a layer whose sublayers are known already
+    # a layer whose sublayers are known already, each in the order or the reverse order of its lowest qubits
     function RotationLayer(symbols::Vector{Symbol}, qinds::Vector{Vector{Int}}, sublayers::Vector{Vector{Int}})
+        for sublayer in sublayers
+            lowest_qubits = [minimum(qinds[index]) for index in sublayer]
+            if !allunique(lowest_qubits) || !(issorted(lowest_qubits) || issorted(lowest_qubits; rev=true))
+                throw(ArgumentError("The rotations of a sublayer must be in the order or the reverse order of their lowest qubits. Got $lowest_qubits."))
+            end
+        end
         return new(symbols, qinds, sublayers)
     end
 
@@ -28,9 +34,9 @@ struct RotationLayer <: ParametrizedGate
     The rotations act on one or two qubits each, on any qubits and in any order, and need to commute with each other.
     The parameter of the layer is one angle for all rotations, or a vector with one angle per entry of `qinds`.
 
-    The rotations are applied in the order of `qinds` as long as no two of them have the same lowest qubit, as on an open chain.
-    Otherwise they are applied in sublayers, within which no two rotations have the same lowest qubit,
-    and with truncation the result can differ from that of the rotations applied in the order of `qinds`.
+    In the Schrödinger picture, the rotations are applied sublayer by sublayer, and within a sublayer in the order of their lowest qubits.
+    No two rotations of a sublayer have the same lowest qubit, so an open chain is one sublayer, and a ring or a square lattice two.
+    With truncation, the result can therefore differ from that of the rotations applied in the order of `qinds`.
     `torotations` returns the rotations in the order in which they are applied.
     """
     function RotationLayer(symbols, qinds)
@@ -104,7 +110,7 @@ function _generatorscommute(symbols::Vector{Symbol}, qinds1::Vector{Int}, qinds2
     return iseven(n_differing)
 end
 
-# Every rotation goes into the first sublayer in which no other rotation has the same lowest qubit.
+# Every rotation goes into the first sublayer in which no other rotation has the same lowest qubit, and every sublayer is then sorted by the lowest qubits.
 function _sublayers(qinds::Vector{Vector{Int}})
     sublayers = Vector{Int}[]
     lowest_qubits = Set{Int}[]
@@ -123,6 +129,10 @@ function _sublayers(qinds::Vector{Vector{Int}})
         push!(lowest_qubits[sublayer_id], lowest_qubit)
     end
 
+    lowest_qubit_of(index) = minimum(qinds[index])
+    for sublayer in sublayers
+        sort!(sublayer; by=lowest_qubit_of)
+    end
     return sublayers
 end
 
@@ -134,7 +144,7 @@ end
     torotations(layer::RotationLayer)
     torotations(layer::RotationLayer, theta)
 
-Returns the rotations of the layer as a vector of `PauliRotation`s, in the order in which the layer applies them.
+Returns the rotations of the layer as a vector of `PauliRotation`s, in the order in which the layer applies them in the Schrödinger picture.
 With `theta`, the parameter of the layer, also returns the angles of the rotations in that order.
 """
 function torotations(layer::RotationLayer)

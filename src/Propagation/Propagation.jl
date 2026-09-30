@@ -12,5 +12,5 @@ include("specializations.jl")
 # mcsample.jl contains the Monte Carlo (mcsample!) specializations for VectorPauliSum.
 include("mcsample.jl")
 
-# RotationLayers.jl contains how a `RotationLayer` is propagated as a whole.
-include("RotationLayers/RotationLayers.jl")
+# rotationlayers.jl contains how a `RotationLayer` is propagated orbit by orbit.
+include("rotationlayers.jl")

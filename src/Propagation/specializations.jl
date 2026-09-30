@@ -83,7 +83,7 @@ The truncations are applied after every rotation, so the result is that of the r
 A Pauli sum with numbers as coefficients is propagated orbit by orbit:
 the Pauli strings that the rotations turn into each other are collected, and the rotations mix their coefficients.
 A `VectorPauliSum` is left without duplicate Pauli strings but unsorted.
-Any other coefficient type, and the truncations `max_freq`, `max_sins` and `min_rel_coeff`, propagate the rotations one by one.
+Any other coefficient type, and a truncation by `min_rel_coeff`, propagate the rotations one by one.
 """
 function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
@@ -91,22 +91,22 @@ function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::A
 
     _rotationanglecheck(layer, theta)
 
-    function applyrotation!(rotation, angle)
-        applymergetruncate!(rotation, prop_cache, angle;
+    function applyrotation!(cache, rotation, angle)
+        applymergetruncate!(rotation, cache, angle;
             min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread, kwargs...)
-        return
+        return cache
     end
 
-    if !_propagatesinorbits(prop_cache) || !isinf(max_freq) || !isinf(max_sins) || !isnothing(min_rel_coeff)
+    if !_propagatesinorbits(prop_cache) || !isnothing(min_rel_coeff)
         for sublayer in layer.sublayers
-            _applyrotations!(applyrotation!, layer, sublayer, theta)
+            _applyrotations!(applyrotation!, prop_cache, layer, sublayer, theta)
         end
         return
     end
 
     # the weights are known within an orbit, so they are left out of the truncation function
-    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, customtruncfunc, thread)
-    _applyinorbits!(applyrotation!, layer, prop_cache, theta, LayerTruncation(truncfunc, max_weight); thread)
+    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_freq, max_sins, customtruncfunc, thread)
+    _applyinorbits!(applyrotation!, layer, prop_cache, theta, _layertruncation(truncfunc, max_weight); thread)
     return
 end
 
@@ -119,20 +119,20 @@ The Pauli sum is left merged, so that no merging is required afterwards.
 function PropagationBase.applytoall!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta; thread::Bool=true, kwargs...)
     _rotationanglecheck(layer, theta)
 
-    function applyrotation!(rotation, angle)
-        applytoall!(rotation, prop_cache, angle; thread)
-        merge!(prop_cache; thread)
-        return
+    function applyrotation!(cache, rotation, angle)
+        applytoall!(rotation, cache, angle; thread)
+        merge!(cache; thread)
+        return cache
     end
 
     if !_propagatesinorbits(prop_cache)
         for sublayer in layer.sublayers
-            _applyrotations!(applyrotation!, layer, sublayer, theta)
+            _applyrotations!(applyrotation!, prop_cache, layer, sublayer, theta)
         end
         return prop_cache
     end
 
-    return _applyinorbits!(applyrotation!, layer, prop_cache, theta, LayerTruncation(_nevertruncate, Inf); thread)
+    return _applyinorbits!(applyrotation!, layer, prop_cache, theta, _layertruncation(_nevertruncate, Inf); thread)
 end
 
 PropagationBase.requiresmerging(::RotationLayer, ::AbstractPauliPropagationCache) = false

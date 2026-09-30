@@ -16,6 +16,14 @@ Pages = ["src/Gates/paulirotations.jl"]
 Order = [:type, :function, :constant]
 ```
 
+## Rotation Layers
+
+```@autodocs
+Modules = [PauliPropagation]
+Pages = ["src/Gates/rotationlayers.jl"]
+Order = [:type, :function, :constant]
+```
+
 ## Imaginary Pauli Rotations
 
 ```@autodocs
