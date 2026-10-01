@@ -46,12 +46,13 @@ function _applybyclass!(applyrotation!::F, layer::RotationLayer, prop_cache::Abs
 end
 
 """
-    _prepareclasses(layer::RotationLayer, theta, TT, nqubits)
+    _prepareclasses(layer::RotationLayer, theta, TT, nqubits, rotations=eachindex(layer.qinds))
 
-All rotations of the `layer` with the parameter `theta`, prepared for rotating the classes of Pauli strings of the type `TT` on `nqubits` qubits.
-Rotations with the same distance between their qubits and the same Paulis on them form a group that is read from the whole string at once.
+The `rotations` of the `layer` with the parameter `theta`, by default all of them, prepared for rotating the classes of Pauli strings
+of the type `TT` on `nqubits` qubits. Rotations with the same distance between their qubits and the same Paulis on them form a
+group that is read from the whole string at once.
 """
-function _prepareclasses(layer::RotationLayer, theta, ::Type{TT}, nqubits::Int) where {TT}
+function _prepareclasses(layer::RotationLayer, theta, ::Type{TT}, nqubits::Int, rotations=eachindex(layer.qinds)) where {TT}
     symbols = layer.symbols
     n_rotations = length(layer.qinds)
 
@@ -68,7 +69,7 @@ function _prepareclasses(layer::RotationLayer, theta, ::Type{TT}, nqubits::Int) 
     group_rotations = Vector{Int32}[]
     shared_lower_qubit = false
 
-    for rotation in 1:n_rotations
+    for rotation in rotations
         rotation_qinds = layer.qinds[rotation]
         _check_qind_range(nqubits, rotation_qinds)
         masks[rotation] = symboltoint(TT, symbols, rotation_qinds)
