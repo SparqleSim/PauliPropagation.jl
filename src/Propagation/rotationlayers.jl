@@ -22,27 +22,18 @@ function _propagatesinorbits(storage::PropagationBase.MultiSumStorage, prop_cach
 end
 
 """
-    _applyinorbits!(applyrotation!, layer::RotationLayer, prop_cache, theta, truncation; thread=true)
+    _applyinorbits!(layer::RotationLayer, prop_cache, theta, truncation; thread=true)
 
 Applies the sublayers of the layer one after the other, orbit by orbit.
-The Pauli strings of orbits with more rotations than a block holds meet the rotations one by one instead, in a cache of their own,
-each rotation applied by `applyrotation!(cache, rotation, angle)`.
+The orbits with more rotations than a block holds are rotated class by class, with the rotations of the sublayer only.
 """
-function _applyinorbits!(applyrotation!::F, layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta, truncation;
-    thread::Bool=true) where {F}
-
+function _applyinorbits!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta, truncation; thread::Bool=true)
     workspace = _takeworkspace(paulitype(prop_cache), coefftype(prop_cache))
     try
         for sublayer in layer.sublayers
             plan = _preparesublayer(layer, sublayer, theta, paulitype(prop_cache), nqubits(prop_cache))
-            if StorageType(prop_cache) isa PropagationBase.MultiSumStorage
-                # the zones rotate the orbits of more rotations than a block holds class by class
-                long_plan = _prepareclasses(layer, theta, paulitype(prop_cache), nqubits(prop_cache), sublayer)
-                _applysublayer!(StorageType(prop_cache), prop_cache, plan, truncation, workspace, long_plan; thread)
-            else
-                rotateonebyone!(cache) = _applyrotations!(applyrotation!, cache, layer, sublayer, theta)
-                _applysublayer!(StorageType(prop_cache), prop_cache, plan, truncation, workspace, rotateonebyone!; thread)
-            end
+            long_plan = _prepareclasses(layer, theta, paulitype(prop_cache), nqubits(prop_cache), sublayer)
+            _applysublayer!(StorageType(prop_cache), prop_cache, plan, long_plan, truncation, workspace; thread)
         end
     finally
         _putbackworkspace!(workspace)
@@ -56,16 +47,6 @@ function _applyrotations!(applyrotation!::F, prop_cache, layer::RotationLayer, s
         applyrotation!(prop_cache, PauliRotation(layer.symbols, layer.qinds[index]), _rotationangle(theta, index))
     end
     return prop_cache
-end
-
-# The Pauli strings of the records `range`, whose orbits have more rotations than a block holds, after the rotations of the sublayer
-# one by one. They are propagated as a `VectorPauliSum` whatever the sum of the layer, since a rotation costs less on arrays than on a dictionary.
-function _rotatedonebyone(rotateonebyone!::F, n_qubits::Int, record_terms, record_coeffs, range) where {F}
-    onebyone_sum = VectorPauliSum(n_qubits, record_terms[range], record_coeffs[range])
-    if isempty(range)
-        return onebyone_sum
-    end
-    return extractsum!(rotateonebyone!(PropagationCache(onebyone_sum)))
 end
 
 # the truncation within an orbit, where the weight of every entry is known
@@ -84,16 +65,14 @@ _nevertruncate(pstr, coeff) = false
 
 # The records are written into the auxiliary arrays and sorted into the main arrays, whose Pauli strings they replace.
 # What the sublayer makes is written into the auxiliary arrays, which become the sum.
-function _applysublayer!(::PropagationBase.ArrayStorage, prop_cache::AbstractPauliPropagationCache, plan, truncation, workspace,
-    rotateonebyone!::F; thread::Bool=true) where {F}
+function _applysublayer!(::PropagationBase.ArrayStorage, prop_cache::AbstractPauliPropagationCache, plan, long_plan, truncation, workspace;
+    thread::Bool=true)
 
     task_partitioner, n_tasks = PropagationBase._preparetasks(activesize(prop_cache), thread)
-    return _applysublayerintasks!(prop_cache, plan, truncation, workspace, rotateonebyone!, task_partitioner, n_tasks)
+    return _applysublayerintasks!(prop_cache, plan, long_plan, truncation, workspace, task_partitioner, n_tasks)
 end
 
-function _applysublayerintasks!(prop_cache::AbstractPauliPropagationCache, plan, truncation, workspace, rotateonebyone!::F,
-    task_partitioner, n_tasks::Int) where {F}
-
+function _applysublayerintasks!(prop_cache::AbstractPauliPropagationCache, plan, long_plan, truncation, workspace, task_partitioner, n_tasks::Int)
     n_terms = activesize(prop_cache)
     if n_terms == 0
         return prop_cache
@@ -112,7 +91,7 @@ function _applysublayerintasks!(prop_cache::AbstractPauliPropagationCache, plan,
 
     tasks = _taskworkspaces!(workspace, n_tasks, length(plan.masks))
     n_bits = _partitionbits(n_terms, _recordbytes(plan, sizeof(eltype(main_terms)) + sizeof(eltype(main_coeffs)) + sizeof(Int)))
-    partition_counts = zeros(Int, (1 << n_bits) + 1, n_tasks)
+    partition_counts = zeros(Int, (2 << n_bits) + 1, n_tasks)
 
     # a record for every Pauli string, at the index of the Pauli string
     function write_chunk!(task_id)
@@ -131,39 +110,35 @@ function _applysublayerintasks!(prop_cache::AbstractPauliPropagationCache, plan,
     end
     PropagationBase._eachtask(sort_chunk!, n_tasks)
 
-    # the last partition holds the Pauli strings that meet the rotations one by one, the others are transformed orbit by orbit
-    onebyone_sum = _rotatedonebyone(rotateonebyone!, nqubits(prop_cache), main_terms, main_coeffs, partition_starts[end-1]:partition_starts[end]-1)
-    orbit_partition_starts = view(partition_starts, 1:length(partition_starts)-1)
-
     if n_tasks == 1
-        n_written = _transformpartitions!(prop_cache, plan, truncation, tasks[1], sorted_labels, orbit_partition_starts)
+        n_written = _transformpartitions!(prop_cache, plan, long_plan, truncation, tasks[1], sorted_labels, partition_starts, 1 << n_bits)
     else
-        n_written = _transformpartitionsintasks!(prop_cache, plan, truncation, workspace, sorted_labels, orbit_partition_starts, n_tasks)
+        n_written = _transformpartitionsintasks!(prop_cache, plan, long_plan, truncation, workspace, sorted_labels, partition_starts,
+            1 << n_bits, n_tasks)
     end
 
     PropagationBase._commitwrite!(prop_cache, n_written, 0)
-    add!(prop_cache, onebyone_sum)
     return prop_cache
 end
 
 # One task takes the partitions in turn and writes into the auxiliary arrays as it goes. Returns the number of Pauli strings written.
-function _transformpartitions!(prop_cache::AbstractPauliPropagationCache, plan, truncation, task, sorted_labels::Vector{Int},
-    partition_starts)
+function _transformpartitions!(prop_cache::AbstractPauliPropagationCache, plan, long_plan, truncation, task, sorted_labels::Vector{Int},
+    partition_starts, n_block_partitions::Int)
 
     output = ArrayOutput(prop_cache, 0)
     for partition in 1:length(partition_starts)-1
         # the arrays of the cache are looked up for every partition, since they are replaced when they grow
         sorted_terms, sorted_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
-        _transformpartition!(output, task, plan, truncation, sorted_terms, sorted_coeffs, sorted_labels,
-            partition_starts[partition], partition_starts[partition+1] - 1)
+        _transformpartition!(output, task, plan, long_plan, truncation, sorted_terms, sorted_coeffs, sorted_labels,
+            partition, n_block_partitions, partition_starts[partition], partition_starts[partition+1] - 1)
     end
     return output.n_written
 end
 
 # Several tasks share out the partitions and write into ranges of the auxiliary arrays that they reserve.
 # What does not fit the arrays is left in the buffers of the tasks and written once the arrays have grown.
-function _transformpartitionsintasks!(prop_cache::AbstractPauliPropagationCache, plan, truncation, workspace,
-    sorted_labels::Vector{Int}, partition_starts, n_tasks::Int)
+function _transformpartitionsintasks!(prop_cache::AbstractPauliPropagationCache, plan, long_plan, truncation, workspace,
+    sorted_labels::Vector{Int}, partition_starts, n_block_partitions::Int, n_tasks::Int)
 
     sorted_terms, sorted_coeffs, aux_terms, aux_coeffs = PropagationBase._mainauxarrays(prop_cache)
     tasks = workspace.tasks
@@ -176,8 +151,8 @@ function _transformpartitionsintasks!(prop_cache::AbstractPauliPropagationCache,
     n_partitions = length(partition_starts) - 1
     function transform_partitions!(task_id)
         for partition in task_id:n_tasks:n_partitions
-            _transformpartition!(outputs[task_id], tasks[task_id], plan, truncation, sorted_terms, sorted_coeffs, sorted_labels,
-                partition_starts[partition], partition_starts[partition+1] - 1)
+            _transformpartition!(outputs[task_id], tasks[task_id], plan, long_plan, truncation, sorted_terms, sorted_coeffs, sorted_labels,
+                partition, n_block_partitions, partition_starts[partition], partition_starts[partition+1] - 1)
         end
         _flush!(outputs[task_id])
     end
@@ -204,14 +179,20 @@ function _transformpartitionsintasks!(prop_cache::AbstractPauliPropagationCache,
     return n_written
 end
 
-function _transformpartition!(output, task, plan, truncation, record_terms, record_coeffs, record_labels, lo::Int, hi::Int)
-    if lo <= hi
-        if _rotatesclasses(plan)
-            _rotatepartitionbyclass!(output, task, plan, truncation, record_terms, record_coeffs, record_labels, lo, hi)
-        else
-            _grouporbits!(task, output, truncation, record_terms, record_coeffs, record_labels, lo, hi)
-            _transformorbits!(output, task, plan, truncation, record_terms)
-        end
+# The partitions of the orbits that fit a block come first, and those of longer orbits, which are rotated class by class, after them.
+function _transformpartition!(output, task, plan, long_plan, truncation, record_terms, record_coeffs, record_labels,
+    partition::Int, n_block_partitions::Int, lo::Int, hi::Int)
+
+    if lo > hi
+        return output
+    end
+    if partition > n_block_partitions
+        _rotatepartitionbyclass!(output, task, long_plan, truncation, record_terms, record_coeffs, record_labels, lo, hi)
+    elseif _rotatesclasses(plan)
+        _rotatepartitionbyclass!(output, task, plan, truncation, record_terms, record_coeffs, record_labels, lo, hi)
+    else
+        _grouporbits!(task, output, truncation, record_terms, record_coeffs, record_labels, lo, hi)
+        _transformorbits!(output, task, plan, truncation, record_terms)
     end
     return output
 end
@@ -221,8 +202,8 @@ end
 
 # The records are kept in the workspace and sorted within their arrays. They hold all of the sum,
 # so the sum is emptied and takes what the sublayer makes, instead of a second sum of its size.
-function _applysublayer!(::PropagationBase.DictStorage, prop_cache::AbstractPauliPropagationCache, plan, truncation, workspace,
-    rotateonebyone!::F; thread::Bool=true) where {F}
+function _applysublayer!(::PropagationBase.DictStorage, prop_cache::AbstractPauliPropagationCache, plan, long_plan, truncation, workspace;
+    thread::Bool=true)
 
     PropagationBase._checkauxempty(prop_cache)
     main_sum = mainsum(prop_cache)
@@ -234,21 +215,17 @@ function _applysublayer!(::PropagationBase.DictStorage, prop_cache::AbstractPaul
 
     task = first(_taskworkspaces!(workspace, 1, length(plan.masks)))
     n_bits = _partitionbits(n_terms, _recordbytes(plan, sizeof(eltype(record_terms)) + sizeof(eltype(record_coeffs)) + sizeof(Int)))
-    partition_counts = zeros(Int, (1 << n_bits) + 1, 1)
+    partition_counts = zeros(Int, (2 << n_bits) + 1, 1)
 
     _writerecords!(record_terms, record_coeffs, record_labels, view(partition_counts, :, 1), n_bits, 1, task.orbit_rotations, plan, main_sum)
     partition_starts = _partitionstarts!(partition_counts)
     _sortrecords!(record_terms, record_coeffs, record_labels, partition_starts, view(partition_counts, :, 1), n_bits)
 
-    # the last partition holds the Pauli strings that meet the rotations one by one
-    onebyone_sum = _rotatedonebyone(rotateonebyone!, nqubits(prop_cache), record_terms, record_coeffs, partition_starts[end-1]:partition_starts[end]-1)
-
     empty!(main_sum)
-    for partition in 1:length(partition_starts)-2
-        _transformpartition!(main_sum, task, plan, truncation, record_terms, record_coeffs, record_labels,
-            partition_starts[partition], partition_starts[partition+1] - 1)
+    for partition in 1:length(partition_starts)-1
+        _transformpartition!(main_sum, task, plan, long_plan, truncation, record_terms, record_coeffs, record_labels,
+            partition, 1 << n_bits, partition_starts[partition], partition_starts[partition+1] - 1)
     end
-    add!(main_sum, onebyone_sum)
 
     return prop_cache
 end
@@ -263,8 +240,8 @@ end
 # its auxiliary arrays, so that its main arrays are free, and every zone writes what it makes into the main arrays of the
 # zones that own it. Any other zone puts what it makes in its outbox, and at last the zones are emptied and take what the
 # outboxes hold for them.
-function _applysublayer!(::PropagationBase.MultiSumStorage, prop_cache::AbstractPauliPropagationCache, plan, truncation, workspace,
-    long_plan; thread::Bool=true)
+function _applysublayer!(::PropagationBase.MultiSumStorage, prop_cache::AbstractPauliPropagationCache, plan, long_plan, truncation, workspace;
+    thread::Bool=true)
 
     PropagationBase._checkauxempty(prop_cache)
     n_terms = length(prop_cache)
@@ -316,13 +293,8 @@ function _applysublayer!(::PropagationBase.MultiSumStorage, prop_cache::Abstract
         for partition in first_partition+1:first_partition+n_partitions_per_zone
             lo = partition_starts[partition] - first_record + 1
             hi = partition_starts[partition+1] - first_record
-            if partition - first_partition <= n_partitions_per_zone ÷ 2
-                _transformpartition!(outputs[zone_id], tasks[zone_id], plan, truncation, zone_terms[zone_id], zone_coeffs[zone_id], zone_labels[zone_id],
-                    lo, hi)
-            elseif lo <= hi
-                _rotatepartitionbyclass!(outputs[zone_id], tasks[zone_id], long_plan, truncation, zone_terms[zone_id], zone_coeffs[zone_id],
-                    zone_labels[zone_id], lo, hi)
-            end
+            _transformpartition!(outputs[zone_id], tasks[zone_id], plan, long_plan, truncation, zone_terms[zone_id], zone_coeffs[zone_id],
+                zone_labels[zone_id], partition - first_partition, n_partitions_per_zone ÷ 2, lo, hi)
         end
         _finishoutput!(outputs[zone_id])
     end
@@ -434,14 +406,11 @@ function _partitionbits(n_records::Int, record_bytes::Int)
     return min(_MAX_PARTITION_BITS, 8 * sizeof(Int) - leading_zeros(n_partitions - 1))
 end
 
-# The partition of a record: the highest bits of the hash of its orbit, where the table of a partition reads the lowest,
-# and the partition after all of these for an orbit with more rotations than a block holds.
+# The partition of a record: the highest bits of the hash of its orbit, where the table of a partition reads the lowest.
+# The orbits with more rotations than a block holds have as many partitions again, after the others.
 @inline function _partitionof(label::Int, n_bits::Int)
-    if _norbitrotations(label) > _MAX_BLOCK_ROTATIONS
-        return (1 << n_bits) + 1
-    else
-        return Int(_labelhash(label) >> (_HASH_BITS - n_bits)) + 1
-    end
+    _, partition = _zonepartitionof(label, n_bits, 0)
+    return partition
 end
 
 # The zone that collects a record of a multi sum, and the partition of the record among those of all zones. The highest
@@ -773,12 +742,18 @@ function _grouporbits!(task, output, truncation, record_terms::Vector{TT}, recor
         end
 
         block_coeffs = task.block_coeffs[n_orbit_rotations]
+        block_words = task.block_words[n_orbit_rotations]
         block_present = task.block_present[n_orbit_rotations]
-        entry = (((@inbounds orbit_blocks[orbit]) - 1) << n_orbit_rotations) + Int(_indexinorbit(label)) + 1
-        if block_present[entry]
+        index_in_orbit = Int(_indexinorbit(label))
+        block = @inbounds orbit_blocks[orbit]
+        entry = ((block - 1) << n_orbit_rotations) + index_in_orbit + 1
+        word = (block - 1) * _nblockwords(n_orbit_rotations) + (index_in_orbit >> 6) + 1
+        bit_value = one(UInt64) << (index_in_orbit & 63)
+        if block_words[word] & bit_value != 0
             block_coeffs[entry] = mergefunc(block_coeffs[entry], record_coeffs[i])
         else
             block_coeffs[entry] = record_coeffs[i]
+            block_words[word] |= bit_value
             block_present[entry] = true
         end
     end
@@ -786,22 +761,28 @@ function _grouporbits!(task, output, truncation, record_terms::Vector{TT}, recor
     return task
 end
 
-# an empty block for an orbit of `n_orbit_rotations` rotations whose first record is `first_record`
+# An empty block for an orbit of `n_orbit_rotations` rotations whose first record is `first_record`.
+# Its coefficients are not cleared, since a coefficient is read only where its entry is present.
 function _newblock!(task, n_orbit_rotations::Int, block::Int, first_record::Int)
     block_records = task.block_records[n_orbit_rotations]
     block_coeffs = task.block_coeffs[n_orbit_rotations]
+    block_words = task.block_words[n_orbit_rotations]
     block_present = task.block_present[n_orbit_rotations]
 
     n_entries = block << n_orbit_rotations
-    if n_entries > length(block_coeffs) || n_entries > length(block_present) || block > length(block_records)
+    n_words = block * _nblockwords(n_orbit_rotations)
+    if n_entries > length(block_coeffs) || n_words > length(block_words) || block > length(block_records) || n_entries > length(block_present)
         _ensurelength!(block_records, block)
         _ensurelength!(block_coeffs, n_entries)
+        _ensurelength!(block_words, n_words)
         _ensurelength!(block_present, n_entries)
     end
 
     block_records[block] = first_record
+    for word in n_words-_nblockwords(n_orbit_rotations)+1:n_words
+        block_words[word] = zero(UInt64)
+    end
     for entry in n_entries-(1<<n_orbit_rotations)+1:n_entries
-        block_coeffs[entry] = zero(eltype(block_coeffs))
         block_present[entry] = false
     end
     return task
@@ -810,9 +791,10 @@ end
 
 ### The rotations of a sublayer on one orbit
 
-# The block of an orbit holds the coefficient of every Pauli string of the orbit at the index of the Pauli string in the orbit.
+# The block of an orbit holds the coefficient of every Pauli string of the orbit at the index of the Pauli string in the orbit,
+# whether the Pauli string is present, and the same as bits, 64 to a word, from which a rotation finds the entries it mixes.
 # The rotation of bit b mixes the coefficients of every two entries whose indices differ in bit b alone,
-# the lower entry without the bit and the upper entry with it.
+# the lower entry without the bit and the upper entry with it, where at least one of them is present.
 # The truncations are applied after every rotation, as they are between the gates of a circuit.
 
 # no Pauli string is heavier than this
@@ -865,18 +847,21 @@ function _transformblocks!(output, task, plan, truncation, record_terms::Vector{
     n_blocks = task.n_blocks[K]
     block_records = task.block_records[K]
     block_coeffs = task.block_coeffs[K]
+    block_words = task.block_words[K]
     block_present = task.block_present[K]
-    _checkblocks(task, n_blocks, block_records, block_coeffs, block_present, K)
+    _checkblocks(task, n_blocks, block_records, block_coeffs, block_words, block_present, K)
 
     if plan.overlapping
         for block in 1:n_blocks
             representative = record_terms[block_records[block]]
-            _transformblock!(output, task, plan, truncation, representative, block_coeffs, block_present, (block - 1) << K, Val(K), Val(true))
+            _transformblock!(output, task, plan, truncation, representative, block_coeffs, block_words, block_present, (block - 1) << K,
+                (block - 1) * _nblockwords(K), Val(K), Val(true))
         end
     else
         for block in 1:n_blocks
             representative = record_terms[block_records[block]]
-            _transformblock!(output, task, plan, truncation, representative, block_coeffs, block_present, (block - 1) << K, Val(K), Val(false))
+            _transformblock!(output, task, plan, truncation, representative, block_coeffs, block_words, block_present, (block - 1) << K,
+                (block - 1) * _nblockwords(K), Val(K), Val(false))
         end
     end
     return output
@@ -885,8 +870,8 @@ end
 # The block of an orbit.
 # Where no two rotations of the sublayer share a qubit, a rotation finds the same Paulis in every entry, so its signs and its weight change
 # are those of the representative. Otherwise the other rotations change the Paulis it finds, and they are read from every entry.
-@inline function _transformblock!(output, task, plan, truncation, representative, block_coeffs::Vector{CT}, block_present::Vector{Bool},
-    block_start::Int, ::Val{K}, ::Val{SharesQubits}) where {CT,K,SharesQubits}
+@inline function _transformblock!(output, task, plan, truncation, representative, block_coeffs::Vector{CT}, block_words::Vector{UInt64},
+    block_present::Vector{Bool}, block_start::Int, word_start::Int, ::Val{K}, ::Val{SharesQubits}) where {CT,K,SharesQubits}
 
     orbit_rotations = task.orbit_rotations
     local_paulis = task.local_paulis
@@ -896,7 +881,7 @@ end
     if _orbitrotations!(orbit_rotations, plan, representative) != K
         _throwwrongblock()
     end
-    n_entries = 1 << K
+    n_words = _nblockwords(K)
 
     # the rotation of every bit doubles the Pauli strings of the orbit
     weight_changes = _weightchangesiflimited(truncation, plan)
@@ -942,48 +927,99 @@ end
         else
             local_paulis[bit+1]
         end
-        representative_sign_from_lower = plan.signs[paulis+1]
-        representative_sign_from_upper = plan.signs[(paulis⊻plan.local_mask)+1]
+        representative_signs = (plan.signs[paulis+1], plan.signs[(paulis⊻plan.local_mask)+1])
 
-        n_lower = 1 << bit
-        below_bit = n_lower - 1
-        @inbounds for rank in 0:(n_entries>>1)-1
-            # the entry of this rank among those without the bit, and the entry with the bit
-            lower = (((rank & ~below_bit) << 1) | (rank & below_bit)) + 1
-            upper = lower + n_lower
-
-            if block_present[block_start+lower] || block_present[block_start+upper]
-                sign_from_lower, sign_from_upper = if SharesQubits
-                    _rotationsigns(plan, orbit_terms[lower], rotation)
+        # The bits of the entries kept are collected while the rotation reads the bits it started with, and every entry present
+        # belongs to one of its pairs. A word that is at least a quarter full has all its pairs mixed, so that which entries are
+        # read need not wait for the previous rotation.
+        if bit < 6
+            # the lower and the upper entry lie in one word, `span` positions apart
+            span = 1 << bit
+            lower_positions = _LOWER_POSITIONS[bit+1] & _blockpositions(K)
+            @inbounds for word in 1:n_words
+                present = block_words[word_start+word]
+                pairs = if 4 * count_ones(present) >= min(64, 1 << K)
+                    lower_positions
                 else
-                    representative_sign_from_lower, representative_sign_from_upper
+                    (present | (present >> span)) & lower_positions
                 end
-                _rotateentries!(block_coeffs, block_present, block_start, lower, upper, cos_val, sin_val, sign_from_lower, sign_from_upper,
-                    orbit_terms, orbit_weights, truncation)
+                kept = zero(UInt64)
+                while pairs != 0
+                    position = trailing_zeros(pairs)
+                    pairs &= pairs - one(UInt64)
+                    lower = 64 * (word - 1) + position
+                    signs = if SharesQubits
+                        _rotationsigns(plan, orbit_terms[lower+1], rotation)
+                    else
+                        representative_signs
+                    end
+                    keep_lower, keep_upper = _rotateentries!(block_coeffs, block_present, block_start, lower, lower + span,
+                        cos_val, sin_val, signs, orbit_terms, orbit_weights, truncation)
+                    kept |= (UInt64(keep_lower) << position) | (UInt64(keep_upper) << (position + span))
+                end
+                block_words[word_start+word] = kept
+            end
+        else
+            # the lower and the upper entry lie in words that are `word_span` apart, at the same position
+            word_span = 1 << (bit - 6)
+            @inbounds for word in 1:n_words
+                if isodd((word - 1) >> (bit - 6))
+                    continue
+                end
+                lower_present = block_words[word_start+word]
+                upper_present = block_words[word_start+word+word_span]
+                pairs = if 2 * count_ones(lower_present | upper_present) >= 64
+                    typemax(UInt64)
+                else
+                    lower_present | upper_present
+                end
+                lower_kept = zero(UInt64)
+                upper_kept = zero(UInt64)
+                while pairs != 0
+                    position = trailing_zeros(pairs)
+                    pairs &= pairs - one(UInt64)
+                    lower = 64 * (word - 1) + position
+                    signs = if SharesQubits
+                        _rotationsigns(plan, orbit_terms[lower+1], rotation)
+                    else
+                        representative_signs
+                    end
+                    keep_lower, keep_upper = _rotateentries!(block_coeffs, block_present, block_start, lower, lower + (1 << bit),
+                        cos_val, sin_val, signs, orbit_terms, orbit_weights, truncation)
+                    lower_kept |= UInt64(keep_lower) << position
+                    upper_kept |= UInt64(keep_upper) << position
+                end
+                block_words[word_start+word] = lower_kept
+                block_words[word_start+word+word_span] = upper_kept
             end
         end
     end
 
-    _emitblock!(output, orbit_terms, block_coeffs, block_present, block_start, n_entries)
+    _emitblock!(output, orbit_terms, block_coeffs, block_words, block_start, word_start, n_words)
     return output
 end
 
 # The coefficients of the lower and the upper entry after the rotation, and whether the truncations keep them.
-Base.@propagate_inbounds function _rotateentries!(block_coeffs::Vector{CT}, block_present, block_start::Int, lower::Int, upper::Int, cos_val, sin_val,
-    sign_from_lower, sign_from_upper, orbit_terms, orbit_weights, truncation) where {CT}
+# An entry that is not present has no coefficient.
+Base.@propagate_inbounds function _rotateentries!(block_coeffs::Vector{CT}, block_present::Vector{Bool}, block_start::Int, lower::Int, upper::Int,
+    cos_val, sin_val, signs, orbit_terms, orbit_weights, truncation) where {CT}
 
-    lower_coeff = block_coeffs[block_start+lower]
-    upper_coeff = block_coeffs[block_start+upper]
+    sign_from_lower, sign_from_upper = signs
+    lower_present = block_present[block_start+lower+1]
+    upper_present = block_present[block_start+upper+1]
+    lower_coeff = ifelse(lower_present, block_coeffs[block_start+lower+1], zero(CT))
+    upper_coeff = ifelse(upper_present, block_coeffs[block_start+upper+1], zero(CT))
     new_lower_coeff = mergefunc(lower_coeff * cos_val, upper_coeff * sin_val * sign_from_upper)
     new_upper_coeff = mergefunc(upper_coeff * cos_val, lower_coeff * sin_val * sign_from_lower)
 
-    keep_lower = !_istruncated(truncation, orbit_terms[lower], orbit_weights[lower], new_lower_coeff)
-    keep_upper = !_istruncated(truncation, orbit_terms[upper], orbit_weights[upper], new_upper_coeff)
-    block_coeffs[block_start+lower] = ifelse(keep_lower, new_lower_coeff, zero(CT))
-    block_coeffs[block_start+upper] = ifelse(keep_upper, new_upper_coeff, zero(CT))
-    block_present[block_start+lower] = keep_lower
-    block_present[block_start+upper] = keep_upper
-    return
+    either_present = lower_present | upper_present
+    keep_lower = either_present & !_istruncated(truncation, orbit_terms[lower+1], orbit_weights[lower+1], new_lower_coeff)
+    keep_upper = either_present & !_istruncated(truncation, orbit_terms[upper+1], orbit_weights[upper+1], new_upper_coeff)
+    block_coeffs[block_start+lower+1] = new_lower_coeff
+    block_coeffs[block_start+upper+1] = new_upper_coeff
+    block_present[block_start+lower+1] = keep_lower
+    block_present[block_start+upper+1] = keep_upper
+    return keep_lower, keep_upper
 end
 
 # the signs of the Pauli strings that `rotation` creates from `lower_pstr` and from its product with the generator
@@ -991,6 +1027,13 @@ end
     paulis = _localpaulis(plan, lower_pstr, rotation)
     return plan.signs[paulis+1], plan.signs[(paulis⊻plan.local_mask)+1]
 end
+
+# the words of the bits of a block, and the positions in a word that are entries of a block of `n_orbit_rotations` rotations
+@inline _nblockwords(n_orbit_rotations::Int) = n_orbit_rotations <= 6 ? 1 : 1 << (n_orbit_rotations - 6)
+@inline _blockpositions(n_orbit_rotations::Int) = n_orbit_rotations < 6 ? (one(UInt64) << (1 << n_orbit_rotations)) - one(UInt64) : typemax(UInt64)
+
+# for the rotation of bit b below 6, the positions in a word of the entries without bit b
+const _LOWER_POSITIONS = (0x5555555555555555, 0x3333333333333333, 0x0f0f0f0f0f0f0f0f, 0x00ff00ff00ff00ff, 0x0000ffff0000ffff, 0x00000000ffffffff)
 
 # The bits of the rotations of an orbit in the order in which the rotations are applied.
 # The bits follow the lowest qubits of the rotations, and so does the order of application, or its reverse in the Heisenberg picture.
@@ -1003,10 +1046,10 @@ end
 end
 
 # the loops over the entries of a block index the arrays of the task without bounds checks
-function _checkblocks(task, n_blocks::Int, block_records, block_coeffs, block_present, n_orbit_rotations::Int)
+function _checkblocks(task, n_blocks::Int, block_records, block_coeffs, block_words, block_present, n_orbit_rotations::Int)
     n_entries = 1 << n_orbit_rotations
     if !(1 <= n_orbit_rotations <= _MAX_BLOCK_ROTATIONS) || n_blocks > length(block_records) ||
-       n_blocks * n_entries > min(length(block_coeffs), length(block_present)) ||
+       n_blocks * n_entries > min(length(block_coeffs), length(block_present)) || n_blocks * _nblockwords(n_orbit_rotations) > length(block_words) ||
        n_entries > min(length(task.orbit_terms), length(task.orbit_weights)) ||
        n_orbit_rotations > min(length(task.orbit_rotations), length(task.local_paulis))
         throw(ArgumentError("the $n_blocks blocks of the orbits of $n_orbit_rotations rotations do not fit the workspace"))
@@ -1059,15 +1102,23 @@ const ArrayOutputs = Union{ArrayOutput,TaskOutput}
 end
 
 # the entries of the block of an orbit that are present
-function _emitblock!(output::ArrayOutputs, orbit_terms, block_coeffs, block_present, block_start::Int, n_entries::Int)
-    output_terms, output_coeffs = _roomtoemit!(output, n_entries)
+function _emitblock!(output::ArrayOutputs, orbit_terms, block_coeffs, block_words, block_start::Int, word_start::Int, n_words::Int)
+    n_present = 0
+    for word in 1:n_words
+        n_present += count_ones(block_words[word_start+word])
+    end
+    output_terms, output_coeffs = _roomtoemit!(output, n_present)
     n_written = output.n_written
 
-    # every entry is written, and the next one writes over it if it is not present
-    @inbounds for entry in 1:n_entries
-        output_terms[n_written+1] = orbit_terms[entry]
-        output_coeffs[n_written+1] = block_coeffs[block_start+entry]
-        n_written += block_present[block_start+entry]
+    @inbounds for word in 1:n_words
+        present = block_words[word_start+word]
+        while present != 0
+            entry = 64 * (word - 1) + trailing_zeros(present)
+            present &= present - one(UInt64)
+            n_written += 1
+            output_terms[n_written] = orbit_terms[entry+1]
+            output_coeffs[n_written] = block_coeffs[block_start+entry+1]
+        end
     end
 
     output.n_written = n_written
@@ -1165,15 +1216,6 @@ end
     return
 end
 
-function _emitblock!(output::ZoneOutputs, orbit_terms, block_coeffs, block_present, block_start::Int, n_entries::Int)
-    for entry in 1:n_entries
-        if block_present[block_start+entry]
-            _emit!(output, orbit_terms[entry], block_coeffs[block_start+entry])
-        end
-    end
-    return
-end
-
 # copies what the buffers hold into the zones, as far as they have room
 function _finishoutput!(output::ZoneOutputs)
     foreach(_flush!, output.task_outputs)
@@ -1188,10 +1230,15 @@ _finishoutput!(output) = output
     return
 end
 
-function _emitblock!(output::AbstractTermSum, orbit_terms, block_coeffs, block_present, block_start::Int, n_entries::Int)
-    for entry in 1:n_entries
-        if block_present[block_start+entry]
-            push!(output, orbit_terms[entry], block_coeffs[block_start+entry])
+function _emitblock!(output::Union{AbstractTermSum,ZoneOutputs}, orbit_terms, block_coeffs, block_words, block_start::Int, word_start::Int,
+    n_words::Int)
+
+    for word in 1:n_words
+        present = block_words[word_start+word]
+        while present != 0
+            entry = 64 * (word - 1) + trailing_zeros(present)
+            present &= present - one(UInt64)
+            _emit!(output, orbit_terms[entry+1], block_coeffs[block_start+entry+1])
         end
     end
     return
@@ -1211,11 +1258,12 @@ mutable struct TaskWorkspace{TT,CT}
     first_records::Vector{Int}
     orbit_blocks::Vector{Int}
 
-    # A block of coefficients for every orbit. The blocks of the orbits of `k` rotations lie one after the other at index `k`,
-    # so that every loop over them runs the same number of times.
+    # A block of coefficients for every orbit, whether each is present, and the same as bits. The blocks of the orbits of `k`
+    # rotations lie one after the other at index `k`, so that every loop over them runs the same number of times.
     n_blocks::Vector{Int}
     block_records::Vector{Vector{Int}}
     block_coeffs::Vector{Vector{CT}}
+    block_words::Vector{Vector{UInt64}}
     block_present::Vector{Vector{Bool}}
 
     # the Pauli strings of one orbit and their weights
@@ -1249,7 +1297,7 @@ function TaskWorkspace(::Type{TT}, ::Type{CT}) where {TT,CT}
     n_entries = 1 << _MAX_BLOCK_ROTATIONS
     return TaskWorkspace{TT,CT}(Int32[], Int[], Int32[], UInt64[], Int[], Int[],
         zeros(Int, _MAX_BLOCK_ROTATIONS), [Int[] for _ in 1:_MAX_BLOCK_ROTATIONS],
-        [CT[] for _ in 1:_MAX_BLOCK_ROTATIONS], [Bool[] for _ in 1:_MAX_BLOCK_ROTATIONS],
+        [CT[] for _ in 1:_MAX_BLOCK_ROTATIONS], [UInt64[] for _ in 1:_MAX_BLOCK_ROTATIONS], [Bool[] for _ in 1:_MAX_BLOCK_ROTATIONS],
         Vector{TT}(undef, n_entries), Vector{Int}(undef, n_entries),
         Int32[], TT[], UInt64[], Int[], Int32[], TT[], CT[], Bool[], Int32[], 0, Int32[], 0, 64, TaskOutput(TT, CT), TaskOutput{TT,CT}[])
 end
@@ -1753,11 +1801,7 @@ end
     representative = pstr
     index_in_orbit = zero(UInt64)
 
-    # a Pauli string of an orbit with more rotations than a block holds needs no representative
-    if n_orbit_rotations > _MAX_BLOCK_ROTATIONS
-        return representative, index_in_orbit, n_orbit_rotations
-    end
-
+    # the representative also of an orbit with more rotations than a block holds, whose records are partitioned by its hash
     for bit in 1:n_orbit_rotations
         rotation = orbit_rotations[bit]
         if _readbit(representative, plan.pivots[rotation])

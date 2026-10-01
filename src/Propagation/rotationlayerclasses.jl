@@ -20,29 +20,29 @@ _rotatesclasses(plan) = hasfield(typeof(plan), :positions)
 _recordbytes(plan, record_bytes::Int) = _rotatesclasses(plan) ? _CLASS_BYTES_FACTOR * record_bytes : record_bytes
 
 """
-    _applybyclass!(applyrotation!, layer::RotationLayer, prop_cache, theta, truncation; thread=true)
+    _applybyclass!(layer::RotationLayer, prop_cache, theta, truncation; thread=true)
 
 Applies all rotations of the layer in one pass, class by class.
 """
-function _applybyclass!(applyrotation!::F, layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta, truncation;
-    thread::Bool=true) where {F}
-
+function _applybyclass!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta, truncation; thread::Bool=true)
     workspace = _takeworkspace(paulitype(prop_cache), coefftype(prop_cache))
     try
         plan = _prepareclasses(layer, theta, paulitype(prop_cache), nqubits(prop_cache))
-
-        # every string has a class, so the drivers never hand any to the rotations one by one
-        function rotateonebyone!(cache)
-            for sublayer in layer.sublayers
-                _applyrotations!(applyrotation!, cache, layer, sublayer, theta)
-            end
-            return cache
-        end
-        _applysublayer!(StorageType(prop_cache), prop_cache, plan, truncation, workspace, rotateonebyone!; thread)
+        # every record has a class, so none lies in the partitions of long orbits
+        _applysublayer!(StorageType(prop_cache), prop_cache, plan, plan, truncation, workspace; thread)
     finally
         _putbackworkspace!(workspace)
     end
     return prop_cache
+end
+
+# whether the layer is applied class by class, which by default a layer of more than one sublayer is
+function _appliesbyclass(layer::RotationLayer, layer_method::Symbol)
+    if layer_method == :auto
+        return length(layer.sublayers) > 1
+    else
+        return layer_method == :classes
+    end
 end
 
 """

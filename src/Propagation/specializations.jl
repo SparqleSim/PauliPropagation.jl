@@ -80,22 +80,21 @@ end
 
 Overload of `applymergetruncate!` for `RotationLayer` gates.
 The truncations are applied after every rotation, so the result is that of the rotations propagated one after the other, in the order that `torotations` returns.
-A Pauli sum with numbers as coefficients is propagated orbit by orbit:
-the Pauli strings that the rotations turn into each other are collected, and the rotations mix their coefficients.
+A Pauli sum with numbers as coefficients is propagated in one of two ways, which give the same result.
+With `layer_method=:orbits`, sublayer by sublayer: the Pauli strings that the rotations turn into each other are collected, and the rotations mix their coefficients.
+With `layer_method=:classes`, all rotations in one pass: the Pauli strings that anticommute with the same rotations are collected and rotated one rotation at a time.
+By default, a layer of one sublayer is propagated orbit by orbit and any other class by class, which saves a pass for every further sublayer.
 A `VectorPauliSum` is left without duplicate Pauli strings but unsorted.
 Any other coefficient type, and a truncation by `min_rel_coeff`, propagate the rotations one by one.
-
-With `layer_method=:classes`, all rotations of the layer are applied in one pass: the Pauli strings that anticommute with the same
-rotations are collected as a class and rotated one rotation at a time, truncating after every rotation as the rotations one by one do.
 """
 function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
     min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true,
-    layer_method::Symbol=:orbits, kwargs...)
+    layer_method::Symbol=:auto, kwargs...)
 
     _rotationanglecheck(layer, theta)
-    if !(layer_method in (:orbits, :classes))
-        throw(ArgumentError("layer_method must be :orbits or :classes, got :$layer_method."))
+    if !(layer_method in (:auto, :orbits, :classes))
+        throw(ArgumentError("layer_method must be :auto, :orbits or :classes, got :$layer_method."))
     end
 
     function applyrotation!(cache, rotation, angle)
@@ -114,10 +113,10 @@ function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::A
     # the weights are known within an orbit, so they are left out of the truncation function
     truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_freq, max_sins, customtruncfunc, thread)
     truncation = _layertruncation(truncfunc, max_weight)
-    if layer_method == :classes
-        _applybyclass!(applyrotation!, layer, prop_cache, theta, truncation; thread)
+    if _appliesbyclass(layer, layer_method)
+        _applybyclass!(layer, prop_cache, theta, truncation; thread)
     else
-        _applyinorbits!(applyrotation!, layer, prop_cache, theta, truncation; thread)
+        _applyinorbits!(layer, prop_cache, theta, truncation; thread)
     end
     return
 end
@@ -144,7 +143,7 @@ function PropagationBase.applytoall!(layer::RotationLayer, prop_cache::AbstractP
         return prop_cache
     end
 
-    return _applyinorbits!(applyrotation!, layer, prop_cache, theta, _layertruncation(_nevertruncate, Inf); thread)
+    return _applyinorbits!(layer, prop_cache, theta, _layertruncation(_nevertruncate, Inf); thread)
 end
 
 PropagationBase.requiresmerging(::RotationLayer, ::AbstractPauliPropagationCache) = false
