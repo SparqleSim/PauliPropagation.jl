@@ -26,8 +26,13 @@ function _check_wrapping_into_paulifreqtracker(psum::PauliSum, max_freq, max_sin
 
 end
 
-# if the psum is not of type `PauliSum` then we don't touch it 
+# only the gates on a `PauliSum` keep the counters behind these truncations, so any other Pauli sum is refused
 function _check_wrapping_into_paulifreqtracker(psum, max_freq, max_sins)
+    if (max_freq != Inf) | (max_sins != Inf)
+        throw(ArgumentError(
+            "The `max_freq` and `max_sins` truncations are only supported for a `PauliSum`, not for a `$(nameof(typeof(psum)))`.")
+        )
+    end
     return psum
 end
 

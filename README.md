@@ -1,6 +1,6 @@
 | **Documentation**| **Paper**|
 |:----------------:|:--------:|
-|[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://SparqleSim.github.io/PauliPropagation.jl/stable/)[![](https://img.shields.io/badge/docs-dev-green.svg)](https://SparqleSim.github.io/PauliPropagation.jl/dev/)|[![arXiv](https://img.shields.io/badge/arXiv-2505.21606-b31b1b.svg)](https://arxiv.org/abs/2505.21606)|
+|[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://SparqleSim.github.io/PauliPropagation.jl/stable/)[![](https://img.shields.io/badge/docs-dev-green.svg)](https://SparqleSim.github.io/PauliPropagation.jl/dev/)|[![Journal](https://img.shields.io/badge/Journal-PRX%20Quantum-b31b1b.svg)](https://journals.aps.org/prxquantum/abstract/10.1103/6vd7-l9bn)[![arXiv](https://img.shields.io/badge/arXiv-2505.21606-ca5f5f.svg)](https://arxiv.org/abs/2505.21606)|
 
 # PauliPropagation.jl
 `PauliPropagation.jl` is a Julia package for simulating Pauli propagation in quantum circuits and systems. It focuses on simulating the evolution of observables expressed in the Pauli basis under the action of unitary gates and non-unitary channels in a quantum circuit.
@@ -9,7 +9,8 @@ Unlike traditional simulators which simulate a circuit $\mathcal{E}$ evolving th
 
 Pauli propagation is related to the so-called (extended) stabilizer simulation, but is fundamentally different from, for example, tensor networks. It offers a distinct approach that can handle different regimes of quantum dynamics.
 
-Implemented in Julia, `PauliPropagation.jl` combines high-performance computation (using features such as multiple dispatch) with an accessible and high-level interface.  
+Implemented in Julia, `PauliPropagation.jl` combines high-performance computation (using features such as multiple dispatch) with an accessible and high-level interface. 
+To get the most performance out of this library, read the *Performance Considerations* section below and study the [advanced performance notebook](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/advanced_performance.ipynb). 
 
 ## Installation
 
@@ -31,23 +32,16 @@ Pkg.add(url="https://github.com/SparqleSim/PauliPropagation.jl.git", rev="branch
 where you can use the keyword `rev="branchname"` to install development versions of the package.
 We don't recommend using branches other than `main` or `dev`.
 
-
-### A note on installing Julia 
-It is recommended to install julia using `juliaup` with instructions from [here](https://github.com/JuliaLang/juliaup). Then, Julia's _long-term support_ version (currently a `1.10` version) can be installed via
-
-```juliaup add lts```
-
-To get started running Jupyter notebooks, start a Julia session and install the `IJulia` package.
-
-If you are working on several projects with potentially conflicting packages, it is recommended to work with within local environments or projects.
-
-For more details, we refer to this useful [guide](https://modernjuliaworkflows.org/writing/).
-
 ## Quick Start
 
-You can find detailed example notebooks in the `examples` folder. We provide a brief example of how to use `PauliPropagation.jl`.
+You can find detailed example notebooks in the `examples` folder. We provide a brief example of how to use `PauliPropagation.jl`. 
 
-Consider simulating the dynamics of an operator $O=Z_{16}$ under the evolution of a unitary  channel $\mathcal{E}(\cdot) = U^\dagger \cdot U$ in a $n=32$ qubits system. 
+The main data structures for computing evolving Pauli sums are:
+- `PauliSum` for ease of use and robustness,
+- `VectorPauliSum` for maximal single-threaded performance on gates defined in this library,
+- `MultiPauliSum` for maximal multithreaded performance.
+
+Consider simulating the dynamics of an operator $O=Z_{16}$ under the evolution of a unitary  channel $\mathcal{E}(\cdot) = U^\dagger \cdot U$ in a $n=32$ qubits system. We can easily define it via `PauliString`.
 
 ```julia
 using PauliPropagation
@@ -98,8 +92,13 @@ max_weight = 6 # maximum Pauli weight
 
 min_abs_coeff = 1e-4 # minimal coefficient magnitude
 
+# convert the PauliString to one of the Pauli sum options
+init_pauli_sum = PauliSum(observable)
+```
+You can also convert to `VectorPauliSum(observable)` or `MultiPauliSum(VectorPauliSum(observable))` for performance.
+
+```julia
 ## propagate through the circuit
-init_pauli_sum = PauliSum(pstr)  # you can also propagate `pstr` or VectorPauliSum(pstr)
 pauli_sum = propagate(circuit, init_pauli_sum, parameters; max_weight, min_abs_coeff)
 ```
 The output `pauli_sum` gives us an approximation of propagated Pauli strings
@@ -131,11 +130,12 @@ Therefore, the trace is equivalent to the sum over the coefficients of Pauli str
 A few tips to get the most performance out of PauliPropagation.jl, in particular in the `propagate(...)` function:
 - Pretty much always use at least coefficient truncation via `propagate(...; min_abs_coeff)`. Start high (e.g., `1e-3`) and gradually decrease until expectation values stabilize.
 - For common gates, the `VectorPauliSum` is currently more performant.
-- If you can, start Julia with more threads, for example via `Julia -t 8` if you have 8 fast threads. `VectorPauliSum` is inherently multithreaded, which you can toggle off via `propagation(...; thread=false)` if you are multithreading outside `propagate()`. For small Pauli sums, single-threaded propagation can be faster, but at scale with many threads, multithreading can be an order of magnitude faster. 
+- If you can, start Julia with more threads, for example via `Julia -t 8` if you have 8 fast threads. `VectorPauliSum` is inherently multithreaded, which you can toggle off via `propagate(...; thread=false)` if you are multithreading outside `propagate()`. For small Pauli sums, single-threaded propagation can be faster, but at scale with many threads, multithreading can be an order of magnitude faster. 
+- Maximize multithreading capabilities by wrapping your Pauli sum (ideally `VectorPauliSum`) into the `MultiPauliSum`.
 - When propagating gate by gate or layer by layer, consider using the in-place `propagate!(...)` function that mutates the incoming `PauliSum`/`VectorPauliSum`.
 - For maximal performance that may yield slightly different results to default behavior, you can import our `PauliPropagation.Performance` module and run `Performance.propagate!(...)`.
 
-Take a look at the `examples/advanced_performance.ipynb` notebook for more details.
+Take a look at the `examples/advanced_performance.ipynb` notebook for more details ([link](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/advanced_performance.ipynb)).
  
 
 ## Important Notes and Caveats
@@ -148,7 +148,7 @@ Take a look at the `examples/advanced_performance.ipynb` notebook for more detai
 All of the above can be addressed by writing the additional missing code due to the nice extensibility of Julia.
 
 ## Automatic Gradients
-`PauliPropagation.jl` has always been automatically differentiable via standard Julia libraries such as `ForwardDiff.jl` and `ReverseDiff.jl`. Starting version `0.8`, we provide a custom `rewindgradient(...)`  that only requires two propagation through the circuit and at most double the memory to compute an entire gradient vector. It is compatible with all truncations that are supported by `propagate()`. See the `8-automatic-differentiation.ipynb` notebook in the example folder.
+`PauliPropagation.jl` has always been automatically differentiable via standard Julia libraries such as `ForwardDiff.jl` and `ReverseDiff.jl`. Starting version `0.8`, we provide a custom `rewindgradient(...)`  that only requires two propagation through the circuit and at most double the memory to compute an entire gradient vector. It is compatible with all truncations that are supported by `propagate()`. See the `8-automatic-differentiation.ipynb` notebook in the example folder ([link](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/8-automatic-differentiation.ipynb)). This design is adapted from the publication ``Backpropagating Pauli Propagation'' by Lin et al. (arXiv:2607.15184).
 
 ## Randomized Evolution
 Starting with version `0.8`, we provide an `mcpropagate(...; max_size)` function. It propagates as usual, truncates if you pass truncation parameters, and when the number of terms exceeds `max_size`, it resamples down to a `resampling_size` (default `max_size / 2`) via an unbiased procedure. This in principle allows one to arbitrarily trade memory for averaging time, but note that all coefficients become increasingly large and inaccurate the more often it must resample. See the `mcpropagate.ipynb` notebook in the examples folder.
@@ -205,7 +205,7 @@ Otherwise, feel free to reach out to the developers!
 The main developer of this package is [Manuel S. Rudolph](https://github.com/MSRudolph) in the Quantum Information and Computation Laboratory of Prof. Zoë Holmes at EPFL, Switzerland.
 Contact Manuel via manuel.rudolph@epfl.ch.
 
-Further contributors to this package include [Yanting Teng](https://github.com/teng10), [Tyson Jones](https://github.com/TysonRayJones), and [Su Yeon Chang](https://github.com/sychang42).
+Further contributors to this package include [Yanting Teng](https://github.com/teng10), [Matteo D'Anna](https://github.com/MatteDAnna), [Tyson Jones](https://github.com/TysonRayJones), and [Su Yeon Chang](https://github.com/sychang42).
 This package is the derivative of ongoing work at the Quantum Information and Computation lab at EPFL, supervised by Prof. Zoë Holmes.
 
 For more specific code issues, bug fixes, etc. please open a [GitHub issue](https://github.com/SparqleSim/PauliPropagation.jl/issues).
@@ -214,12 +214,15 @@ For more specific code issues, bug fixes, etc. please open a [GitHub issue](http
 
 If you are publishing research using `PauliPropagation.jl`, please cite this library and our paper: 
 ```
-@article{rudolph2025pauli,
-  title={Pauli Propagation: A Computational Framework for Simulating Quantum Systems},
-  author={Rudolph, Manuel S and Jones, Tyson and Teng, Yanting and Angrisani, Armando and Holmes, Zoe},
-  journal={arXiv preprint arXiv:2501.13101},
-  year={2025},
-  url={https://arxiv.org/abs/2501.13101}
+@article{rudolph2026pauli,
+  title={Pauli propagation: A computational framework for simulating quantum systems},
+  author={Rudolph, Manuel S and Jones, Tyson and Teng, Yanting and Angrisani, Armando and Holmes, Zo{\"e}},
+  journal={PRX Quantum},
+  volume={7},
+  number={3},
+  pages={032001},
+  year={2026},
+  publisher={APS}
 }
 ```
 

@@ -93,3 +93,58 @@ end
     @test composecliffordmaps(circuit) == clifford_map[:Z]
 
 end
+
+
+@testset "Test Clifford gates on every term type" begin
+    # every map on qubits in both orders and on both sides of a 64-bit word
+    clifford_map[:CNOTtransposed] = transposecliffordmap(clifford_map[:CNOT])
+
+    # the image of a term under a lookup map, read and written one qubit at a time
+    function lookupimage(lookup_map, qinds, term, coeff)
+        new_paulis, sign = lookup_map[getpauli(term, qinds)+1]
+        return setpauli(term, new_paulis, qinds), coeff * sign
+    end
+
+    rng = MersenneTwister(42)
+    for (TT, nq) in ((UInt16, 8), (UInt64, 32), (UInt128, 64), (NTupleInteger{4}, 100))
+        terms = unique([symboltoint(TT, rand(rng, (:I, :X, :Y, :Z), nq), 1:nq) for _ in 1:200])
+        coeffs = 0.5 .+ rand(rng, length(terms))
+        onequbit = [qinds for qinds in [(1,), (nq,), (33,)] if maximum(qinds) <= nq]
+        twoqubits = [qinds for qinds in [(1, 2), (2, 1), (nq, 1), (32, 33), (33, 32), (64, 65)] if maximum(qinds) <= nq]
+
+        vector_matches = true
+        dict_matches = true
+        for (symbol, lookup_map) in clifford_map
+            for qinds in (length(lookup_map) == 4 ? onequbit : twoqubits)
+                gate = CliffordGate(symbol, collect(qinds))
+                expected = [lookupimage(lookup_map, qinds, term, coeff) for (term, coeff) in zip(terms, coeffs)]
+
+                vpsum = propagate(gate, VectorPauliSum(nq, copy(terms), copy(coeffs)))
+                vector_matches &= collect(zip(paulis(vpsum), coefficients(vpsum))) == expected
+
+                psum = propagate(gate, PauliSum(nq, Dict(zip(terms, coeffs))))
+                dict_matches &= length(psum) == length(expected) && all(getcoeff(psum, term) == coeff for (term, coeff) in expected)
+            end
+        end
+        @test vector_matches
+        @test dict_matches
+    end
+
+    # a gate on more qubits acts as the circuit its map is composed of
+    circuit = [CliffordGate(:CNOT, [1, 2]), CliffordGate(:H, [3]), CliffordGate(:CZ, [2, 3])]
+    clifford_map[:composed] = composecliffordmaps(circuit)
+    qinds = [5, 2, 9]
+    terms = unique([symboltoint(UInt64, rand(rng, (:I, :X, :Y, :Z), 10), 1:10) for _ in 1:200])
+    psum = PauliSum(10, Dict(zip(terms, 0.5 .+ rand(rng, length(terms)))))
+    @test propagate(CliffordGate(:composed, qinds), psum) == propagate([CliffordGate(gate.symbol, qinds[gate.qinds]) for gate in circuit], psum)
+
+    # a weight cap counts the weight of the terms the gate made
+    images = [lookupimage(clifford_map[:CNOT], (1, 2), term, coeff) for (term, coeff) in psum]
+    @test propagate(CliffordGate(:CNOT, [1, 2]), psum; max_weight=7.0) == PauliSum(10, Dict(image for image in images if countweight(first(image)) <= 7))
+
+    # the gate only flips signs, so without a weight cap or a custom truncation it truncates nothing
+    small_image = lookupimage(clifford_map[:CNOT], (1, 2), first(terms), 1e-12)
+    @test propagate(CliffordGate(:CNOT, [1, 2]), PauliSum(10, Dict(first(terms) => 1e-12))) == PauliSum(10, Dict([small_image]))
+
+    reset_clifford_map!()
+end

@@ -5,8 +5,8 @@ using Random
 const PB = PauliPropagation.PropagationBase
 
 # a sorted, deduplicated sum followed by the tail a rotation appends: `pstr ⊻ gate_mask` for every
-# term, in the order of the terms they came from
-function _rotatedcache(nq, n, gate_mask)
+# term, in the order of the terms they came from, or in reverse order
+function _rotatedcache(nq, n, gate_mask; parent_order=true)
     rng = MersenneTwister(hash((nq, n, gate_mask)))
     TT = PauliPropagation.getinttype(nq)
     pstrs = sort!(collect(Set(rand(rng, TT, 3n) .& ((TT(1) << (2nq)) - TT(1)))))[1:n]
@@ -17,8 +17,9 @@ function _rotatedcache(nq, n, gate_mask)
     resize!(prop_cache, 2n)
     terms, coeffs = paulis(mainsum(prop_cache)), coefficients(mainsum(prop_cache))
     for ii in 1:n
-        terms[n+ii] = terms[ii] ⊻ gate_mask
-        coeffs[n+ii] = coeffs[ii] * sin(0.3)
+        jj = parent_order ? ii : n + 1 - ii
+        terms[n+jj] = terms[ii] ⊻ gate_mask
+        coeffs[n+jj] = coeffs[ii] * sin(0.3)
         coeffs[ii] *= cos(0.3)
     end
     PB.setactivesize!(prop_cache, 2n)
@@ -26,20 +27,38 @@ function _rotatedcache(nq, n, gate_mask)
     return prop_cache
 end
 
-# `xorsortedtailmerge!` only changes how the tail is sorted, so it has to agree with
-# `sortedtailmerge!` on the same cache down to the last coefficient
-function _agreeswithsortedtailmerge(nq, n, gate_mask, xor_mask, sorted_before, thread)
-    xor_cache = _rotatedcache(nq, n, gate_mask)
-    PB.xorsortedtailmerge!(xor_cache, xor_mask, sorted_before; thread)
+# `xormerge!` only changes how the tail is sorted, so it has to agree with `sortedtailmerge!` on
+# the same cache down to the last coefficient
+function _agreeswithsortedtailmerge(nq, n, gate_mask, xor_mask, parent_order, thread)
+    xor_cache = _rotatedcache(nq, n, gate_mask; parent_order)
+    PB.xormerge!(xor_cache, xor_mask; thread)
 
-    ref_cache = _rotatedcache(nq, n, gate_mask)
+    ref_cache = _rotatedcache(nq, n, gate_mask; parent_order)
     PB.sortedtailmerge!(ref_cache; thread)
 
     xor_sum, ref_sum = PB.extractsum!(xor_cache), PB.extractsum!(ref_cache)
     return paulis(xor_sum) == paulis(ref_sum) && coefficients(xor_sum) == coefficients(ref_sum)
 end
 
-@testset "xorsortedtailmerge!" begin
+# the tail check and the tail sort index their ranges without bounds checks, so they prove them first
+@testset "xormerge! checks the ranges it indexes" begin
+    U = PauliPropagation.getinttype(20)
+    gate_mask = U(0b11)
+    prop_cache = _rotatedcache(20, 500, gate_mask)
+    terms, coeffs = paulis(mainsum(prop_cache)), coefficients(mainsum(prop_cache))
+
+    @test_throws BoundsError PB._isxortail(terms, 0, 500, gate_mask; thread=false)
+    @test_throws BoundsError PB._isxortail(terms, 501, length(terms) + 1, gate_mask; thread=false)
+
+    groups = PB._xorplan(gate_mask, terms)
+    @test_throws ArgumentError PB._xorsorttail!(groups, view(terms, 1:500), view(coeffs, 1:500), view(terms, 501:1000), view(coeffs, 501:999); thread=false)
+
+    # a sorted prefix written past its setter
+    mainsum(prop_cache)._terms_sorted = -1
+    @test_throws BoundsError PB.xormerge!(prop_cache, gate_mask; thread=false)
+end
+
+@testset "xormerge!" begin
     U = PauliPropagation.getinttype(20)
     W = PauliPropagation.getinttype(100)
 
@@ -65,6 +84,7 @@ end
     # parent order, when the mask is spread over more groups than there are passes, and when it is
     # not a term at all
     gate_mask = U(0b11) << 8
+    @test !PB._isxortail(PB.terms(mainsum(_rotatedcache(20, 500, gate_mask; parent_order=false))), 501, 1000, gate_mask; thread=false)
     @test _agreeswithsortedtailmerge(20, 500, gate_mask, gate_mask, false, true)
     @test _agreeswithsortedtailmerge(20, 500, gate_mask, U(0b101010101), true, true)
     @test _agreeswithsortedtailmerge(20, 500, gate_mask, nothing, true, true)

@@ -130,7 +130,7 @@ function pauli_term_to_yao(n::Int, term::Integer, coeff=1)
 
     w = PP.countweight(term)
     if w == 1
-        @inbounds for i in 1:n
+        for i in 1:n
             p = PP.getpauli(term, i)
             if p != 0
                 return _scale_if_needed(coeff, put(n, i => _pauli_gate(p)))
@@ -141,7 +141,7 @@ function pauli_term_to_yao(n::Int, term::Integer, coeff=1)
 
     pairs = Vector{Pair{Int, YaoBlocks.ConstGate.PauliGate}}(undef, w)
     j = 0
-    @inbounds for i in 1:n
+    for i in 1:n
         p = PP.getpauli(term, i)
         if p != 0
             j += 1
@@ -175,7 +175,7 @@ function paulipropagation2yao(psum::PP.AbstractPauliSum)
     end
     blocks = Vector{AbstractBlock{2}}(undef, m)
     i = 0
-    @inbounds for (pauli, coeff) in zip(PP.paulis(psum), PP.coefficients(psum))
+    for (pauli, coeff) in zip(PP.paulis(psum), PP.coefficients(psum))
         i += 1
         blocks[i] = pauli_term_to_yao(n, pauli, coeff)
     end

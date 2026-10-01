@@ -1,5 +1,4 @@
 using Bits
-using BitIntegers
 import Base: *
 import Base: /
 import Base: +
@@ -11,6 +10,7 @@ import Base: ==
 
 The integer types we use to represent Pauli strings. 
 Pauli strings are objects like X ⊗ Z ⊗ I ⊗ Y, where each term is a Pauli acting on a qubit.
+Above 64 qubits the type is an `NTupleInteger` of 64-bit limbs.
 """
 const PauliStringType = Integer
 

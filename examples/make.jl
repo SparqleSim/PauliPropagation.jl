@@ -21,6 +21,7 @@ mkpath(docs_examples_dir)
 notebooks = sort(filter(endswith(".ipynb"), readdir(examples_dir; join = true)))
 
 sem = Base.Semaphore(5)
+failures = String[]
 
 @sync for notebook in notebooks
     @async begin
@@ -41,8 +42,13 @@ sem = Base.Semaphore(5)
                 $notebook`)
         catch e
             @error "$notebook failed to run with the error: \n $e"
+            push!(failures, basename(notebook))
         finally
             Base.release(sem)
         end
     end
+end
+
+if !isempty(failures)
+    error("notebooks failed to execute: $(join(failures, ", "))")
 end

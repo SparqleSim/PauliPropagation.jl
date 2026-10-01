@@ -73,23 +73,23 @@ Fused overload that truncates during gate application by walking and mutating th
 through its internal slot array. Only used when `fused=true`; otherwise falls through unchanged to
 stock `applymergetruncate!`.
 """
-function PauliPropagation.applymergetruncate!(gate::PauliRotation, prop_cache::PauliPropagationCache, theta;
+@inline function PauliPropagation.applymergetruncate!(gate::PauliPropagation.PauliRotation, prop_cache::PauliPropagation.PauliPropagationCache, theta;
     fused::Bool=false,
-    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing, kwargs...)
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing,
+    thread::Bool=true, kwargs...)
 
     # invoke function from library
     if !fused
-        return invoke(PauliPropagation.applymergetruncate!,
-            Tuple{PauliRotation,PauliPropagation.AbstractPauliPropagationCache,typeof(theta)},
-            gate, prop_cache, theta;
-            min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, kwargs...)
+        return _invokedefault(gate, prop_cache, theta;
+            min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     end
 
+    _checkunusedkwargs(kwargs)
     psum = PB.storage(mainsum(prop_cache))
     gate_mask = symboltoint(paulitype(prop_cache), gate.symbols, gate.qinds)
     cos_val, sin_val = cos(theta), sin(theta)
 
-    truncfunc(pstr, coeff) = _fusedtruncfunc(pstr, coeff; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc)
+    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
 
     touched = Tuple{keytype(psum),valtype(psum)}[]
     # bounded above by one push per filled, non-commuting slot -- a tighter bound than the raw

@@ -1,5 +1,7 @@
 using PauliPropagation
-using PauliPropagation.PropagationBase
+const PP = PauliPropagation
+import PauliPropagation.PropagationBase
+const PB = PauliPropagation.PropagationBase
 using Test
 using Random
 
@@ -12,6 +14,8 @@ using Random
     include("test_datatypes.jl")
 
     include("test_paulialgebra_utils.jl")
+
+    include("test_wideintegers.jl")
 
     include("test_noisechannels.jl")
 
@@ -41,9 +45,15 @@ using Random
 
     include("test_inplace.jl")
 
+    include("test_primitives.jl")
+
+    include("test_mergeandtruncate.jl")
+
     include("test_gradient.jl")
 
     include("test_xortailmerge.jl")
+
+    include("test_multipaulisum.jl")
 
     include("test_montecarlo.jl")
 
@@ -54,6 +64,22 @@ using Random
     include("test_countpaulis.jl")
 
     include("test_visualization.jl")
+
+    # the same tests on Base's public `Dict` interface, with the dictionary internals switched off,
+    # each file in a module of its own so that its definitions can be made again,
+    # and before the Yao files, whose methods the ambiguity check in test_primitives.jl would otherwise see
+    @testset "Base Dict interface" begin
+        Base.delete_method(which(PB._hasdictinternals, Tuple{Dict}))
+        try
+            for file in ("test_primitives.jl", "test_montecarlo.jl", "test_gates_against_yao.jl")
+                rerun = Module()
+                Core.eval(rerun, :(using Test, Random, PauliPropagation; const PP = PauliPropagation; const PB = PauliPropagation.PropagationBase))
+                Base.include(rerun, joinpath(@__DIR__, file))
+            end
+        finally
+            @eval PB _hasdictinternals(::Dict) = _DICT_INTERNALS
+        end
+    end
 
     include("test_gates_against_yao.jl")
 

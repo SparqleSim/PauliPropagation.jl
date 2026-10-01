@@ -1,175 +1,202 @@
+###
+##
+# Array-backed propagation-cache implementation helpers.
+##
+###
 
-# Writes (term, coeff) to out_terms/out_coeffs at pos when DoWrite; always returns pos + 1.
-# This is the dry-run/real-run toggle used throughout the tail-merge and fused-apply workers:
-# DoWrite=false just counts output size, DoWrite=true performs the actual write.
-@inline function _writeandadvance!(out_terms, out_coeffs, pos, term, coeff, ::Val{DoWrite}) where DoWrite
+
+# Writes `(term, coefficient)` at `position` when `DoWrite`, and advances `position` in both the
+# dry run and the writing pass. The caller keeps `position` within the output arrays.
+@inline function _writeandadvance!(output_terms, output_coefficients, position, term, coefficient, ::Val{DoWrite}) where DoWrite
     if DoWrite
-        @inbounds out_terms[pos] = term
-        @inbounds out_coeffs[pos] = coeff
+        @inbounds output_terms[position] = term
+        @inbounds output_coefficients[position] = coefficient
     end
-    return pos + 1
+    return position + 1
 end
 
-function sortbyterm!(prop_cache::AbstractPropagationCache; lt=isless, by=identity, rev=false, order=Base.Forward, thread::Bool=true)
+# The same, but only up to `write_stop`: a pair past it is counted, not written, so a pass that
+# replays a callback can compare its count with the counting pass instead of writing out of bounds.
+@inline function _writeandadvance!(output_terms, output_coefficients, position, write_stop, term, coefficient, ::Val{DoWrite}) where DoWrite
+    if DoWrite && position <= write_stop
+        @inbounds output_terms[position] = term
+        @inbounds output_coefficients[position] = coefficient
+    end
+    return position + 1
+end
 
-    # if terms are are not native data types, sorting kwargs need to be provided
-    AK.sortperm!(activeindices(prop_cache), activeterms(prop_cache); lt, by, rev, order, max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+@noinline _throwreplaymismatch() = throw(ArgumentError(
+    "the callback returned different results when called again; it must return the same results for the same pair every time"))
 
-    permuteviaindices!(prop_cache; thread)
+# `n` leading pairs exist in both arrays, for a kernel that indexes them up to `n` without bounds checks
+function _checkfits(n::Int, terms, coefficients)
+    if !(0 <= n <= length(terms) && n <= length(coefficients))
+        throw(ArgumentError("$n pairs do not fit arrays of lengths $(length(terms)) and $(length(coefficients))"))
+    end
+    return n
+end
 
+
+# Flagging and prefix scans support branching gates and array-backed filtering.
+function flag!(predicate, prop_cache::AbstractPropagationCache; thread::Bool=true)
+    flag!(predicate, activeflags(prop_cache), activeterms(prop_cache), activecoeffs(prop_cache); thread)
     return prop_cache
 end
 
+function flag!(predicate, destination_flags, source_terms, source_coefficients; thread::Bool=true)
+    @assert length(destination_flags) <= length(source_terms)
+    @assert length(destination_flags) <= length(source_coefficients)
 
-# map function f will receive (term, coeff) and should return a bool
-function flag!(f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where F<:Function
-    flag!(f, activeflags(prop_cache), activeterms(prop_cache), activecoeffs(prop_cache); thread)
+    AK.foreachindex(destination_flags; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
+        @inbounds destination_flags[index] = predicate(source_terms[index], source_coefficients[index])
+    end
+    return destination_flags
+end
+
+function flagterms!(predicate, prop_cache::AbstractPropagationCache; thread::Bool=true)
+    flagterms!(predicate, activeflags(prop_cache), activeterms(prop_cache); thread)
     return prop_cache
 end
 
-function flag!(f::F, dst_flags, terms, coeffs; thread::Bool=true) where F<:Function
-    @assert length(dst_flags) <= length(terms)
-    @assert length(dst_flags) <= length(coeffs)
+function flagterms!(predicate, destination_flags, source_terms; thread::Bool=true)
+    @assert length(destination_flags) <= length(source_terms)
 
-    AK.foreachindex(dst_flags; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
-        dst_flags[ii] = f(terms[ii], coeffs[ii])
+    AK.foreachindex(destination_flags; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
+        @inbounds destination_flags[index] = predicate(source_terms[index])
     end
-    return dst_flags
+    return destination_flags
 end
 
-# map function f will receive term only and should return a bool
-function flagterms!(f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where F<:Function
-    flagterms!(f, activeflags(prop_cache), activeterms(prop_cache); thread)
+function flagcoeffs!(predicate, prop_cache::AbstractPropagationCache; thread::Bool=true)
+    flagcoeffs!(predicate, activeflags(prop_cache), activecoeffs(prop_cache); thread)
     return prop_cache
 end
 
-function flagterms!(f::F, dst_flags, terms; thread::Bool=true) where F<:Function
-    @assert length(dst_flags) <= length(terms)
+function flagcoeffs!(predicate, destination_flags, source_coefficients; thread::Bool=true)
+    @assert length(destination_flags) <= length(source_coefficients)
 
-    AK.foreachindex(dst_flags; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
-        dst_flags[ii] = f(terms[ii])
+    AK.foreachindex(destination_flags; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
+        @inbounds destination_flags[index] = predicate(source_coefficients[index])
     end
-    return dst_flags
+    return destination_flags
 end
 
-# map function f will receive coeff only and should return a bool
-function flagcoeffs!(f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where F<:Function
-    flagcoeffs!(f, activeflags(prop_cache), activecoeffs(prop_cache); thread)
-    return prop_cache
-end
+flagstoindices!(prop_cache::AbstractPropagationCache; thread::Bool=true) =
+    flagstoindices!(activeindices(prop_cache), activeflags(prop_cache); thread)
 
-function flagcoeffs!(f::F, dst_flags, coeffs; thread::Bool=true) where F<:Function
-    @assert length(dst_flags) <= length(coeffs)
+flagstoindices!(destination_indices, source_flags; thread::Bool=true) =
+    AK.accumulate!(+, destination_indices, source_flags; init=zero(eltype(destination_indices)),
+        max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
 
-    AK.foreachindex(dst_flags; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
-        dst_flags[ii] = f(coeffs[ii])
-    end
-    return dst_flags
-end
 
-flagstoindices!(prop_cache::AbstractPropagationCache; thread::Bool=true) = flagstoindices!(activeindices(prop_cache), activeflags(prop_cache); thread)
-flagstoindices!(dst_indices, flags; thread::Bool=true) = AK.accumulate!(+, dst_indices, flags; init=zero(eltype(dst_indices)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+# Permutation and compaction use the auxiliary term sum as their destination buffer. The gather
+# reads by the permutation without bounds checks, so the permutation is checked first unless the
+# call is made under `@inbounds`, which a caller that has just built it with `sortperm!` may do.
+Base.@propagate_inbounds function permuteviaindices!(prop_cache::AbstractPropagationCache; thread::Bool=true)
+    input_terms = activeterms(prop_cache)
+    input_coefficients = activecoeffs(prop_cache)
+    output_terms = activeauxterms(prop_cache)
+    output_coefficients = activeauxcoeffs(prop_cache)
+    active_permutation = activeindices(prop_cache)
 
-function permuteviaindices!(prop_cache::AbstractPropagationCache; thread::Bool=true)
-    indices_view = activeindices(prop_cache)
-    term_view = activeterms(prop_cache)
-    coeffs_view = activecoeffs(prop_cache)
-    aux_terms_view = activeauxterms(prop_cache)
-    aux_coeffs_view = activeauxcoeffs(prop_cache)
+    permuteviaindices!(output_terms, output_coefficients, input_terms, input_coefficients, active_permutation; thread)
 
-    permuteviaindices!(aux_terms_view, aux_coeffs_view, term_view, coeffs_view, indices_view; thread)
-
-    # the destination arrays should be the main ones
     swapsums!(prop_cache)
-
-    # in general permuting will not sort
-    # merge! will set it to a non-zero value when it calls this function
     setsortedprefix!(mainsum(prop_cache), 0)
-
     return prop_cache
 end
 
-function permuteviaindices!(dst_terms, dst_coeffs, src_terms, src_coeffs, indices; thread::Bool=true)
-    @assert length(indices) <= length(src_terms) && length(indices) <= length(src_coeffs)
-    @assert length(indices) <= length(dst_terms) && length(indices) <= length(dst_coeffs)
+Base.@propagate_inbounds function permuteviaindices!(output_terms, output_coefficients, input_terms, input_coefficients, permutation; thread::Bool=true)
+    @assert length(permutation) <= length(input_terms) && length(permutation) <= length(input_coefficients)
+    @assert length(permutation) <= length(output_terms) && length(permutation) <= length(output_coefficients)
+    @boundscheck _checkpermutation(permutation, min(length(input_terms), length(input_coefficients)); thread)
 
-    AK.foreachindex(indices; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
-        sorted_idx = indices[ii]
-        dst_terms[ii] = src_terms[sorted_idx]
-        dst_coeffs[ii] = src_coeffs[sorted_idx]
-    end
-    return dst_terms, dst_coeffs
-end
-
-
-# what is flagged will be kept
-# should we name this something with copy?
-function filterviaflags!(prop_cache::AbstractPropagationCache; thread::Bool=true)
-    terms_view = activeterms(prop_cache)
-    coeffs = activecoeffs(prop_cache)
-    aux_terms = activeauxterms(prop_cache)
-    aux_coeffs = activeauxcoeffs(prop_cache)
-    flags = activeflags(prop_cache)
-    indices = activeindices(prop_cache)
-
-    # capture before swapsums!() swaps which sum is "main"
-    old_sorted = sortedprefix(mainsum(prop_cache))
-    if old_sorted > length(indices)
-        # stale sortedprefix left over from the last time this buffer was mainsum: ignore it
-        old_sorted = 0
-    end
-
-    filterviaflags!(flags, indices, aux_terms, aux_coeffs, terms_view, coeffs; thread)
-
-    swapsums!(prop_cache)
-
-    n_new = lastactiveindex(prop_cache)
-    setactivesize!(prop_cache, n_new)
-
-    # filtering keeps relative order (if it had any)
-    new_sorted = old_sorted == 0 ? 0 : indices[old_sorted]
-    setsortedprefix!(mainsum(prop_cache), new_sorted)
-
-    return prop_cache
-end
-
-# TODO: turn this into copyflagged!()
-function filterviaflags!(flags, dst_indices, dst_terms, dst_coeffs, src_terms, src_coeffs; thread::Bool=true)
-    @assert length(flags) <= length(src_terms) && length(flags) <= length(src_coeffs)
-    @assert length(flags) <= length(dst_terms) && length(flags) <= length(dst_coeffs)
-
-    flagstoindices!(dst_indices, flags; thread)
-
-    AK.foreachindex(flags; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
-        if flags[ii]
-            dst_terms[dst_indices[ii]] = src_terms[ii]
-            dst_coeffs[dst_indices[ii]] = src_coeffs[ii]
+    AK.foreachindex(permutation; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
+        @inbounds begin
+            input_index = permutation[index]
+            output_terms[index] = input_terms[input_index]
+            output_coefficients[index] = input_coefficients[input_index]
         end
     end
-    return dst_terms, dst_coeffs
+    return output_terms, output_coefficients
 end
 
-
-function _copy!(dst_terms, dst_coeffs, src_terms, src_coeffs; thread::Bool=true)
-    @assert length(dst_terms) >= length(src_terms)
-    @assert length(dst_coeffs) >= length(src_coeffs)
-    AK.foreachindex(src_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do ii
-        dst_terms[ii] = src_terms[ii]
-        dst_coeffs[ii] = src_coeffs[ii]
+# every index within 1:n, in one pass over the permutation
+function _checkpermutation(permutation, n::Int; thread::Bool=true)
+    outside(index) = index < 1 || index > n
+    if AK.any(outside, permutation; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+        throw(ArgumentError("permutation indices must lie within 1:$n"))
     end
-    return dst_terms, dst_coeffs
+    return permutation
 end
 
-## Cumulative sums are often used in resampling
-coeffcumsum!(coeffs; thread::Bool=true) = AK.accumulate!((x1, x2) -> x1 + abs(x2), coeffs; init=zero(eltype(coeffs)), neutral=zero(eltype(coeffs)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+function filterviaflags!(prop_cache::AbstractPropagationCache; thread::Bool=true)
+    input_terms = activeterms(prop_cache)
+    input_coefficients = activecoeffs(prop_cache)
+    output_terms = activeauxterms(prop_cache)
+    output_coefficients = activeauxcoeffs(prop_cache)
+    active_flags = activeflags(prop_cache)
+    active_indices = activeindices(prop_cache)
 
-coeffcumsum(coeffs; thread::Bool=true) = coeffcumsum(coeffs, 1; thread)
+    old_sorted_prefix = sortedprefix(mainsum(prop_cache))
+    old_sorted_prefix > length(active_indices) && (old_sorted_prefix = 0)
 
-function coeffcumsum(coeffs, power::Real; thread::Bool=true)
-    # `abs(c)^power` is always real, but AK.map's output eltype follows `coeffs`, not `f`, so a
-    # complex `coeffs` needs an explicitly real destination rather than the allocating AK.map
-    mapped_coeffs = similar(coeffs, real(eltype(coeffs)))
-    AK.map!(c -> abs(c)^power, mapped_coeffs, coeffs; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
-    coeffcumsum!(mapped_coeffs; thread)
-    return mapped_coeffs
+    filterviaflags!(active_flags, active_indices, output_terms, output_coefficients, input_terms, input_coefficients; thread)
+
+    swapsums!(prop_cache)
+    setactivesize!(prop_cache, lastactiveindex(prop_cache))
+
+    new_sorted_prefix = old_sorted_prefix == 0 ? 0 : active_indices[old_sorted_prefix]
+    setsortedprefix!(mainsum(prop_cache), new_sorted_prefix)
+    return prop_cache
+end
+
+function filterviaflags!(source_flags, destination_indices, output_terms, output_coefficients,
+    input_terms, input_coefficients; thread::Bool=true)
+
+    @assert length(source_flags) <= length(input_terms) && length(source_flags) <= length(input_coefficients)
+    @assert length(source_flags) <= length(output_terms) && length(source_flags) <= length(output_coefficients)
+    @assert length(source_flags) <= length(destination_indices)
+
+    flagstoindices!(destination_indices, source_flags; thread)
+
+    AK.foreachindex(source_flags; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
+        @inbounds if source_flags[index]
+            destination_index = destination_indices[index]
+            output_terms[destination_index] = input_terms[index]
+            output_coefficients[destination_index] = input_coefficients[index]
+        end
+    end
+    return output_terms, output_coefficients
+end
+
+function _copy!(output_terms, output_coefficients, input_terms, input_coefficients; thread::Bool=true)
+    @assert length(output_terms) >= length(input_terms)
+    @assert length(output_coefficients) >= length(input_coefficients)
+    @assert length(input_terms) == length(input_coefficients)
+
+    AK.foreachindex(input_terms; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do index
+        @inbounds begin
+            output_terms[index] = input_terms[index]
+            output_coefficients[index] = input_coefficients[index]
+        end
+    end
+    return output_terms, output_coefficients
+end
+
+
+# Coefficient cumulative sums serve the resampling implementation.
+coeffcumsum!(coefficients; thread::Bool=true) =
+    AK.accumulate!((left, right) -> left + abs(right), coefficients; init=zero(eltype(coefficients)),
+        neutral=zero(eltype(coefficients)), max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+
+coeffcumsum(coefficients; thread::Bool=true) = coeffcumsum(coefficients, 1; thread)
+
+function coeffcumsum(coefficients, power::Real; thread::Bool=true)
+    # `abs(coefficient)^power` is real, while `AK.map!` retains the destination element type.
+    cumulative_coefficients = similar(coefficients, real(eltype(coefficients)))
+    AK.map!(coefficient -> abs(coefficient)^power, cumulative_coefficients, coefficients;
+        max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    coeffcumsum!(cumulative_coefficients; thread)
+    return cumulative_coefficients
 end

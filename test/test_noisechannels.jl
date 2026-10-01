@@ -138,17 +138,19 @@ end
         @test getcoeff(out, :I, 1) ≈ c * gamma
     end
 
-    # the noise channel must act locally, and leave other qubits untouched
+    # the noise channel must act locally, and leave other qubits untouched, on every backend
     nq = 3
     gamma = 0.4
     gate = AmplitudeDampingNoise(2)
 
     pstr = PauliString(nq, [:X, :Z, :Y], [1, 2, 3], 0.5)
-    out = propagate(gate, pstr, gamma; min_abs_coeff=0.0)
+    for makesum in (PauliSum, VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 2))
+        out = propagate(gate, makesum(PauliSum(pstr)), gamma; min_abs_coeff=0.0)
 
-    @test length(out) == 2
-    @test getcoeff(out, [:X, :Z, :Y], [1, 2, 3]) ≈ 0.5 * (1 - gamma)
-    @test getcoeff(out, [:X, :I, :Y], [1, 2, 3]) ≈ 0.5 * gamma
+        @test length(out) == 2
+        @test getcoeff(out, [:X, :Z, :Y], [1, 2, 3]) ≈ 0.5 * (1 - gamma)
+        @test getcoeff(out, [:X, :I, :Y], [1, 2, 3]) ≈ 0.5 * gamma
+    end
 end
 
 

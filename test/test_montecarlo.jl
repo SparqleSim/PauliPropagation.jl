@@ -1,6 +1,6 @@
 using Test
 using PauliPropagation
-using PauliPropagation.PropagationBase
+const PP = PauliPropagation
 using Random
 
 
@@ -11,7 +11,7 @@ using Random
     pstr = PauliString(nq, :Z, 1)
 
     # mcsample! only mutates the active view in place: sums are never swapped or resized
-    prop_cache = VectorPauliPropagationCache(VectorPauliSum(pstr))
+    prop_cache = PropagationCache(VectorPauliSum(pstr))
     main_before, aux_before = mainsum(prop_cache), auxsum(prop_cache)
     @test mcsample!(gate, prop_cache, theta) === prop_cache
     @test mainsum(prop_cache) === main_before
@@ -45,10 +45,9 @@ end
     term = symboltoint(nq, :Y, 1)
 
     # H Y H = -Y, so this gate is a case where conjugation flips the coefficient's sign
-    exact_term, exact_coeff = only(apply(gate, term, 1.0, clifford_map[gate.symbol]))
-    @test exact_coeff ≈ -1.0
+    exact_term, exact_coeff = term, -1.0
 
-    # squared=false: Clifford application is deterministic and matches apply() exactly
+    # squared=false: Clifford application is deterministic and matches the conjugation exactly
     psum1 = VectorPauliSum(nq, [term], [1.0])
     mcapplytoall!(gate, psum1)
     @test only(paulis(psum1)) == exact_term
@@ -179,6 +178,41 @@ end
 end
 
 
+@testset "mcapplytoall! is written for every Pauli sum" begin
+    nq = 3
+    gate = PauliRotation([:X, :X], [1, 2])
+    gate_mask = symboltoint(nq, [:X, :X], [1, 2])
+    theta = 0.7
+    terms = [symboltoint(nq, :Z, 1), symboltoint(nq, :Z, 3), symboltoint(nq, [:Y, :Z], [2, 3])]
+    branches = Set(vcat(terms, [first(PP.paulirotationproduct(gate_mask, term)) for term in terms]))
+
+    # every term keeps one of its two branches, with unit weight when sampling squared coefficients
+    for psum in (PauliSum(nq, Dict(term => 1.0 for term in terms)), VectorPauliSum(nq, copy(terms), ones(3)))
+        sampled = mcapplytoall!(gate, psum, theta; squared=true, thread=false)
+        @test length(sampled) == 3
+        @test all(term in branches for (term, _) in sampled)
+        @test all(abs(coeff) ≈ 1 for coeff in coefficients(sampled))
+    end
+
+    # path properties count the branch a term keeps, and a Clifford gate counts nothing
+    Random.seed!(7)
+    plain = mcapplytoall!(gate, VectorPauliSum(nq, copy(terms), ones(3)), theta; thread=false)
+    Random.seed!(7)
+    tracked = mcapplytoall!(gate, VectorPauliSum(nq, copy(terms), PauliFreqTracker.(ones(3))), theta; thread=false)
+
+    @test paulis(tracked) == paulis(plain)
+    @test [coeff.coeff for coeff in coefficients(tracked)] ≈ coefficients(plain)
+    for (term, coeff) in zip(terms, coefficients(tracked))
+        @test coeff.freq == coeff.nsins + coeff.ncos == !commutes(gate_mask, term)
+    end
+
+    counts = [(coeff.nsins, coeff.ncos, coeff.freq) for coeff in coefficients(tracked)]
+    mcapplytoall!(CliffordGate(:H, 1), plain; thread=false)
+    mcapplytoall!(CliffordGate(:H, 1), tracked; thread=false)
+    @test [coeff.coeff for coeff in coefficients(tracked)] ≈ coefficients(plain)
+    @test [(coeff.nsins, coeff.ncos, coeff.freq) for coeff in coefficients(tracked)] == counts
+end
+
 @testset "mcsample converts PauliString and PauliSum inputs" begin
     nq = 3
     circuit = efficientsu2circuit(nq, 1)
@@ -288,27 +322,27 @@ end
     n = length(psum)
     target_size = max(1, n ÷ 2)
 
-    # systematic_resample!'s comb step is quantized and randomly offset, so both the survivor
+    # systematic_resample!'s comb spacing is quantized and randomly offset, so both the survivor
     # count and the weight it carries land close to, but not always exactly at, their targets
     term_tol = 3
 
-    prop_cache = VectorPauliPropagationCache(deepcopy(psum))
-    total_before = sum(activecoeffs(prop_cache))
-    resample!(prop_cache, target_size; resample_func=systematic_resample!)
-    @test abs(activesize(prop_cache) - target_size) <= term_tol
-    @test isapprox(sum(activecoeffs(prop_cache)), total_before; atol=term_tol * total_before / target_size)
+    prop_cache = PropagationCache(deepcopy(psum))
+    total_before = sum(PP.activecoeffs(prop_cache))
+    resample!(prop_cache, target_size; resample_func=PP.systematic_resample!)
+    @test abs(PP.activesize(prop_cache) - target_size) <= term_tol
+    @test isapprox(sum(PP.activecoeffs(prop_cache)), total_before; atol=term_tol * total_before / target_size)
 
     # target_size equal to the current size is allowed, only exceeding it is an error
-    same_size_cache = VectorPauliPropagationCache(deepcopy(psum))
-    resample!(same_size_cache, n; resample_func=systematic_resample!)
-    @test abs(activesize(same_size_cache) - n) <= term_tol
+    same_size_cache = PropagationCache(deepcopy(psum))
+    resample!(same_size_cache, n; resample_func=PP.systematic_resample!)
+    @test abs(PP.activesize(same_size_cache) - n) <= term_tol
 
-    over_cache = VectorPauliPropagationCache(deepcopy(psum))
+    over_cache = PropagationCache(deepcopy(psum))
     @test_throws ArgumentError resample!(over_cache, n + 1)
 
     # out-of-place resample leaves the input psum untouched
     original = deepcopy(psum)
-    result = resample(psum, target_size; resample_func=systematic_resample!)
+    result = resample(psum, target_size; resample_func=PP.systematic_resample!)
     @test psum == original
     @test abs(length(result) - target_size) <= term_tol
 end
@@ -340,15 +374,15 @@ end
     target_size = max(1, n ÷ 2)
     term_tol = 3
 
-    # multinomial_resample! draws exactly target_size samples, so its count is always exact
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
-    resample!(cache, target_size; resample_func=multinomial_resample!)
-    @test activesize(cache) == target_size
+    # multinomial_resample! keeps every term drawn, so at most target_size terms survive
+    cache = PropagationCache(deepcopy(base_psum))
+    resample!(cache, target_size; resample_func=PP.multinomial_resample!)
+    @test 1 <= PP.activesize(cache) <= target_size
 
-    for f in (systematic_resample!, semideterministic_systematic_resample!)
-        cache = VectorPauliPropagationCache(deepcopy(base_psum))
+    for f in (PP.systematic_resample!, PP.semideterministic_systematic_resample!)
+        cache = PropagationCache(deepcopy(base_psum))
         resample!(cache, target_size; resample_func=f)
-        @test 1 <= activesize(cache) <= target_size + term_tol
+        @test 1 <= PP.activesize(cache) <= target_size + term_tol
     end
 end
 
@@ -361,21 +395,21 @@ end
     target_size = max(1, n ÷ 2)
     term_tol = 3
 
-    # multinomial_resample! draws exactly target_size samples, so its count is always exact
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
-    resample!(cache, target_size; resample_func=multinomial_resample!)
-    @test activesize(cache) == target_size
+    # multinomial_resample! keeps every term drawn, so at most target_size terms survive
+    cache = PropagationCache(deepcopy(base_psum))
+    resample!(cache, target_size; resample_func=PP.multinomial_resample!)
+    @test 1 <= PP.activesize(cache) <= target_size
 
-    # the deduplicating variants' comb step is quantized, so the survivor count can land a
+    # the deduplicating variants' comb spacing is quantized, so the survivor count can land a
     # few terms above target_size, and may also land well below it if many terms deduplicate
-    for f in (systematic_resample!, semideterministic_systematic_resample!)
-        cache = VectorPauliPropagationCache(deepcopy(base_psum))
+    for f in (PP.systematic_resample!, PP.semideterministic_systematic_resample!)
+        cache = PropagationCache(deepcopy(base_psum))
         resample!(cache, target_size; resample_func=f)
-        @test 1 <= activesize(cache) <= target_size + term_tol
+        @test 1 <= PP.activesize(cache) <= target_size + term_tol
     end
 end
 
-@testset "resample converts PauliSum inputs" begin
+@testset "resample takes a PauliSum" begin
     nq = 4
     pstrs = [PauliString(nq, rand([:X, :Y, :Z]), rand(1:nq), rand() + 0.1) for _ in 1:30]
     psum = PauliSum(pstrs)
@@ -387,10 +421,10 @@ end
     @test 1 <= length(resampled) <= target_size + 3
     @test sum(abs, coefficients(resampled)) ≈ sum(abs, coefficients(psum)) rtol = 0.3
 
-    # the input is converted, not consumed
+    # out of place leaves the input untouched, in place resamples it
     @test length(psum) == n
-
-    @test_throws ArgumentError resample!(psum, target_size)
+    resample!(psum, target_size)
+    @test 1 <= length(psum) <= target_size + 3
 end
 
 
@@ -400,12 +434,229 @@ end
     base_psum = merge!(VectorPauliSum(pstrs))
     target_size = 5
 
-    # under squared=true, multinomial_resample! assigns every survivor the same weight share
-    # of the *squared* 2-norm: |coeff| = sqrt(sum(abs2) / target_size). If squared were dropped
-    # on the way to the resampler, the magnitude would be the 1-norm share sum(abs) / target_size.
-    squared_share = sqrt(sum(abs2, coefficients(base_psum)) / target_size)
+    # under squared=true, multinomial_resample! gives every survivor its draws' share of the *squared*
+    # 2-norm, |coeff|^2 = n_draws * sum(abs2) / target_size, which conserves that norm. If squared were
+    # dropped on the way to the resampler, the 1-norm would be conserved instead.
+    cache = PropagationCache(deepcopy(base_psum))
+    resample!(cache, target_size; resample_func=PP.multinomial_resample!, squared=true)
+    @test sum(abs2, PP.activecoeffs(cache)) ≈ sum(abs2, coefficients(base_psum))
+end
 
-    cache = VectorPauliPropagationCache(deepcopy(base_psum))
-    resample!(cache, target_size; resample_func=multinomial_resample!, squared=true)
-    @test all(isapprox(abs(c), squared_share) for c in activecoeffs(cache))
+
+@testset "mcpropagate! on a MultiPauliSum runs zone by zone" begin
+    nq = 5
+    nl = 4
+    circuit = efficientsu2circuit(nq, nl)
+    thetas = randn(countparameters(circuit))
+    pstr = PauliString(nq, :Z, 2)
+
+    exact_psum = propagate(circuit, pstr, thetas; min_abs_coeff=0)
+
+    # with either kind of zone, and below max_size bit-for-bit the same computation as propagate!
+    for seed in (VectorPauliSum(pstr), PauliSum(pstr)), n_zones in (1, 4)
+        msum = mcpropagate(circuit, MultiPauliSum(seed, n_zones), thetas; max_size=10^9, min_abs_coeff=0)
+        @test msum isa MultiPauliSum
+        @test length(msum) == length(exact_psum)
+        @test all(coeff == getcoeff(exact_psum, term) for (term, coeff) in msum)
+
+        # resampling bounds the ensemble, through either resampling strategy
+        max_size = 10
+        for squared in (false, true)
+            result = mcpropagate(circuit, MultiPauliSum(seed, n_zones), thetas; max_size, squared, min_abs_coeff=1e-8)
+            @test !isempty(result)
+            @test length(result) <= max_size
+        end
+    end
+end
+
+
+@testset "resample! on a MultiPauliSum resamples zone by zone" begin
+    nq = 6
+    circuit = efficientsu2circuit(nq, 3)
+    thetas = randn(countparameters(circuit))
+    psum = propagate(circuit, PauliString(nq, :Z, 2), thetas; min_abs_coeff=0)
+    n = length(psum)
+    target_size = n ÷ 3
+    # the calibrated comb aims the expected survivor count at target_size, and the count fluctuates around it
+    term_tol = target_size ÷ 20
+    total_weight = sum(abs, coefficients(psum))
+
+    for seed in (VectorPauliSum(psum), psum), thread in (true, false)
+        msum = MultiPauliSum(seed, 4)
+
+        # the comb of the systematic strategies conserves the total weight, and only keeps terms of the sum
+        for f in (PP.semideterministic_systematic_resample!, PP.systematic_resample!, PP.multinomial_resample!)
+            cache = PropagationCache(deepcopy(msum))
+            resample!(cache, target_size; resample_func=f, thread)
+            @test 1 <= length(cache) <= target_size + term_tol
+            @test sum(abs, coefficients(cache)) ≈ total_weight rtol = 0.01
+            @test all(sign(coeff) == sign(getcoeff(psum, term)) for (term, coeff) in zip(paulis(cache), coefficients(cache)))
+        end
+
+        # the resampled coefficients conserve the squared 2-norm when resampling squared
+        squared_norm = sum(abs2, coefficients(psum))
+        for f in (PP.systematic_resample!, PP.multinomial_resample!)
+            cache = PropagationCache(deepcopy(msum))
+            resample!(cache, target_size; resample_func=f, squared=true, thread)
+            @test sum(abs2, coefficients(cache)) ≈ squared_norm rtol = 0.01
+        end
+        cache = PropagationCache(deepcopy(msum))
+        @test_throws ArgumentError resample!(cache, target_size; squared=true, resample_func=PP.semideterministic_systematic_resample!)
+
+        # out-of-place resampling leaves the input untouched and returns the same type
+        result = resample(msum, target_size)
+        @test result isa MultiPauliSum
+        @test length(msum) == n
+        @test 1 <= length(result) <= target_size + term_tol
+    end
+
+    # the terms stay where they are, so sorted vector zones stay sorted
+    cache = PropagationCache(MultiPauliSum(VectorPauliSum(psum), 4))
+    merge!(cache)
+    resample!(cache, target_size)
+    @test all(PP.sortedprefix(mainsum(zonecache)) == PP.activesize(zonecache) for zonecache in PP.zonecaches(cache))
+
+    # every zone keeps only what it owns
+    for (zone_id, zone) in enumerate(zones(PP.activesum(cache)))
+        @test all(zoneof(mainsum(cache), term) == zone_id for term in paulis(zone))
+    end
+end
+
+
+@testset "averaged over every comb offset, the new coefficients are the incoming ones" begin
+    PB = PP.PropagationBase
+    n = 40
+    coeffs = randn(MersenneTwister(9), n) .* exp.(randn(MersenneTwister(10), n))
+    vpsum = VectorPauliSum(32, UInt64.(1:n), coeffs)
+    spacing = sum(abs, coeffs) / 15
+    new_coeff_func(coeff, n_teeth) = PB._compute_new_coeff(n_teeth, spacing, coeff, false)
+
+    for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum)
+        tsum = makesum(deepcopy(vpsum))
+        # the result only changes where a tooth crosses the end of an interval, so one walk per stretch of offsets
+        # between such crossings, weighted by its length, gives the exact mean
+        interval_ends = cumsum(abs.(collect(coefficients(tsum))))
+        edges = unique!(sort!([0.0; mod.(interval_ends ./ spacing, 1.0); 1.0]))
+        mean_coeffs = zeros(n)
+        for (lo, hi) in zip(edges[1:end-1], edges[2:end])
+            offset = (lo + hi) / 2
+            teeth_count_func(position) = floor(position / spacing - offset)
+            cache = PropagationCache(deepcopy(tsum))
+            _, interval_starts = PB._weigh_terms(abs, cache; thread=false)
+            PB._set_coeffs_and_drop_zeros!(abs, teeth_count_func, new_coeff_func, cache, interval_starts; thread=false)
+            for (term, coeff) in zip(paulis(cache), coefficients(cache))
+                mean_coeffs[term] += (hi - lo) * coeff
+            end
+        end
+        @test mean_coeffs ≈ coeffs rtol = 1e-12
+    end
+end
+
+
+@testset "at any comb offset, the calibrated comb misses its expectations by less than one tooth" begin
+    PB = PP.PropagationBase
+    n = 1000
+    target_size = n ÷ 2
+    # heaviest first, so that the terms lighter than a tooth form one run, of which the comb hits floor or ceil of the
+    # expected number
+    coeffs = sort!(randn(MersenneTwister(11), n) .* exp.(randn(MersenneTwister(12), n)); by=abs, rev=true)
+    vpsum = VectorPauliSum(32, UInt64.(1:n), coeffs)
+    total_weight = sum(abs, coeffs)
+    spacing = PB._calibrate_comb_spacing(abs, PropagationCache(deepcopy(vpsum)), total_weight, target_size; rtol=0.01, atol=1, thread=false)
+    expected_n_kept = sum(coeff -> min(1.0, abs(coeff) / spacing), coeffs)
+
+    # the bounds hold for every offset, so each resampling may lay its comb anywhere
+    for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum), _ in 1:3
+        cache = PropagationCache(makesum(deepcopy(vpsum)))
+        PB.systematic_resample!(cache, target_size)
+        @test abs(sum(abs, coefficients(cache)) - total_weight) <= (1 + 1e-9) * spacing
+        if makesum === identity
+            @test floor(expected_n_kept) <= length(cache) <= ceil(expected_n_kept)
+        end
+    end
+end
+
+
+@testset "setting the coefficients keeps the same terms on any number of tasks" begin
+    PB = PP.PropagationBase
+    n = 4 * PB._MIN_ELEMS_PER_TASK
+    rng = MersenneTwister(11)
+    input_terms = UInt64.(1:n)
+    # dyadic coefficients sum exactly in any order, so every split of the terms gives them the same intervals
+    input_coeffs = [rand(rng, (-1, 1)) * rand(rng, 1:64) / 8 for _ in 1:n]
+    n_sorted = n ÷ 3
+    comb_spacing = sum(abs, input_coeffs) / (n ÷ 2)
+    # a comb whose teeth sit a third of the spacing past every multiple of it
+    teeth_count_func(position) = floor(position / comb_spacing - 1 / 3)
+    new_coeff_func(coeff, n_teeth) = PB._compute_new_coeff(n_teeth, comb_spacing, coeff, false)
+    newcache() = PropagationCache(VectorPauliSum(32, copy(input_terms), copy(input_coeffs), n_sorted))
+
+    serial = newcache()
+    _, serial_interval_starts = PB._weigh_terms(abs, serial; thread=false)
+    PB._set_coeffs_and_drop_zeros!(abs, teeth_count_func, new_coeff_func, serial, serial_interval_starts; thread=false)
+    @test 0 < length(serial) < n
+
+    task_partitioner = PB.AK.TaskPartitioner(n, 4, 1)
+    n_tasks = task_partitioner.num_tasks
+    interval_starts = [sum(abs, view(input_coeffs, 1:first(task_partitioner[task_id])-1); init=0.0) for task_id in 1:n_tasks]
+    in_tasks = newcache()
+    PB._set_coeffs_and_drop_zeros_in_tasks!(abs, teeth_count_func, new_coeff_func, in_tasks, interval_starts, task_partitioner, n_tasks)
+    @test PB.activeterms(in_tasks) == PB.activeterms(serial)
+    @test PB.activecoeffs(in_tasks) == PB.activecoeffs(serial)
+
+    # the terms are their own positions, so the kept ones among the first n_sorted are the sorted prefix
+    n_sorted_kept = count(<=(n_sorted), PB.activeterms(serial))
+    @test PB.sortedprefix(mainsum(serial)) == n_sorted_kept
+    @test PB.sortedprefix(mainsum(in_tasks)) == n_sorted_kept
+
+    # a new coefficient can be costly to find, as for multinomial draws, so every term asks for one only once
+    n_calls = Threads.Atomic{Int}(0)
+    function counted_new_coeff_func(coeff, n_teeth)
+        Threads.atomic_add!(n_calls, 1)
+        return new_coeff_func(coeff, n_teeth)
+    end
+    PB._set_coeffs_and_drop_zeros_in_tasks!(abs, teeth_count_func, counted_new_coeff_func, newcache(), interval_starts, task_partitioner, n_tasks)
+    @test n_calls[] == n
+
+    # the walk takes the terms in as many chunks as they were weighed in
+    @test_throws ArgumentError PB._set_coeffs_and_drop_zeros!(abs, teeth_count_func, new_coeff_func, newcache(), [0.0, 0.5]; thread=false)
+end
+
+
+@testset "the calibrated comb spacing keeps the target in expectation" begin
+    PB = PP.PropagationBase
+    n = 4 * PB._MIN_ELEMS_PER_TASK
+    rng = MersenneTwister(5)
+    # log-normal magnitudes over several decades, as in propagated sums
+    coeffs = randn(rng, n) .* exp.(1.5 .* randn(rng, n))
+    vpsum = VectorPauliSum(32, UInt64.(1:n), coeffs)
+    total_weight = sum(abs, coeffs)
+    expected_n_unique(spacing) = sum(coeff -> min(1.0, abs(coeff) / spacing), coeffs)
+
+    # every storage lands within the tolerance below the target, also when nearly every term has to survive
+    for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum), target_size in (n ÷ 10, n ÷ 2, n - n ÷ 100)
+        cache = PropagationCache(makesum(deepcopy(vpsum)))
+        spacing = PB._calibrate_comb_spacing(abs, cache, total_weight, target_size; rtol=0.01, atol=0, thread=true)
+        @test 0.99 * target_size <= expected_n_unique(spacing) <= target_size * (1 + 1e-9)
+    end
+end
+
+
+@testset "one pass counts and weighs as two reductions do, on every storage" begin
+    PB = PP.PropagationBase
+    n = 4 * PB._MIN_ELEMS_PER_TASK
+    rng = MersenneTwister(6)
+    coeffs = randn(rng, n)
+    vpsum = VectorPauliSum(32, UInt64.(1:n), coeffs)
+    is_positive(coeff) = coeff > 0
+    negative_weight(coeff) = is_positive(coeff) ? 0.0 : abs(coeff)
+
+    for makesum in (identity, vps -> MultiPauliSum(vps, 4), PauliSum, vps -> MultiPauliSum(PauliSum(vps), 4)), thread in (true, false)
+        n_positive, total_weight, interval_starts = PB._count_and_weigh_terms(is_positive, negative_weight, PropagationCache(makesum(deepcopy(vpsum))); thread)
+        @test n_positive == count(is_positive, coeffs)
+        @test total_weight ≈ sum(negative_weight, coeffs)
+        # the first chunk starts at zero and every other one where the chunks before it end, within the total
+        @test iszero(first(interval_starts))
+        @test issorted(interval_starts) && last(interval_starts) < total_weight
+    end
 end

@@ -186,7 +186,7 @@ function getpauli(pstr::PauliStringType, qinds)
     pstr_new = zero(pstr)
     for (i, qind) in enumerate(qinds)
         pair = _getpaulibits(pstr, qind) # get two bits for pauli at qind
-        pstr_new |= (pair << (2 * (i - 1))) # append pair using bitwise OR at 2i
+        pstr_new |= (oftype(pstr_new, pair) << (2 * (i - 1))) # append pair using bitwise OR at 2i
     end
     return pstr_new
 end

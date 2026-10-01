@@ -167,3 +167,17 @@ function composecliffordmaps(circuit)
     return [(UInt8(pair[1]), Int(pair[2])) for pair in pairs]
 
 end
+
+
+# Prepares the relevant maps and shifts for a Clifford gate.
+_preparecliffordmap(::Type{TT}, gate::CliffordGate) where {TT} = _preparecliffordmap(TT, gate, Val(length(gate.qinds)))
+
+# the number of qubits as a type gives the tuples below a fixed length
+function _preparecliffordmap(::Type{TT}, gate::CliffordGate, ::Val{K}) where {TT,K}
+    lookup_map = clifford_map[gate.symbol]
+    qinds = ntuple(ii -> gate.qinds[ii], Val(K))
+    shifts = map(_bitshiftfromsiteindex, qinds)
+    changes = ntuple(ii -> setpauli(zero(TT), (ii - 1) ⊻ first(lookup_map[ii]), qinds), Val(4^K))
+    signs = ntuple(ii -> last(lookup_map[ii]), Val(4^K))
+    return (; shifts, changes, signs)
+end

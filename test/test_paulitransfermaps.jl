@@ -98,6 +98,14 @@ end
         @test psum1 == psum2
     end
 
+    # a transfer map gate only defines `apply`, and so takes the generic path on every Pauli sum
+    circuit = [PauliRotation(:Y, 1), g, CliffordGate(:CNOT, [1, 2]), g]
+    circuit_psum = PauliSum(PauliString(nq, :Z, 2))
+    circuit_reference = propagate(circuit, circuit_psum, [0.4])
+    for makesum in (VectorPauliSum, psum -> MultiPauliSum(VectorPauliSum(psum), 2), psum -> MultiPauliSum(psum, 2))
+        @test PauliSum(propagate(circuit, makesum(circuit_psum), [0.4])) ≈ circuit_reference
+    end
+
     # test the matrix constructors
     U = tomatrix(pauli_rotation, theta)
     ptm = calculateptm(U)

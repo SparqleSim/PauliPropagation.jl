@@ -49,7 +49,13 @@ VectorPauliSum(::Type{CT}, nqubits::Int) where {CT} = VectorPauliSum(nqubits, ge
 PropagationBase.storage(vpsum::VectorPauliSum) = (vpsum.terms, vpsum.coeffs)
 
 PropagationBase.sortedprefix(vpsum::VectorPauliSum) = vpsum._terms_sorted
-PropagationBase.setsortedprefix!(vpsum::VectorPauliSum, n::Int) = (vpsum._terms_sorted = n; vpsum)
+function PropagationBase.setsortedprefix!(vpsum::VectorPauliSum, n::Int)
+    if !(0 <= n <= length(vpsum.terms))
+        throw(ArgumentError("sorted prefix must be between 0 and the number of terms, got $n for $(length(vpsum.terms))."))
+    end
+    vpsum._terms_sorted = n
+    return vpsum
+end
 
 """
     nqubits(vpsum::VectorPauliSum)
@@ -62,8 +68,8 @@ nqubits(vpsum::VectorPauliSum) = vpsum.nqubits
 Base.similar(vpsum::VectorPauliSum) = VectorPauliSum(vpsum.nqubits, similar(vpsum.terms), similar(vpsum.coeffs))
 
 function Base.resize!(vpsum::VectorPauliSum, n_new::Int)
-    resize!(vpsum.terms, n_new)
-    resize!(vpsum.coeffs, n_new)
+    vpsum.terms = PropagationBase._resizearray(vpsum.terms, n_new)
+    vpsum.coeffs = PropagationBase._resizearray(vpsum.coeffs, n_new)
     setsortedprefix!(vpsum, min(sortedprefix(vpsum), n_new))  # clamp on shrink, no-op on grow
     return vpsum
 end
@@ -93,11 +99,6 @@ function Base.show(io::IO, vecpsum::VectorPauliSum)
     end
 end
 
-
-function Base.conj!(vpsum::VectorPauliSum)
-    vpsum.coeffs .= conj.(vpsum.coeffs)
-    return vpsum
-end
 
 
 function Base.sort!(vpsum::VectorPauliSum; by=nothing, kwargs...)

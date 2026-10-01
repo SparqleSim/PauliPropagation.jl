@@ -13,28 +13,39 @@ using .PropagationBase
 
 include("./PauliDataTypes/PauliDataTypes.jl")
 export
-    PauliStringType,
-    PauliType,
-    PauliSum,
     PauliString,
+    PauliSum,
     VectorPauliSum,
-    VectorPauliPropagationCache,
     nqubits,
     paulis,
     coefficients,
-    norm,
     paulitype,
     coefftype,
     numcoefftype,
     getcoeff,
     topaulistrings,
-    mult!,
+    convertcoefftype,
+    norm,
     add!,
     set!,
+    push!,
     mult!,
+    mapterms,
+    mapterms!,
+    mapcoeffs,
+    mapcoeffs!,
+    mapcoeffsbypair!,
+    sortterms,
+    sortterms!,
+    sortcoeffs,
+    sortcoeffs!,
+    filterterms,
+    filterterms!,
+    filtercoeffs,
+    filtercoeffs!,
     empty!,
-    similar,
-    convertcoefftype
+    emptylike,
+    similar
 
 include("./PauliAlgebra/PauliAlgebra.jl")
 export
@@ -58,7 +69,8 @@ export
     commutes,
     commutator,
     trace,
-    getinttype
+    getinttype,
+    NTupleInteger
 
 include("PauliTransferMatrix/PauliTransferMatrix.jl")
 export
@@ -123,23 +135,25 @@ export
 
 include("Propagation/Propagation.jl")
 export
-    AbstractPauliPropagationCache,
-    PauliPropagationCache,
-    VectorPauliPropagationCache,
     PropagationCache,
+    AbstractPauliPropagationCache,
     mainsum,
     auxsum,
     capacity,
     propagate,
+    extractsum!,
     propagate!,
     applymergetruncate!,
     applytoall!,
     apply,
     truncate,
     truncate!,
+    buildtruncfunc,
     maxabscoeff,
+    mapreducecoeffs,
     merge,
     merge!,
+    mergeandtruncate!,
     mergefunc
 
 
@@ -200,10 +214,21 @@ export
     estimatemse,
     estimatemse!
 
+include("MultiPauliSum/MultiPauliSum.jl")
+export
+    MultiPauliSum,
+    MultiPauliPropagationCache,
+    zones,
+    nzones,
+    zonesizes,
+    zoneof
+
 include("Symmetry/Symmetry.jl")
 export
     symmetrymerge,
-    translationmerge
+    symmetrymerge!,
+    translationmerge,
+    translationmerge!
 
 include("Surrogate/Surrogate.jl")
 export
