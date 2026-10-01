@@ -14,3 +14,6 @@ include("mcsample.jl")
 
 # rotationlayers.jl contains how a `RotationLayer` is propagated orbit by orbit.
 include("rotationlayers.jl")
+
+# rotationlayerclasses.jl contains how a `RotationLayer` is propagated class by class.
+include("rotationlayerclasses.jl")

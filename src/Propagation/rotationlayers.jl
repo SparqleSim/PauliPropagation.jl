@@ -105,7 +105,7 @@ function _applysublayerintasks!(prop_cache::AbstractPauliPropagationCache, plan,
     PropagationBase._checkfits(n_terms, record_labels, sorted_labels)
 
     tasks = _taskworkspaces!(workspace, n_tasks, length(plan.masks))
-    n_bits = _partitionbits(n_terms, sizeof(eltype(main_terms)) + sizeof(eltype(main_coeffs)) + sizeof(Int))
+    n_bits = _partitionbits(n_terms, _recordbytes(plan, sizeof(eltype(main_terms)) + sizeof(eltype(main_coeffs)) + sizeof(Int)))
     partition_counts = zeros(Int, (1 << n_bits) + 1, n_tasks)
 
     # a record for every Pauli string, at the index of the Pauli string
@@ -200,8 +200,12 @@ end
 
 function _transformpartition!(output, task, plan, truncation, record_terms, record_coeffs, record_labels, lo::Int, hi::Int)
     if lo <= hi
-        _grouporbits!(task, output, truncation, record_terms, record_coeffs, record_labels, lo, hi)
-        _transformorbits!(output, task, plan, truncation, record_terms)
+        if _rotatesclasses(plan)
+            _rotatepartitionbyclass!(output, task, plan, truncation, record_terms, record_coeffs, record_labels, lo, hi)
+        else
+            _grouporbits!(task, output, truncation, record_terms, record_coeffs, record_labels, lo, hi)
+            _transformorbits!(output, task, plan, truncation, record_terms)
+        end
     end
     return output
 end
@@ -223,7 +227,7 @@ function _applysublayer!(::PropagationBase.DictStorage, prop_cache::AbstractPaul
     record_labels = _ensurelength!(workspace.labels, n_terms)
 
     task = first(_taskworkspaces!(workspace, 1, length(plan.masks)))
-    n_bits = _partitionbits(n_terms, sizeof(eltype(record_terms)) + sizeof(eltype(record_coeffs)) + sizeof(Int))
+    n_bits = _partitionbits(n_terms, _recordbytes(plan, sizeof(eltype(record_terms)) + sizeof(eltype(record_coeffs)) + sizeof(Int)))
     partition_counts = zeros(Int, (1 << n_bits) + 1, 1)
 
     _writerecords!(record_terms, record_coeffs, record_labels, view(partition_counts, :, 1), n_bits, 1, task.orbit_rotations, plan, main_sum)
@@ -248,8 +252,10 @@ end
 
 # The Pauli strings of an orbit belong to many zones, so the records of an orbit are collected in the zone that the hash of
 # the representative picks. Every zone reads its Pauli strings twice: to count the records for every zone, and to write them
-# there, each zone into a range of its own. It then applies the rotations to the orbits collected in it and puts what it
-# makes in its outbox. At last the zones are emptied and take what the outboxes hold for them.
+# there, each zone into a range of its own. It then applies the rotations to the orbits collected in it. A zone of arrays
+# keeps its records in its auxiliary arrays, so that its main arrays are free, and every zone writes what it makes into the
+# main arrays of the zones that own it. Any other zone puts what it makes in its outbox, and at last the zones are emptied
+# and take what the outboxes hold for them.
 # The Pauli strings of orbits with more rotations than a block holds are collected after all zones.
 function _applysublayer!(::PropagationBase.MultiSumStorage, prop_cache::AbstractPauliPropagationCache, plan, truncation, workspace,
     rotateonebyone!::F; thread::Bool=true) where {F}
@@ -266,13 +272,15 @@ function _applysublayer!(::PropagationBase.MultiSumStorage, prop_cache::Abstract
 
     # the highest bits of the hash pick the zone, and the bits below them a partition within the zone
     zone_bits = trailing_zeros(n_zones)
-    record_bytes = sizeof(paulitype(prop_cache)) + sizeof(coefftype(prop_cache)) + sizeof(Int)
+    record_bytes = _recordbytes(plan, sizeof(paulitype(prop_cache)) + sizeof(coefftype(prop_cache)) + sizeof(Int))
     n_bits = zone_bits + _partitionbits(cld(n_terms, n_zones), record_bytes)
     n_partitions_per_zone = 1 << (n_bits - zone_bits)
     partition_counts = zeros(Int, (1 << n_bits) + 1, n_zones)
 
+    # the labels that the records of a class plan are counted by, read again when the records are written
+    cached_labels = _cachedlabels!(workspace, zone_caches, plan)
     function count_zone!(zone_id)
-        _countrecords!(view(partition_counts, :, zone_id), n_bits, tasks[zone_id].orbit_rotations, plan, zone_caches[zone_id])
+        _countrecords!(view(partition_counts, :, zone_id), n_bits, tasks[zone_id].orbit_rotations, plan, zone_caches[zone_id], cached_labels[zone_id])
     end
     PropagationBase._eachzone(count_zone!, prop_cache, thread)
 
@@ -284,17 +292,19 @@ function _applysublayer!(::PropagationBase.MultiSumStorage, prop_cache::Abstract
 
     function write_zone!(zone_id)
         _writezonerecords!(zone_terms, zone_coeffs, zone_labels, zone_starts, view(partition_counts, :, zone_id), n_bits, n_bits - zone_bits,
-            tasks[zone_id].orbit_rotations, plan, zone_caches[zone_id])
+            tasks[zone_id].orbit_rotations, plan, zone_caches[zone_id], cached_labels[zone_id])
     end
     PropagationBase._eachzone(write_zone!, prop_cache, thread)
 
+    zone_storage = PropagationBase.zonestorage(prop_cache)
+    outputs = _zoneoutputs!(zone_storage, prop_cache, tasks)
     function transform_zone!(zone_id)
-        outbox = outboxes(prop_cache)[zone_id]
         first_record = zone_starts[zone_id]
         for partition in (zone_id-1)*n_partitions_per_zone+1:zone_id*n_partitions_per_zone
-            _transformpartition!(outbox, tasks[zone_id], plan, truncation, zone_terms[zone_id], zone_coeffs[zone_id], zone_labels[zone_id],
+            _transformpartition!(outputs[zone_id], tasks[zone_id], plan, truncation, zone_terms[zone_id], zone_coeffs[zone_id], zone_labels[zone_id],
                 partition_starts[partition] - first_record + 1, partition_starts[partition+1] - first_record)
         end
+        _finishoutput!(outputs[zone_id])
     end
     PropagationBase._eachzone(transform_zone!, prop_cache, thread)
 
@@ -302,18 +312,74 @@ function _applysublayer!(::PropagationBase.MultiSumStorage, prop_cache::Abstract
     n_onebyone = zone_starts[n_zones+2] - zone_starts[n_zones+1]
     onebyone_sum = _rotatedonebyone(rotateonebyone!, nqubits(prop_cache), zone_terms[n_zones+1], zone_coeffs[n_zones+1], 1:n_onebyone)
     for (pstr, coeff) in onebyone_sum
-        push!(first(outboxes(prop_cache)), pstr, coeff)
+        _emit!(first(outputs), pstr, coeff)
     end
+    _finishoutput!(first(outputs))
 
-    # the records hold all of the sum, so the zones are emptied before they take what the sublayer made for them
-    function deliver_to_zone!(zone_id)
-        empty!(zone_caches[zone_id])
-        PropagationBase._deliverto!(prop_cache, zone_id)
-    end
-    PropagationBase._eachzone(deliver_to_zone!, prop_cache, thread)
+    # the records hold all of the sum, so every zone ends up with what the sublayer made for it alone
+    collect_zone!(zone_id) = _collectzone!(zone_storage, prop_cache, zone_id, outputs)
+    PropagationBase._eachzone(collect_zone!, prop_cache, thread)
 
     PropagationBase._syncsums!(prop_cache)
     return prop_cache
+end
+
+# What the task of every zone writes to: the main arrays of all zones of arrays, or else its outbox.
+function _zoneoutputs!(::PropagationBase.ArrayStorage, prop_cache, tasks)
+    zone_caches = zonecaches(prop_cache)
+    n_zones = length(zone_caches)
+    n_reserved = [Threads.Atomic{Int}(0) for _ in 1:n_zones]
+
+    # the buffers of a task take about as much memory whatever the number of zones
+    flush_length = max(256, 4 * _TASK_BUFFER_LENGTH ÷ n_zones)
+    function zone_output(zone_id)
+        task_outputs = _zonetaskoutputs!(tasks[zone_id], n_zones, flush_length)
+        for target in 1:n_zones
+            main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(zone_caches[target])
+            _openoutput!(task_outputs[target], main_terms, main_coeffs, n_reserved[target])
+        end
+        return ZoneOutputs(zonemap(prop_cache), task_outputs, n_reserved)
+    end
+    return [zone_output(zone_id) for zone_id in 1:n_zones]
+end
+
+_zoneoutputs!(::PropagationBase.StorageType, prop_cache, tasks) = outboxes(prop_cache)
+
+# A zone of arrays takes what the tasks could not write into its main arrays, which grow for it. Its Pauli strings are all
+# different, since every orbit and class was transformed in one zone.
+function _collectzone!(::PropagationBase.ArrayStorage, prop_cache, zone_id::Int, outputs)
+    zonecache = zonecaches(prop_cache)[zone_id]
+    n_written = first(outputs).n_reserved[zone_id][]
+    n_left = 0
+    for output in outputs
+        n_left += output.task_outputs[zone_id].n_written
+    end
+
+    if n_left > 0
+        PropagationBase._ensurecapacity!(zonecache, n_written + n_left)
+        main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(zonecache)
+        PropagationBase._checkfits(n_written + n_left, main_terms, main_coeffs)
+        for output in outputs
+            task_output = output.task_outputs[zone_id]
+            copyto!(main_terms, n_written + 1, task_output.buffer_terms, 1, task_output.n_written)
+            copyto!(main_coeffs, n_written + 1, task_output.buffer_coeffs, 1, task_output.n_written)
+            n_written += task_output.n_written
+        end
+    end
+
+    for output in outputs
+        _closeoutput!(output.task_outputs[zone_id])
+    end
+    setactivesize!(zonecache, n_written)
+    PropagationBase.setsortedprefix!(mainsum(zonecache), 0)
+    return zonecache
+end
+
+# any other zone is emptied and takes what the outboxes hold for it
+function _collectzone!(::PropagationBase.StorageType, prop_cache, zone_id::Int, outputs)
+    empty!(zonecaches(prop_cache)[zone_id])
+    PropagationBase._deliverto!(prop_cache, zone_id)
+    return zonecaches(prop_cache)[zone_id]
 end
 
 # Arrays for the records that every zone collects, `n_records[zone_id]` of them.
@@ -384,9 +450,8 @@ function _writerecords!(record_terms::Vector{TT}, record_coeffs::Vector{CT}, rec
 
     index = first_index
     for (pstr, coeff) in source
-        representative, index_in_orbit, n_orbit_rotations = _locateinorbit!(orbit_rotations, plan, pstr)
-        label = _label(representative, index_in_orbit, n_orbit_rotations)
-        record_terms[index] = _recordterm(pstr, representative, n_orbit_rotations)
+        record_term, label = _record(orbit_rotations, plan, pstr)
+        record_terms[index] = record_term
         record_coeffs[index] = coeff
         record_labels[index] = label
         partition_counts[_partitionof(label, n_bits)] += 1
@@ -394,6 +459,15 @@ function _writerecords!(record_terms::Vector{TT}, record_coeffs::Vector{CT}, rec
     end
 
     return record_terms
+end
+
+# the Pauli string that the record of `pstr` keeps, and its label
+@inline function _record(orbit_rotations::Vector{Int32}, plan, pstr)
+    if _rotatesclasses(plan)
+        return pstr, _classlabel(plan, pstr)
+    end
+    representative, index_in_orbit, n_orbit_rotations = _locateinorbit!(orbit_rotations, plan, pstr)
+    return _recordterm(pstr, representative, n_orbit_rotations), _label(representative, index_in_orbit, n_orbit_rotations)
 end
 
 # the Pauli string that a record keeps
@@ -484,35 +558,61 @@ function _sortrecords!(record_terms::Vector{TT}, record_coeffs::Vector{CT}, reco
 end
 
 """
-    _countrecords!(partition_counts, n_bits, orbit_rotations, plan, source)
+    _countrecords!(partition_counts, n_bits, orbit_rotations, plan, source, cached_labels)
 
 Counts the records of each partition that the Pauli strings of `source` make.
+The labels of a class plan are kept in `cached_labels`, in the order of `source`.
 """
-function _countrecords!(partition_counts, n_bits::Int, orbit_rotations::Vector{Int32}, plan, source)
+function _countrecords!(partition_counts, n_bits::Int, orbit_rotations::Vector{Int32}, plan, source, cached_labels::Vector{Int})
+    source_index = 0
     for (pstr, _) in source
-        representative, index_in_orbit, n_orbit_rotations = _locateinorbit!(orbit_rotations, plan, pstr)
-        partition_counts[_partitionof(_label(representative, index_in_orbit, n_orbit_rotations), n_bits)] += 1
+        _, label = _record(orbit_rotations, plan, pstr)
+        source_index += 1
+        if _rotatesclasses(plan)
+            cached_labels[source_index] = label
+        end
+        partition_counts[_partitionof(label, n_bits)] += 1
     end
     return partition_counts
 end
 
+# Room for the label of every Pauli string of every zone if the plan rotates classes, whose records keep the Pauli strings.
+function _cachedlabels!(workspace, zone_caches, plan)
+    cached_labels = workspace.cached_labels
+    while length(cached_labels) < length(zone_caches)
+        push!(cached_labels, Int[])
+    end
+    if _rotatesclasses(plan)
+        for (zone_id, zonecache) in enumerate(zone_caches)
+            _ensurelength!(cached_labels[zone_id], length(zonecache))
+        end
+    end
+    return cached_labels
+end
+
 """
-    _writezonerecords!(zone_terms, zone_coeffs, zone_labels, zone_starts, cursors, n_bits, n_zone_bits, orbit_rotations, plan, source)
+    _writezonerecords!(zone_terms, zone_coeffs, zone_labels, zone_starts, cursors, n_bits, n_zone_bits, orbit_rotations, plan, source, cached_labels)
 
 Writes a record for every Pauli string of `source` and its coefficient to where `cursors` points for its partition,
-in the arrays of the zone that the partition belongs to.
+in the arrays of the zone that the partition belongs to. The labels of a class plan are read from `cached_labels`.
 """
 function _writezonerecords!(zone_terms::Vector{Vector{TT}}, zone_coeffs::Vector{Vector{CT}}, zone_labels::Vector{Vector{Int}},
-    zone_starts::Vector{Int}, cursors, n_bits::Int, n_zone_bits::Int, orbit_rotations::Vector{Int32}, plan, source) where {TT,CT}
+    zone_starts::Vector{Int}, cursors, n_bits::Int, n_zone_bits::Int, orbit_rotations::Vector{Int32}, plan, source,
+    cached_labels::Vector{Int}) where {TT,CT}
 
+    source_index = 0
     for (pstr, coeff) in source
-        representative, index_in_orbit, n_orbit_rotations = _locateinorbit!(orbit_rotations, plan, pstr)
-        label = _label(representative, index_in_orbit, n_orbit_rotations)
+        source_index += 1
+        record_term, label = if _rotatesclasses(plan)
+            pstr, cached_labels[source_index]
+        else
+            _record(orbit_rotations, plan, pstr)
+        end
         partition = _partitionof(label, n_bits)
         zone_id = ((partition - 1) >> n_zone_bits) + 1
 
         index = cursors[partition] - zone_starts[zone_id] + 1
-        zone_terms[zone_id][index] = _recordterm(pstr, representative, n_orbit_rotations)
+        zone_terms[zone_id][index] = record_term
         zone_coeffs[zone_id][index] = coeff
         zone_labels[zone_id][index] = label
         cursors[partition] += 1
@@ -908,11 +1008,12 @@ mutable struct TaskOutput{TT,CT}
     sum_coeffs::Vector{CT}
     n_reserved::Threads.Atomic{Int}
     is_full::Bool
+    flush_length::Int
 end
 
-function TaskOutput(::Type{TT}, ::Type{CT}) where {TT,CT}
-    n_room = _TASK_BUFFER_LENGTH + (1 << _MAX_BLOCK_ROTATIONS)
-    return TaskOutput{TT,CT}(Vector{TT}(undef, n_room), Vector{CT}(undef, n_room), 0, TT[], CT[], Threads.Atomic{Int}(0), false)
+function TaskOutput(::Type{TT}, ::Type{CT}, flush_length::Int=_TASK_BUFFER_LENGTH) where {TT,CT}
+    n_room = flush_length + (1 << _MAX_BLOCK_ROTATIONS)
+    return TaskOutput{TT,CT}(Vector{TT}(undef, n_room), Vector{CT}(undef, n_room), 0, TT[], CT[], Threads.Atomic{Int}(0), false, flush_length)
 end
 
 const ArrayOutputs = Union{ArrayOutput,TaskOutput}
@@ -958,7 +1059,7 @@ end
 end
 
 @inline function _roomtoemit!(output::TaskOutput, n_more::Int)
-    if output.n_written + n_more > _TASK_BUFFER_LENGTH && !output.is_full
+    if output.n_written + n_more > output.flush_length && !output.is_full
         _flush!(output)
     end
 
@@ -982,7 +1083,7 @@ end
 
 # Lets go of the arrays of the sum, and of a buffer that had to keep more than it started with room for.
 function _closeoutput!(output::TaskOutput{TT,CT}) where {TT,CT}
-    n_room = _TASK_BUFFER_LENGTH + (1 << _MAX_BLOCK_ROTATIONS)
+    n_room = output.flush_length + (1 << _MAX_BLOCK_ROTATIONS)
     if length(output.buffer_terms) > n_room
         output.buffer_terms = Vector{TT}(undef, n_room)
         output.buffer_coeffs = Vector{CT}(undef, n_room)
@@ -1019,6 +1120,36 @@ function _flush!(output::TaskOutput)
     output.n_written = 0
     return output
 end
+
+# The main arrays of the zones of a multi sum, written by one task: a Pauli string goes to the output of the zone that owns it.
+struct ZoneOutputs{ZM,TO<:TaskOutput}
+    zone_map::ZM
+    task_outputs::Vector{TO}
+    # how much of the main arrays of every zone the tasks have taken
+    n_reserved::Vector{Threads.Atomic{Int}}
+end
+
+@inline function _emit!(output::ZoneOutputs, pstr, coeff)
+    _emit!(output.task_outputs[PropagationBase.zoneof(output.zone_map, pstr)], pstr, coeff)
+    return
+end
+
+function _emitblock!(output::ZoneOutputs, orbit_terms, block_coeffs, block_present, block_start::Int, n_entries::Int)
+    for entry in 1:n_entries
+        if block_present[block_start+entry]
+            _emit!(output, orbit_terms[entry], block_coeffs[block_start+entry])
+        end
+    end
+    return
+end
+
+# copies what the buffers hold into the zones, as far as they have room
+function _finishoutput!(output::ZoneOutputs)
+    foreach(_flush!, output.task_outputs)
+    return output
+end
+
+_finishoutput!(output) = output
 
 # a term sum takes the Pauli strings one by one: a Pauli sum adds them, the outbox of a multi sum passes them to the zone that owns them
 @inline function _emit!(output::AbstractTermSum, pstr, coeff)
@@ -1060,8 +1191,27 @@ mutable struct TaskWorkspace{TT,CT}
     orbit_terms::Vector{TT}
     orbit_weights::Vector{Int}
 
-    # where the task writes when several tasks write to one array sum
+    # the classes of one partition, found through `slots`, and the records of each
+    class_of::Vector{Int32}
+    class_keys::Vector{TT}
+    class_hashes::Vector{UInt64}
+    class_starts::Vector{Int}
+    class_records::Vector{Int32}
+
+    # The Pauli strings of one class, whether they are present, and the last rotation that mixed them, found through the
+    # first `class_table_length` of `class_slots` by the highest bits of their hash from `class_hash_shift` on.
+    entry_terms::Vector{TT}
+    entry_coeffs::Vector{CT}
+    entry_present::Vector{Bool}
+    entry_steps::Vector{Int32}
+    n_entries::Int
+    class_slots::Vector{Int32}
+    class_table_length::Int
+    class_hash_shift::Int
+
+    # where the task writes when several tasks write to one array sum, and to the zones of a multi sum
     output::TaskOutput{TT,CT}
+    zone_outputs::Vector{TaskOutput{TT,CT}}
 end
 
 function TaskWorkspace(::Type{TT}, ::Type{CT}) where {TT,CT}
@@ -1069,7 +1219,8 @@ function TaskWorkspace(::Type{TT}, ::Type{CT}) where {TT,CT}
     return TaskWorkspace{TT,CT}(Int32[], Int[], Int32[], UInt64[], Int[], Int[],
         zeros(Int, _MAX_BLOCK_ROTATIONS), [Int[] for _ in 1:_MAX_BLOCK_ROTATIONS],
         [CT[] for _ in 1:_MAX_BLOCK_ROTATIONS], [Bool[] for _ in 1:_MAX_BLOCK_ROTATIONS],
-        Vector{TT}(undef, n_entries), Vector{Int}(undef, n_entries), TaskOutput(TT, CT))
+        Vector{TT}(undef, n_entries), Vector{Int}(undef, n_entries),
+        Int32[], TT[], UInt64[], Int[], Int32[], TT[], CT[], Bool[], Int32[], 0, Int32[], 0, 64, TaskOutput(TT, CT), TaskOutput{TT,CT}[])
 end
 
 """
@@ -1092,10 +1243,13 @@ mutable struct LayerWorkspace{TT,CT}
     zone_terms::Vector{Vector{TT}}
     zone_coeffs::Vector{Vector{CT}}
     zone_labels::Vector{Vector{Int}}
+
+    # the labels of the Pauli strings of every zone of a multi sum, found when its records are counted
+    cached_labels::Vector{Vector{Int}}
 end
 
 LayerWorkspace(::Type{TT}, ::Type{CT}) where {TT,CT} =
-    LayerWorkspace{TT,CT}(TaskWorkspace{TT,CT}[], Int[], TT[], CT[], Vector{TT}[], Vector{CT}[], Vector{Int}[])
+    LayerWorkspace{TT,CT}(TaskWorkspace{TT,CT}[], Int[], TT[], CT[], Vector{TT}[], Vector{CT}[], Vector{Int}[], Vector{Int}[])
 
 # Workspaces that no layer is using. A layer takes one out and puts it back when it is done, so that the next layer
 # uses the same memory, and propagations that run at the same time each have their own.
@@ -1138,6 +1292,18 @@ function _taskworkspaces!(workspace::LayerWorkspace{TT,CT}, n_tasks::Int, n_rota
         _ensurelength!(tasks[task_id].local_paulis, n_rotations)
     end
     return tasks
+end
+
+# the outputs of a task for `n_zones` zones, which flush at `flush_length`
+function _zonetaskoutputs!(task::TaskWorkspace{TT,CT}, n_zones::Int, flush_length::Int) where {TT,CT}
+    task_outputs = task.zone_outputs
+    if length(task_outputs) != n_zones || any(task_output -> task_output.flush_length != flush_length, task_outputs)
+        empty!(task_outputs)
+        for _ in 1:n_zones
+            push!(task_outputs, TaskOutput(TT, CT, flush_length))
+        end
+    end
+    return task_outputs
 end
 
 # at least `n` elements

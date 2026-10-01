@@ -84,12 +84,19 @@ A Pauli sum with numbers as coefficients is propagated orbit by orbit:
 the Pauli strings that the rotations turn into each other are collected, and the rotations mix their coefficients.
 A `VectorPauliSum` is left without duplicate Pauli strings but unsorted.
 Any other coefficient type, and a truncation by `min_rel_coeff`, propagate the rotations one by one.
+
+With `layer_method=:classes`, all rotations of the layer are applied in one pass: the Pauli strings that anticommute with the same
+rotations are collected as a class and rotated one rotation at a time, truncating after every rotation as the rotations one by one do.
 """
 function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
-    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
+    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true,
+    layer_method::Symbol=:orbits, kwargs...)
 
     _rotationanglecheck(layer, theta)
+    if !(layer_method in (:orbits, :classes))
+        throw(ArgumentError("layer_method must be :orbits or :classes, got :$layer_method."))
+    end
 
     function applyrotation!(cache, rotation, angle)
         applymergetruncate!(rotation, cache, angle;
@@ -106,7 +113,12 @@ function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::A
 
     # the weights are known within an orbit, so they are left out of the truncation function
     truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_freq, max_sins, customtruncfunc, thread)
-    _applyinorbits!(applyrotation!, layer, prop_cache, theta, _layertruncation(truncfunc, max_weight); thread)
+    truncation = _layertruncation(truncfunc, max_weight)
+    if layer_method == :classes
+        _applybyclass!(applyrotation!, layer, prop_cache, theta, truncation; thread)
+    else
+        _applyinorbits!(applyrotation!, layer, prop_cache, theta, truncation; thread)
+    end
     return
 end
 
