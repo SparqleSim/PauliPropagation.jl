@@ -253,23 +253,28 @@ function _applysublayer!(::PropagationBase.MultiSumStorage, prop_cache::Abstract
     n_zones = nzones(prop_cache)
     tasks = _taskworkspaces!(workspace, n_zones, length(plan.masks))
 
-    # the highest bits of the hash pick the zone, and the bits below them a partition within the zone
+    # The highest bits of the hash pick the zone, and the bits below them a partition within the zone. Every zone writes its
+    # records into the partitions of all zones, so the most partitions apply to those of all zones together: a zone that
+    # writes into more partitions than its processor cache holds the ends of finds none of them there.
     zone_bits = trailing_zeros(n_zones)
     record_bytes = _recordbytes(plan, sizeof(paulitype(prop_cache)) + sizeof(coefftype(prop_cache)) + sizeof(Int))
-    n_bits = zone_bits + _partitionbits(cld(n_terms, n_zones), record_bytes)
+    n_bits = max(zone_bits, min(_MAX_PARTITION_BITS, zone_bits + _partitionbits(cld(n_terms, n_zones), record_bytes)))
     n_partitions_per_zone = 2 << (n_bits - zone_bits)
 
-    # one row more than there are partitions, so that the counts of a partition are not a power of two apart, which would
-    # put them all into one set of the processor cache
-    partition_counts = zeros(Int, n_zones * n_partitions_per_zone + 1, n_zones)
+    # One row more than there are partitions, so that the counts of a partition are not a power of two apart, which would
+    # put them all into one set of the processor cache. Every zone clears its own column, so that the columns are cleared in
+    # parallel and each lies in the memory of the thread of its zone.
+    partition_counts = Matrix{Int}(undef, n_zones * n_partitions_per_zone + 1, n_zones)
 
     # The labels that the records are counted by, read again when the records are written. A zone of arrays also keeps its
-    # records in place of its Pauli strings, so that no Pauli string is read twice.
-    cached_labels = _cachedlabels!(workspace, zone_caches)
+    # records in place of its Pauli strings, so that no Pauli string is read twice. Every zone makes room for its own labels.
+    cached_labels = _cachedlabels!(workspace, n_zones)
     function count_zone!(zone_id)
         zonecache = zone_caches[zone_id]
-        _countrecords!(view(partition_counts, :, zone_id), n_bits, zone_bits, tasks[zone_id].orbit_rotations, plan, zonecache,
-            cached_labels[zone_id], _inplacerecords(StorageType(zonecache), zonecache))
+        zone_counts = fill!(view(partition_counts, :, zone_id), 0)
+        zone_labels = _ensurelength!(cached_labels[zone_id], length(zonecache))
+        _countrecords!(zone_counts, n_bits, zone_bits, tasks[zone_id].orbit_rotations, plan, zonecache, zone_labels,
+            _inplacerecords(StorageType(zonecache), zonecache))
     end
     PropagationBase._eachzone(count_zone!, prop_cache, thread)
 
@@ -284,17 +289,28 @@ function _applysublayer!(::PropagationBase.MultiSumStorage, prop_cache::Abstract
     end
     PropagationBase._eachzone(write_zone!, prop_cache, thread)
 
-    # the first half of the partitions of a zone holds orbits that fit a block, the second half the others
+    # The first half of the partitions of a zone holds orbits that fit a block, the second half the others. The classes of a
+    # layer differ widely in size, so the zones collect different amounts of work: every zone transforms its own partitions
+    # first and then takes those that the other zones have not taken yet, one at a time.
     zone_storage = PropagationBase.zonestorage(prop_cache)
     outputs = _zoneoutputs!(zone_storage, prop_cache, tasks)
+    n_partitions_taken = [Threads.Atomic{Int}(0) for _ in 1:n_zones]
     function transform_zone!(zone_id)
-        first_record = zone_starts[zone_id]
-        first_partition = (zone_id - 1) * n_partitions_per_zone
-        for partition in first_partition+1:first_partition+n_partitions_per_zone
-            lo = partition_starts[partition] - first_record + 1
-            hi = partition_starts[partition+1] - first_record
-            _transformpartition!(outputs[zone_id], tasks[zone_id], plan, long_plan, truncation, zone_terms[zone_id], zone_coeffs[zone_id],
-                zone_labels[zone_id], partition - first_partition, n_partitions_per_zone ÷ 2, lo, hi)
+        for offset in 0:n_zones-1
+            records_zone = mod1(zone_id + offset, n_zones)
+            first_record = zone_starts[records_zone]
+            first_partition = (records_zone - 1) * n_partitions_per_zone
+            while true
+                partition_in_zone = Threads.atomic_add!(n_partitions_taken[records_zone], 1) + 1
+                if partition_in_zone > n_partitions_per_zone
+                    break
+                end
+                partition = first_partition + partition_in_zone
+                lo = partition_starts[partition] - first_record + 1
+                hi = partition_starts[partition+1] - first_record
+                _transformpartition!(outputs[zone_id], tasks[zone_id], plan, long_plan, truncation, zone_terms[records_zone],
+                    zone_coeffs[records_zone], zone_labels[records_zone], partition_in_zone, n_partitions_per_zone ÷ 2, lo, hi)
+            end
         end
         _finishoutput!(outputs[zone_id])
     end
@@ -574,14 +590,11 @@ end
 _inplacerecords(::PropagationBase.ArrayStorage, zonecache) = first(PropagationBase._mainauxarrays(zonecache))
 _inplacerecords(::PropagationBase.StorageType, zonecache) = nothing
 
-# room for the label of every Pauli string of every zone
-function _cachedlabels!(workspace, zone_caches)
+# a vector of labels for every zone, which the zone makes long enough for its Pauli strings itself
+function _cachedlabels!(workspace, n_zones::Int)
     cached_labels = workspace.cached_labels
-    while length(cached_labels) < length(zone_caches)
+    while length(cached_labels) < n_zones
         push!(cached_labels, Int[])
-    end
-    for (zone_id, zonecache) in enumerate(zone_caches)
-        _ensurelength!(cached_labels[zone_id], length(zonecache))
     end
     return cached_labels
 end
