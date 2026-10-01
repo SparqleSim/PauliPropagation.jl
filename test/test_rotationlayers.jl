@@ -225,7 +225,7 @@ end
             # with room for all that the tasks write, and with so little that they keep most of it in their buffers
             resize!(by_four_tasks, capacity)
 
-            truncation = PauliPropagation._layertruncation(buildtruncfunc(by_one_task; min_abs_coeff=1e-4), 5.0)
+            truncation = PauliPropagation._layertruncation(buildtruncfunc(by_one_task; min_abs_coeff=1e-4), 5.0, 1e-4)
             workspace = PauliPropagation.LayerWorkspace(paulitype(vpsum), coefftype(vpsum))
             one_task = PauliPropagation.AK.TaskPartitioner(length(vpsum), 1, 1)
             four_tasks = PauliPropagation.AK.TaskPartitioner(length(vpsum), 4, 1)

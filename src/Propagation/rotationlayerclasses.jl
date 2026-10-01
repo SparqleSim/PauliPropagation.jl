@@ -368,6 +368,28 @@ function _rotatepartitionbyclass!(output, task, plan, truncation, record_terms::
     return output
 end
 
+
+### Rotating a class
+
+# The Pauli strings of a class differ only in the bits that its rotations flip: the low bit of a qubit that they touch
+# with X, the high bit of one touched with Y, and both bits of one touched with Z, which flip together. A qubit touched
+# with two different Paulis has both of its bits flipped independently. The strings of a class are therefore told apart
+# by the low bit of every qubit touched with X or Z, the high bit of every qubit touched with Y, and both bits of every
+# qubit touched with two Paulis. These bits, gathered next to each other, are the key of a string in its class. A rotation flips a fixed set of bits of the key, so
+# the key of the partner it makes is the key of the string with those bits flipped. The table of a class finds an entry
+# by its key: through a slot of its own where the keys are few enough, and through a hash of the key otherwise.
+# A class with more such bits than an integer holds is keyed by its Pauli strings themselves.
+
+# the most bits that a key of its own slot can have
+const _MAX_DIRECT_KEY_BITS = 20
+
+# the most bits that a key gathered into an integer can have
+const _MAX_KEY_BITS = 64
+
+# A coefficient of at most this fraction below the smallest kept one is checked against the truncation when the partner
+# it would make is decided, so that rounding cannot hide a partner that the truncation keeps.
+const _MAKE_MARGIN = 1 - 1e-12
+
 """
     _rotateclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, last)
 
@@ -376,36 +398,73 @@ Rotates the class of the records `class_records[first:last]`, counted from `lo`,
 function _rotateclass!(output, task, plan, truncation, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int,
     first::Int, last::Int) where {TT,CT}
 
-    rotations = task.orbit_rotations
-    class_records = task.class_records
-    n_rotations = _classrotations!(rotations, plan, record_terms[lo-1+class_records[first]])
+    first_pstr = record_terms[lo-1+task.class_records[first]]
+    n_rotations = _classrotations!(task.orbit_rotations, plan, first_pstr)
+    key_bits = _keybits(plan, first_pstr)
+    n_key_bits = sum(count_ones, _limbs(key_bits))
 
-    _openclass!(task, last - first + 1)
-    _addmembers!(task, record_terms, record_coeffs, lo, first, last)
+    # the kernel is compiled for keys of each type, behind this barrier
+    if n_key_bits <= _MAX_KEY_BITS
+        _rotatekeyedclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, last, n_rotations,
+            task.entry_keys, key_bits, n_key_bits)
+    else
+        _rotatekeyedclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, last, n_rotations,
+            task.entry_terms, nothing, n_key_bits)
+    end
+    return output
+end
+
+function _rotatekeyedclass!(output, task, plan, truncation, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int,
+    first::Int, last::Int, n_rotations::Int, entry_keys::Vector{K}, key_bits, n_key_bits::Int) where {TT,CT,K}
+
+    _openclass!(task, last - first + 1, K === UInt64 && n_key_bits <= _MAX_DIRECT_KEY_BITS, n_key_bits)
+    _addmembers!(task, entry_keys, key_bits, record_terms, record_coeffs, lo, first, last)
 
     # without a limit on the weight, the weights are not counted
     limits_weight = _limitsweight(truncation)
     for step in 1:n_rotations
+        rotation = Int(task.orbit_rotations[step])
+        key_mask = _keyof(plan.masks[rotation], key_bits)
         if limits_weight
-            _applytoclass!(task, plan, truncation, Int(rotations[step]), Int32(step), CT, Val(true))
+            _applytoclass!(task, plan, truncation, entry_keys, key_mask, rotation, Int32(step), CT, Val(true))
         else
-            _applytoclass!(task, plan, truncation, Int(rotations[step]), Int32(step), CT, Val(false))
+            _applytoclass!(task, plan, truncation, entry_keys, key_mask, rotation, Int32(step), CT, Val(false))
         end
     end
 
     _emitclass!(output, task)
+    _closeclass!(task, entry_keys)
     return output
 end
 
-# The rotation mixes every two entries that its generator turns into each other at the first of them that is present,
-# and marks both with `step`, so that neither is mixed again. A partner that is not in the table, or was truncated, holds zero.
-# The entries that the rotation makes come after the others and are not visited.
-function _applytoclass!(task, plan, truncation, rotation::Int, step::Int32, ::Type{CT}, ::Val{LimitsWeight}) where {CT,LimitsWeight}
+# The bits that tell the strings of the class of `pstr` apart, on the qubits that the rotations anticommuting with `pstr`
+# touch: the low bit where they touch with X or Z, the high bit where they touch with Y, and both where with two Paulis.
+@inline function _keybits(plan, pstr)
+    touched_x, touched_y, touched_z = _touchedqubits(plan, pstr)
+    mixed = (touched_x & touched_y) | (touched_x & touched_z) | (touched_y & touched_z)
+    return touched_x | touched_z | mixed | _shiftup(touched_y | mixed, 1)
+end
+
+# the key of `pstr` in its class: the key bits gathered into an integer, or the Pauli string itself
+@inline _keyof(pstr, key_bits) = first(_compressbits(pstr, key_bits))
+@inline _keyof(pstr, ::Nothing) = pstr
+
+# The rotation mixes every two entries that its generator turns into each other, and every entry without a present
+# partner keeps cos θ of its coefficient and makes the partner, if the truncation keeps that. Most entries do no more
+# than keep cos θ, so the entries that do more are listed first, and those that only keep cos θ are scaled after them.
+# A pair is listed at the entry whose key has the lowest bit of `key_mask` clear. Entries made by the rotation come after
+# the others and are not visited.
+function _applytoclass!(task, plan, truncation, entry_keys::Vector{K}, key_mask::K, rotation::Int, step::Int32, ::Type{CT},
+    ::Val{LimitsWeight}) where {K,CT,LimitsWeight}
+
     mask = plan.masks[rotation]
     cos_val = plan.cosines[rotation]
     sin_val = plan.sines[rotation]
     signs = _signsfor(CT, plan.signs)
     local_mask = Int(plan.local_mask)
+    lower_bit = _lowestbit(key_mask)
+
+    min_coeff_to_make = _mincoefftomake(truncation, sin_val)
 
     # the Paulis on the qubits of the rotation are read from the words that hold them
     first_qind, second_qind = plan.qinds[rotation]
@@ -415,24 +474,37 @@ function _applytoclass!(task, plan, truncation, rotation::Int, step::Int32, ::Ty
 
     # nothing grows while the rotation visits the entries
     n_before = task.n_entries
-    _prepareentries!(task, n_before)
+    _prepareentries!(task, entry_keys, n_before)
     entry_terms = task.entry_terms
     entry_coeffs = task.entry_coeffs
     entry_present = task.entry_present
     entry_steps = task.entry_steps
+    events = task.events
+    event_partners = task.event_partners
     slots = task.class_slots
     slot_mask = task.class_table_length - 1
     hash_shift = task.class_hash_shift
-    n_entries = n_before
 
+    # the entries that the rotation does more to than keeping cos θ, without branching on them
+    n_events = 0
     @inbounds for entry in 1:n_before
-        if entry_steps[entry] == step || !entry_present[entry]
-            continue
-        end
+        key = entry_keys[entry]
+        partner, _ = _findentry(slots, entry_keys, slot_mask, hash_shift, key ⊻ key_mask)
+        present = entry_present[entry]
+        partner_present = (partner != 0) & entry_present[max(partner, 1)]
+        is_lower_of_pair = present & partner_present & iszero(key & lower_bit)
+        makes_partner = present & !partner_present & (abs(entry_coeffs[entry]) >= min_coeff_to_make)
+        events[n_events+1] = entry % Int32
+        event_partners[n_events+1] = partner % Int32
+        n_events += is_lower_of_pair | makes_partner
+    end
 
+    n_entries = n_before
+    @inbounds for event in 1:n_events
+        entry = Int(events[event])
+        partner = Int(event_partners[event])
         pstr = entry_terms[entry]
         partner_pstr = pstr ⊻ mask
-        partner, slot = _findinslots(slots, entry_terms, slot_mask, hash_shift, partner_pstr)
 
         paulis = ((PropagationBase._wordat(pstr, first_bit) >> (first_bit & 63)) & 0x03) % Int
         if reads_second
@@ -441,8 +513,9 @@ function _applytoclass!(task, plan, truncation, rotation::Int, step::Int32, ::Ty
         sign_to_partner = signs[(paulis&15)+1]
         sign_from_partner = signs[((paulis⊻local_mask)&15)+1]
 
+        # an entry that was truncated holds zero
         coeff = entry_coeffs[entry]
-        partner_coeff = partner == 0 ? zero(CT) : entry_coeffs[partner]
+        partner_coeff = ifelse(partner == 0, zero(CT), entry_coeffs[max(partner, 1)])
         new_coeff = mergefunc(coeff * cos_val, partner_coeff * sin_val * sign_from_partner)
         new_partner_coeff = mergefunc(partner_coeff * cos_val, coeff * sin_val * sign_to_partner)
 
@@ -450,20 +523,35 @@ function _applytoclass!(task, plan, truncation, rotation::Int, step::Int32, ::Ty
         keep_partner = !_istruncatedin(truncation, partner_pstr, new_partner_coeff, Val(LimitsWeight))
         entry_coeffs[entry] = ifelse(keep, new_coeff, zero(CT))
         entry_present[entry] = keep
+        entry_steps[entry] = step
 
         if partner != 0
             entry_coeffs[partner] = ifelse(keep_partner, new_partner_coeff, zero(CT))
             entry_present[partner] = keep_partner
             entry_steps[partner] = step
         elseif keep_partner
+            partner_key = entry_keys[entry] ⊻ key_mask
+            _, slot = _findentry(slots, entry_keys, slot_mask, hash_shift, partner_key)
             n_entries += 1
             entry_terms[n_entries] = partner_pstr
+            entry_keys[n_entries] = partner_key
             entry_coeffs[n_entries] = new_partner_coeff
             entry_present[n_entries] = true
             entry_steps[n_entries] = step
             slots[slot+1] = n_entries % Int32
         end
     end
+
+    # every other present entry keeps cos θ of its coefficient
+    @inbounds for entry in 1:n_before
+        coeff = entry_coeffs[entry]
+        scales = entry_present[entry] & (entry_steps[entry] != step)
+        new_coeff = coeff * cos_val
+        keep = !_istruncatedin(truncation, entry_terms[entry], new_coeff, Val(LimitsWeight))
+        entry_coeffs[entry] = ifelse(scales, ifelse(keep, new_coeff, zero(CT)), coeff)
+        entry_present[entry] = ifelse(scales, keep, entry_present[entry])
+    end
+
     task.n_entries = n_entries
     return task
 end
@@ -481,6 +569,27 @@ _signsfor(::Type, signs) = signs
     return @inline truncation.truncfunc(pstr, coeff)
 end
 
+# The smallest coefficient that can make a partner the truncation keeps. Without a smallest kept coefficient, any can.
+function _mincoefftomake(truncation, sin_val)
+    if iszero(truncation.min_abs_coeff)
+        return zero(truncation.min_abs_coeff)
+    end
+    return _MAKE_MARGIN * truncation.min_abs_coeff / abs(sin_val)
+end
+
+# the lowest set bit of a key
+@inline _lowestbit(key::UInt64) = key & (~key + one(UInt64))
+
+@inline function _lowestbit(pstr::TT) where {TT}
+    limbs = _limbs(pstr)
+    for limb_index in eachindex(limbs)
+        if limbs[limb_index] != 0
+            return _shiftup(one(TT), 64 * (limb_index - 1) + trailing_zeros(limbs[limb_index]))
+        end
+    end
+    return zero(TT)
+end
+
 
 ### The table of a class
 
@@ -494,24 +603,66 @@ end
     return folded
 end
 
-# an empty table, filled to at most an eighth by `n_members` Pauli strings
-function _openclass!(task, n_members::Int)
-    table_length = max(16, nextpow(2, 8 * n_members))
-    slots = _ensurelength!(task.class_slots, table_length)
-    fill!(view(slots, 1:table_length), zero(Int32))
+@inline _classhash(key::UInt64) = key * 0x9e3779b97f4a7c15
+
+# An empty table for a class of `n_members` Pauli strings. Where every key has a slot of its own, the slot of a key is the
+# key; otherwise the table is filled to at most an eighth through a hash of the keys. The slots are all zero outside a
+# class: a class clears the slots it used when it closes, and a class that did not close leaves them to be cleared here.
+function _openclass!(task, n_members::Int, has_direct_slots::Bool, n_key_bits::Int)
+    if has_direct_slots
+        table_length = 1 << n_key_bits
+        task.class_hash_shift = 0
+    else
+        table_length = max(16, nextpow(2, 8 * n_members))
+        task.class_hash_shift = 64 - trailing_zeros(table_length)
+    end
+    slots = task.class_slots
+    n_zeroed = length(slots)
+    if task.class_is_open
+        fill!(slots, zero(Int32))
+    end
+    if table_length > n_zeroed
+        resize!(slots, max(table_length, 2 * n_zeroed))
+        fill!(view(slots, n_zeroed+1:length(slots)), zero(Int32))
+    end
+    task.class_is_open = true
     task.class_table_length = table_length
-    task.class_hash_shift = 64 - trailing_zeros(table_length)
     task.n_entries = 0
     return task
 end
 
-# The entry of `pstr` in the table of a class and the slot where the search for it ended, which is where it is added
-# if the entry is 0. The callers give slots at least the length of the table and entry terms for every entry in it.
-@inline function _findinslots(slots::Vector{Int32}, entry_terms::Vector{TT}, slot_mask::Int, hash_shift::Int, pstr::TT) where {TT}
-    slot = (_classhash(pstr) >> (hash_shift & 63)) % Int
+# clears the slots that the class used
+function _closeclass!(task, entry_keys::Vector)
+    slots = task.class_slots
+    if task.class_hash_shift == 0
+        for entry in 1:task.n_entries
+            slots[(entry_keys[entry]%Int)+1] = zero(Int32)
+        end
+    else
+        fill!(view(slots, 1:task.class_table_length), zero(Int32))
+    end
+    task.class_is_open = false
+    return task
+end
+
+# The entry with the key `key`, or 0, and the slot where it is or would be added.
+@inline function _findentry(slots::Vector{Int32}, entry_keys::Vector{UInt64}, slot_mask::Int, hash_shift::Int, key::UInt64)
+    if hash_shift == 0
+        slot = key % Int
+        return (@inbounds slots[slot+1]) % Int, slot
+    end
+    return _probeslots(slots, entry_keys, slot_mask, hash_shift, key)
+end
+
+@inline _findentry(slots::Vector{Int32}, entry_keys::Vector, slot_mask::Int, hash_shift::Int, key) =
+    _probeslots(slots, entry_keys, slot_mask, hash_shift, key)
+
+# The callers give slots at least the length of the table and keys for every entry in it.
+@inline function _probeslots(slots::Vector{Int32}, entry_keys::Vector, slot_mask::Int, hash_shift::Int, key)
+    slot = (_classhash(key) >> (hash_shift & 63)) % Int
     while true
         entry = (@inbounds slots[slot+1]) % Int
-        if entry == 0 || @inbounds(entry_terms[entry]) == pstr
+        if entry == 0 || @inbounds(entry_keys[entry]) == key
             return entry, slot
         end
         slot = (slot + 1) & slot_mask
@@ -520,9 +671,11 @@ end
 
 # The records `class_records[first:last]`, counted from `lo`, as the entries of the table of their class, where a Pauli
 # string that comes twice is added up.
-function _addmembers!(task, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int, first::Int, last::Int) where {TT,CT}
+function _addmembers!(task, entry_keys::Vector, key_bits, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int,
+    first::Int, last::Int) where {TT,CT}
+
     class_records = task.class_records
-    _prepareentries!(task, last - first + 1)
+    _prepareentries!(task, entry_keys, last - first + 1)
     entry_terms = task.entry_terms
     entry_coeffs = task.entry_coeffs
     entry_present = task.entry_present
@@ -535,10 +688,12 @@ function _addmembers!(task, record_terms::Vector{TT}, record_coeffs::Vector{CT},
     for index in first:last
         i = lo - 1 + class_records[index]
         pstr = record_terms[i]
-        entry, slot = _findinslots(slots, entry_terms, slot_mask, hash_shift, pstr)
+        key = _keyof(pstr, key_bits)
+        entry, slot = _findentry(slots, entry_keys, slot_mask, hash_shift, key)
         if entry == 0
             n_entries += 1
             entry_terms[n_entries] = pstr
+            entry_keys[n_entries] = key
             entry_coeffs[n_entries] = record_coeffs[i]
             entry_present[n_entries] = true
             entry_steps[n_entries] = zero(Int32)
@@ -551,33 +706,41 @@ function _addmembers!(task, record_terms::Vector{TT}, record_coeffs::Vector{CT},
     return task
 end
 
-# Room for twice `n_entries` entries, and a table that they fill to at most a quarter, so that a rotation can add an entry
-# for every entry it visits without anything growing.
-function _prepareentries!(task, n_entries::Int)
+# Room for twice `n_entries` entries and their events, and a hashed table that they fill to at most a quarter, so that
+# a rotation can add an entry for every entry it visits without anything growing.
+function _prepareentries!(task, entry_keys::Vector, n_entries::Int)
     n_room = 2 * n_entries + 1
-    if n_room > min(length(task.entry_terms), length(task.entry_coeffs), length(task.entry_present), length(task.entry_steps))
+    if n_room > min(length(task.entry_terms), length(entry_keys), length(task.entry_coeffs), length(task.entry_present),
+        length(task.entry_steps), length(task.events), length(task.event_partners))
         _ensurelength!(task.entry_terms, n_room)
+        _ensurelength!(entry_keys, n_room)
         _ensurelength!(task.entry_coeffs, n_room)
         _ensurelength!(task.entry_present, n_room)
         _ensurelength!(task.entry_steps, n_room)
+        _ensurelength!(task.events, n_room)
+        _ensurelength!(task.event_partners, n_room)
     end
-    if task.class_table_length < 8 * n_entries
-        _growclass!(task, 8 * n_entries)
+    if task.class_hash_shift != 0 && task.class_table_length < 8 * n_entries
+        _growclass!(task, entry_keys, 8 * n_entries)
     end
-    _checkentries(task, n_room)
+    _checkentries(task, entry_keys, n_room)
     return task
 end
 
-# a table of at least `n_slots` slots with the entries that are there
-function _growclass!(task, n_slots::Int)
+# a hashed table of at least `n_slots` slots with the entries that are there
+function _growclass!(task, entry_keys::Vector, n_slots::Int)
     table_length = nextpow(2, n_slots)
-    slots = _ensurelength!(task.class_slots, table_length)
-    fill!(view(slots, 1:table_length), zero(Int32))
+    slots = task.class_slots
+    n_zeroed = length(slots)
+    if table_length > n_zeroed
+        resize!(slots, max(table_length, 2 * n_zeroed))
+    end
+    fill!(view(slots, 1:length(slots)), zero(Int32))
     slot_mask = table_length - 1
     hash_shift = 64 - trailing_zeros(table_length)
 
     for entry in 1:task.n_entries
-        slot = Int(_classhash(task.entry_terms[entry]) >> hash_shift)
+        slot = Int(_classhash(entry_keys[entry]) >> hash_shift)
         while slots[slot+1] != 0
             slot = (slot + 1) & slot_mask
         end
@@ -589,10 +752,11 @@ function _growclass!(task, n_slots::Int)
 end
 
 # the loops over the entries of a class index its arrays without bounds checks
-function _checkentries(task, n_entries::Int)
-    if n_entries > min(length(task.entry_terms), length(task.entry_coeffs), length(task.entry_present), length(task.entry_steps)) ||
+function _checkentries(task, entry_keys::Vector, n_entries::Int)
+    if n_entries > min(length(task.entry_terms), length(entry_keys), length(task.entry_coeffs), length(task.entry_present),
+           length(task.entry_steps), length(task.events), length(task.event_partners)) ||
        task.class_table_length > length(task.class_slots) || !ispow2(task.class_table_length) ||
-       task.class_hash_shift != 64 - trailing_zeros(task.class_table_length)
+       (task.class_hash_shift != 0 && task.class_hash_shift != 64 - trailing_zeros(task.class_table_length))
         throw(ArgumentError("the $n_entries entries of a class do not fit the workspace"))
     end
     return
@@ -601,7 +765,9 @@ end
 # the entries of the class that are present
 function _emitclass!(output::ArrayOutputs, task)
     n_entries = task.n_entries
-    _checkentries(task, n_entries)
+    if n_entries > min(length(task.entry_terms), length(task.entry_coeffs), length(task.entry_present))
+        throw(ArgumentError("the $n_entries entries of a class do not fit the workspace"))
+    end
     output_terms, output_coeffs = _roomtoemit!(output, n_entries)
     n_written = output.n_written
 
