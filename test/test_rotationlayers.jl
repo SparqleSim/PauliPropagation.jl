@@ -112,6 +112,42 @@ function testorbitsofmanyrotations()
     @test layersmatchrotations(layers, thetas, psum; max_weight=9.0, min_abs_coeff=5e-3)
 end
 
+# The classes of a layer rotated one rotation at a time give exactly the rotations one by one, truncations included.
+function classesmatchrotations(layers, thetas, psum; kwargs...)
+    rotations, angles = expandlayers(layers, thetas)
+    matches = true
+    for (T, heisenberg) in LAYER_TEST_SUMS
+        layered = propagate(layers, T(psum), thetas; heisenberg, layer_method=:classes, kwargs...)
+        reference = propagate(rotations, T(psum), angles; heisenberg, kwargs...)
+        matches &= !isempty(layered) && length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
+    end
+    return matches
+end
+
+function testclassesagainstrotations()
+    for nq in (8, 40)
+        rng = MersenneTwister(nq)
+        psum = randompaulisum(rng, nq, 12, 3)
+
+        # bonds that share qubits, close cycles, meet at one qubit or come more than once
+        layer_sets = (
+            [RotationLayer(:X, 1:nq), RotationLayer([:Z, :Z], staircasetopology(nq))],
+            [RotationLayer(:Y, nq:-1:1), RotationLayer([:X, :X], staircasetopology(nq; periodic=true))],
+            [RotationLayer(:X, 1:nq), RotationLayer([:Z, :Z], rectangletopology(2, nq ÷ 2))],
+            [RotationLayer(:Y, 1:nq), RotationLayer([:Z, :Z], [(1, i) for i in 2:nq])],
+            [RotationLayer([:X, :Y], [(i, i + 1) for i in 1:2:nq-1]), RotationLayer([:Z, :Z], [Tuple(randperm(rng, nq)[1:2]) for _ in 1:nq])],
+        )
+        truncations = nq == 8 ? ((Inf, 0.0), (4.0, 0.0), (Inf, 1e-3)) : ((3.0, 1e-4), (Inf, 2e-2))
+        matches = true
+        for layers in layer_sets, (max_weight, min_abs_coeff) in truncations
+            circuit = repeat(layers, 2)
+            thetas = randomangles(rng, circuit)
+            matches &= classesmatchrotations(circuit, thetas, psum; max_weight, min_abs_coeff)
+        end
+        @test matches
+    end
+end
+
 # The rotations of a sublayer are read from the whole Pauli string at once if their qubits are few distances apart,
 # and one by one otherwise. Both ways are tested on the same layers.
 @testset "RotationLayer propagates like its rotations" begin
@@ -137,9 +173,14 @@ readsingroups = which(PauliPropagation._readsingroups, Tuple{Any})
     testlayersagainstrotations()
     testanyqubitsandpairs()
     testorbitsofmanyrotations()
+    testclassesagainstrotations()
 end
 
 @eval PauliPropagation _readsingroups(groups) = length(groups) <= _MAX_ROTATION_GROUPS
+
+@testset "RotationLayer rotated class by class" begin
+    testclassesagainstrotations()
+end
 
 @testset "RotationLayer applied by several tasks" begin
     # the tasks are handed over directly, so that they are tested with any number of threads and terms
@@ -152,15 +193,23 @@ end
         vpsum = propagate(layers, VectorPauliSum(psum), thetas; max_weight=5.0, min_abs_coeff=1e-4)
         @test !isempty(PauliPropagation._preparesublayer(layers[2], layers[2].sublayers[1], thetas[2], getinttype(nq), nq).groups)
 
+        # every sublayer orbit by orbit, and the whole layer class by class
+        plans = []
+        for (layer, theta) in zip(layers, thetas)
+            for sublayer in layer.sublayers
+                push!(plans, (layer, theta, sublayer, PauliPropagation._preparesublayer(layer, sublayer, theta, paulitype(vpsum), nq)))
+            end
+            push!(plans, (layer, theta, reduce(vcat, layer.sublayers), PauliPropagation._prepareclasses(layer, theta, paulitype(vpsum), nq)))
+        end
+
         matches = true
-        for (layer, theta) in zip(layers, thetas), sublayer in layer.sublayers, capacity in (length(vpsum), 4 * length(vpsum))
+        for (layer, theta, sublayer, plan) in plans, capacity in (length(vpsum), 4 * length(vpsum))
             by_one_task = PropagationCache(deepcopy(vpsum))
             by_four_tasks = PropagationCache(deepcopy(vpsum))
 
             # with room for all that the tasks write, and with so little that they keep most of it in their buffers
             resize!(by_four_tasks, capacity)
 
-            plan = PauliPropagation._preparesublayer(layer, sublayer, theta, paulitype(vpsum), nq)
             truncation = PauliPropagation._layertruncation(buildtruncfunc(by_one_task; min_abs_coeff=1e-4), 5.0)
             workspace = PauliPropagation.LayerWorkspace(paulitype(vpsum), coefftype(vpsum))
             one_task = PauliPropagation.AK.TaskPartitioner(length(vpsum), 1, 1)
