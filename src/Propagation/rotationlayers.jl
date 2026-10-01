@@ -49,12 +49,13 @@ function _applyrotations!(applyrotation!::F, prop_cache, layer::RotationLayer, s
     return prop_cache
 end
 
-# the truncation within an orbit, where the weight of every entry is known
-function _layertruncation(truncfunc, max_weight::Real)
+# The truncation within an orbit or class, where the weight of every entry is known. Every coefficient below
+# `min_abs_coeff` is truncated, whatever else `truncfunc` checks.
+function _layertruncation(truncfunc, max_weight::Real, min_abs_coeff::Real)
     if isinf(max_weight)
-        return (; truncfunc, max_weight=_UNLIMITED_WEIGHT)
+        return (; truncfunc, max_weight=_UNLIMITED_WEIGHT, min_abs_coeff)
     else
-        return (; truncfunc, max_weight=floor(Int, max_weight))
+        return (; truncfunc, max_weight=floor(Int, max_weight), min_abs_coeff)
     end
 end
 
@@ -1290,9 +1291,12 @@ mutable struct TaskWorkspace{TT,CT}
     class_starts::Vector{Int}
     class_records::Vector{Int32}
 
-    # The Pauli strings of one class, whether they are present, and the last rotation that mixed them, found through the
-    # first `class_table_length` of `class_slots` by the highest bits of their hash from `class_hash_shift` on.
+    # The Pauli strings of one class, their keys, whether they are present, and the last rotation that mixed them, found
+    # through the first `class_table_length` of `class_slots`: at their key where `class_hash_shift` is 0, and otherwise by
+    # the highest bits of the hash of their key from `class_hash_shift` on. The entries that a rotation mixes or that
+    # make a partner, and their partners.
     entry_terms::Vector{TT}
+    entry_keys::Vector{UInt64}
     entry_coeffs::Vector{CT}
     entry_present::Vector{Bool}
     entry_steps::Vector{Int32}
@@ -1300,6 +1304,9 @@ mutable struct TaskWorkspace{TT,CT}
     class_slots::Vector{Int32}
     class_table_length::Int
     class_hash_shift::Int
+    class_is_open::Bool
+    events::Vector{Int32}
+    event_partners::Vector{Int32}
 
     # where the task writes when several tasks write to one array sum, and to the zones of a multi sum
     output::TaskOutput{TT,CT}
@@ -1312,7 +1319,8 @@ function TaskWorkspace(::Type{TT}, ::Type{CT}) where {TT,CT}
         zeros(Int, _MAX_BLOCK_ROTATIONS), [Int[] for _ in 1:_MAX_BLOCK_ROTATIONS],
         [CT[] for _ in 1:_MAX_BLOCK_ROTATIONS], [UInt64[] for _ in 1:_MAX_BLOCK_ROTATIONS], [Bool[] for _ in 1:_MAX_BLOCK_ROTATIONS],
         Vector{TT}(undef, n_entries), Vector{Int}(undef, n_entries),
-        Int32[], TT[], UInt64[], Int[], Int32[], TT[], CT[], Bool[], Int32[], 0, Int32[], 0, 64, TaskOutput(TT, CT), TaskOutput{TT,CT}[])
+        Int32[], TT[], UInt64[], Int[], Int32[], TT[], UInt64[], CT[], Bool[], Int32[], 0, Int32[], 0, 64, false, Int32[], Int32[], TaskOutput(TT, CT),
+        TaskOutput{TT,CT}[])
 end
 
 """

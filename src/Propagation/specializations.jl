@@ -112,7 +112,7 @@ function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::A
 
     # the weights are known within an orbit, so they are left out of the truncation function
     truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_freq, max_sins, customtruncfunc, thread)
-    truncation = _layertruncation(truncfunc, max_weight)
+    truncation = _layertruncation(truncfunc, max_weight, min_abs_coeff)
     if _appliesbyclass(layer, layer_method)
         _applybyclass!(layer, prop_cache, theta, truncation; thread)
     else
@@ -143,7 +143,7 @@ function PropagationBase.applytoall!(layer::RotationLayer, prop_cache::AbstractP
         return prop_cache
     end
 
-    return _applyinorbits!(layer, prop_cache, theta, _layertruncation(_nevertruncate, Inf); thread)
+    return _applyinorbits!(layer, prop_cache, theta, _layertruncation(_nevertruncate, Inf, 0); thread)
 end
 
 PropagationBase.requiresmerging(::RotationLayer, ::AbstractPauliPropagationCache) = false
