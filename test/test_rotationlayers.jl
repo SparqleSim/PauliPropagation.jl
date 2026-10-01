@@ -36,7 +36,7 @@ function layersmatchrotations(layers, thetas, psum; kwargs...)
     rotations, angles = expandlayers(layers, thetas)
     matches = true
     for (T, heisenberg) in LAYER_TEST_SUMS
-        layered = propagate(layers, T(psum), thetas; heisenberg, kwargs...)
+        layered = propagate(layers, T(psum), thetas; heisenberg, layer_method=:orbits, kwargs...)
         reference = propagate(rotations, T(psum), angles; heisenberg, kwargs...)
         # the same terms, as two sums also compare equal if one of them holds more terms with a coefficient of zero
         matches &= !isempty(layered) && length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
@@ -112,6 +112,17 @@ function testorbitsofmanyrotations()
     @test layersmatchrotations(layers, thetas, psum; max_weight=9.0, min_abs_coeff=5e-3)
 end
 
+function testlongorbitoftwostrings()
+    # two Pauli strings of one orbit of ten rotations, which must be collected in one place to be mixed
+    nq = 12
+    psum = PauliSum(nq)
+    yz = repeat([:Y, :Z], 5)
+    add!(psum, yz, 1:10, 1.0)
+    add!(psum, [yz[1:2]; :Z; yz[4:10]], 1:10, 0.5)
+    layers = [RotationLayer(:X, 1:nq)]
+    @test layersmatchrotations(layers, [0.3], psum; min_abs_coeff=1e-3)
+end
+
 # The classes of a layer rotated one rotation at a time give exactly the rotations one by one, truncations included.
 function classesmatchrotations(layers, thetas, psum; kwargs...)
     rotations, angles = expandlayers(layers, thetas)
@@ -160,6 +171,7 @@ end
 
 @testset "RotationLayer on orbits of many rotations" begin
     testorbitsofmanyrotations()
+    testlongorbitoftwostrings()
 end
 
 readsingroups = which(PauliPropagation._readsingroups, Tuple{Any})
@@ -173,6 +185,7 @@ readsingroups = which(PauliPropagation._readsingroups, Tuple{Any})
     testlayersagainstrotations()
     testanyqubitsandpairs()
     testorbitsofmanyrotations()
+    testlongorbitoftwostrings()
     testclassesagainstrotations()
 end
 
@@ -193,17 +206,19 @@ end
         vpsum = propagate(layers, VectorPauliSum(psum), thetas; max_weight=5.0, min_abs_coeff=1e-4)
         @test !isempty(PauliPropagation._preparesublayer(layers[2], layers[2].sublayers[1], thetas[2], getinttype(nq), nq).groups)
 
-        # every sublayer orbit by orbit, and the whole layer class by class
+        # every sublayer orbit by orbit, with its long orbits class by class, and the whole layer class by class
         plans = []
         for (layer, theta) in zip(layers, thetas)
             for sublayer in layer.sublayers
-                push!(plans, (layer, theta, sublayer, PauliPropagation._preparesublayer(layer, sublayer, theta, paulitype(vpsum), nq)))
+                push!(plans, (PauliPropagation._preparesublayer(layer, sublayer, theta, paulitype(vpsum), nq),
+                    PauliPropagation._prepareclasses(layer, theta, paulitype(vpsum), nq, sublayer)))
             end
-            push!(plans, (layer, theta, reduce(vcat, layer.sublayers), PauliPropagation._prepareclasses(layer, theta, paulitype(vpsum), nq)))
+            class_plan = PauliPropagation._prepareclasses(layer, theta, paulitype(vpsum), nq)
+            push!(plans, (class_plan, class_plan))
         end
 
         matches = true
-        for (layer, theta, sublayer, plan) in plans, capacity in (length(vpsum), 4 * length(vpsum))
+        for (plan, long_plan) in plans, capacity in (length(vpsum), 4 * length(vpsum))
             by_one_task = PropagationCache(deepcopy(vpsum))
             by_four_tasks = PropagationCache(deepcopy(vpsum))
 
@@ -215,10 +230,8 @@ end
             one_task = PauliPropagation.AK.TaskPartitioner(length(vpsum), 1, 1)
             four_tasks = PauliPropagation.AK.TaskPartitioner(length(vpsum), 4, 1)
 
-            applyrotation!(cache, rotation, angle) = applymergetruncate!(rotation, cache, angle; max_weight=5.0, min_abs_coeff=1e-4)
-            rotateonebyone!(cache) = PauliPropagation._applyrotations!(applyrotation!, cache, layer, sublayer, theta)
-            PauliPropagation._applysublayerintasks!(by_one_task, plan, truncation, workspace, rotateonebyone!, one_task, 1)
-            PauliPropagation._applysublayerintasks!(by_four_tasks, plan, truncation, workspace, rotateonebyone!, four_tasks, 4)
+            PauliPropagation._applysublayerintasks!(by_one_task, plan, long_plan, truncation, workspace, one_task, 1)
+            PauliPropagation._applysublayerintasks!(by_four_tasks, plan, long_plan, truncation, workspace, four_tasks, 4)
             matches &= length(by_four_tasks) == length(by_one_task)
             matches &= PauliSum(extractsum!(by_four_tasks)) == PauliSum(extractsum!(by_one_task))
             matches &= PauliSum(extractsum!(by_one_task)) != PauliSum(vpsum)
@@ -283,6 +296,11 @@ end
         reference = propagate(chain_rotations, T(psum), thetas; max_weight=3.0, min_abs_coeff=1e-3)
         @test length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
     end
+
+    # by default, a layer of one sublayer goes orbit by orbit and any other class by class
+    @test !PauliPropagation._appliesbyclass(zz_layer, :auto)
+    @test PauliPropagation._appliesbyclass(RotationLayer([:Z, :Z], staircasetopology(nq; periodic=true)), :auto)
+    @test_throws ArgumentError propagate(zz_layer, PauliString(nq, :X, 1), 0.3; layer_method=:dense)
 
     @test_throws ArgumentError RotationLayer([:X, :Z], staircasetopology(nq))
     @test_throws ArgumentError RotationLayer([:Z, :Z], [1, 2])
