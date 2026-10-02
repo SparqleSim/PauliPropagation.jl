@@ -237,7 +237,9 @@ export
     TranslationSymmetry,
     ReflectionSymmetry,
     SiteSymmetry,
-    subgroupschedule
+    subgroupschedule,
+    symmetrypropagate,
+    symmetrypropagate!
 
 include("Surrogate/Surrogate.jl")
 export

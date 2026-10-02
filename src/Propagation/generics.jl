@@ -211,6 +211,9 @@ function PropagationBase.truncate!(pobj::Union{AbstractPauliSum,AbstractPauliPro
     return truncate!(truncfunc, pobj; thread, kwargs...)
 end
 
+# the keyword arguments `buildtruncfunc` understands; keep in sync with its signature
+const _TRUNCATION_KEYS = (:min_abs_coeff, :max_weight, :max_freq, :max_sins, :min_rel_coeff, :customtruncfunc)
+
 """
     buildtruncfunc(pobj; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf,
                    max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing,
