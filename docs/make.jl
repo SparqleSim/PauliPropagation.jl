@@ -93,6 +93,7 @@ makedocs(
             "examples/PP-from-Python.md",
             "examples/PP-Surrogate.md",
             "examples/Symmetry-PP.md",
+            "examples/SubgroupMerging.md",
             "examples/visualization_example.md"
         ],
 
