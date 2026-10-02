@@ -5,7 +5,8 @@
 # 1. Translational symmetry in 1D and 2D.
 # 2. Reflection symmetry in 1D and 2D.
 # 3. Permutation symmetry, i.e. all-to-all connectivity.
-# The underlying bit manipulations live in `symmetry_utils.jl`.
+# The underlying bit manipulations live in `symmetry_utils.jl`; merging under a group object,
+# `symmetrymerge(G, psum)`, is in `groups.jl`.
 ##
 ###
 
@@ -163,7 +164,7 @@ In-place version of [`reflectionmerge`](@ref) for a 1D chain.
 """
 reflectionmerge!(psum; thread::Bool=true) = symmetrymerge!(_reflectionmapper(psum), psum; thread)
 
-_reflectionmapper(psum) = _lowestpermutationmapper((_chainreflection(nqubits(psum)),))
+_reflectionmapper(psum) = _lowestimagemapper((_chainreflection(nqubits(psum)),))
 
 """
     reflectionmerge(psum::AbstractPauliSum, nx::Integer, ny::Integer; axes=(:x, :y), thread=true)
@@ -206,7 +207,7 @@ end
 
 function _reflectionmapper(psum, nx::Integer, ny::Integer, axes)
     _checkgridsize(psum, nx, ny)
-    return _lowestpermutationmapper(_gridreflections(axes, nx, ny))
+    return _lowestimagemapper(_gridreflections(axes, nx, ny))
 end
 
 

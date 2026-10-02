@@ -232,7 +232,11 @@ export
     reflectionmerge!,
     permutationmerge,
     permutationmerge!,
-    residualpermutationblocks
+    residualpermutationblocks,
+    PermutationSymmetry,
+    TranslationSymmetry,
+    ReflectionSymmetry,
+    SiteSymmetry
 
 include("Surrogate/Surrogate.jl")
 export

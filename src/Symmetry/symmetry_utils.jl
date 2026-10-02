@@ -1,11 +1,13 @@
 ### symmetry_utils.jl
 ##
-# Low-level machinery behind the symmetry merging functions in `symmetries.jl`.
-# Nothing in this file is exported. It contains:
+# Low-level machinery behind the symmetry merging in `symmetries.jl` and the group objects in
+# `groups.jl`. Nothing in this file is exported. It contains:
 #   - grid helpers (site <-> coordinate, grid size validation)
 #   - periodic bit-shifts for translational symmetry in 1D and 2D
-#   - site permutations, used for reflection symmetry
-#   - the canonical form under all permutations of the sites
+#   - site permutations acting on Pauli strings (`_permute`, `_shiftsof`, `_swapsites`), the
+#     closure of a set of permutations (`_closure`), and the smallest-image canonical form of a
+#     listed group (`_lowestimagemapper`)
+#   - the canonical form under all permutations of the sites, whole or block-wise
 ##
 ###
 
@@ -162,10 +164,8 @@ end
 
 _permutationtoshifts(perm) = Tuple(2 * (site - 1) for site in perm)
 
-# Returns a function mapping a Pauli string to the lowest integer among itself
-# and its images under each permutation in `perms`. For this to be a valid
-# canonical form for `symmetrymerge`, `perms` together with the identity must be
-# closed under composition, e.g. both mirrors of a rectangle plus their product.
+# The unrolled implementation of `_lowestimagemapper` (below) for a handful of permutations:
+# the lowest integer among a Pauli string and its images under the gather shifts of `perms`.
 function _lowestpermutationmapper(perms)
     all_src_shifts = Tuple(_permutationtoshifts(perm) for perm in perms)
     return pstr -> _lowestpermuted(pstr, pstr, all_src_shifts)
@@ -178,6 +178,74 @@ end
 @inline function _lowestpermuted(pstr, lowest_pstr, all_src_shifts::Tuple)
     lowest_pstr = min(lowest_pstr, _permutesites(pstr, first(all_src_shifts)))
     return _lowestpermuted(pstr, lowest_pstr, Base.tail(all_src_shifts))
+end
+
+
+# Two conventions meet here. `_permutesites(pstr, _permutationtoshifts(perm))` GATHERS: the Pauli
+# on site `perm[i]` ends up on site `i`, i.e. it applies the inverse permutation. The group
+# action used everywhere in groups.jl, subgroups.jl and symmetrypropagate.jl is the FORWARD one: the
+# Pauli on site `i` moves to site `perm[i]`. `_shiftsof` provides the shifts for that action, so
+# `_permutesites(pstr, _shiftsof(perm))` is the forward action. The canonical-form mappers below
+# use the gather shifts directly; that is fine because they always get a whole group, which
+# contains the inverse of every element.
+_shiftsof(perm) = _permutationtoshifts(invperm(perm))
+
+# the Pauli string with the Pauli on site `i` moved to site `perm[i]`
+_permute(pstr::PauliStringType, perm) = _permutesites(pstr, _shiftsof(perm))
+
+# swap the Paulis on sites `u` and `v`
+function _swapsites(pstr::TT, u::Integer, v::Integer) where {TT<:PauliStringType}
+    pu = _getpaulibits(pstr, u)
+    pv = _getpaulibits(pstr, v)
+    pstr = _setpaulibits(pstr, pv, u)
+    return _setpaulibits(pstr, pu, v)
+end
+
+_checkpermutation(nq::Integer, perm) =
+    (length(perm) == nq && isperm(perm)) || throw(ArgumentError(
+        "Expected a permutation of 1:$(nq), got $(perm)."))
+
+# all compositions of the given site permutations, the identity first
+function _closure(nq::Integer, generators; maxorder::Integer)
+    gens = [collect(Int, g) for g in generators]
+    foreach(g -> _checkpermutation(nq, g), gens)
+    identity_perm = collect(1:nq)
+    elems = [identity_perm]
+    seen = Set{Vector{Int}}((identity_perm,))
+    k = 1
+    while k <= length(elems)
+        for g in gens
+            composed = g[elems[k]]      # (g ∘ e)(site) = g[e[site]]
+            composed in seen && continue
+            push!(seen, composed)
+            push!(elems, composed)
+            length(elems) > maxorder && throw(ArgumentError(
+                "The generated group has more than $(maxorder) elements; raise `maxorder`, " *
+                "or use `PermutationSymmetry` for the full symmetric group."))
+        end
+        k += 1
+    end
+    return elems
+end
+
+# Returns a function mapping a Pauli string to the smallest integer among itself and its images
+# under the permutations `perms`, which together with the identity must form a group, e.g. both
+# mirrors of a rectangle plus their product (the gather shifts give the images under the
+# inverses, the same set). A handful of permutations is unrolled at compile time by
+# `_lowestpermutationmapper`; more go through a loop.
+function _lowestimagemapper(perms)
+    isempty(perms) && return identity
+    length(perms) <= 8 && return _lowestpermutationmapper(perms)
+    shifts = [_permutationtoshifts(perm) for perm in perms]
+    return pstr -> _lowestimage(pstr, shifts)
+end
+
+function _lowestimage(pstr::TT, shifts::Vector{NTuple{N,Int}}) where {TT,N}
+    lowest = pstr
+    for s in shifts
+        lowest = min(lowest, _permutesites(pstr, s))
+    end
+    return lowest
 end
 
 
@@ -202,7 +270,7 @@ end
 
 # The non-identity elements of the reflection group selected by `axes`:
 # {Rx}, {Ry}, or {Rx, Ry, Rx*Ry} for both. Together with the identity each set
-# is closed under composition, as `_lowestpermutationmapper` requires.
+# is closed under composition, as `_lowestimagemapper` requires.
 function _gridreflections(axes, nx::Integer, ny::Integer)
     axes = axes isa Symbol ? (axes,) : Tuple(axes)
     if isempty(axes) || any(axis -> axis ∉ (:x, :y), axes)
@@ -249,15 +317,16 @@ end
 
 ## Block-wise permutation symmetry (residual subsymmetry)
 
-# Canonical representative under S_{B_1} x ... x S_{B_k}, where the blocks are contiguous
-# site ranges (lo, hi) that partition 1:nq in order (empty blocks, hi < lo, are allowed).
-# Each block is sorted independently as in the single-block form above.
+# Canonical representative under S_{B_1} x ... x S_{B_k}, where the blocks are contiguous,
+# non-overlapping site ranges (lo, hi) (empty blocks, hi < lo, are allowed). Each block is
+# sorted independently as in the single-block form above; sites in no block keep their Pauli.
 function _permutationcanonicalform(pstr::TT, blocks) where {TT<:PauliStringType}
-    canonical = zero(TT)
+    canonical = pstr
     for (lo, hi) in blocks
         hi < lo && continue
         block_paulis = _getpaulibits(pstr, lo, hi)          # Paulis of the block, shifted to sites 1..hi-lo+1
-        canonical |= _permutationcanonicalform(block_paulis) << (2 * (lo - 1))
+        sorted_block = _permutationcanonicalform(block_paulis) << _bitshiftfromsiteindex(lo)
+        canonical = (canonical & ~_pauliwindowmask(TT, lo, hi)) | sorted_block
     end
     return canonical
 end

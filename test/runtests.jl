@@ -39,6 +39,8 @@ using Random
 
     include("test_symmetries.jl")
 
+    include("test_symmetrypropagate.jl")
+
     include("test_truncations.jl")
 
     include("test_inplace.jl")
