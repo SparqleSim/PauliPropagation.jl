@@ -27,13 +27,38 @@ Applies all rotations of the layer in one pass, class by class.
 function _applybyclass!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta, truncation; thread::Bool=true)
     workspace = _takeworkspace(paulitype(prop_cache), coefftype(prop_cache))
     try
-        plan = _prepareclasses(layer, theta, paulitype(prop_cache), nqubits(prop_cache))
-        # every record has a class, so none lies in the partitions of long orbits
-        _applysublayer!(StorageType(prop_cache), prop_cache, plan, plan, truncation, workspace; thread)
+        for rotations in _classpasses(layer)
+            plan = _prepareclasses(layer, theta, paulitype(prop_cache), nqubits(prop_cache), rotations)
+            # every record has a class, so none lies in the partitions of long orbits
+            _applysublayer!(StorageType(prop_cache), prop_cache, plan, plan, truncation, workspace; thread)
+        end
     finally
         _putbackworkspace!(workspace)
     end
     return prop_cache
+end
+
+# The rotations of the layer that one pass rotates class by class: all of them, unless a qubit is acted on with two
+# different Paulis. The key of a class keeps, on every qubit that its rotations act on with one Pauli, whether the string
+# anticommutes with that Pauli there, and so tells apart strings that anticommute with different rotations. A qubit acted
+# on with two Paulis keeps neither, so strings with different rotations could share a key there. In a layer of commuting
+# rotations that happens only for a rotation and its swapped pair, as XZ on (1, 2) and on (2, 1), whose lowest qubit is the
+# same, so that they lie in different sublayers: such a layer takes one pass per sublayer.
+function _classpasses(layer::RotationLayer)
+    if _actswithtwopaulis(layer)
+        return layer.sublayers
+    else
+        return (eachindex(layer.qinds),)
+    end
+end
+
+# whether a qubit is the first qubit of one rotation and the second of another, with a different Pauli
+function _actswithtwopaulis(layer::RotationLayer)
+    if length(layer.symbols) < 2 || layer.symbols[1] == layer.symbols[2]
+        return false
+    end
+    first_qubits = Set(qinds[1] for qinds in layer.qinds)
+    return any(qinds -> qinds[2] in first_qubits, layer.qinds)
 end
 
 # whether the layer is applied class by class, which by default a layer of more than one sublayer is

@@ -60,6 +60,8 @@ function testlayersagainstrotations()
             [RotationLayer(:Y, nq:-1:1), RotationLayer([:X, :X], ring)],
             [RotationLayer(:Z, randperm(rng, nq)), RotationLayer([:Y, :Y], shuffle(rng, chain))],
             [RotationLayer([:X, :Y], disjoint_bonds), RotationLayer([:Z, :Z], distant_bonds)],
+            # every bond in both directions with different Paulis, so that every qubit is acted on with X and with Z
+            [RotationLayer(:Y, 1:nq), RotationLayer([:X, :Z], vcat(disjoint_bonds, reverse.(disjoint_bonds)))],
         )
 
         # without any truncation only where 4^nq bounds the sum
@@ -147,6 +149,7 @@ function testclassesagainstrotations()
             [RotationLayer(:X, 1:nq), RotationLayer([:Z, :Z], rectangletopology(2, nq ÷ 2))],
             [RotationLayer(:Y, 1:nq), RotationLayer([:Z, :Z], [(1, i) for i in 2:nq])],
             [RotationLayer([:X, :Y], [(i, i + 1) for i in 1:2:nq-1]), RotationLayer([:Z, :Z], [Tuple(randperm(rng, nq)[1:2]) for _ in 1:nq])],
+            [RotationLayer(:Y, 1:nq), RotationLayer([:X, :Z], vcat([(i, i + 1) for i in 1:2:nq-1], [(i + 1, i) for i in 1:2:nq-1]))],
         )
         truncations = nq == 8 ? ((Inf, 0.0), (4.0, 0.0), (Inf, 1e-3)) : ((3.0, 1e-4), (Inf, 2e-2))
         matches = true
