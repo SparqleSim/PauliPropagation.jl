@@ -18,6 +18,28 @@ using Test
 end
 
 
+@testset "Commuting layers" begin
+    nq = 5
+    alltoall(n) = [(i, j) for i in 1:n for j in i+1:n]
+    circ = heisenbergtrottercircuit(nq, 2; topology=alltoall(nq))
+    layers = PauliPropagation._commutinglayers(circ)
+    @test length(layers) == 6
+    @test all(length(l) == 10 for l in layers)
+    @test reduce(vcat, layers) == 1:length(circ)
+
+    noisy = vcat(tfitrottercircuit(nq, 1; topology=staircasetopology(nq; periodic=true)), [DepolarizingNoise(i, 0.01) for i in 1:nq])
+    layers = PauliPropagation._commutinglayers(noisy)
+    @test layers == [collect(1:5), collect(6:10), collect(11:15)]
+
+    # interleaved single-qubit layers are regrouped
+    hw = hardwareefficientcircuit(4, 1; topology=alltoall(4))
+    layers = PauliPropagation._commutinglayers(hw)
+    @test layers[1:3] == [[1, 4, 7, 10], [2, 5, 8, 11], [3, 6, 9, 12]]
+    @test layers[4] == collect(13:18)
+    @test isempty(PauliPropagation._commutinglayers(Gate[]))
+end
+
+
 @testset "Test Topologies" begin
     nq = rand(1:100)
 
