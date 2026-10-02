@@ -341,13 +341,6 @@ end
     @test_throws ArgumentError permutationmerge(psum, ((1, 4), (3, 6)))   # overlap
     @test_throws ArgumentError permutationmerge(psum, ((1, 5),))          # does not cover
     @test_throws ArgumentError permutationmerge(psum, ((2, 6),))          # does not start at 1
-
-    # residual blocks of the lexicographic all-to-all sweep
-    @test residualpermutationblocks(2, 4, 6) == ((1, 1), (2, 2), (3, 4), (5, 6))
-    @test residualpermutationblocks(1, 2, 6) == ((1, 0), (1, 1), (2, 2), (3, 6))
-    @test residualpermutationblocks(5, 6, 6) == ((1, 4), (5, 5), (6, 6), (7, 6))
-    @test_throws ArgumentError residualpermutationblocks(3, 3, 6)
-    @test_throws ArgumentError residualpermutationblocks(0, 3, 6)
 end
 
 @testset "Residual-subsymmetry sweep is exact" begin
@@ -371,7 +364,7 @@ end
     residual = PropagationCache(VectorPauliSum(psum))
     for i in 1:nq-1, j in i+1:nq
         propagate!([gates[(i, j)]], residual, [thetas[(i, j)]]; min_abs_coeff=0.0)
-        permutationmerge!(residual, residualpermutationblocks(i, j, nq))
+        permutationmerge!(residual, ((1, i - 1), (i, i), (i + 1, j), (j + 1, nq)))     # the paper's blocks G_ij
     end
     permutationmerge!(residual)
 

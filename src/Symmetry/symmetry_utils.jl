@@ -315,7 +315,7 @@ function _permutationcanonicalform(pstr::TT) where {TT<:PauliStringType}
 end
 
 
-## Block-wise permutation symmetry (residual subsymmetry)
+## Block-wise permutation canonical form
 
 # Canonical representative under S_{B_1} x ... x S_{B_k}, where the blocks are contiguous,
 # non-overlapping site ranges (lo, hi) (empty blocks, hi < lo, are allowed). Each block is
@@ -344,19 +344,4 @@ function _checkblocks(nq::Integer, blocks)
     next_site == nq + 1 || throw(ArgumentError(
         "Blocks $(blocks) do not cover all $(nq) qubits."))
     return nothing
-end
-
-"""
-    residualpermutationblocks(i, j, nq)
-
-Site blocks of the symmetry that survives inside a block of commuting all-to-all two-qubit
-gates applied in lexicographic order of their qubit pairs. After the gate on `(i, j)` has been
-applied, the gates still to come are invariant under 
-`S_{[1, i-1]} x S_{i} x S_{[i+1, j]} x S_{[j+1, nq]}`, so the Pauli sum may be merged with
-`permutationmerge!(psum, residualpermutationblocks(i, j, nq))` after every gate.
-Returns `((1, i-1), (i, i), (i+1, j), (j+1, nq))`.
-"""
-function residualpermutationblocks(i::Integer, j::Integer, nq::Integer)
-    1 <= i < j <= nq || throw(ArgumentError("Need 1 <= i < j <= nq, got i=$(i), j=$(j), nq=$(nq)."))
-    return ((1, i - 1), (i, i), (i + 1, j), (j + 1, nq))
 end

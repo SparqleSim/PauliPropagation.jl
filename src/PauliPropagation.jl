@@ -232,7 +232,6 @@ export
     reflectionmerge!,
     permutationmerge,
     permutationmerge!,
-    residualpermutationblocks,
     PermutationSymmetry,
     TranslationSymmetry,
     ReflectionSymmetry,

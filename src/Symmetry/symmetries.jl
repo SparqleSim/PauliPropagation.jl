@@ -259,9 +259,8 @@ The blocks must partition `1:nqubits(psum)` in order; empty blocks (`hi < lo`) a
 Within each block the representative is the sorted string `X...X Y...Y Z...Z I...I`.
 A single block `((1, nqubits),)` is the full permutation merge.
 
-This is the merge that stays valid *inside* a block of commuting all-to-all gates applied
-one by one, see [`residualpermutationblocks`](@ref): merging after every gate keeps the
-intermediate Pauli sum polynomially small instead of letting it expand until the block ends.
+For contiguous classes this is `symmetrymerge(PermutationSymmetry(nqubits(psum), classes), psum)`;
+[`symmetrypropagate`](@ref) applies such merges automatically inside a layer of commuting gates.
 
 # Example
 ```julia
