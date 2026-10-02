@@ -1,0 +1,309 @@
+### subgroups.jl
+##
+# Which subgroup of G survives after which gates of a layer. Once the rotations in a set A of a
+# commuting, G-invariant layer have been applied, the rest of the layer is invariant under every
+# element of G that maps A onto itself, angles included (the stabilizer of A). `subgroupschedule`
+# chooses the order of the gates and records that stabilizer after each of them; this is the plan
+# that `symmetrypropagate!` follows inside a layer.
+##
+###
+
+
+## A layer of Pauli rotations
+
+# A layer of Pauli rotations: the gates (frozen, so each carries its angle), their integer Pauli
+# strings and their angles. Equality and hash use only the strings and angles, in order, so that
+# identical layers share one schedule in `symmetrypropagate!`.
+struct RotationLayer{TT<:PauliStringType}
+    gates::Vector{Gate}
+    pstrs::Vector{TT}
+    angles::Vector{Float64}
+end
+
+# `gates` are `PauliRotation`s (one entry of `thetas` each) or frozen ones (carrying their angle);
+# `_isrotation`, `_rotationof` and `_paulistringof` are in Gates/paulirotations.jl
+function RotationLayer(::Type{TT}, gates, thetas=nothing) where {TT}
+    gates isa Gate && (gates = [gates])
+    thetas isa Number && (thetas = [thetas])
+    nthetas = thetas === nothing ? 0 : length(thetas)
+    countparameters(gates) == nthetas || throw(ArgumentError(
+        "Got $(nthetas) angles for $(countparameters(gates)) parametrized gates."))
+    frozen = freeze(collect(Gate, gates), thetas)
+    all(_isrotation, frozen) || throw(ArgumentError(
+        "A rotation layer may only contain Pauli rotations (`PauliRotation` or frozen ones), got $(unique(typeof.(filter(!_isrotation, gates))))."))
+    pstrs = [_paulistringof(TT, _rotationof(gate)) for gate in frozen]
+    return RotationLayer{TT}(frozen, pstrs, [Float64(gate.parameter) for gate in frozen])
+end
+
+Base.length(layer::RotationLayer) = length(layer.gates)
+Base.:(==)(a::RotationLayer, b::RotationLayer) = a.pstrs == b.pstrs && a.angles == b.angles
+Base.hash(layer::RotationLayer, h::UInt) = hash((layer.pstrs, layer.angles), h)
+
+iscommuting(layer::RotationLayer) =
+    all(commutes(layer.pstrs[ii], layer.pstrs[jj]) for ii in eachindex(layer.pstrs) for jj in ii+1:length(layer.pstrs))
+
+
+## The stabilizer of the applied rotations
+
+# angles of rotations about the same Pauli string are compared with this absolute tolerance
+const _ANGLE_ATOL = 1e-10
+
+# The set A as a Dict: Pauli string => total angle of the rotations applied about it. Rotations
+# about the same string commute, so their angles add; a string whose angles cancel stays in A
+# with angle 0 and still constrains its image.
+function _angles(layer::RotationLayer{TT}, positions=eachindex(layer.gates)) where {TT}
+    A = Dict{TT,Float64}()
+    for k in positions
+        _addrotation!(A, layer, k)
+    end
+    return A
+end
+
+_addrotation!(A::Dict, layer::RotationLayer, k::Integer) = (A[layer.pstrs[k]] = get(A, layer.pstrs[k], 0.0) + layer.angles[k]; A)
+
+_hasrotation(A::Dict{TT,Float64}, pstr::TT, theta::Float64) where {TT} =
+    (angle = get(A, pstr, nothing); angle !== nothing && isapprox(angle, theta; atol=_ANGLE_ATOL))
+
+# whether the site permutation with these shifts (see `_shiftsof`) maps A onto itself; a
+# bijection maps a finite set onto itself as soon as it maps it into itself
+_isinvariantunder(A::Dict, shifts::Tuple) = all(_hasrotation(A, _permutesites(pstr, shifts), theta) for (pstr, theta) in A)
+
+# the first generator of G that does not map A onto itself, or `nothing` if A is G-invariant
+function _breakinggenerator(G::AbstractSiteSymmetry, A::Dict)
+    for perm in generators(G)
+        _isinvariantunder(A, _shiftsof(perm)) || return perm
+    end
+    return nothing
+end
+
+"""
+    stabilizer(G::AbstractSiteSymmetry, gates, thetas=nothing)
+
+The subgroup of `G` whose elements map the Pauli rotations `gates` onto themselves, angles
+included: the symmetry that survives after exactly these gates of a `G`-invariant commuting layer
+have been applied. `G` itself if everything survives, a [`TrivialSymmetry`](@ref) if only the
+identity does.
+"""
+stabilizer(G::AbstractSiteSymmetry, gates, thetas=nothing) =
+    _stabilizer(G, _angles(RotationLayer(getinttype(nqubits(G)), gates, thetas)))
+
+# a group with listed elements: keep the elements that map A onto itself
+function _stabilizer(G::AbstractSiteSymmetry, A::Dict)
+    elems = elements(G)
+    kept = [perm for perm in elems if _isinvariantunder(A, _shiftsof(perm))]
+    length(kept) == length(elems) && return G
+    length(kept) == 1 && return TrivialSymmetry(nqubits(G))
+    return SiteSymmetry(nqubits(G), kept, Val(:closed))   # a stabilizer is a group; the identity came first
+end
+
+# The symmetric group: two sites may be swapped exactly when the swap maps A onto itself. This
+# relation is an equivalence (conjugating one allowed swap by another gives an allowed swap), so
+# its classes carry a Young subgroup generated by allowed swaps, which therefore stabilizes A.
+# The classes of G are refined, never merged. For the staircase order of an all-to-all layer this
+# is the full stabilizer; in general it is a subgroup of it (A = {X1 Z2, X2 Z3, X3 Z1} is invariant
+# under the 3-cycle but under no swap), so the merge is less aggressive than it could be but
+# still exact.
+function _stabilizer(G::PermutationSymmetry, A::Dict{TT,Float64}) where {TT}
+    onsite = [TT[] for _ in 1:G.nqubits]            # the strings of A acting on each site
+    for pstr in keys(A), site in 1:G.nqubits
+        _getpaulibits(pstr, site) == TT(0) || push!(onsite[site], pstr)
+    end
+    classes = Vector{Int}[]
+    for class in G.classes
+        representatives = Int[]
+        members = Vector{Int}[]
+        for site in class
+            k = findfirst(rep -> _isinvariantunderswap(A, onsite, site, rep), representatives)
+            if k === nothing
+                push!(representatives, site)
+                push!(members, [site])
+            else
+                push!(members[k], site)
+            end
+        end
+        append!(classes, filter(m -> length(m) >= 2, members))
+    end
+    isempty(classes) && return TrivialSymmetry(G.nqubits)
+    classes == G.classes && return G
+    return PermutationSymmetry(G.nqubits, classes)
+end
+
+# whether swapping sites u and v maps A onto itself; only the strings acting on u or v move
+function _isinvariantunderswap(A::Dict{TT,Float64}, onsite, u::Integer, v::Integer) where {TT}
+    for pstr in onsite[u]
+        _hasrotation(A, _swapsites(pstr, u, v), A[pstr]) || return false
+    end
+    for pstr in onsite[v]
+        _getpaulibits(pstr, u) == TT(0) || continue      # already tested above
+        _hasrotation(A, _swapsites(pstr, u, v), A[pstr]) || return false
+    end
+    return true
+end
+
+
+## The plan for a layer
+
+"""
+    SubgroupSchedule
+
+The plan [`symmetrypropagate!`](@ref) follows inside one layer, made by [`subgroupschedule`](@ref):
+`order` lists the positions of the gates in the sequence they are applied, and `groups[k]` is the
+subgroup the Pauli sum is merged under after the `k`-th applied gate.
+"""
+struct SubgroupSchedule
+    order::Vector{Int}
+    groups::Vector{AbstractSiteSymmetry}
+end
+
+Base.length(schedule::SubgroupSchedule) = length(schedule.order)
+
+function Base.show(io::IO, schedule::SubgroupSchedule)
+    m = length(schedule)
+    print(io, "SubgroupSchedule for $(m) gates")
+    m == 0 && return
+    println(io, ":")
+    run_start = 1
+    for k in 1:m
+        if k == m || !(schedule.groups[k+1] == schedule.groups[k])
+            steps = run_start == k ? "gate $(k)" : "gates $(run_start)-$(k)"
+            print(io, "  after $(steps): ", schedule.groups[k])
+            k < m && println(io)
+            run_start = k + 1
+        end
+    end
+end
+
+"""
+    subgroupschedule(G::AbstractSiteSymmetry, gates, thetas=nothing; order=:auto)
+
+The plan for one layer of mutually commuting Pauli rotations `gates` that is invariant under `G`:
+the order in which to apply the gates and, after each gate, the subgroup of `G` under which the
+Pauli sum may be merged, i.e. the [`stabilizer`](@ref) of the gates applied so far. After the
+last gate this is `G` again. `thetas` has one entry per parametrized gate; frozen rotations carry
+their own angle.
+
+`order` is `:given` (as listed), `:lexicographic` (sorted by qubit indices, then Pauli symbols),
+`:orbits` (orbit by orbit of `G`, see below) or an explicit permutation of `1:length(gates)`.
+Reordering is allowed because the gates commute; without truncation it changes how large the
+Pauli sum gets in between, never the result. `:auto` is `:lexicographic` for a
+[`PermutationSymmetry`](@ref), where the staircase order `(1,2), (1,3), ...` leaves products of
+symmetric groups on contiguous blocks of sites, and `:orbits` otherwise: the gates of one
+`G`-orbit are applied together, so that `G` survives whenever an orbit is complete, walking each
+orbit along the cycles of one group element in the order that makes the prefixes of a cycle
+invariant under that element's subgroups. For the 8 bonds of a ring this is
+`1, 5, 3, 7, 2, 6, 4, 8`:
+
+```julia
+nq = 8
+bonds = [PauliRotation([:Z, :Z], [i, mod1(i + 1, nq)]) for i in 1:nq]
+subgroupschedule(TranslationSymmetry(nq), bonds, fill(0.1, nq))
+>>> SubgroupSchedule for 8 gates:
+  after gate 1: TrivialSymmetry(8)
+  after gate 2: SiteSymmetry(8, order 2)
+  after gate 3: TrivialSymmetry(8)
+  after gate 4: SiteSymmetry(8, order 4)
+  after gate 5: TrivialSymmetry(8)
+  after gate 6: SiteSymmetry(8, order 2)
+  after gate 7: TrivialSymmetry(8)
+  after gate 8: TranslationSymmetry(8)
+```
+"""
+subgroupschedule(G::AbstractSiteSymmetry, gates, thetas=nothing; order=:auto) =
+    subgroupschedule(G, RotationLayer(getinttype(nqubits(G)), gates, thetas); order)
+
+function subgroupschedule(G::AbstractSiteSymmetry, layer::RotationLayer{TT}; order=:auto) where {TT}
+    sequence = _gateorder(G, layer, order)
+    A = Dict{TT,Float64}()
+    groups = AbstractSiteSymmetry[]
+    for k in sequence
+        _addrotation!(A, layer, k)
+        push!(groups, _stabilizer(G, A))
+    end
+    return SubgroupSchedule(sequence, groups)
+end
+
+# the schedule of a layer applied as a whole: no merge until the end, then under G
+_wholelayerschedule(G::AbstractSiteSymmetry, m::Integer) =
+    SubgroupSchedule(collect(1:m), AbstractSiteSymmetry[fill(TrivialSymmetry(nqubits(G)), m - 1); G])
+
+
+## The order of the gates
+
+_defaultorder(::AbstractSiteSymmetry) = :orbits
+_defaultorder(::PermutationSymmetry) = :lexicographic
+
+# positions of the layer's gates in the order they are applied
+function _gateorder(G::AbstractSiteSymmetry, layer::RotationLayer, order)
+    m = length(layer)
+    if order isa AbstractVector
+        indices = collect(Int, order)
+        (length(indices) == m && isperm(indices)) || throw(ArgumentError("`order` must be a permutation of 1:$(m), got $(order)."))
+        return indices
+    end
+    order === :auto && (order = _defaultorder(G))
+    order === :given && return collect(1:m)
+    order === :lexicographic && return sortperm(layer.gates; by=gate -> (sort(_rotationof(gate).qinds), _rotationof(gate).symbols))
+    order === :orbits && return _orbitorder(G, layer)
+    throw(ArgumentError("Unknown gate order $(order); use :auto, :given, :lexicographic, :orbits or a permutation."))
+end
+
+_orbitorder(::PermutationSymmetry, ::RotationLayer) = throw(ArgumentError(
+    "`order=:orbits` needs a group with listed elements; use `:lexicographic` for a PermutationSymmetry."))
+
+# Orbit by orbit: the gates in the G-orbit of a gate are applied together, so G survives whenever
+# an orbit is complete. Inside an orbit the gates are walked along the cycles of the group element
+# whose cycle through the orbit's first string is longest, one cycle at a time in the order of
+# `_subgroupchainorder`, so that the prefixes of a cycle are invariant under the subgroups of that
+# element. Orbits are taken in the order of the layer; each new cycle starts at the first member
+# of the orbit, in the order of `elements(G)`, that is not placed yet. The guards against missing
+# strings only matter for a layer that is not G-invariant (`check=false`).
+function _orbitorder(G::AbstractSiteSymmetry, layer::RotationLayer{TT}) where {TT}
+    gates_on = Dict{TT,Vector{Int}}()     # the gates of the layer about each Pauli string
+    for k in eachindex(layer.gates)
+        push!(get!(gates_on, layer.pstrs[k], Int[]), k)
+    end
+    grouporder(G) == 1 && return collect(1:length(layer))   # a listed group of order 1
+    shifts = [_shiftsof(perm) for perm in elements(G)]
+
+    placed = Set{TT}()
+    sequence = Int[]
+    for start in layer.pstrs
+        start in placed && continue
+        orbit = filter(pstr -> haskey(gates_on, pstr), unique(_permutesites(start, s) for s in shifts))
+        along = argmax(s -> length(_cycle(start, s, gates_on)), shifts[2:end])    # skip the identity
+        for pstr in orbit
+            pstr in placed && continue
+            cycle = _cycle(pstr, along, gates_on)
+            for offset in _subgroupchainorder(length(cycle))
+                q = cycle[offset+1]
+                q in placed && continue
+                push!(placed, q)
+                append!(sequence, gates_on[q])
+            end
+        end
+    end
+    return sequence
+end
+
+# the Pauli strings of the layer reached from `pstr` by applying the permutation with these
+# shifts again and again, until it returns or leaves the layer
+function _cycle(pstr::TT, shifts, gates_on) where {TT}
+    cycle = TT[pstr]
+    next = _permutesites(pstr, shifts)
+    while haskey(gates_on, next) && !(next in cycle)
+        push!(cycle, next)
+        next = _permutesites(next, shifts)
+    end
+    return cycle
+end
+
+# The offsets 0:L-1 of a cycle of length L, ordered along the chain of subgroups obtained by
+# repeatedly splitting off the smallest prime factor p: the subgroup of index p is finished first
+# (recursively), then its other cosets. The prefixes of lengths L/p, L/(p p'), ... are then
+# subgroups: [0, 4, 2, 6, 1, 5, 3, 7] for L = 8 and [0, 2, 4, 1, 3, 5] for L = 6.
+function _subgroupchainorder(L::Integer)
+    L <= 1 && return [0]
+    p = first(d for d in 2:L if L % d == 0)
+    inner = _subgroupchainorder(L ÷ p)
+    return reduce(vcat, [r .+ p .* inner for r in 0:p-1])
+end

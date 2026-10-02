@@ -236,7 +236,8 @@ export
     PermutationSymmetry,
     TranslationSymmetry,
     ReflectionSymmetry,
-    SiteSymmetry
+    SiteSymmetry,
+    subgroupschedule
 
 include("Surrogate/Surrogate.jl")
 export
