@@ -526,7 +526,7 @@ _nwritten!(prop_cache, outputs::Vector{<:TaskOutput}) = _copyleft!(prop_cache, f
 @inline _reserve!(output::ArrayOutputs, n_more::Int) = _roomtoemit!(output, n_more)
 @inline _reserve!(output, n_more::Int) = nothing
 
-@inline function _put!(output::ArrayOutputs, (output_terms, output_coeffs), pstr, coeff)
+@inline function _put!(output::ArrayOutputs, (output_terms, output_coeffs)::Tuple, pstr, coeff)
     n_written = output.n_written + 1
     output_terms[n_written] = pstr
     output_coeffs[n_written] = coeff
