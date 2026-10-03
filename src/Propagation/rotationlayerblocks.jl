@@ -238,58 +238,25 @@ function _rotateblockwords!(present::Vector{UInt64}, n_words::Int, coeffs::Vecto
 end
 
 # the entries of a block of one word that are present
-function _emitblockword!(output::ArrayOutputs, present::UInt64, coeffs::Vector{CT}, block_terms::Vector{TT}) where {CT,TT}
-    output_terms, output_coeffs = _roomtoemit!(output, count_ones(present))
-    n_written = output.n_written
-    while present != 0
-        entry = trailing_zeros(present)
-        present &= present - one(UInt64)
-        n_written += 1
-        output_terms[n_written] = block_terms[entry+1]
-        output_coeffs[n_written] = coeffs[entry+1]
-    end
-    output.n_written = n_written
-    return
-end
-
 function _emitblockword!(output, present::UInt64, coeffs::Vector{CT}, block_terms::Vector{TT}) where {CT,TT}
+    room = _reserve!(output, count_ones(present))
     while present != 0
         entry = trailing_zeros(present)
         present &= present - one(UInt64)
-        _emit!(output, block_terms[entry+1], coeffs[entry+1])
+        _put!(output, room, block_terms[entry+1], coeffs[entry+1])
     end
     return
 end
 
 # the entries of a block of several words that are present
-function _emitblockwords!(output::ArrayOutputs, present::Vector{UInt64}, n_words::Int, coeffs::Vector{CT}, block_terms::Vector{TT}) where {CT,TT}
-    n_present = 0
-    for word in 1:n_words
-        n_present += count_ones(present[word])
-    end
-    output_terms, output_coeffs = _roomtoemit!(output, n_present)
-    n_written = output.n_written
-    for word in 0:n_words-1
-        bits = present[word+1]
-        while bits != 0
-            entry = 64 * word + trailing_zeros(bits)
-            bits &= bits - one(UInt64)
-            n_written += 1
-            output_terms[n_written] = block_terms[entry+1]
-            output_coeffs[n_written] = coeffs[entry+1]
-        end
-    end
-    output.n_written = n_written
-    return
-end
-
 function _emitblockwords!(output, present::Vector{UInt64}, n_words::Int, coeffs::Vector{CT}, block_terms::Vector{TT}) where {CT,TT}
+    room = _reserve!(output, sum(count_ones, view(present, 1:n_words)))
     for word in 0:n_words-1
         bits = present[word+1]
         while bits != 0
             entry = 64 * word + trailing_zeros(bits)
             bits &= bits - one(UInt64)
-            _emit!(output, block_terms[entry+1], coeffs[entry+1])
+            _put!(output, room, block_terms[entry+1], coeffs[entry+1])
         end
     end
     return

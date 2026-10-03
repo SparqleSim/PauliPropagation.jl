@@ -51,8 +51,7 @@ function _applyrotations!(applyrotation!::F, prop_cache, layer::RotationLayer, s
     return prop_cache
 end
 
-# The truncation within a class, where the weight of every entry is known. Every coefficient below `min_abs_coeff` is
-# truncated, whatever else `truncfunc` checks.
+# The truncation within a class. Every coefficient below `min_abs_coeff` is truncated, whatever else `truncfunc` checks.
 function _layertruncation(truncfunc, max_weight::Real, min_abs_coeff::Real)
     if isinf(max_weight)
         return (; truncfunc, max_weight=_UNLIMITED_WEIGHT, min_abs_coeff)
@@ -68,8 +67,11 @@ const _UNLIMITED_WEIGHT = typemax(Int)
 
 @inline _limitsweight(truncation) = truncation.max_weight != _UNLIMITED_WEIGHT
 
-@inline function _istruncated(truncation, pstr, coeff)
-    if _limitsweight(truncation) && countweight(pstr) > truncation.max_weight
+# whether the truncation drops a Pauli string with this coefficient, with its weight counted only where it is limited
+@inline _istruncated(truncation, pstr, coeff) = _istruncated(truncation, pstr, coeff, _limitsweight(truncation))
+
+@inline function _istruncated(truncation, pstr, coeff, limits_weight)
+    if limits_weight && countweight(pstr) > truncation.max_weight
         return true
     end
     return @inline truncation.truncfunc(pstr, coeff)
@@ -538,14 +540,22 @@ const ArrayOutputs = Union{ArrayOutput,TaskOutput}
 _nwritten!(prop_cache, outputs::Vector{<:ArrayOutput}) = only(outputs).n_written
 _nwritten!(prop_cache, outputs::Vector{<:TaskOutput}) = _copyleft!(prop_cache, first(outputs).n_reserved[], outputs)
 
-@inline function _emit!(output::ArrayOutputs, pstr, coeff)
-    output_terms, output_coeffs = _roomtoemit!(output, 1)
+@inline _emit!(output::ArrayOutputs, pstr, coeff) = _put!(output, _reserve!(output, 1), pstr, coeff)
+
+# Room for `n_more` Pauli strings, which the output then takes one by one with `_put!`: arrays make the room at once and
+# return themselves, and any other output takes the strings as they come.
+@inline _reserve!(output::ArrayOutputs, n_more::Int) = _roomtoemit!(output, n_more)
+@inline _reserve!(output, n_more::Int) = nothing
+
+@inline function _put!(output::ArrayOutputs, (output_terms, output_coeffs), pstr, coeff)
     n_written = output.n_written + 1
     output_terms[n_written] = pstr
     output_coeffs[n_written] = coeff
     output.n_written = n_written
     return
 end
+
+@inline _put!(output, ::Nothing, pstr, coeff) = _emit!(output, pstr, coeff)
 
 # the arrays to write to, with room for `n_more` Pauli strings past the ones written
 @inline function _roomtoemit!(output::ArrayOutput, n_more::Int)

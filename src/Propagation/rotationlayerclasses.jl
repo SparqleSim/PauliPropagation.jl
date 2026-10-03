@@ -631,16 +631,11 @@ function _rotatekeyedclass!(output, task, plan, truncation, record_terms::Vector
     _openclass!(task, last - first + 1, K === UInt64 && n_key_bits <= _MAX_DIRECT_KEY_BITS, n_key_bits)
     _addmembers!(task, entry_keys, key_bits, record_terms, record_coeffs, lo, first, last)
 
-    # without a limit on the weight, the weights are not counted
-    limits_weight = _limitsweight(truncation)
+    # without a limit on the weight, the loops over the entries are compiled without counting weights
+    limits_weight = _limitsweight(truncation) ? Val(true) : Val(false)
     for step in 1:n_rotations
         rotation = Int(task.rotations[step])
-        key_mask = _keyof(plan.masks[rotation], key_bits)
-        if limits_weight
-            _applytoclass!(task, plan, truncation, entry_keys, key_mask, rotation, Int32(step), CT, Val(true))
-        else
-            _applytoclass!(task, plan, truncation, entry_keys, key_mask, rotation, Int32(step), CT, Val(false))
-        end
+        _applytoclass!(task, plan, truncation, entry_keys, _keyof(plan.masks[rotation], key_bits), rotation, Int32(step), CT, limits_weight)
     end
 
     _emitclass!(output, task)
@@ -739,8 +734,8 @@ function _applytoclass!(task, plan, truncation, entry_keys::Vector{K}, key_mask:
         new_coeff = mergefunc(coeff * cos_val, partner_coeff * sin_val * sign_from_partner)
         new_partner_coeff = mergefunc(partner_coeff * cos_val, coeff * sin_val * sign_to_partner)
 
-        keep = !_istruncatedin(truncation, pstr, new_coeff, Val(LimitsWeight))
-        keep_partner = !_istruncatedin(truncation, partner_pstr, new_partner_coeff, Val(LimitsWeight))
+        keep = !_istruncated(truncation, pstr, new_coeff, LimitsWeight)
+        keep_partner = !_istruncated(truncation, partner_pstr, new_partner_coeff, LimitsWeight)
         entry_coeffs[entry] = ifelse(keep, new_coeff, zero(CT))
         entry_present[entry] = keep
         entry_steps[entry] = step
@@ -767,21 +762,13 @@ function _applytoclass!(task, plan, truncation, entry_keys::Vector{K}, key_mask:
         coeff = entry_coeffs[entry]
         scales = entry_present[entry] & (entry_steps[entry] != step)
         new_coeff = coeff * cos_val
-        keep = !_istruncatedin(truncation, entry_terms[entry], new_coeff, Val(LimitsWeight))
+        keep = !_istruncated(truncation, entry_terms[entry], new_coeff, LimitsWeight)
         entry_coeffs[entry] = ifelse(scales, ifelse(keep, new_coeff, zero(CT)), coeff)
         entry_present[entry] = ifelse(scales, keep, entry_present[entry])
     end
 
     task.n_entries = n_entries
     return task
-end
-
-# the truncation of an entry, with the weight counted only where it is limited
-@inline function _istruncatedin(truncation, pstr, coeff, ::Val{LimitsWeight}) where {LimitsWeight}
-    if LimitsWeight && countweight(pstr) > truncation.max_weight
-        return true
-    end
-    return @inline truncation.truncfunc(pstr, coeff)
 end
 
 # The smallest coefficient that can make a partner the truncation keeps, of a rotation with this sine. Without a smallest
@@ -979,29 +966,12 @@ function _checkentries(task, entry_keys::Vector, n_entries::Int)
 end
 
 # the entries of the class that are present
-function _emitclass!(output::ArrayOutputs, task)
+function _emitclass!(output, task)
     n_entries = task.n_entries
-    if n_entries > min(length(task.entry_terms), length(task.entry_coeffs), length(task.entry_present))
-        throw(ArgumentError("the $n_entries entries of a class do not fit the workspace"))
-    end
-    output_terms, output_coeffs = _roomtoemit!(output, n_entries)
-    n_written = output.n_written
-
-    # every entry is written, and the next one writes over it if it is not present
-    @inbounds for entry in 1:n_entries
-        output_terms[n_written+1] = task.entry_terms[entry]
-        output_coeffs[n_written+1] = task.entry_coeffs[entry]
-        n_written += task.entry_present[entry]
-    end
-
-    output.n_written = n_written
-    return
-end
-
-function _emitclass!(output::Union{AbstractTermSum,ZoneOutputs}, task)
-    for entry in 1:task.n_entries
+    room = _reserve!(output, n_entries)
+    for entry in 1:n_entries
         if task.entry_present[entry]
-            _emit!(output, task.entry_terms[entry], task.entry_coeffs[entry])
+            _put!(output, room, task.entry_terms[entry], task.entry_coeffs[entry])
         end
     end
     return
