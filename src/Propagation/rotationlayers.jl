@@ -273,8 +273,8 @@ function _applysublayer!(::PropagationBase.MultiSumStorage, prop_cache::Abstract
     function count_zone!(zone_id)
         zonecache = zone_caches[zone_id]
         zone_counts = fill!(view(partition_counts, :, zone_id), 0)
-        zone_labels = _ensurelength!(cached_labels[zone_id], length(zonecache))
-        _countrecords!(zone_counts, n_bits, zone_bits, tasks[zone_id].orbit_rotations, plan, zonecache, zone_labels,
+        labels = _ensurelength!(cached_labels[zone_id], length(zonecache))
+        _countrecords!(zone_counts, n_bits, zone_bits, tasks[zone_id].orbit_rotations, plan, zonecache, labels,
             _inplacerecords(StorageType(zonecache), zonecache))
     end
     PropagationBase._eachzone(count_zone!, prop_cache, thread)
