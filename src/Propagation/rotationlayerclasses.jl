@@ -452,8 +452,8 @@ end
 """
     _rotatepartition!(output, task, plan, truncation, record_terms, record_coeffs, record_labels, lo, hi)
 
-Groups the Pauli strings of the records `lo` to `hi` by class, rotates every class, and writes what the truncations keep to `output`.
-A Pauli string that anticommutes with no rotation goes to `output` as it is.
+Groups the Pauli strings of the records `lo` to `hi` by the hash of their class, rotates every class, and writes what the
+truncations keep to `output`. A Pauli string that anticommutes with no rotation goes to `output` as it is.
 """
 function _rotatepartition!(output, task, plan, truncation, record_terms::Vector{TT}, record_coeffs::Vector{CT},
     record_labels::Vector{Int}, lo::Int, hi::Int) where {TT,CT}
@@ -465,23 +465,22 @@ function _rotatepartition!(output, task, plan, truncation, record_terms::Vector{
         throw(ArgumentError("the records $lo to $hi are not among the records"))
     end
     n_records = hi - lo + 1
-    class_of = _ensurelength!(task.class_of, n_records)
-    class_keys = _ensurelength!(task.class_keys, n_records)
-    class_hashes = _ensurelength!(task.class_hashes, n_records)
-    class_starts = _ensurelength!(task.class_starts, n_records + 1)
+    group_of = _ensurelength!(task.group_of, n_records)
+    group_hashes = _ensurelength!(task.group_hashes, n_records)
+    group_starts = _ensurelength!(task.group_starts, n_records + 1)
 
-    # the classes found so far, through the hash of their key
+    # the groups found so far, through their hash
     table_length = max(16, nextpow(2, 2 * n_records))
     slot_mask = table_length - 1
     slots = _ensurelength!(task.slots, table_length)
     fill!(view(slots, 1:table_length), zero(Int32))
-    n_classes = 0
+    n_groups = 0
 
     for i in lo:hi
-        pstr = record_terms[i]
         label = record_labels[i]
         if !_hasclass(label)
-            class_of[i-lo+1] = 0
+            group_of[i-lo+1] = 0
+            pstr = record_terms[i]
             coeff = record_coeffs[i]
             if !_istruncated(truncation, pstr, coeff)
                 _emit!(output, pstr, coeff)
@@ -489,49 +488,75 @@ function _rotatepartition!(output, task, plan, truncation, record_terms::Vector{
             continue
         end
 
-        key = _classkey(pstr, _touchedqubits(plan.reader, pstr))
         hashbits = _labelhash(label)
         slot = Int(hashbits & (slot_mask % UInt64)) + 1
-        class = Int(slots[slot])
-        while class != 0 && !(class_hashes[class] == hashbits && class_keys[class] == key)
+        group = Int(slots[slot])
+        while group != 0 && group_hashes[group] != hashbits
             slot = (slot & slot_mask) + 1
-            class = Int(slots[slot])
+            group = Int(slots[slot])
         end
-        if class == 0
-            n_classes += 1
-            class = n_classes
-            class_keys[class] = key
-            class_hashes[class] = hashbits
-            class_starts[class] = 0
-            slots[slot] = class
+        if group == 0
+            n_groups += 1
+            group = n_groups
+            group_hashes[group] = hashbits
+            group_starts[group] = 0
+            slots[slot] = group
         end
-        class_starts[class] += 1
-        class_of[i-lo+1] = class
+        group_starts[group] += 1
+        group_of[i-lo+1] = group
     end
 
-    # the records one class after the other
+    # the records one group after the other
     next_start = 1
-    for class in 1:n_classes
-        n_here = class_starts[class]
-        class_starts[class] = next_start
+    for group in 1:n_groups
+        n_here = group_starts[group]
+        group_starts[group] = next_start
         next_start += n_here
     end
-    class_starts[n_classes+1] = next_start
+    group_starts[n_groups+1] = next_start
     class_records = _ensurelength!(task.class_records, n_records)
     for i in 1:n_records
-        class = class_of[i]
-        if class != 0
-            class_records[class_starts[class]] = i
-            class_starts[class] += 1
+        group = group_of[i]
+        if group != 0
+            class_records[group_starts[group]] = i
+            group_starts[group] += 1
         end
     end
-    for class in n_classes:-1:1
-        class_starts[class+1] = class_starts[class]
+    for group in n_groups:-1:1
+        group_starts[group+1] = group_starts[group]
     end
-    class_starts[1] = 1
+    group_starts[1] = 1
 
-    for class in 1:n_classes
-        _rotateclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, class_starts[class], class_starts[class+1] - 1)
+    for group in 1:n_groups
+        _rotategroup!(output, task, plan, truncation, record_terms, record_coeffs, lo, group_starts[group], group_starts[group+1] - 1)
+    end
+    return output
+end
+
+# The records `class_records[first:last]`, counted from `lo`, share the hash of their class's key: they are one class,
+# or, where two keys share a hash, several. Every class is moved to the front in turn and rotated. Within a pass no qubit
+# is acted on with two different Paulis, so reducing a string on the qubits that another string's rotations touch only
+# multiplies it by Paulis that commute with every rotation: the two strings have the same key that way only if they
+# anticommute with the same rotations, and so belong to the same class.
+function _rotategroup!(output, task, plan, truncation, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int, first::Int,
+    last::Int) where {TT,CT}
+
+    class_records = task.class_records
+    while first <= last
+        first_pstr = record_terms[lo-1+class_records[first]]
+        positions, touched = _anticommuting(plan.reader, first_pstr)
+        key = _classkey(first_pstr, touched)
+        class_end = first
+        for index in first:last
+            record = class_records[index]
+            if _classkey(record_terms[lo-1+record], touched) == key
+                class_records[index] = class_records[class_end]
+                class_records[class_end] = record
+                class_end += 1
+            end
+        end
+        _rotateclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, class_end - 1, positions, touched)
+        first = class_end
     end
     return output
 end
@@ -546,16 +571,15 @@ _rotatesasblock(n_key_bits::Int) = n_key_bits <= _MAX_BLOCK_KEY_BITS
 const _MAX_KEY_BITS = 64
 
 """
-    _rotateclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, last)
+    _rotateclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, last, positions, touched)
 
 Rotates the class of the records `class_records[first:last]`, counted from `lo`, one rotation after the other, and writes
 what the truncations keep to `output`: as a dense block if the class has few key bits, and in a table otherwise.
+`positions` and `touched` are what `_anticommuting` reads from any string of the class.
 """
 function _rotateclass!(output, task, plan, truncation, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int,
-    first::Int, last::Int) where {TT,CT}
+    first::Int, last::Int, positions, touched) where {TT,CT}
 
-    first_pstr = record_terms[lo-1+task.class_records[first]]
-    positions, touched = _anticommuting(plan.reader, first_pstr)
     n_rotations = _rotationsinorder!(task.rotations, plan, positions)
     key_bits = _keybits(touched)
     n_key_bits = sum(count_ones, _limbs(key_bits))

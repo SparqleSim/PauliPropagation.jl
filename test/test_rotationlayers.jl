@@ -190,6 +190,15 @@ end
 
 @eval PauliPropagation _rotatesasblock(n_key_bits::Int) = n_key_bits <= _MAX_BLOCK_KEY_BITS
 
+# every class shares one hash, so that the classes of a partition are told apart by their keys alone
+@eval PauliPropagation _labelhash(label::Int) = zero(UInt64)
+
+@testset "RotationLayer with classes that share their hash" begin
+    testlayers()
+end
+
+@eval PauliPropagation _labelhash(label::Int) = (label % UInt64) >> _HASH_SHIFT
+
 @testset "RotationLayer applied by several tasks" begin
     # the tasks are handed over directly, so that they are tested with any number of threads and terms
     for nq in (8, 100)

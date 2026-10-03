@@ -582,12 +582,14 @@ function _writezonerecords!(zone_terms::Vector{Vector{TT}}, zone_coeffs::Vector{
     return zone_terms
 end
 
-# A hash of `_HASH_BITS` bits. The limbs are multiplied independently of each other, so that the hash of a wide Pauli string is no chain over its limbs.
+# A hash of `_HASH_BITS` bits. The limbs are mixed independently of each other, so that the hash of a wide Pauli string is
+# no chain over its limbs. A product keeps the highest bit of a limb only in its own highest bit, so the high half of
+# every limb is folded onto its low half first, or strings that differ only in which limb has that bit set would collide.
 @inline function _hashbits(pstr)
     limbs = _limbs(pstr)
     folded = zero(UInt64)
     for i in eachindex(limbs)
-        folded ⊻= limbs[i] * _foldfactor(i)
+        folded ⊻= (limbs[i] ⊻ (limbs[i] >> 32)) * _foldfactor(i)
     end
     return PropagationBase._mix64(folded) >> _HASH_SHIFT
 end
@@ -759,12 +761,12 @@ mutable struct TaskWorkspace{TT,CT}
     # the rotations that anticommute with the Pauli strings of a class, in the order of the layer
     rotations::Vector{Int32}
 
-    # the classes of one partition, found through `slots`, and the records of each
+    # the records of one partition grouped by the hash of their class, the groups found through `slots`, and the records
+    # of each group, which `_rotategroup!` orders class by class
     slots::Vector{Int32}
-    class_of::Vector{Int32}
-    class_keys::Vector{TT}
-    class_hashes::Vector{UInt64}
-    class_starts::Vector{Int}
+    group_of::Vector{Int32}
+    group_hashes::Vector{UInt64}
+    group_starts::Vector{Int}
     class_records::Vector{Int32}
 
     # the block of a class with few key bits: a coefficient and a Pauli string for every entry, and which are present
@@ -795,7 +797,7 @@ mutable struct TaskWorkspace{TT,CT}
 end
 
 function TaskWorkspace(::Type{TT}, ::Type{CT}) where {TT,CT}
-    return TaskWorkspace{TT,CT}(Int32[], Int32[], Int32[], TT[], UInt64[], Int[], Int32[], CT[], TT[], UInt64[],
+    return TaskWorkspace{TT,CT}(Int32[], Int32[], Int32[], UInt64[], Int[], Int32[], CT[], TT[], UInt64[],
         TT[], UInt64[], CT[], Bool[], Int32[], 0, Int32[], 0, 64, false, Int32[], Int32[], TaskOutput(TT, CT), TaskOutput{TT,CT}[])
 end
 
