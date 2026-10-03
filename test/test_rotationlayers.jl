@@ -224,8 +224,10 @@ end
             one_task = PauliPropagation.AK.TaskPartitioner(length(vpsum), 1, 1)
             four_tasks = PauliPropagation.AK.TaskPartitioner(length(vpsum), 4, 1)
 
-            PauliPropagation._applypassintasks!(by_one_task, plan, truncation, workspace, one_task, 1)
-            PauliPropagation._applypassintasks!(by_four_tasks, plan, truncation, workspace, four_tasks, 4)
+            PauliPropagation._applypass!(by_one_task, plan, truncation, workspace,
+                PauliPropagation._arraysources(by_one_task, workspace, one_task, 1), true)
+            PauliPropagation._applypass!(by_four_tasks, plan, truncation, workspace,
+                PauliPropagation._arraysources(by_four_tasks, workspace, four_tasks, 4), true)
             matches &= length(by_four_tasks) == length(by_one_task)
             matches &= PauliSum(extractsum!(by_four_tasks)) == PauliSum(extractsum!(by_one_task))
             matches &= PauliSum(extractsum!(by_one_task)) != PauliSum(vpsum)
