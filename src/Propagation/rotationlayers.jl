@@ -24,18 +24,21 @@ function _propagatesinclasses(storage::PropagationBase.MultiSumStorage, prop_cac
 end
 
 """
-    _applylayer!(layer::RotationLayer, prop_cache, theta, truncation; thread=true)
+    _applylayer!(layer::RotationLayer, prop_cache, theta, truncfunc, min_abs_coeff; thread=true)
 
-Applies the rotations of the layer class by class, in one pass over the sum.
+Applies the rotations of the layer class by class, in one pass over the sum, and truncates the Pauli strings for which
+`truncfunc` returns `true` after every rotation. `truncfunc` truncates every coefficient below `min_abs_coeff`.
 A layer that acts on a qubit with two different Paulis takes one pass per sublayer (see `_classpasses`).
 """
-function _applylayer!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta, truncation; thread::Bool=true)
+function _applylayer!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta, truncfunc::F, min_abs_coeff::Real;
+    thread::Bool=true) where {F}
+
     workspace = _takeworkspace(paulitype(prop_cache), coefftype(prop_cache))
     try
         for rotations in _classpasses(layer)
             plan = _prepareclasses(layer, theta, paulitype(prop_cache), coefftype(prop_cache), nqubits(prop_cache), rotations;
-                truncation.min_abs_coeff)
-            _applypass!(prop_cache, plan, truncation, workspace; thread)
+                min_abs_coeff)
+            _applypass!(prop_cache, plan, truncfunc, workspace; thread)
         end
     finally
         _putbackworkspace!(workspace)
@@ -51,37 +54,13 @@ function _applyrotations!(applyrotation!::F, prop_cache, layer::RotationLayer, s
     return prop_cache
 end
 
-# The truncation within a class. Every coefficient below `min_abs_coeff` is truncated, whatever else `truncfunc` checks.
-function _layertruncation(truncfunc, max_weight::Real, min_abs_coeff::Real)
-    if isinf(max_weight)
-        return (; truncfunc, max_weight=_UNLIMITED_WEIGHT, min_abs_coeff)
-    else
-        return (; truncfunc, max_weight=floor(Int, max_weight), min_abs_coeff)
-    end
-end
-
 _nevertruncate(pstr, coeff) = false
-
-# no Pauli string is heavier than this
-const _UNLIMITED_WEIGHT = typemax(Int)
-
-@inline _limitsweight(truncation) = truncation.max_weight != _UNLIMITED_WEIGHT
-
-# whether the truncation drops a Pauli string with this coefficient, with its weight counted only where it is limited
-@inline _istruncated(truncation, pstr, coeff) = _istruncated(truncation, pstr, coeff, _limitsweight(truncation))
-
-@inline function _istruncated(truncation, pstr, coeff, limits_weight)
-    if limits_weight && countweight(pstr) > truncation.max_weight
-        return true
-    end
-    return @inline truncation.truncfunc(pstr, coeff)
-end
 
 
 ### A pass over the sum
 
 """
-    _applypass!(prop_cache, plan, truncation, workspace; thread=true)
+    _applypass!(prop_cache, plan, truncfunc, workspace; thread=true)
 
 One pass of the rotations of `plan` over the sum, class by class. Every Pauli string becomes a record, labelled with the
 hash of its class: the records are counted by partition, written partition by partition, and the partitions are rotated
@@ -89,15 +68,15 @@ by tasks that each take the next partition that no task has taken yet, and write
 The storage of the sum decides what every task reads (`_recordsources`), where the records are kept (`_recordarrays!`),
 where the tasks write (`_passoutputs!`) and how that becomes the sum (`_collectpass!`).
 """
-function _applypass!(prop_cache::AbstractPauliPropagationCache, plan, truncation, workspace; thread::Bool=true)
+function _applypass!(prop_cache::AbstractPauliPropagationCache, plan, truncfunc::F, workspace; thread::Bool=true) where {F}
     if length(prop_cache) == 0
         return prop_cache
     end
     sources = _recordsources(StorageType(prop_cache), prop_cache, workspace, thread)
-    return _applypass!(prop_cache, plan, truncation, workspace, sources, thread)
+    return _applypass!(prop_cache, plan, truncfunc, workspace, sources, thread)
 end
 
-function _applypass!(prop_cache::AbstractPauliPropagationCache, plan, truncation, workspace, sources, thread::Bool)
+function _applypass!(prop_cache::AbstractPauliPropagationCache, plan, truncfunc::F, workspace, sources, thread::Bool) where {F}
     storage = StorageType(prop_cache)
     n_terms = length(prop_cache)
     n_sources = length(sources)
@@ -134,7 +113,7 @@ function _applypass!(prop_cache::AbstractPauliPropagationCache, plan, truncation
     _eachsource(write_source!, storage, prop_cache, n_sources, thread)
 
     outputs = _passoutputs!(storage, prop_cache, workspace, tasks, n_sources)
-    _rotatepartitions!(outputs, tasks, plan, truncation, record_terms, record_coeffs, record_labels, partition_starts, zone_starts,
+    _rotatepartitions!(outputs, tasks, plan, truncfunc, record_terms, record_coeffs, record_labels, partition_starts, zone_starts,
         n_partitions_per_zone, storage, prop_cache, thread)
     _collectpass!(storage, prop_cache, outputs, thread)
     return prop_cache
@@ -142,8 +121,8 @@ end
 
 # The classes differ widely in size, so the partitions do too: every task takes the partitions of its own zone first and
 # then those of the other zones, one at a time, each the next one that no task has taken yet.
-function _rotatepartitions!(outputs, tasks, plan, truncation, record_terms, record_coeffs, record_labels, partition_starts,
-    zone_starts, n_partitions_per_zone::Int, storage, prop_cache, thread::Bool)
+function _rotatepartitions!(outputs, tasks, plan, truncfunc::F, record_terms, record_coeffs, record_labels, partition_starts,
+    zone_starts, n_partitions_per_zone::Int, storage, prop_cache, thread::Bool) where {F}
 
     n_zones = length(zone_starts) - 1
     n_partitions_taken = [Threads.Atomic{Int}(0) for _ in 1:n_zones]
@@ -158,7 +137,7 @@ function _rotatepartitions!(outputs, tasks, plan, truncation, record_terms, reco
                     break
                 end
                 partition = first_partition + partition_in_zone
-                _rotatepartition!(outputs[task_id], tasks[task_id], plan, truncation, record_terms[zone_id], record_coeffs[zone_id],
+                _rotatepartition!(outputs[task_id], tasks[task_id], plan, truncfunc, record_terms[zone_id], record_coeffs[zone_id],
                     record_labels[zone_id], partition_starts[partition] - first_record + 1, partition_starts[partition+1] - first_record)
             end
         end

@@ -103,10 +103,8 @@ function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::A
         return
     end
 
-    # the weight limit is checked where the weights are counted, so it is left out of the truncation function
-    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_freq, max_sins, customtruncfunc, thread)
-    truncation = _layertruncation(truncfunc, max_weight, min_abs_coeff)
-    _applylayer!(layer, prop_cache, theta, truncation; thread)
+    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
+    _applylayer!(layer, prop_cache, theta, truncfunc, min_abs_coeff; thread)
     return
 end
 
@@ -132,7 +130,7 @@ function PropagationBase.applytoall!(layer::RotationLayer, prop_cache::AbstractP
         return prop_cache
     end
 
-    return _applylayer!(layer, prop_cache, theta, _layertruncation(_nevertruncate, Inf, 0); thread)
+    return _applylayer!(layer, prop_cache, theta, _nevertruncate, 0; thread)
 end
 
 PropagationBase.requiresmerging(::RotationLayer, ::AbstractPauliPropagationCache) = false

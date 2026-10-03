@@ -458,13 +458,13 @@ end
 ### Rotating the classes of a partition
 
 """
-    _rotatepartition!(output, task, plan, truncation, record_terms, record_coeffs, record_labels, lo, hi)
+    _rotatepartition!(output, task, plan, truncfunc, record_terms, record_coeffs, record_labels, lo, hi)
 
 Groups the Pauli strings of the records `lo` to `hi` by the hash of their class, rotates every class, and writes what the
 truncations keep to `output`. A Pauli string that anticommutes with no rotation goes to `output` as it is.
 """
-function _rotatepartition!(output, task, plan, truncation, record_terms::Vector{TT}, record_coeffs::Vector{CT},
-    record_labels::Vector{Int}, lo::Int, hi::Int) where {TT,CT}
+function _rotatepartition!(output, task, plan, truncfunc::F, record_terms::Vector{TT}, record_coeffs::Vector{CT},
+    record_labels::Vector{Int}, lo::Int, hi::Int) where {F,TT,CT}
 
     if lo > hi
         return output
@@ -490,7 +490,7 @@ function _rotatepartition!(output, task, plan, truncation, record_terms::Vector{
             group_of[i-lo+1] = 0
             pstr = record_terms[i]
             coeff = record_coeffs[i]
-            if !_istruncated(truncation, pstr, coeff)
+            if !@inline(truncfunc(pstr, coeff))
                 _emit!(output, pstr, coeff)
             end
             continue
@@ -536,7 +536,7 @@ function _rotatepartition!(output, task, plan, truncation, record_terms::Vector{
     group_starts[1] = 1
 
     for group in 1:n_groups
-        _rotategroup!(output, task, plan, truncation, record_terms, record_coeffs, lo, group_starts[group], group_starts[group+1] - 1)
+        _rotategroup!(output, task, plan, truncfunc, record_terms, record_coeffs, lo, group_starts[group], group_starts[group+1] - 1)
     end
     return output
 end
@@ -546,8 +546,8 @@ end
 # is acted on with two different Paulis, so reducing a string on the qubits that another string's rotations touch only
 # multiplies it by Paulis that commute with every rotation: the two strings have the same key that way only if they
 # anticommute with the same rotations, and so belong to the same class.
-function _rotategroup!(output, task, plan, truncation, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int, first::Int,
-    last::Int) where {TT,CT}
+function _rotategroup!(output, task, plan, truncfunc::F, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int, first::Int,
+    last::Int) where {F,TT,CT}
 
     class_records = task.class_records
     while first <= last
@@ -563,7 +563,7 @@ function _rotategroup!(output, task, plan, truncation, record_terms::Vector{TT},
                 class_end += 1
             end
         end
-        _rotateclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, class_end - 1, positions, touched)
+        _rotateclass!(output, task, plan, truncfunc, record_terms, record_coeffs, lo, first, class_end - 1, positions, touched)
         first = class_end
     end
     return output
@@ -579,14 +579,14 @@ _rotatesasblock(n_key_bits::Int) = n_key_bits <= _MAX_BLOCK_KEY_BITS
 const _MAX_KEY_BITS = 64
 
 """
-    _rotateclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, last, positions, touched)
+    _rotateclass!(output, task, plan, truncfunc, record_terms, record_coeffs, lo, first, last, positions, touched)
 
 Rotates the class of the records `class_records[first:last]`, counted from `lo`, one rotation after the other, and writes
 what the truncations keep to `output`: as a dense block if the class has few key bits, and in a table otherwise.
 `positions` and `touched` are what `_anticommuting` reads from any string of the class.
 """
-function _rotateclass!(output, task, plan, truncation, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int,
-    first::Int, last::Int, positions, touched) where {TT,CT}
+function _rotateclass!(output, task, plan, truncfunc::F, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int,
+    first::Int, last::Int, positions, touched) where {F,TT,CT}
 
     n_rotations = _rotationsinorder!(task.rotations, plan, positions)
     key_bits = _keybits(touched)
@@ -594,12 +594,12 @@ function _rotateclass!(output, task, plan, truncation, record_terms::Vector{TT},
 
     # the kernels are compiled for keys of each type, behind this barrier
     if _rotatesasblock(n_key_bits)
-        _rotateblock!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, last, n_rotations, key_bits, n_key_bits)
+        _rotateblock!(output, task, plan, truncfunc, record_terms, record_coeffs, lo, first, last, n_rotations, key_bits, n_key_bits)
     elseif n_key_bits <= _MAX_KEY_BITS
-        _rotatekeyedclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, last, n_rotations,
+        _rotatekeyedclass!(output, task, plan, truncfunc, record_terms, record_coeffs, lo, first, last, n_rotations,
             task.entry_keys, key_bits, n_key_bits)
     else
-        _rotatekeyedclass!(output, task, plan, truncation, record_terms, record_coeffs, lo, first, last, n_rotations,
+        _rotatekeyedclass!(output, task, plan, truncfunc, record_terms, record_coeffs, lo, first, last, n_rotations,
             task.entry_terms, nothing, n_key_bits)
     end
     return output
@@ -625,17 +625,15 @@ const _MAX_DIRECT_KEY_BITS = 20
 # it would make is decided, so that rounding cannot hide a partner that the truncation keeps.
 const _MAKE_MARGIN = 1 - 1e-12
 
-function _rotatekeyedclass!(output, task, plan, truncation, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int,
-    first::Int, last::Int, n_rotations::Int, entry_keys::Vector{K}, key_bits, n_key_bits::Int) where {TT,CT,K}
+function _rotatekeyedclass!(output, task, plan, truncfunc::F, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int,
+    first::Int, last::Int, n_rotations::Int, entry_keys::Vector{K}, key_bits, n_key_bits::Int) where {F,TT,CT,K}
 
     _openclass!(task, last - first + 1, K === UInt64 && n_key_bits <= _MAX_DIRECT_KEY_BITS, n_key_bits)
     _addmembers!(task, entry_keys, key_bits, record_terms, record_coeffs, lo, first, last)
 
-    # without a limit on the weight, the loops over the entries are compiled without counting weights
-    limits_weight = _limitsweight(truncation) ? Val(true) : Val(false)
     for step in 1:n_rotations
         rotation = Int(task.rotations[step])
-        _applytoclass!(task, plan, truncation, entry_keys, _keyof(plan.masks[rotation], key_bits), rotation, Int32(step), CT, limits_weight)
+        _applytoclass!(task, plan, truncfunc, entry_keys, _keyof(plan.masks[rotation], key_bits), rotation, Int32(step), CT)
     end
 
     _emitclass!(output, task)
@@ -669,8 +667,7 @@ end
 # than keep cos θ, so the entries that do more are listed first, and those that only keep cos θ are scaled after them.
 # A pair is listed at the entry whose key has the lowest bit of `key_mask` clear. Entries made by the rotation come after
 # the others and are not visited.
-function _applytoclass!(task, plan, truncation, entry_keys::Vector{K}, key_mask::K, rotation::Int, step::Int32, ::Type{CT},
-    ::Val{LimitsWeight}) where {K,CT,LimitsWeight}
+function _applytoclass!(task, plan, truncfunc::F, entry_keys::Vector{K}, key_mask::K, rotation::Int, step::Int32, ::Type{CT}) where {F,K,CT}
 
     mask = plan.masks[rotation]
     cos_val = plan.cosines[rotation]
@@ -734,8 +731,8 @@ function _applytoclass!(task, plan, truncation, entry_keys::Vector{K}, key_mask:
         new_coeff = mergefunc(coeff * cos_val, partner_coeff * sin_val * sign_from_partner)
         new_partner_coeff = mergefunc(partner_coeff * cos_val, coeff * sin_val * sign_to_partner)
 
-        keep = !_istruncated(truncation, pstr, new_coeff, LimitsWeight)
-        keep_partner = !_istruncated(truncation, partner_pstr, new_partner_coeff, LimitsWeight)
+        keep = !@inline(truncfunc(pstr, new_coeff))
+        keep_partner = !@inline(truncfunc(partner_pstr, new_partner_coeff))
         entry_coeffs[entry] = ifelse(keep, new_coeff, zero(CT))
         entry_present[entry] = keep
         entry_steps[entry] = step
@@ -762,7 +759,7 @@ function _applytoclass!(task, plan, truncation, entry_keys::Vector{K}, key_mask:
         coeff = entry_coeffs[entry]
         scales = entry_present[entry] & (entry_steps[entry] != step)
         new_coeff = coeff * cos_val
-        keep = !_istruncated(truncation, entry_terms[entry], new_coeff, LimitsWeight)
+        keep = !@inline(truncfunc(entry_terms[entry], new_coeff))
         entry_coeffs[entry] = ifelse(scales, ifelse(keep, new_coeff, zero(CT)), coeff)
         entry_present[entry] = ifelse(scales, keep, entry_present[entry])
     end
