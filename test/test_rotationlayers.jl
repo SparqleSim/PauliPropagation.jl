@@ -36,7 +36,7 @@ function layersmatchrotations(layers, thetas, psum; kwargs...)
     rotations, angles = expandlayers(layers, thetas)
     matches = true
     for (T, heisenberg) in LAYER_TEST_SUMS
-        layered = propagate(layers, T(psum), thetas; heisenberg, layer_method=:orbits, kwargs...)
+        layered = propagate(layers, T(psum), thetas; heisenberg, kwargs...)
         reference = propagate(rotations, T(psum), angles; heisenberg, kwargs...)
         # the same terms, as two sums also compare equal if one of them holds more terms with a coefficient of zero
         matches &= !isempty(layered) && length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
@@ -45,7 +45,7 @@ function layersmatchrotations(layers, thetas, psum; kwargs...)
 end
 
 function testlayersagainstrotations()
-    # in blocks of coefficients of up to eight rotations, on one limb, on two and on four
+    # on one limb, on two and on four
     for nq in (8, 40, 100)
         rng = MersenneTwister(nq)
         psum = randompaulisum(rng, nq, 12, 3)
@@ -54,7 +54,7 @@ function testlayersagainstrotations()
         disjoint_bonds = [(i, i + 1) for i in 1:2:nq-1]
         distant_bonds = [(i + 3, i) for i in 1:nq-3]
 
-        # rotations that share qubits within a sublayer and rotations that do not, in the order of the qubits and in any other
+        # rotations that share qubits and rotations that do not, in the order of the qubits and in any other
         layer_sets = (
             [RotationLayer(:X, 1:nq), RotationLayer([:Z, :Z], chain)],
             [RotationLayer(:Y, nq:-1:1), RotationLayer([:X, :X], ring)],
@@ -89,18 +89,19 @@ function testanyqubitsandpairs()
             RotationLayer(:X, some_qubits), RotationLayer([:X, :X], any_bonds)]
         thetas = randomangles(rng, layers)
 
+        # bonds that share their lowest qubit cannot be read in groups
         bond_layer = layers[2]
-        plan = PauliPropagation._preparesublayer(bond_layer, bond_layer.sublayers[1], thetas[2], getinttype(nq), nq)
+        plan = PauliPropagation._prepareclasses(bond_layer, thetas[2], getinttype(nq), Float64, nq)
         @test length(bond_layer.sublayers) > 1
-        @test plan.overlapping
+        @test !plan.reader.reads_in_groups
 
         @test layersmatchrotations(layers, thetas, psum; max_weight=4.0, min_abs_coeff=1e-4)
         @test layersmatchrotations(layers, thetas, psum; max_weight=3.0, min_abs_coeff=0.0)
     end
 end
 
-function testorbitsofmanyrotations()
-    # heavy Pauli strings anticommute with more rotations than a block of coefficients holds
+function testclassesofmanyrotations()
+    # heavy Pauli strings anticommute with more rotations than a dense block takes
     nq = 100
     rng = MersenneTwister(nq)
     psum = randompaulisum(rng, nq, 6, 12)
@@ -108,14 +109,13 @@ function testorbitsofmanyrotations()
     layers = [RotationLayer(:X, 1:nq), RotationLayer([:Z, :Z], staircasetopology(nq)), RotationLayer(:Y, nq:-1:1)]
     thetas = randomangles(rng, layers)
 
-    has_many_stages = any(pstr -> countyz(pstr) > 8, paulis(psum))
-    @test has_many_stages
+    @test any(pstr -> countyz(pstr) > 8, paulis(psum))
     @test layersmatchrotations(layers, thetas, psum; max_weight=Inf, min_abs_coeff=2e-2)
     @test layersmatchrotations(layers, thetas, psum; max_weight=9.0, min_abs_coeff=5e-3)
 end
 
-function testlongorbitoftwostrings()
-    # two Pauli strings of one orbit of ten rotations, which must be collected in one place to be mixed
+function testlargeclassoftwostrings()
+    # two Pauli strings of one class of ten rotations, which must be collected in one place to be mixed
     nq = 12
     psum = PauliSum(nq)
     yz = repeat([:Y, :Z], 5)
@@ -123,18 +123,6 @@ function testlongorbitoftwostrings()
     add!(psum, [yz[1:2]; :Z; yz[4:10]], 1:10, 0.5)
     layers = [RotationLayer(:X, 1:nq)]
     @test layersmatchrotations(layers, [0.3], psum; min_abs_coeff=1e-3)
-end
-
-# The classes of a layer rotated one rotation at a time give exactly the rotations one by one, truncations included.
-function classesmatchrotations(layers, thetas, psum; kwargs...)
-    rotations, angles = expandlayers(layers, thetas)
-    matches = true
-    for (T, heisenberg) in LAYER_TEST_SUMS
-        layered = propagate(layers, T(psum), thetas; heisenberg, layer_method=:classes, kwargs...)
-        reference = propagate(rotations, T(psum), angles; heisenberg, kwargs...)
-        matches &= !isempty(layered) && length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
-    end
-    return matches
 end
 
 function testclassesagainstrotations()
@@ -156,47 +144,51 @@ function testclassesagainstrotations()
         for layers in layer_sets, (max_weight, min_abs_coeff) in truncations
             circuit = repeat(layers, 2)
             thetas = randomangles(rng, circuit)
-            matches &= classesmatchrotations(circuit, thetas, psum; max_weight, min_abs_coeff)
+            matches &= layersmatchrotations(circuit, thetas, psum; max_weight, min_abs_coeff)
         end
         @test matches
     end
 end
 
-# The rotations of a sublayer are read from the whole Pauli string at once if their qubits are few distances apart,
-# and one by one otherwise. Both ways are tested on the same layers.
-@testset "RotationLayer propagates like its rotations" begin
+# The rotations of a layer are read from the whole Pauli string at once if their qubits are few distances apart, and
+# through byte tables otherwise, and a class is rotated as a dense block if it has few key bits, and in a table otherwise.
+# Every way is tested on the same layers.
+function testlayers()
     testlayersagainstrotations()
-end
-
-@testset "RotationLayer on any qubits and bonds" begin
     testanyqubitsandpairs()
+    testclassesofmanyrotations()
+    testlargeclassoftwostrings()
+    testclassesagainstrotations()
 end
 
-@testset "RotationLayer on orbits of many rotations" begin
-    testorbitsofmanyrotations()
-    testlongorbitoftwostrings()
+@testset "RotationLayer propagates like its rotations" begin
+    testlayers()
 end
 
-readsingroups = which(PauliPropagation._readsingroups, Tuple{Any})
 @eval PauliPropagation _readsingroups(groups) = false
 
-@testset "RotationLayer with its rotations read one by one" begin
+@testset "RotationLayer with its rotations read through tables" begin
     nq = 8
     layer = RotationLayer([:Z, :Z], staircasetopology(nq))
-    @test isempty(PauliPropagation._preparesublayer(layer, layer.sublayers[1], 0.3, getinttype(nq), nq).groups)
-
-    testlayersagainstrotations()
-    testanyqubitsandpairs()
-    testorbitsofmanyrotations()
-    testlongorbitoftwostrings()
-    testclassesagainstrotations()
+    @test !PauliPropagation._prepareclasses(layer, 0.3, getinttype(nq), Float64, nq).reader.reads_in_groups
+    testlayers()
 end
 
 @eval PauliPropagation _readsingroups(groups) = length(groups) <= _MAX_ROTATION_GROUPS
 
-@testset "RotationLayer rotated class by class" begin
-    testclassesagainstrotations()
+@eval PauliPropagation _rotatesasblock(n_key_bits::Int) = false
+
+@testset "RotationLayer with every class in a table" begin
+    testlayers()
 end
+
+@eval PauliPropagation _rotatesasblock(n_key_bits::Int) = n_key_bits <= 12
+
+@testset "RotationLayer with the classes of up to 12 key bits as blocks" begin
+    testlayers()
+end
+
+@eval PauliPropagation _rotatesasblock(n_key_bits::Int) = n_key_bits <= _MAX_BLOCK_KEY_BITS
 
 @testset "RotationLayer applied by several tasks" begin
     # the tasks are handed over directly, so that they are tested with any number of threads and terms
@@ -207,21 +199,11 @@ end
         layers = [RotationLayer(:X, 1:nq), RotationLayer([:Z, :Z], staircasetopology(nq))]
         thetas = randomangles(rng, layers)
         vpsum = propagate(layers, VectorPauliSum(psum), thetas; max_weight=5.0, min_abs_coeff=1e-4)
-        @test !isempty(PauliPropagation._preparesublayer(layers[2], layers[2].sublayers[1], thetas[2], getinttype(nq), nq).groups)
-
-        # every sublayer orbit by orbit, with its long orbits class by class, and the whole layer class by class
-        plans = []
-        for (layer, theta) in zip(layers, thetas)
-            for sublayer in layer.sublayers
-                push!(plans, (PauliPropagation._preparesublayer(layer, sublayer, theta, paulitype(vpsum), nq),
-                    PauliPropagation._prepareclasses(layer, theta, paulitype(vpsum), nq, sublayer)))
-            end
-            class_plan = PauliPropagation._prepareclasses(layer, theta, paulitype(vpsum), nq)
-            push!(plans, (class_plan, class_plan))
-        end
+        plans = [PauliPropagation._prepareclasses(layer, theta, paulitype(vpsum), coefftype(vpsum), nq) for (layer, theta) in zip(layers, thetas)]
+        @test all(plan -> plan.reader.reads_in_groups, plans)
 
         matches = true
-        for (plan, long_plan) in plans, capacity in (length(vpsum), 4 * length(vpsum))
+        for plan in plans, capacity in (length(vpsum), 4 * length(vpsum))
             by_one_task = PropagationCache(deepcopy(vpsum))
             by_four_tasks = PropagationCache(deepcopy(vpsum))
 
@@ -233,8 +215,8 @@ end
             one_task = PauliPropagation.AK.TaskPartitioner(length(vpsum), 1, 1)
             four_tasks = PauliPropagation.AK.TaskPartitioner(length(vpsum), 4, 1)
 
-            PauliPropagation._applysublayerintasks!(by_one_task, plan, long_plan, truncation, workspace, one_task, 1)
-            PauliPropagation._applysublayerintasks!(by_four_tasks, plan, long_plan, truncation, workspace, four_tasks, 4)
+            PauliPropagation._applypassintasks!(by_one_task, plan, truncation, workspace, one_task, 1)
+            PauliPropagation._applypassintasks!(by_four_tasks, plan, truncation, workspace, four_tasks, 4)
             matches &= length(by_four_tasks) == length(by_one_task)
             matches &= PauliSum(extractsum!(by_four_tasks)) == PauliSum(extractsum!(by_one_task))
             matches &= PauliSum(extractsum!(by_one_task)) != PauliSum(vpsum)
@@ -300,10 +282,6 @@ end
         @test length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
     end
 
-    # by default, a layer of one sublayer goes orbit by orbit and any other class by class
-    @test !PauliPropagation._appliesbyclass(zz_layer, :auto)
-    @test PauliPropagation._appliesbyclass(RotationLayer([:Z, :Z], staircasetopology(nq; periodic=true)), :auto)
-    @test_throws ArgumentError propagate(zz_layer, PauliString(nq, :X, 1), 0.3; layer_method=:dense)
 
     @test_throws ArgumentError RotationLayer([:X, :Z], staircasetopology(nq))
     @test_throws ArgumentError RotationLayer([:Z, :Z], [1, 2])
