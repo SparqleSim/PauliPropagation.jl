@@ -14,14 +14,16 @@ const _LOWER_POSITIONS = (0x5555555555555555, 0x3333333333333333, 0x0f0f0f0f0f0f
 # the entry of `pstr` in the block of its class: its key bits gathered into an integer
 @inline _blockentry(pstr, key_bits) = _keyof(pstr, key_bits) % Int
 
-# moves the bit at every position p of a word to p ⊻ low_mask, for low_mask below 64
+# Moves the bit at every position p of a word to p ⊻ low_mask, for low_mask below 64, one set bit of low_mask at a time:
+# a rotation flips the key bits of the qubits it acts on, so a layer takes the same few steps for every word.
 @inline function _xorpositions(word::UInt64, low_mask::Int)
-    for j in 0:5
-        if isodd(low_mask >> j)
-            span = 1 << j
-            lower = _LOWER_POSITIONS[j+1]
-            word = ((word >> span) & lower) | ((word & lower) << span)
-        end
+    bits = low_mask & 63
+    while bits != 0
+        j = trailing_zeros(bits)
+        bits &= bits - 1
+        span = 1 << j
+        lower = _LOWER_POSITIONS[j+1]
+        word = ((word >> span) & lower) | ((word & lower) << span)
     end
     return word
 end
