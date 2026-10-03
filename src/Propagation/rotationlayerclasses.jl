@@ -37,28 +37,30 @@ end
 ### The plan of a pass
 
 """
-    _prepareclasses(layer::RotationLayer, theta, TT, CT, nqubits, rotations=eachindex(layer.qinds))
+    _prepareclasses(layer::RotationLayer, theta, TT, CT, nqubits, rotations=eachindex(layer.qinds); min_abs_coeff=0)
 
 The `rotations` of the `layer` with the parameter `theta`, by default all of them, prepared for rotating the classes of Pauli
-strings of the type `TT` with coefficients of the type `CT` on `nqubits` qubits.
+strings of the type `TT` with coefficients of the type `CT` on `nqubits` qubits, where coefficients below `min_abs_coeff`
+are truncated.
 Every rotation has a position in the order in which the layer applies them, and a reader finds the rotations that
 anticommute with a string as the set of their positions.
 """
-function _prepareclasses(layer::RotationLayer, theta, ::Type{TT}, ::Type{CT}, nqubits::Int, rotations=eachindex(layer.qinds)) where {TT,CT}
+function _prepareclasses(layer::RotationLayer, theta, ::Type{TT}, ::Type{CT}, nqubits::Int, rotations=eachindex(layer.qinds);
+    min_abs_coeff::Real=0) where {TT,CT}
+
     symbols = layer.symbols
     n_rotations = length(layer.qinds)
 
     masks = zeros(TT, n_rotations)
-    qubit_masks = zeros(TT, n_rotations)
     qinds = fill((0, 0), n_rotations)
     for rotation in rotations
         rotation_qinds = layer.qinds[rotation]
         _check_qind_range(nqubits, rotation_qinds)
         masks[rotation] = symboltoint(TT, symbols, rotation_qinds)
-        qubit_masks[rotation] = mapreduce(qind -> symboltoint(TT, :Z, qind), |, rotation_qinds)
         qinds[rotation] = (rotation_qinds[1], get(rotation_qinds, 2, 0))
     end
     angles = [_rotationangle(theta, index) for index in 1:n_rotations]
+    sines = sin.(angles)
 
     # the place of every rotation in the order in which the layer applies them
     positions = zeros(Int, n_rotations)
@@ -72,10 +74,16 @@ function _prepareclasses(layer::RotationLayer, theta, ::Type{TT}, ::Type{CT}, nq
 
     symbol_codes = (UInt8(symboltoint(symbols[1])), UInt8(symboltoint(get(symbols, 2, :I))))
     local_mask = symbol_codes[1] | (symbol_codes[2] << 2)
+    signs = _signsfor(CT, _localsigns(local_mask))
     reader = _classreader(layer, rotations, masks, qinds, positions, symbol_codes, TT, nqubits)
 
-    return (; masks, qinds, qubit_masks, cosines=cos.(angles), sines=sin.(angles), positions, rotation_at_position,
-        local_mask, signs=_signsfor(CT, _localsigns(local_mask)), reader)
+    # A rotation on one qubit leaves every Pauli string of its class with one of two Paulis there, the lower entry of a
+    # pair with the one whose key bit is clear, so its signs are the same for every pair of every class.
+    lower_paulis = symbol_codes[1] == 0x02 ? 0x01 : 0x02
+    lower_signs = (signs[lower_paulis+1], signs[(lower_paulis⊻local_mask)+1])
+
+    return (; masks, qinds, cosines=cos.(angles), sines, positions, rotation_at_position, local_mask, signs,
+        acts_on_one_qubit=symbol_codes[2] == 0x00, lower_signs, min_coeffs_to_make=_mincoefftomake.(min_abs_coeff, sines), reader)
 end
 
 # the rotations of the class of `pstr`, those that anticommute with it, in the order of the layer, and their number
@@ -676,7 +684,7 @@ function _applytoclass!(task, plan, truncation, entry_keys::Vector{K}, key_mask:
     local_mask = Int(plan.local_mask)
     lower_bit = _lowestbit(key_mask)
 
-    min_coeff_to_make = _mincoefftomake(truncation, sin_val)
+    min_coeff_to_make = plan.min_coeffs_to_make[rotation]
 
     # the Paulis on the qubits of the rotation are read from the words that hold them
     first_qind, second_qind = plan.qinds[rotation]
@@ -776,12 +784,13 @@ end
     return @inline truncation.truncfunc(pstr, coeff)
 end
 
-# The smallest coefficient that can make a partner the truncation keeps. Without a smallest kept coefficient, any can.
-function _mincoefftomake(truncation, sin_val)
-    if iszero(truncation.min_abs_coeff)
-        return zero(truncation.min_abs_coeff)
+# The smallest coefficient that can make a partner the truncation keeps, of a rotation with this sine. Without a smallest
+# kept coefficient, any can.
+function _mincoefftomake(min_abs_coeff::Real, sin_val)
+    if iszero(min_abs_coeff)
+        return zero(float(min_abs_coeff))
     end
-    return _MAKE_MARGIN * truncation.min_abs_coeff / abs(sin_val)
+    return _MAKE_MARGIN * min_abs_coeff / abs(sin_val)
 end
 
 # the lowest set bit of a key

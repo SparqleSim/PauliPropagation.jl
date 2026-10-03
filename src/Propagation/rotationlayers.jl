@@ -33,7 +33,8 @@ function _applylayer!(layer::RotationLayer, prop_cache::AbstractPauliPropagation
     workspace = _takeworkspace(paulitype(prop_cache), coefftype(prop_cache))
     try
         for rotations in _classpasses(layer)
-            plan = _prepareclasses(layer, theta, paulitype(prop_cache), coefftype(prop_cache), nqubits(prop_cache), rotations)
+            plan = _prepareclasses(layer, theta, paulitype(prop_cache), coefftype(prop_cache), nqubits(prop_cache), rotations;
+                truncation.min_abs_coeff)
             _applypass!(prop_cache, plan, truncation, workspace; thread)
         end
     finally

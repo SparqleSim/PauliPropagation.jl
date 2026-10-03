@@ -38,8 +38,6 @@ function _rotateblock!(output, task, plan, truncation, record_terms::Vector{TT},
     n_entries = 1 << n_key_bits
     coeffs = _ensurelength!(task.block_coeffs, n_entries)
     block_terms = _ensurelength!(task.block_terms, n_entries)
-    first_pstr = record_terms[lo-1+task.class_records[first]]
-    first_entry = _blockentry(first_pstr, key_bits)
 
     # a block of at most 64 entries keeps which are present in one word, any other in an array of words
     if n_entries <= 64
@@ -60,7 +58,7 @@ function _rotateblock!(output, task, plan, truncation, record_terms::Vector{TT},
         for step in 1:n_rotations
             rotation = Int(task.rotations[step])
             entry_mask = _blockentry(plan.masks[rotation], key_bits)
-            signs = _blocksigns(plan, rotation, entry_mask, key_bits, first_pstr, first_entry)
+            signs = _blocksigns(plan)
             present = _rotateblockword(present, coeffs, block_terms, n_entries, entry_mask, plan, rotation, signs, truncation)
         end
         _emitblockword!(output, present, coeffs, block_terms)
@@ -87,7 +85,7 @@ function _rotateblock!(output, task, plan, truncation, record_terms::Vector{TT},
         for step in 1:n_rotations
             rotation = Int(task.rotations[step])
             entry_mask = _blockentry(plan.masks[rotation], key_bits)
-            signs = _blocksigns(plan, rotation, entry_mask, key_bits, first_pstr, first_entry)
+            signs = _blocksigns(plan)
             _rotateblockwords!(present, n_words, coeffs, block_terms, n_entries, entry_mask, plan, rotation, signs, truncation)
         end
         _emitblockwords!(output, present, n_words, coeffs, block_terms)
@@ -95,17 +93,9 @@ function _rotateblock!(output, task, plan, truncation, record_terms::Vector{TT},
     return output
 end
 
-# The signs of the rotation for every lower entry, if they are all the same: where the rotation's single key bit is the
-# only key bit on its qubits, every lower entry has the Paulis of the lower entry of the first string's pair there.
-# Otherwise `nothing`, and the signs are read for every pair.
-@inline function _blocksigns(plan, rotation::Int, entry_mask::Int, key_bits::TT, first_pstr::TT, first_entry::Int) where {TT}
-    if count_ones(entry_mask) != 1 || plan.qubit_masks[rotation] & key_bits != plan.masks[rotation] & key_bits
-        return nothing
-    end
-    lower_pstr = ifelse(first_entry & entry_mask != 0, first_pstr ⊻ plan.masks[rotation], first_pstr)
-    paulis = _localpaulis(plan, lower_pstr, rotation)
-    return (plan.signs[paulis+1], plan.signs[(paulis⊻Int(plan.local_mask))+1])
-end
+# The signs that a rotation gives every lower entry and its partner, if they are all the same, as for a rotation on one
+# qubit, or `nothing`, and the signs are read for every pair.
+@inline _blocksigns(plan) = plan.acts_on_one_qubit ? plan.lower_signs : nothing
 
 # the signs that the rotation gives the partner of a lower entry and the lower entry, constant or read from its string
 @inline _pairsigns(signs::Tuple, plan, pstr, rotation::Int) = signs
@@ -206,7 +196,7 @@ end
     upper_present = _xorpositions(present, entry_mask)
     lower_positions = _LOWER_POSITIONS[trailing_zeros(entry_mask)+1]
     kept_lower, kept_upper = _rotatepairs!(coeffs, block_terms, 0, present, upper_present, lower_positions, entry_mask, plan.masks[rotation],
-        plan.cosines[rotation], sin_val, signs, _mincoefftomake(truncation, sin_val), plan, rotation, truncation)
+        plan.cosines[rotation], sin_val, signs, plan.min_coeffs_to_make[rotation], plan, rotation, truncation)
     return kept_lower | _xorpositions(kept_upper, entry_mask)
 end
 
@@ -223,7 +213,7 @@ function _rotateblockwords!(present::Vector{UInt64}, n_words::Int, coeffs::Vecto
     mask = plan.masks[rotation]
     cos_val = plan.cosines[rotation]
     sin_val = plan.sines[rotation]
-    min_coeff_to_make = _mincoefftomake(truncation, sin_val)
+    min_coeff_to_make = plan.min_coeffs_to_make[rotation]
     lowest = trailing_zeros(entry_mask)
     low_mask = entry_mask & 63
     word_mask = entry_mask >> 6
