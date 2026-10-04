@@ -202,9 +202,32 @@ function _generatorcommutatordot(::PropagationBase.ArrayStorage, gate_mask, op_c
 
     function dot_chunk!(task_id)
         chunk = task_partitioner[task_id]
-        partials[task_id] = _commutatordotrange(gate_mask, op_terms, op_coeffs, chunk.start, chunk.stop)
+        partials[task_id] = _commutatordotrange(gate_mask, op_terms, op_coeffs, op_terms, op_coeffs, chunk.start, chunk.stop)
     end
     PropagationBase._eachtask(dot_chunk!, n_tasks)
+
+    return sum(partials)
+end
+
+# A multi sum of arrays pairs each zone with the zone that holds the partners of its terms: the zone of a Pauli
+# string is linear in it, so the generator's mask moves every term of a zone to the same zone.
+function _generatorcommutatordot(::PropagationBase.MultiSumStorage{<:PropagationBase.ArrayStorage}, gate_mask, op_cache;
+    thread::Bool=true)
+
+    merge!(op_cache; thread)
+
+    zone_caches = zonecaches(op_cache)
+    partner_offset = zoneof(zonemap(op_cache), gate_mask) - 1
+    partials = Vector{Float64}(undef, length(zone_caches))
+
+    function dot_zone!(zone_id)
+        zone_cache = zone_caches[zone_id]
+        partner_cache = zone_caches[((zone_id - 1) ⊻ partner_offset) + 1]
+        op_terms = activeterms(zone_cache)
+        partials[zone_id] = _commutatordotrange(gate_mask, op_terms, activecoeffs(zone_cache),
+            activeterms(partner_cache), activecoeffs(partner_cache), 1, length(op_terms))
+    end
+    PropagationBase._eachzone(dot_zone!, op_cache, thread)
 
     return sum(partials)
 end
@@ -212,15 +235,16 @@ end
 # how many patterns one task tracks at once; a two-qubit rotation needs four
 const _MAX_DOT_CURSORS = 16
 
-function _commutatordotrange(gate_mask::TT, op_terms, op_coeffs, lo::Int, hi::Int) where {TT}
+function _commutatordotrange(gate_mask::TT, op_terms, op_coeffs, partner_terms, partner_coeffs, lo::Int, hi::Int) where {TT}
     total = 0.0
     lo > hi && return total
 
-    # everything the loop below reads unchecked, checked once here: the chunk of terms, and the
-    # coefficients over the whole sum, where the partners are
-    n_terms = length(op_terms)
+    # everything the loop below reads unchecked, checked once here: the operator's chunk on both of
+    # its arrays, and the coefficients of all the terms that the partners are searched among
+    n_partners = length(partner_terms)
     checkbounds(op_terms, lo:hi)
-    checkbounds(op_coeffs, 1:n_terms)
+    checkbounds(op_coeffs, lo:hi)
+    checkbounds(partner_coeffs, 1:n_partners)
 
     patterns = Vector{TT}(undef, _MAX_DOT_CURSORS)  # the bits a group of terms carries on the mask
     cursors = fill(1, _MAX_DOT_CURSORS)             # where that group last found a partner
@@ -246,14 +270,14 @@ function _commutatordotrange(gate_mask::TT, op_terms, op_coeffs, lo::Int, hi::In
         end
 
         if slot == 0
-            jj = searchsortedfirst(op_terms, new_term)
+            jj = searchsortedfirst(partner_terms, new_term)
         else
-            jj = _gallopingsearch(op_terms, new_term, cursors[slot], n_terms)
+            jj = _gallopingsearch(partner_terms, new_term, cursors[slot], n_partners)
             cursors[slot] = jj
         end
 
-        (jj <= n_terms && op_terms[jj] == new_term) || continue
-        total += _dotcontribution(comm_coeff, op_coeffs[ii].op, op_coeffs[jj].dual)
+        (jj <= n_partners && partner_terms[jj] == new_term) || continue
+        total += _dotcontribution(comm_coeff, op_coeffs[ii].op, partner_coeffs[jj].dual)
     end
 
     return total
