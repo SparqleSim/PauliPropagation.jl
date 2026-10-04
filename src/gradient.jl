@@ -114,8 +114,7 @@ end
 # The operator of `prop_cache` with its dual: every Pauli string keeps its coefficient and gets the overlap it has on its
 # own as its coefficient in the dual sum. The dual coefficients are whatever `overlapfunc` returns for a single Pauli
 # string -- real for every overlap the library ships. Nothing else in the backward sweep needs them complex: the dual is
-# carried by the same real rotations as the operator, and the commutator's own factor is purely imaginary and folded
-# into the gradient as a sign (see `_dotcontribution`).
+# carried by the same real rotations as the operator, and the gradient pairs the two with the real signs of the rotations.
 function _withdual(prop_cache::AbstractPropagationCache, overlapfunc; thread::Bool=true)
     nq = nqubits(prop_cache)
     singletonoverlap(term) = overlapfunc(_singletonvectorpaulisum(nq, term))
@@ -157,25 +156,25 @@ end
 
 
 # Gradient contribution for one gate: real((i/2) * dual_sum(commutator(generator, op_sum))).
-# Every operator term that anticommutes with the generator commutes to exactly one Pauli string,
-# so this is a single pass over the operator's terms, each pairing its commutator with the
-# coefficient the dual sum carries there. The factor of i is taken per term rather than at the end,
-# which keeps the whole pass in real arithmetic whenever the two sums are real.
+# For a term that anticommutes with the generator, (i/2) times the commutator is its product with
+# the generator, with the sign that the rotation gives that product (`paulirotationproduct`). So this
+# is a single pass over the operator's terms, each adding its coefficient times the dual coefficient
+# of its partner, with that sign.
 function _generatorcommutatordot(gate_mask, op_cache; thread::Bool=true)
     return _generatorcommutatordot(StorageType(op_cache), gate_mask, op_cache; thread)
 end
 
-# A dictionary finds the partner in one lookup, and a multi sum looks it up in the one zone that can
-# hold it, so for both a plain pass with a lookup per term is what it costs.
+# A dictionary finds the partner in one lookup, in the zone that holds it for a multi sum, so a plain
+# pass with a lookup per term is what it costs.
 function _generatorcommutatordot(::StorageType, gate_mask, op_cache; thread::Bool=true)
-    # a lookup needs the sum merged, and its zones of arrays sorted
+    # a lookup needs the sum merged
     merge!(op_cache; thread)
     op_sum = activesum(op_cache)
 
     function commutatoroverlap(term, coeff)
         commutes(term, gate_mask) && return 0.0
-        new_term, comm_coeff = commutator(gate_mask, term)
-        return _dotcontribution(comm_coeff, coeff.op, getmergedcoeff(op_sum, new_term).dual)
+        partner, sign = paulirotationproduct(gate_mask, term)
+        return real(sign * coeff.op * getmergedcoeff(op_sum, partner).dual)
     end
 
     return mapreduce(commutatoroverlap, +, op_cache; init=0.0, thread)
@@ -253,7 +252,7 @@ function _commutatordotrange(gate_mask::TT, op_terms, op_coeffs, partner_terms, 
     @inbounds for ii in lo:hi
         term = op_terms[ii]
         commutes(term, gate_mask) && continue
-        new_term, comm_coeff = commutator(gate_mask, term)
+        partner, sign = paulirotationproduct(gate_mask, term)
 
         pattern = term & gate_mask
         slot = 0
@@ -270,24 +269,18 @@ function _commutatordotrange(gate_mask::TT, op_terms, op_coeffs, partner_terms, 
         end
 
         if slot == 0
-            jj = searchsortedfirst(partner_terms, new_term)
+            jj = searchsortedfirst(partner_terms, partner)
         else
-            jj = _gallopingsearch(partner_terms, new_term, cursors[slot], n_partners)
+            jj = _gallopingsearch(partner_terms, partner, cursors[slot], n_partners)
             cursors[slot] = jj
         end
 
-        (jj <= n_partners && partner_terms[jj] == new_term) || continue
-        total += _dotcontribution(comm_coeff, op_coeffs[ii].op, partner_coeffs[jj].dual)
+        (jj <= n_partners && partner_terms[jj] == partner) || continue
+        total += real(sign * op_coeffs[ii].op * partner_coeffs[jj].dual)
     end
 
     return total
 end
-
-# One term's share of real((i/2) * dual(commutator(generator, op))). Two anticommuting Paulis
-# multiply to an odd power of i, so `comm` is purely imaginary and, for real coefficients, the whole
-# thing is a sign away from a product of reals -- no complex number is ever formed.
-@inline _dotcontribution(comm, op_coeff::Real, dual_coeff::Real) = -0.5 * imag(comm) * op_coeff * dual_coeff
-@inline _dotcontribution(comm, op_coeff, dual_coeff) = real(0.5im * comm * op_coeff * dual_coeff)
 
 # The first index at or after `from` whose term is not smaller than `key`, found by doubling a window
 # out from `from` and bisecting the last one. Called with a cursor that only ever moves forward, this
