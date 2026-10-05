@@ -12,18 +12,6 @@ A type for a layer of Pauli rotations that commute with each other, carrying the
 struct RotationLayer <: ParametrizedGate
     symbols::Vector{Symbol}
     qinds::Vector{Vector{Int}}
-    sublayers::Vector{Vector{Int}}
-
-    # a layer whose sublayers are known already, each in the order or the reverse order of its lowest qubits
-    function RotationLayer(symbols::Vector{Symbol}, qinds::Vector{Vector{Int}}, sublayers::Vector{Vector{Int}})
-        for sublayer in sublayers
-            lowest_qubits = [minimum(qinds[index]) for index in sublayer]
-            if !allunique(lowest_qubits) || !(issorted(lowest_qubits) || issorted(lowest_qubits; rev=true))
-                throw(ArgumentError("The rotations of a sublayer must be in the order or the reverse order of their lowest qubits. Got $lowest_qubits."))
-            end
-        end
-        return new(symbols, qinds, sublayers)
-    end
 
     @doc """
         RotationLayer(symbols, qinds)
@@ -33,11 +21,7 @@ struct RotationLayer <: ParametrizedGate
     For example RotationLayer(:X, 1:4) or RotationLayer([:Z, :Z], staircasetopology(4)).
     The rotations act on one or two qubits each, on any qubits and in any order, and need to commute with each other.
     The parameter of the layer is one angle for all rotations, or a vector with one angle per entry of `qinds`.
-
-    In the Schrödinger picture, the rotations are applied sublayer by sublayer, and within a sublayer in the order of their lowest qubits.
-    No two rotations of a sublayer have the same lowest qubit, so an open chain is one sublayer, and a ring or a square lattice two.
-    With truncation, the result can therefore differ from that of the rotations applied in the order of `qinds`.
-    `torotations` returns the rotations in the order in which they are applied.
+    In the Schrödinger picture, the rotations are applied in the order of `qinds`, with truncation after each, as `torotations` returns them.
     """
     function RotationLayer(symbols, qinds)
 
@@ -60,7 +44,7 @@ struct RotationLayer <: ParametrizedGate
 
         _commutationcheck(symbols, qinds)
 
-        return new(symbols, qinds, _sublayers(qinds))
+        return new(symbols, qinds)
     end
 end
 
@@ -110,32 +94,6 @@ function _generatorscommute(symbols::Vector{Symbol}, qinds1::Vector{Int}, qinds2
     return iseven(n_differing)
 end
 
-# Every rotation goes into the first sublayer in which no other rotation has the same lowest qubit, and every sublayer is then sorted by the lowest qubits.
-function _sublayers(qinds::Vector{Vector{Int}})
-    sublayers = Vector{Int}[]
-    lowest_qubits = Set{Int}[]
-
-    for (index, rotation_qinds) in enumerate(qinds)
-        lowest_qubit = minimum(rotation_qinds)
-        sublayer_id = findfirst(taken -> lowest_qubit ∉ taken, lowest_qubits)
-
-        if isnothing(sublayer_id)
-            push!(sublayers, Int[])
-            push!(lowest_qubits, Set{Int}())
-            sublayer_id = length(sublayers)
-        end
-
-        push!(sublayers[sublayer_id], index)
-        push!(lowest_qubits[sublayer_id], lowest_qubit)
-    end
-
-    lowest_qubit_of(index) = minimum(qinds[index])
-    for sublayer in sublayers
-        sort!(sublayer; by=lowest_qubit_of)
-    end
-    return sublayers
-end
-
 function Base.show(io::IO, layer::RotationLayer)
     print(io, "RotationLayer($(layer.symbols), $(length(layer.qinds)) rotations)")
 end
@@ -148,18 +106,22 @@ Returns the rotations of the layer as a vector of `PauliRotation`s, in the order
 With `theta`, the parameter of the layer, also returns the angles of the rotations in that order.
 """
 function torotations(layer::RotationLayer)
-    return [PauliRotation(layer.symbols, layer.qinds[index]) for sublayer in layer.sublayers for index in sublayer]
+    return [PauliRotation(layer.symbols, rotation_qinds) for rotation_qinds in layer.qinds]
 end
 
 function torotations(layer::RotationLayer, theta)
     _rotationanglecheck(layer, theta)
-    thetas = [_rotationangle(theta, index) for sublayer in layer.sublayers for index in sublayer]
+    thetas = [_rotationangle(theta, index) for index in eachindex(layer.qinds)]
     return torotations(layer), thetas
 end
 
 # the angle of the rotation on `layer.qinds[index]`
 _rotationangle(theta::Number, index::Int) = theta
 _rotationangle(thetas, index::Int) = thetas[index]
+
+# the parameter of the layer with its rotations in reverse order
+_reverseangles(theta::Number) = theta
+_reverseangles(thetas) = reverse(thetas)
 
 _rotationanglecheck(layer::RotationLayer, theta::Number) = nothing
 

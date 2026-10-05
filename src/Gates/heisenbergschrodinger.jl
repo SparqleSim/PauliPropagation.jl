@@ -74,8 +74,7 @@ end
 
 # The rotations of a `RotationLayer` are applied in reverse like the gates of the circuit.
 function _toheisenberg(layer::RotationLayer, theta)
-    reversed_sublayers = [reverse(sublayer) for sublayer in reverse(layer.sublayers)]
-    return RotationLayer(layer.symbols, layer.qinds, reversed_sublayers), theta
+    return RotationLayer(layer.symbols, reverse(layer.qinds)), _reverseangles(theta)
 end
 
 # ImaginaryPauliRotation are currently actively disallowed in Heisenberg picture

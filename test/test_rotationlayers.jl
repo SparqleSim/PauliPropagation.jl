@@ -1,14 +1,20 @@
 using Random
 using Test
 
-# the rotations of the layers, in the order in which the layers apply them
+# the rotations of the layers as written, those of every layer in the order of its `qinds`, built without `torotations`
 function expandlayers(layers, thetas)
     rotations = Gate[]
     angles = Float64[]
     for (layer, theta) in zip(layers, thetas)
-        layer_rotations, layer_angles = PauliPropagation.torotations(layer, theta)
-        append!(rotations, layer_rotations)
-        append!(angles, layer_angles)
+        for (index, rotation_qinds) in enumerate(layer.qinds)
+            push!(rotations, PauliRotation(layer.symbols, rotation_qinds))
+            angle = if theta isa Number
+                theta
+            else
+                theta[index]
+            end
+            push!(angles, angle)
+        end
     end
     return rotations, angles
 end
@@ -92,7 +98,6 @@ function testanyqubitsandpairs()
         # bonds that share their lowest qubit cannot be read in groups
         bond_layer = layers[2]
         plan = PauliPropagation._prepareclasses(bond_layer, thetas[2], getinttype(nq), Float64, nq)
-        @test length(bond_layer.sublayers) > 1
         @test !plan.reader.reads_in_groups
 
         @test layersmatchrotations(layers, thetas, psum; max_weight=4.0, min_abs_coeff=1e-4)
@@ -191,13 +196,65 @@ end
 @eval PauliPropagation _rotatesasblock(n_key_bits::Int) = n_key_bits <= _MAX_BLOCK_KEY_BITS
 
 # every class shares one hash, so that the classes of a partition are told apart by their keys alone
-@eval PauliPropagation _labelhash(label::Int) = zero(UInt64)
+@eval PauliPropagation _classlabel(plan, pstr) = 0
 
 @testset "RotationLayer with classes that share their hash" begin
     testlayers()
 end
 
-@eval PauliPropagation _labelhash(label::Int) = (label % UInt64) >> _HASH_SHIFT
+@eval PauliPropagation @inline _classlabel(plan, pstr) = _hashbits(_classkey(pstr, _touchedqubits(plan.reader, pstr))) % Int
+
+# A class is a Pauli string with its products with the generators of the rotations it anticommutes with. Each kernel takes
+# a class as two vectors and writes what it keeps to a Pauli sum, which has to hold what the rotations of the layer make
+# of the class alone.
+function testkernelsagainstrotations()
+    nq = 8
+    rng = MersenneTwister(11)
+    TT = getinttype(nq)
+    classes = (
+        (RotationLayer([:Z, :Z], staircasetopology(nq; periodic=true)), PauliString(nq, [:X, :Y, :X], [1, 3, 6])),
+        (RotationLayer(:Y, 1:nq), PauliString(nq, [:X, :Z, :X, :Z], [1, 2, 5, 8])),
+        (RotationLayer([:X, :Y], [(i, i + 1) for i in 1:2:nq-1]), PauliString(nq, [:Z, :Z, :X], [1, 4, 6])),
+    )
+    matches = true
+    for (layer, pstr) in classes, (max_weight, min_abs_coeff) in ((Inf, 0.0), (4.0, 1e-2))
+        thetas = randn(rng, length(layer.qinds))
+        plan = PP._prepareclasses(layer, thetas, TT, Float64, nq; min_abs_coeff)
+        truncfunc = buildtruncfunc(PropagationCache(PauliSum(nq)); min_abs_coeff, max_weight)
+        positions, touched = PP._anticommuting(plan.reader, pstr.term)
+        rotation_buffer = zeros(Int32, length(layer.qinds))
+        rotations = view(rotation_buffer, 1:PP._rotationsinorder!(rotation_buffer, plan, positions))
+        key_bits = PP._keybits(touched)
+        n_key_bits = sum(count_ones, PP._limbs(key_bits))
+
+        # members made by random sets of the anticommuting generators, some of them more than once
+        class_terms = [reduce(xor, (plan.masks[rotation] for rotation in rotations if rand(rng, Bool)); init=pstr.term) for _ in 1:8]
+        class_coeffs = [rand(rng, (-1, 1)) * (0.2 + rand(rng)) for _ in 1:8]
+
+        reference = PauliSum(nq)
+        for (term, coeff) in zip(class_terms, class_coeffs)
+            add!(reference, term, coeff)
+        end
+        for (rotation, angle) in zip(expandlayers([layer], [thetas])...)
+            reference = propagate(rotation, reference, angle; min_abs_coeff, max_weight)
+        end
+
+        by_block = PauliSum(nq)
+        PP._rotateblock!(by_block, PP.BlockScratch{TT,Float64}(), plan, truncfunc, class_terms, class_coeffs, rotations, key_bits, n_key_bits)
+        table = PP.TableScratch{TT,Float64}()
+        by_table = PauliSum(nq)
+        PP._rotatetable!(by_table, table, plan, truncfunc, class_terms, class_coeffs, rotations, table.entry_keys, key_bits, n_key_bits)
+
+        matches &= !isempty(reference) && length(rotations) > 1
+        matches &= length(by_block) == length(reference) && by_block == reference
+        matches &= length(by_table) == length(reference) && by_table == reference
+    end
+    return matches
+end
+
+@testset "RotationLayer kernels rotate one class like its rotations" begin
+    @test testkernelsagainstrotations()
+end
 
 @testset "RotationLayer applied by several tasks" begin
     # the tasks are handed over directly, so that they are tested with any number of threads and terms
@@ -256,40 +313,35 @@ end
     end
 end
 
-@testset "RotationLayer constructors and sublayers" begin
+@testset "RotationLayer constructors and the order of its rotations" begin
     nq = 8
     x_layer = RotationLayer(:X, 1:nq)
     zz_layer = RotationLayer(PauliRotation, [:Z, :Z], staircasetopology(nq))
 
     @test x_layer isa ParametrizedGate
     @test countparameters([x_layer, zz_layer]) == 2
-    @test x_layer.sublayers == [collect(1:nq)]
 
-    # rotations with the same lowest qubit are applied in different sublayers
-    @test zz_layer.sublayers == [collect(1:nq-1)]
-    @test RotationLayer([:Z, :Z], staircasetopology(nq; periodic=true)).sublayers == [collect(1:nq-1), [nq]]
-    @test RotationLayer(:X, [1, 1, 2]).sublayers == [[1, 3], [2]]
-
-    # a sublayer is applied in the order of its lowest qubits, and one given explicitly must be in that order or its reverse
-    @test RotationLayer(:X, [3, 1, 2]).sublayers == [[2, 3, 1]]
-    @test RotationLayer([:Z, :Z], [(4, 5), (1, 2), (2, 3)]).sublayers == [[2, 3, 1]]
-    @test_throws ArgumentError RotationLayer([:X], [[1], [2], [3]], [[2, 1, 3]])
-
+    # the rotations are applied in the order of `qinds`, and in reverse in the Heisenberg picture
     rotations, angles = PauliPropagation.torotations(RotationLayer([:Z, :Z], staircasetopology(4; periodic=true)), collect(1.0:4.0))
     @test [rotation.qinds for rotation in rotations] == [[1, 2], [2, 3], [3, 4], [4, 1]]
     @test angles == collect(1.0:4.0)
-    rotations, angles = PauliPropagation.torotations(RotationLayer(:X, [1, 1, 2]), [1.0, 2.0, 3.0])
-    @test [rotation.qinds for rotation in rotations] == [[1], [2], [1]]
-    @test angles == [1.0, 3.0, 2.0]
+    rotations, angles = PauliPropagation.torotations(RotationLayer(:X, [3, 1, 1, 2]), [1.0, 2.0, 3.0, 4.0])
+    @test [rotation.qinds for rotation in rotations] == [[3], [1], [1], [2]]
+    @test angles == [1.0, 2.0, 3.0, 4.0]
+    heisenberg_layer, heisenberg_angles = PauliPropagation._toheisenberg(RotationLayer(:X, [3, 1, 2]), [1.0, 2.0, 3.0])
+    @test heisenberg_layer.qinds == [[2], [1], [3]]
+    @test heisenberg_angles == [3.0, 2.0, 1.0]
 
-    # the rotations along an open chain are applied in the order they are given in
-    rng = MersenneTwister(1)
+    # a layer equals its rotations in the order of `qinds`, whatever that order, in either picture; on this input, applying
+    # the bonds in another order truncates differently
+    rng = MersenneTwister(3)
     psum = randompaulisum(rng, nq, 8, 3)
-    thetas = randn(rng, nq - 1)
-    chain_rotations = [PauliRotation([:Z, :Z], bond) for bond in staircasetopology(nq)]
-    for T in (PauliSum, VectorPauliSum)
-        layered = propagate(zz_layer, T(psum), thetas; max_weight=3.0, min_abs_coeff=1e-3)
-        reference = propagate(chain_rotations, T(psum), thetas; max_weight=3.0, min_abs_coeff=1e-3)
+    bonds = shuffle(rng, staircasetopology(nq; periodic=true))
+    thetas = randn(rng, nq)
+    bond_rotations = [PauliRotation([:Z, :Z], bond) for bond in bonds]
+    for T in (PauliSum, VectorPauliSum), heisenberg in (true, false)
+        layered = propagate(RotationLayer([:Z, :Z], bonds), T(psum), thetas; heisenberg, max_weight=3.0, min_abs_coeff=1e-3)
+        reference = propagate(bond_rotations, T(psum), thetas; heisenberg, max_weight=3.0, min_abs_coeff=1e-3)
         @test length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
     end
 
@@ -309,7 +361,7 @@ end
     theta = 0.4
     max_weight = 2.0
 
-    # a Pauli string above the weight limit, which the sublayer touches, and one it leaves alone
+    # a Pauli string above the weight limit, which the layer touches, and one it leaves alone
     heavy = PauliSum(nq)
     add!(heavy, [:Z, :Z, :Z], [1, 2, 3], 1.0)
     add!(heavy, [:X, :X, :X], [4, 5, 6], 1.0)
@@ -327,6 +379,12 @@ end
     reference = propagate(layer, PauliString(nq, :Z, 2, 0.75), theta; min_abs_coeff=0.0)
     @test PauliSum(layered) == reference
     @test length(layered) == 2
+
+    # and so are Pauli strings that no rotation touches
+    untouched_twice = VectorPauliSum(nq, [paulis(VectorPauliSum(PauliString(nq, :X, 3))); paulis(VectorPauliSum(PauliString(nq, :X, 3)))], [0.5, 0.25])
+    layered = propagate(layer, untouched_twice, theta; min_abs_coeff=0.0)
+    @test PauliSum(layered) == propagate(layer, PauliString(nq, :X, 3, 0.75), theta; min_abs_coeff=0.0)
+    @test length(layered) == 1
 end
 
 @testset "RotationLayer applied without truncation" begin
@@ -336,7 +394,7 @@ end
     psum = randompaulisum(rng, nq, 6, 3)
     layer = RotationLayer([:Z, :Z], staircasetopology(nq; periodic=true))
     thetas = randn(rng, nq)
-    rotations, angles = PauliPropagation.torotations(layer, thetas)
+    rotations, angles = expandlayers([layer], [thetas])
 
     for T in (PauliSum, VectorPauliSum, psum -> MultiPauliSum(psum, 4))
         layered = PropagationCache(T(psum))

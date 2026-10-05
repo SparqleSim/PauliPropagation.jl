@@ -28,71 +28,77 @@ const _LOWER_POSITIONS = (0x5555555555555555, 0x3333333333333333, 0x0f0f0f0f0f0f
     return word
 end
 
-"""
-    _rotateblock!(output, task, plan, truncfunc, record_terms, record_coeffs, lo, first, last, n_rotations, key_bits, n_key_bits)
+# The block of a class: a coefficient and a Pauli string for every entry, and which entries are present when they take
+# more than one word.
+struct BlockScratch{TT,CT}
+    coeffs::Vector{CT}
+    terms::Vector{TT}
+    words::Vector{UInt64}
+end
 
-Rotates the class of the records `class_records[first:last]`, counted from `lo`, as a dense block of `2^n_key_bits`
-entries, one rotation after the other, and writes what the truncations keep to `output`.
-"""
-function _rotateblock!(output, task, plan, truncfunc::F, record_terms::Vector{TT}, record_coeffs::Vector{CT}, lo::Int, first::Int,
-    last::Int, n_rotations::Int, key_bits::TT, n_key_bits::Int) where {F,TT,CT}
+BlockScratch{TT,CT}() where {TT,CT} = BlockScratch{TT,CT}(CT[], TT[], UInt64[])
 
+"""
+    _rotateblock!(sink, block, plan, truncfunc, class_terms, class_coeffs, rotations, key_bits, n_key_bits)
+
+Rotates the class of the Pauli strings `class_terms` with the coefficients `class_coeffs` as a dense block of
+`2^n_key_bits` entries, by the `rotations` one after the other, and writes what the truncations keep to `sink`.
+"""
+function _rotateblock!(sink, block, plan, truncfunc::F, class_terms, class_coeffs, rotations, key_bits::TT, n_key_bits::Int) where {F,TT}
     n_entries = 1 << n_key_bits
-    coeffs = _ensurelength!(task.block_coeffs, n_entries)
-    block_terms = _ensurelength!(task.block_terms, n_entries)
+    coeffs = PropagationBase._ensurecapacity!(block.coeffs, n_entries)
+    block_terms = PropagationBase._ensurecapacity!(block.terms, n_entries)
 
     # a block of at most 64 entries keeps which are present in one word, any other in an array of words
     if n_entries <= 64
         present = zero(UInt64)
-        for index in first:last
-            i = lo - 1 + task.class_records[index]
-            pstr = record_terms[i]
+        for index in eachindex(class_terms, class_coeffs)
+            pstr = class_terms[index]
             entry = _blockentry(pstr, key_bits)
             bit = one(UInt64) << entry
             if present & bit != 0
-                coeffs[entry+1] = mergefunc(coeffs[entry+1], record_coeffs[i])
+                coeffs[entry+1] = mergefunc(coeffs[entry+1], class_coeffs[index])
             else
-                coeffs[entry+1] = record_coeffs[i]
+                coeffs[entry+1] = class_coeffs[index]
                 block_terms[entry+1] = pstr
                 present |= bit
             end
         end
-        for step in 1:n_rotations
-            rotation = Int(task.rotations[step])
+        for step in eachindex(rotations)
+            rotation = Int(rotations[step])
             entry_mask = _blockentry(plan.masks[rotation], key_bits)
             signs = _blocksigns(plan)
             present = _rotateblockword(present, coeffs, block_terms, n_entries, entry_mask, plan, rotation, signs, truncfunc)
         end
-        _emitblockword!(output, present, coeffs, block_terms)
+        _emitblockwords!(sink, (present,), 1, coeffs, block_terms)
     else
         n_words = n_entries >> 6
-        present = _ensurelength!(task.block_words, n_words)
+        present = PropagationBase._ensurecapacity!(block.words, n_words)
         for word in 1:n_words
             present[word] = zero(UInt64)
         end
-        for index in first:last
-            i = lo - 1 + task.class_records[index]
-            pstr = record_terms[i]
+        for index in eachindex(class_terms, class_coeffs)
+            pstr = class_terms[index]
             entry = _blockentry(pstr, key_bits)
             word = (entry >> 6) + 1
             bit = one(UInt64) << (entry & 63)
             if present[word] & bit != 0
-                coeffs[entry+1] = mergefunc(coeffs[entry+1], record_coeffs[i])
+                coeffs[entry+1] = mergefunc(coeffs[entry+1], class_coeffs[index])
             else
-                coeffs[entry+1] = record_coeffs[i]
+                coeffs[entry+1] = class_coeffs[index]
                 block_terms[entry+1] = pstr
                 present[word] |= bit
             end
         end
-        for step in 1:n_rotations
-            rotation = Int(task.rotations[step])
+        for step in eachindex(rotations)
+            rotation = Int(rotations[step])
             entry_mask = _blockentry(plan.masks[rotation], key_bits)
             signs = _blocksigns(plan)
             _rotateblockwords!(present, n_words, coeffs, block_terms, n_entries, entry_mask, plan, rotation, signs, truncfunc)
         end
-        _emitblockwords!(output, present, n_words, coeffs, block_terms)
+        _emitblockwords!(sink, present, n_words, coeffs, block_terms)
     end
-    return output
+    return sink
 end
 
 # The signs that a rotation gives every lower entry and its partner, if they are all the same, as for a rotation on one
@@ -103,7 +109,7 @@ end
 @inline _pairsigns(signs::Tuple, plan, pstr, rotation::Int) = signs
 
 @inline function _pairsigns(::Nothing, plan, pstr, rotation::Int)
-    paulis = _localpaulis(plan, pstr, rotation)
+    paulis = _gatherpaulis(pstr, plan.shifts[rotation])
     return (plan.signs[paulis+1], plan.signs[(paulis⊻Int(plan.local_mask))+1])
 end
 
@@ -239,26 +245,14 @@ function _rotateblockwords!(present::Vector{UInt64}, n_words::Int, coeffs::Vecto
     return
 end
 
-# the entries of a block of one word that are present
-function _emitblockword!(output, present::UInt64, coeffs::Vector{CT}, block_terms::Vector{TT}) where {CT,TT}
-    room = _reserve!(output, count_ones(present))
-    while present != 0
-        entry = trailing_zeros(present)
-        present &= present - one(UInt64)
-        _put!(output, room, block_terms[entry+1], coeffs[entry+1])
-    end
-    return
-end
-
-# the entries of a block of several words that are present
-function _emitblockwords!(output, present::Vector{UInt64}, n_words::Int, coeffs::Vector{CT}, block_terms::Vector{TT}) where {CT,TT}
-    room = _reserve!(output, sum(count_ones, view(present, 1:n_words)))
+# the entries of a block that are present, from the first `n_words` words of `present`
+function _emitblockwords!(sink, present, n_words::Int, coeffs::Vector{CT}, block_terms::Vector{TT}) where {CT,TT}
     for word in 0:n_words-1
         bits = present[word+1]
         while bits != 0
             entry = 64 * word + trailing_zeros(bits)
             bits &= bits - one(UInt64)
-            _put!(output, room, block_terms[entry+1], coeffs[entry+1])
+            _emit!(sink, block_terms[entry+1], coeffs[entry+1])
         end
     end
     return

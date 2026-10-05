@@ -90,16 +90,14 @@ function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::A
 
     _rotationanglecheck(layer, theta)
 
-    function applyrotation!(cache, rotation, angle)
-        applymergetruncate!(rotation, cache, angle;
+    function applyrotation!(rotation, angle)
+        applymergetruncate!(rotation, prop_cache, angle;
             min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread, kwargs...)
-        return cache
+        return prop_cache
     end
 
     if !_propagatesinclasses(prop_cache) || !isnothing(min_rel_coeff)
-        for sublayer in layer.sublayers
-            _applyrotations!(applyrotation!, prop_cache, layer, sublayer, theta)
-        end
+        foreach(applyrotation!, torotations(layer, theta)...)
         return
     end
 
@@ -117,16 +115,14 @@ The Pauli sum is left merged, so that no merging is required afterwards.
 function PropagationBase.applytoall!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta; thread::Bool=true, kwargs...)
     _rotationanglecheck(layer, theta)
 
-    function applyrotation!(cache, rotation, angle)
-        applytoall!(rotation, cache, angle; thread)
-        merge!(cache; thread)
-        return cache
+    function applyrotation!(rotation, angle)
+        applytoall!(rotation, prop_cache, angle; thread)
+        merge!(prop_cache; thread)
+        return prop_cache
     end
 
     if !_propagatesinclasses(prop_cache)
-        for sublayer in layer.sublayers
-            _applyrotations!(applyrotation!, prop_cache, layer, sublayer, theta)
-        end
+        foreach(applyrotation!, torotations(layer, theta)...)
         return prop_cache
     end
 

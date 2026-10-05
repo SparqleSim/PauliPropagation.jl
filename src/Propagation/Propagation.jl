@@ -20,3 +20,6 @@ include("rotationlayerclasses.jl")
 
 # rotationlayerblocks.jl contains how a class of few key bits is rotated as a dense block.
 include("rotationlayerblocks.jl")
+
+# rotationlayerworkspace.jl contains the scratch memory of a `RotationLayer`, which the layers of a propagation reuse.
+include("rotationlayerworkspace.jl")

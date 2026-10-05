@@ -28,7 +28,7 @@ end
 
 Applies the rotations of the layer class by class, in one pass over the sum, and truncates the Pauli strings for which
 `truncfunc` returns `true` after every rotation. `truncfunc` truncates every coefficient below `min_abs_coeff`.
-A layer that acts on a qubit with two different Paulis takes one pass per sublayer (see `_classpasses`).
+A layer that acts on a qubit with two different Paulis takes more than one pass (see `_classpasses`).
 """
 function _applylayer!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta, truncfunc::F, min_abs_coeff::Real;
     thread::Bool=true) where {F}
@@ -46,41 +46,47 @@ function _applylayer!(layer::RotationLayer, prop_cache::AbstractPauliPropagation
     return prop_cache
 end
 
-# the rotations of the sublayer one by one
-function _applyrotations!(applyrotation!::F, prop_cache, layer::RotationLayer, sublayer::Vector{Int}, theta) where {F}
-    for index in sublayer
-        applyrotation!(prop_cache, PauliRotation(layer.symbols, layer.qinds[index]), _rotationangle(theta, index))
-    end
-    return prop_cache
-end
-
 _nevertruncate(pstr, coeff) = false
 
 
 ### A pass over the sum
 
-"""
-    _applypass!(prop_cache, plan, truncfunc, workspace; thread=true)
-
-One pass of the rotations of `plan` over the sum, class by class. Every Pauli string becomes a record, labelled with the
-hash of its class: the records are counted by partition, written partition by partition, and the partitions are rotated
-by tasks that each take the next partition that no task has taken yet, and write what they make to their outputs.
-The storage of the sum decides what every task reads (`_recordsources`), where the records are kept (`_recordarrays!`),
-where the tasks write (`_passoutputs!`) and how that becomes the sum (`_collectpass!`).
-"""
+# One pass of the rotations of `plan` over the sum: the Pauli strings are grouped by the hash of their class, and every
+# group is split into its classes, which are rotated.
 function _applypass!(prop_cache::AbstractPauliPropagationCache, plan, truncfunc::F, workspace; thread::Bool=true) where {F}
     if length(prop_cache) == 0
         return prop_cache
     end
     sources = _recordsources(StorageType(prop_cache), prop_cache, workspace, thread)
-    return _applypass!(prop_cache, plan, truncfunc, workspace, sources, thread)
+    _applypass!(prop_cache, plan, truncfunc, workspace, sources, thread)
+    return prop_cache
 end
 
 function _applypass!(prop_cache::AbstractPauliPropagationCache, plan, truncfunc::F, workspace, sources, thread::Bool) where {F}
+    classlabel(pstr) = _classlabel(plan, pstr)
+    rotategroup!(sink, task, group_terms, group_coeffs) = _rotategroup!(sink, task, plan, truncfunc, group_terms, group_coeffs)
+    _applytogroups!(classlabel, rotategroup!, prop_cache, workspace, sources, thread)
+    return prop_cache
+end
+
+"""
+    _applytogroups!(labelof, applytogroup!, prop_cache, workspace, sources, thread)
+
+Groups the Pauli strings of the sum by their label `labelof(pstr)`, a 64-bit hash, and calls
+`applytogroup!(sink, task, group_terms, group_coeffs)` once for every group, with all of its Pauli strings and their
+coefficients. What the calls write to their sinks replaces the sum.
+Every Pauli string becomes a record: the records are counted by partition, written partition by partition, and the
+partitions are grouped by tasks that each take the next partition that no task has taken yet.
+The storage of the sum decides what every task reads (`sources`, from `_recordsources`), where the records are kept
+(`_recordarrays!`), where the tasks write (`_passsinks!`) and how that becomes the sum (`_collectpass!`).
+"""
+function _applytogroups!(labelof::L, applytogroup!::G, prop_cache::AbstractPauliPropagationCache, workspace, sources,
+    thread::Bool) where {L,G}
+
     storage = StorageType(prop_cache)
     n_terms = length(prop_cache)
     n_sources = length(sources)
-    tasks = _taskworkspaces!(workspace, n_sources, length(plan.masks))
+    tasks = _ensurecount!(workspace.tasks, n_sources)
 
     # The highest bits of a label pick the zone that collects the record, and the bits below them a partition of the
     # zone. Every source writes into the partitions of all zones, so the most partitions apply to those of all zones
@@ -97,7 +103,7 @@ function _applypass!(prop_cache::AbstractPauliPropagationCache, plan, truncfunc:
     partition_counts = Matrix{Int}(undef, n_zones * n_partitions_per_zone + 1, n_sources)
     function count_source!(source_id)
         source, labels = sources[source_id]
-        _countrecords!(fill!(view(partition_counts, :, source_id), 0), n_bits, zone_bits, plan, source, labels)
+        _countrecords!(labelof, fill!(view(partition_counts, :, source_id), 0), n_bits, zone_bits, source, labels)
     end
     _eachsource(count_source!, storage, prop_cache, n_sources, thread)
 
@@ -112,21 +118,21 @@ function _applypass!(prop_cache::AbstractPauliPropagationCache, plan, truncfunc:
     end
     _eachsource(write_source!, storage, prop_cache, n_sources, thread)
 
-    outputs = _passoutputs!(storage, prop_cache, workspace, tasks, n_sources)
-    _rotatepartitions!(outputs, tasks, plan, truncfunc, record_terms, record_coeffs, record_labels, partition_starts, zone_starts,
+    sinks = _passsinks!(storage, prop_cache, workspace, tasks, n_sources)
+    _applytopartitions!(applytogroup!, sinks, tasks, record_terms, record_coeffs, record_labels, partition_starts, zone_starts,
         n_partitions_per_zone, storage, prop_cache, thread)
-    _collectpass!(storage, prop_cache, outputs, thread)
+    _collectpass!(storage, prop_cache, sinks, thread)
     return prop_cache
 end
 
-# The classes differ widely in size, so the partitions do too: every task takes the partitions of its own zone first and
+# The groups differ widely in size, so the partitions do too: every task takes the partitions of its own zone first and
 # then those of the other zones, one at a time, each the next one that no task has taken yet.
-function _rotatepartitions!(outputs, tasks, plan, truncfunc::F, record_terms, record_coeffs, record_labels, partition_starts,
-    zone_starts, n_partitions_per_zone::Int, storage, prop_cache, thread::Bool) where {F}
+function _applytopartitions!(applytogroup!::G, sinks, tasks, record_terms, record_coeffs, record_labels, partition_starts,
+    zone_starts, n_partitions_per_zone::Int, storage, prop_cache, thread::Bool) where {G}
 
     n_zones = length(zone_starts) - 1
     n_partitions_taken = [Threads.Atomic{Int}(0) for _ in 1:n_zones]
-    function rotate_partitions!(task_id)
+    function apply_to_partitions!(task_id)
         for offset in 0:n_zones-1
             zone_id = mod1(task_id + offset, n_zones)
             first_record = zone_starts[zone_id]
@@ -137,14 +143,89 @@ function _rotatepartitions!(outputs, tasks, plan, truncfunc::F, record_terms, re
                     break
                 end
                 partition = first_partition + partition_in_zone
-                _rotatepartition!(outputs[task_id], tasks[task_id], plan, truncfunc, record_terms[zone_id], record_coeffs[zone_id],
+                _applytopartition!(applytogroup!, sinks[task_id], tasks[task_id], record_terms[zone_id], record_coeffs[zone_id],
                     record_labels[zone_id], partition_starts[partition] - first_record + 1, partition_starts[partition+1] - first_record)
             end
         end
-        _finishoutput!(outputs[task_id])
+        _finish!(sinks[task_id])
     end
-    _eachsource(rotate_partitions!, storage, prop_cache, length(outputs), thread)
-    return outputs
+    _eachsource(apply_to_partitions!, storage, prop_cache, length(sinks), thread)
+    return sinks
+end
+
+"""
+    _applytopartition!(applytogroup!, sink, task, record_terms, record_coeffs, record_labels, lo, hi)
+
+Groups the records `lo` to `hi` by their label and calls `applytogroup!(sink, task, group_terms, group_coeffs)` for every
+group, with the Pauli strings and coefficients of its records next to each other in the task's scratch.
+"""
+function _applytopartition!(applytogroup!::G, sink, task, record_terms::Vector{TT}, record_coeffs::Vector{CT},
+    record_labels::Vector{Int}, lo::Int, hi::Int) where {G,TT,CT}
+
+    if lo > hi
+        return sink
+    end
+    if !(1 <= lo && hi <= min(length(record_terms), length(record_coeffs), length(record_labels)))
+        throw(ArgumentError("the records $lo to $hi are not among the records"))
+    end
+    n_records = hi - lo + 1
+    group_of = PropagationBase._ensurecapacity!(task.group_of, n_records)
+    group_hashes = PropagationBase._ensurecapacity!(task.group_hashes, n_records)
+    group_starts = PropagationBase._ensurecapacity!(task.group_starts, n_records + 1)
+
+    # the groups found so far, through their hash
+    table_length = max(16, nextpow(2, 2 * n_records))
+    slot_mask = table_length - 1
+    slots = PropagationBase._ensurecapacity!(task.slots, table_length)
+    fill!(view(slots, 1:table_length), zero(Int32))
+    n_groups = 0
+
+    for i in lo:hi
+        hashbits = record_labels[i] % UInt64
+        slot = Int(hashbits & (slot_mask % UInt64)) + 1
+        group = Int(slots[slot])
+        while group != 0 && group_hashes[group] != hashbits
+            slot = (slot & slot_mask) + 1
+            group = Int(slots[slot])
+        end
+        if group == 0
+            n_groups += 1
+            group = n_groups
+            group_hashes[group] = hashbits
+            group_starts[group] = 0
+            slots[slot] = group
+        end
+        group_starts[group] += 1
+        group_of[i-lo+1] = group
+    end
+
+    # the Pauli strings and coefficients of the records one group after the other
+    next_start = 1
+    for group in 1:n_groups
+        n_here = group_starts[group]
+        group_starts[group] = next_start
+        next_start += n_here
+    end
+    group_starts[n_groups+1] = next_start
+    group_terms = PropagationBase._ensurecapacity!(task.group_terms, n_records)
+    group_coeffs = PropagationBase._ensurecapacity!(task.group_coeffs, n_records)
+    for i in 1:n_records
+        group = group_of[i]
+        position = group_starts[group]
+        group_terms[position] = record_terms[lo-1+i]
+        group_coeffs[position] = record_coeffs[lo-1+i]
+        group_starts[group] = position + 1
+    end
+    for group in n_groups:-1:1
+        group_starts[group+1] = group_starts[group]
+    end
+    group_starts[1] = 1
+
+    for group in 1:n_groups
+        records = group_starts[group]:group_starts[group+1]-1
+        @inline applytogroup!(sink, task, view(group_terms, records), view(group_coeffs, records))
+    end
+    return sink
 end
 
 # runs `f` for every source: the zones of a multi sum as its zones are run, and any other sources as tasks
@@ -174,10 +255,10 @@ function _arraysources(prop_cache, workspace, task_partitioner, n_tasks::Int)
     end
     main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
     PropagationBase._checkfits(n_terms, main_terms, main_coeffs)
-    labels = _sourcelabels!(workspace, n_tasks)
+    labels = _ensurecount!(workspace.source_labels, n_tasks)
     function source(task_id)
         chunk = task_partitioner[task_id]
-        return zip(view(main_terms, chunk), view(main_coeffs, chunk)), _ensurelength!(labels[task_id], length(chunk))
+        return zip(view(main_terms, chunk), view(main_coeffs, chunk)), PropagationBase._ensurecapacity!(labels[task_id], length(chunk))
     end
     return [source(task_id) for task_id in 1:n_tasks]
 end
@@ -191,41 +272,18 @@ function _recordarrays!(::PropagationBase.ArrayStorage, prop_cache, workspace, n
     return [aux_terms], [aux_coeffs], [record_labels]
 end
 
-# One task writes into the main arrays, which grow as they fill. Several tasks each collect what they make in a buffer
-# and copy it into ranges of the main arrays that they reserve.
-function _passoutputs!(::PropagationBase.ArrayStorage, prop_cache, workspace, tasks, n_tasks::Int)
+# One task writes into the main arrays alone, and several share them, each through a buffer of its own.
+function _passsinks!(::PropagationBase.ArrayStorage, prop_cache, workspace, tasks, n_tasks::Int)
     if n_tasks == 1
-        return [ArrayOutput(prop_cache, 0)]
+        return [ArraySink(prop_cache)]
     end
-    main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
     n_reserved = Threads.Atomic{Int}(0)
-    return [_openoutput!(tasks[task_id].output, main_terms, main_coeffs, n_reserved) for task_id in 1:n_tasks]
+    task_sink(task_id) = ArraySink(prop_cache, _sinkbuffer!(tasks[task_id], 1, _SINK_BUFFER_LENGTH)..., n_reserved)
+    return [task_sink(task_id) for task_id in 1:n_tasks]
 end
 
-_collectpass!(::PropagationBase.ArrayStorage, prop_cache, outputs, thread::Bool) = _setsum!(prop_cache, _nwritten!(prop_cache, outputs))
-
-# Copies what the buffers of the tasks kept, when the main arrays were full, after the `n_written` Pauli strings that they
-# hold, and lets go of the buffers. Returns the number of Pauli strings in the main arrays.
-function _copyleft!(prop_cache, n_written::Int, outputs)
-    n_left = sum(output -> output.n_written, outputs)
-    if n_left > 0
-        PropagationBase._ensurecapacity!(prop_cache, n_written + n_left)
-        main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
-        PropagationBase._checkfits(n_written + n_left, main_terms, main_coeffs)
-        for output in outputs
-            copyto!(main_terms, n_written + 1, output.buffer_terms, 1, output.n_written)
-            copyto!(main_coeffs, n_written + 1, output.buffer_coeffs, 1, output.n_written)
-            n_written += output.n_written
-        end
-    end
-    foreach(_closeoutput!, outputs)
-    return n_written
-end
-
-# the first `n_written` Pauli strings of the main arrays, which are all different but not sorted, become the sum
-function _setsum!(prop_cache, n_written::Int)
-    setactivesize!(prop_cache, n_written)
-    PropagationBase.setsortedprefix!(mainsum(prop_cache), 0)
+function _collectpass!(::PropagationBase.ArrayStorage, prop_cache, sinks, thread::Bool)
+    _collectsinks!(prop_cache, sinks)
     return prop_cache
 end
 
@@ -237,19 +295,19 @@ end
 function _recordsources(::PropagationBase.DictStorage, prop_cache, workspace, thread::Bool)
     PropagationBase._checkauxempty(prop_cache)
     main_sum = mainsum(prop_cache)
-    return [(main_sum, _ensurelength!(first(_sourcelabels!(workspace, 1)), length(main_sum)))]
+    return [(main_sum, PropagationBase._ensurecapacity!(first(_ensurecount!(workspace.source_labels, 1)), length(main_sum)))]
 end
 
 _recordarrays!(::PropagationBase.DictStorage, prop_cache, workspace, n_records::Vector{Int}) =
     _zonerecords!(PropagationBase.DictStorage(), workspace, nothing, n_records)
 
-function _passoutputs!(::PropagationBase.DictStorage, prop_cache, workspace, tasks, n_tasks::Int)
+function _passsinks!(::PropagationBase.DictStorage, prop_cache, workspace, tasks, n_tasks::Int)
     main_sum = mainsum(prop_cache)
     empty!(main_sum)
     return [main_sum]
 end
 
-_collectpass!(::PropagationBase.DictStorage, prop_cache, outputs, thread::Bool) = prop_cache
+_collectpass!(::PropagationBase.DictStorage, prop_cache, sinks, thread::Bool) = prop_cache
 
 
 ### Multi sums
@@ -260,56 +318,54 @@ _collectpass!(::PropagationBase.DictStorage, prop_cache, outputs, thread::Bool) 
 function _recordsources(::PropagationBase.MultiSumStorage, prop_cache, workspace, thread::Bool)
     PropagationBase._checkauxempty(prop_cache)
     zone_caches = zonecaches(prop_cache)
-    labels = _sourcelabels!(workspace, length(zone_caches))
-    return [(zonecache, _ensurelength!(labels[zone_id], length(zonecache))) for (zone_id, zonecache) in enumerate(zone_caches)]
+    labels = _ensurecount!(workspace.source_labels, length(zone_caches))
+    return [(zonecache, PropagationBase._ensurecapacity!(labels[zone_id], length(zonecache)))
+            for (zone_id, zonecache) in enumerate(zone_caches)]
 end
 
 _recordarrays!(::PropagationBase.MultiSumStorage, prop_cache, workspace, n_records::Vector{Int}) =
     _zonerecords!(PropagationBase.zonestorage(prop_cache), workspace, zonecaches(prop_cache), n_records)
 
-_passoutputs!(::PropagationBase.MultiSumStorage, prop_cache, workspace, tasks, n_zones::Int) =
-    _zoneoutputs!(PropagationBase.zonestorage(prop_cache), prop_cache, tasks)
+_passsinks!(::PropagationBase.MultiSumStorage, prop_cache, workspace, tasks, n_zones::Int) =
+    _zonesinks!(PropagationBase.zonestorage(prop_cache), prop_cache, tasks)
 
 # the records hold all of the sum, so every zone ends up with what the pass made for it alone
-function _collectpass!(::PropagationBase.MultiSumStorage, prop_cache, outputs, thread::Bool)
+function _collectpass!(::PropagationBase.MultiSumStorage, prop_cache, sinks, thread::Bool)
     zone_storage = PropagationBase.zonestorage(prop_cache)
-    collect_zone!(zone_id) = _collectzone!(zone_storage, prop_cache, zone_id, outputs)
+    collect_zone!(zone_id) = _collectzone!(zone_storage, prop_cache, zone_id, sinks)
     PropagationBase._eachzone(collect_zone!, prop_cache, thread)
     PropagationBase._syncsums!(prop_cache)
     return prop_cache
 end
 
-# What the task of every zone writes to: the main arrays of all zones of arrays, or else its outbox.
-function _zoneoutputs!(::PropagationBase.ArrayStorage, prop_cache, tasks)
+# Every task writes through a sink for every zone of arrays, which the sinks of all tasks share, and any other zones
+# through its outbox.
+function _zonesinks!(::PropagationBase.ArrayStorage, prop_cache, tasks)
     zone_caches = zonecaches(prop_cache)
     n_zones = length(zone_caches)
     n_reserved = [Threads.Atomic{Int}(0) for _ in 1:n_zones]
 
     # the buffers of a task take about as much memory whatever the number of zones
-    flush_length = max(256, 4 * _TASK_BUFFER_LENGTH ÷ n_zones)
-    function zone_output(zone_id)
-        task_outputs = _zonetaskoutputs!(tasks[zone_id], n_zones, flush_length)
-        for target in 1:n_zones
-            main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(zone_caches[target])
-            _openoutput!(task_outputs[target], main_terms, main_coeffs, n_reserved[target])
-        end
-        return ZoneOutputs(zonemap(prop_cache), task_outputs, n_reserved)
+    buffer_length = max(256, 4 * _SINK_BUFFER_LENGTH ÷ n_zones)
+    function task_sinks(task_id)
+        zone_sink(zone_id) = ArraySink(zone_caches[zone_id], _sinkbuffer!(tasks[task_id], zone_id, buffer_length)..., n_reserved[zone_id])
+        return ZoneSinks(zonemap(prop_cache), [zone_sink(zone_id) for zone_id in 1:n_zones])
     end
-    return [zone_output(zone_id) for zone_id in 1:n_zones]
+    return [task_sinks(task_id) for task_id in 1:n_zones]
 end
 
-_zoneoutputs!(::PropagationBase.StorageType, prop_cache, tasks) = outboxes(prop_cache)
+_zonesinks!(::PropagationBase.StorageType, prop_cache, tasks) = outboxes(prop_cache)
 
-# A zone of arrays takes what the tasks could not write into its main arrays, which grow for it. Its Pauli strings are all
-# different, since every class was rotated by one task.
-function _collectzone!(::PropagationBase.ArrayStorage, prop_cache, zone_id::Int, outputs)
+# A zone of arrays takes what the sinks of every task wrote for it. Its Pauli strings are all different, since every
+# class was rotated by one task.
+function _collectzone!(::PropagationBase.ArrayStorage, prop_cache, zone_id::Int, sinks)
     zonecache = zonecaches(prop_cache)[zone_id]
-    task_outputs = [output.task_outputs[zone_id] for output in outputs]
-    return _setsum!(zonecache, _copyleft!(zonecache, first(outputs).n_reserved[zone_id][], task_outputs))
+    _collectsinks!(zonecache, [zone_sinks.sinks[zone_id] for zone_sinks in sinks])
+    return zonecache
 end
 
 # any other zone is emptied and takes what the outboxes hold for it
-function _collectzone!(::PropagationBase.StorageType, prop_cache, zone_id::Int, outputs)
+function _collectzone!(::PropagationBase.StorageType, prop_cache, zone_id::Int, sinks)
     empty!(zonecaches(prop_cache)[zone_id])
     PropagationBase._deliverto!(prop_cache, zone_id)
     return zonecaches(prop_cache)[zone_id]
@@ -328,30 +384,20 @@ function _zonerecords!(::PropagationBase.ArrayStorage, workspace, zone_caches, n
 end
 
 function _zonerecords!(::PropagationBase.StorageType, workspace, zone_caches, n_records::Vector{Int})
-    while length(workspace.zone_terms) < length(n_records)
-        push!(workspace.zone_terms, eltype(workspace.zone_terms)())
-        push!(workspace.zone_coeffs, eltype(workspace.zone_coeffs)())
-        push!(workspace.zone_labels, Int[])
+    zone_arrays = (workspace.zone_terms, workspace.zone_coeffs, workspace.zone_labels)
+    for arrays in zone_arrays
+        _ensurecount!(arrays, length(n_records))
+        for zone_id in eachindex(n_records)
+            PropagationBase._ensurecapacity!(arrays[zone_id], n_records[zone_id])
+        end
     end
-
-    for zone_id in eachindex(n_records)
-        _ensurelength!(workspace.zone_terms[zone_id], n_records[zone_id])
-        _ensurelength!(workspace.zone_coeffs[zone_id], n_records[zone_id])
-        _ensurelength!(workspace.zone_labels[zone_id], n_records[zone_id])
-    end
-    return workspace.zone_terms, workspace.zone_coeffs, workspace.zone_labels
+    return zone_arrays
 end
 
 
 ### Records
 
-# A record is a Pauli string, its coefficient and its label: a hash of its class above `_HASH_SHIFT`, and in the lowest
-# bit whether the string has a class, that is whether any rotation of the layer anticommutes with it.
-const _HASH_SHIFT = 1
-const _HASH_BITS = 8 * sizeof(Int) - _HASH_SHIFT
-
-@inline _labelhash(label::Int) = (label % UInt64) >> _HASH_SHIFT
-@inline _hasclass(label::Int) = isodd(label)
+# A record is a Pauli string, its coefficient and its label, a hash of its class.
 
 # the records of a partition take about this many bytes
 const _PARTITION_BYTES = 1 << 18
@@ -375,20 +421,20 @@ end
 # The zone that collects a record, and its partition among those of all zones: the highest `n_bits` bits of the hash of
 # its class pick the partition, and the highest `n_zone_bits` of those the zone.
 @inline function _zonepartitionof(label::Int, n_bits::Int, n_zone_bits::Int)
-    partition = Int(_labelhash(label) >> (_HASH_BITS - n_bits))
+    partition = Int((label % UInt64) >> (64 - n_bits))
     return (partition >> (n_bits - n_zone_bits)) + 1, partition + 1
 end
 
 """
-    _countrecords!(partition_counts, n_bits, n_zone_bits, plan, source, labels)
+    _countrecords!(labelof, partition_counts, n_bits, n_zone_bits, source, labels)
 
-Counts the records of each partition that the Pauli strings of `source` make, and keeps their labels in `labels`, in the
-order of `source`.
+Counts the records of each partition that the Pauli strings of `source` make, and keeps their labels `labelof(pstr)` in
+`labels`, in the order of `source`.
 """
-function _countrecords!(partition_counts, n_bits::Int, n_zone_bits::Int, plan, source, labels::AbstractVector{Int})
+function _countrecords!(labelof::L, partition_counts, n_bits::Int, n_zone_bits::Int, source, labels::AbstractVector{Int}) where {L}
     source_index = 0
     for (pstr, _) in source
-        label = _classlabel(plan, pstr)
+        label = @inline labelof(pstr)
         source_index += 1
         labels[source_index] = label
         _, partition = _zonepartitionof(label, n_bits, n_zone_bits)
@@ -447,16 +493,7 @@ function _writerecords!(zone_terms::Vector{Vector{TT}}, zone_coeffs::Vector{Vect
     return zone_terms
 end
 
-# a vector of labels for every source, which is made long enough for the Pauli strings of the source when it is read
-function _sourcelabels!(workspace, n_sources::Int)
-    source_labels = workspace.source_labels
-    while length(source_labels) < n_sources
-        push!(source_labels, Int[])
-    end
-    return source_labels
-end
-
-# A hash of `_HASH_BITS` bits. The limbs are mixed independently of each other, so that the hash of a wide Pauli string is
+# A hash of a Pauli string. The limbs are mixed independently of each other, so that the hash of a wide Pauli string is
 # no chain over its limbs. A product keeps the highest bit of a limb only in its own highest bit, so the high half of
 # every limb is folded onto its low half first, or strings that differ only in which limb has that bit set would collide.
 @inline function _hashbits(pstr)
@@ -465,7 +502,7 @@ end
     for i in eachindex(limbs)
         folded ⊻= (limbs[i] ⊻ (limbs[i] >> 32)) * _foldfactor(i)
     end
-    return PropagationBase._mix64(folded) >> _HASH_SHIFT
+    return PropagationBase._mix64(folded)
 end
 
 # an odd factor for every limb
@@ -481,292 +518,161 @@ const _FOLD_FACTORS = ntuple(i -> PropagationBase._mix64(UInt64(i)) | one(UInt64
 
 ### Where a pass writes the Pauli strings it makes
 
-# the main arrays of a cache written by one task, which grow as they fill
-mutable struct ArrayOutput{PC}
+# A task writes what it makes to a sink, one Pauli string at a time through `_emit!`: an `ArraySink` to a sum held in
+# arrays, `ZoneSinks` to the zones of a multi sum held in arrays, and to any other sum the sum itself, which adds them.
+
+# a sink that shares the arrays of a sum copies its buffer into them whenever it holds this many Pauli strings
+const _SINK_BUFFER_LENGTH = 4096
+
+"""
+    ArraySink
+
+Where one task writes the Pauli strings it makes into the main arrays of a cache.
+A sink that is the only one to write to the arrays writes into them directly and grows them as they fill.
+Sinks that share the arrays each collect what they make in a buffer, and copy it into a range of the arrays that they reserve.
+Shared arrays do not grow, so a sink that finds them full keeps what it makes in its buffer until `_collectsinks!` copies it.
+"""
+mutable struct ArraySink{TT,CT,PC}
     prop_cache::PC
+    # the buffer of a shared sink, or the main arrays of the cache
+    terms::Vector{TT}
+    coeffs::Vector{CT}
     n_written::Int
-end
-
-# a task writes to the sum once it holds this many Pauli strings
-const _TASK_BUFFER_LENGTH = 4096
-
-# The main arrays of a cache written by several tasks. A task collects what it makes in a buffer and copies it into a
-# range of the arrays that it reserves. The arrays do not grow while the tasks write, so a task that finds them full
-# keeps what it makes in its buffer.
-mutable struct TaskOutput{TT,CT}
-    buffer_terms::Vector{TT}
-    buffer_coeffs::Vector{CT}
-    n_written::Int
-    sum_terms::Vector{TT}
-    sum_coeffs::Vector{CT}
+    # how much of the main arrays the sinks that share them have taken
     n_reserved::Threads.Atomic{Int}
+    is_shared::Bool
     is_full::Bool
-    flush_length::Int
 end
 
-# Room past the flush length for the block of a class, so that the buffer does not grow for one.
-_taskbufferroom(flush_length::Int) = flush_length + (1 << _MAX_BLOCK_KEY_BITS)
-
-function TaskOutput(::Type{TT}, ::Type{CT}, flush_length::Int=_TASK_BUFFER_LENGTH) where {TT,CT}
-    n_room = _taskbufferroom(flush_length)
-    return TaskOutput{TT,CT}(Vector{TT}(undef, n_room), Vector{CT}(undef, n_room), 0, TT[], CT[], Threads.Atomic{Int}(0), false, flush_length)
+# the only sink of the main arrays of `prop_cache`
+function ArraySink(prop_cache)
+    main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
+    return ArraySink(prop_cache, main_terms, main_coeffs, 0, Threads.Atomic{Int}(0), false, false)
 end
 
-const ArrayOutputs = Union{ArrayOutput,TaskOutput}
+# one of the sinks that share the main arrays of `prop_cache`, with a buffer of its own
+ArraySink(prop_cache, buffer_terms, buffer_coeffs, n_reserved::Threads.Atomic{Int}) =
+    ArraySink(prop_cache, buffer_terms, buffer_coeffs, 0, n_reserved, true, false)
 
-# The number of Pauli strings in the main arrays once the tasks are done: what one task wrote, or what several tasks
-# wrote with what their buffers kept copied after it.
-_nwritten!(prop_cache, outputs::Vector{<:ArrayOutput}) = only(outputs).n_written
-_nwritten!(prop_cache, outputs::Vector{<:TaskOutput}) = _copyleft!(prop_cache, first(outputs).n_reserved[], outputs)
-
-@inline _emit!(output::ArrayOutputs, pstr, coeff) = _put!(output, _reserve!(output, 1), pstr, coeff)
-
-# Room for `n_more` Pauli strings, which the output then takes one by one with `_put!`: arrays make the room at once and
-# return themselves, and any other output takes the strings as they come.
-@inline _reserve!(output::ArrayOutputs, n_more::Int) = _roomtoemit!(output, n_more)
-@inline _reserve!(output, n_more::Int) = nothing
-
-@inline function _put!(output::ArrayOutputs, (output_terms, output_coeffs)::Tuple, pstr, coeff)
-    n_written = output.n_written + 1
-    output_terms[n_written] = pstr
-    output_coeffs[n_written] = coeff
-    output.n_written = n_written
+@inline function _emit!(sink::ArraySink, pstr, coeff)
+    n_written = sink.n_written + 1
+    if n_written > length(sink.terms) || n_written > length(sink.coeffs)
+        _makeroom!(sink)
+        n_written = sink.n_written + 1
+    end
+    sink.terms[n_written] = pstr
+    sink.coeffs[n_written] = coeff
+    sink.n_written = n_written
     return
 end
 
-@inline _put!(output, ::Nothing, pstr, coeff) = _emit!(output, pstr, coeff)
-
-# the arrays to write to, with room for `n_more` Pauli strings past the ones written
-@inline function _roomtoemit!(output::ArrayOutput, n_more::Int)
-    prop_cache = output.prop_cache
-    n_needed = output.n_written + n_more
-    if n_needed > capacity(prop_cache)
-        PropagationBase._ensurecapacity!(prop_cache, n_needed)
+# Room for one more Pauli string: the only sink grows the main arrays, and a shared sink copies its buffer into them, or
+# grows its buffer when they are full.
+function _makeroom!(sink::ArraySink)
+    if sink.is_shared
+        _flush!(sink)
+        PropagationBase._ensurecapacity!(sink.terms, sink.n_written + 1)
+        PropagationBase._ensurecapacity!(sink.coeffs, sink.n_written + 1)
+    else
+        PropagationBase._ensurecapacity!(sink.prop_cache, sink.n_written + 1)
+        main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(sink.prop_cache)
+        sink.terms = main_terms
+        sink.coeffs = main_coeffs
     end
-
-    main_sum = mainsum(prop_cache)
-    main_terms = terms(main_sum)
-    main_coeffs = coefficients(main_sum)
-    PropagationBase._checkfits(n_needed, main_terms, main_coeffs)
-    return main_terms, main_coeffs
+    return sink
 end
 
-@inline function _roomtoemit!(output::TaskOutput, n_more::Int)
-    if output.n_written + n_more > output.flush_length && !output.is_full
-        _flush!(output)
+# Copies the buffer of a shared sink into a range of the main arrays that no other sink writes to, unless they are full.
+function _flush!(sink::ArraySink)
+    n_buffered = sink.n_written
+    if n_buffered == 0 || sink.is_full
+        return sink
     end
 
-    n_needed = output.n_written + n_more
-    if n_needed > length(output.buffer_terms) || n_needed > length(output.buffer_coeffs)
-        _ensurelength!(output.buffer_terms, n_needed)
-        _ensurelength!(output.buffer_coeffs, n_needed)
-    end
-    return output.buffer_terms, output.buffer_coeffs
-end
-
-# an empty buffer in front of the arrays that the tasks write to, of which `n_reserved` entries are taken
-function _openoutput!(output::TaskOutput{TT,CT}, sum_terms::Vector{TT}, sum_coeffs::Vector{CT}, n_reserved::Threads.Atomic{Int}) where {TT,CT}
-    output.n_written = 0
-    output.sum_terms = sum_terms
-    output.sum_coeffs = sum_coeffs
-    output.n_reserved = n_reserved
-    output.is_full = false
-    return output
-end
-
-# Lets go of the arrays of the sum, and of a buffer that had to keep more than it started with room for.
-function _closeoutput!(output::TaskOutput{TT,CT}) where {TT,CT}
-    n_room = _taskbufferroom(output.flush_length)
-    if length(output.buffer_terms) > n_room
-        output.buffer_terms = Vector{TT}(undef, n_room)
-        output.buffer_coeffs = Vector{CT}(undef, n_room)
-    end
-    output.sum_terms = TT[]
-    output.sum_coeffs = CT[]
-    output.n_written = 0
-    return output
-end
-
-# Copies the buffer into a range of the arrays that no other task writes to, unless the arrays are full.
-function _flush!(output::TaskOutput)
-    n_buffered = output.n_written
-    if n_buffered == 0 || output.is_full
-        return output
-    end
-
-    n_room = min(length(output.sum_terms), length(output.sum_coeffs))
-    n_taken = output.n_reserved[]
+    main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(sink.prop_cache)
+    n_room = min(length(main_terms), length(main_coeffs))
+    n_taken = sink.n_reserved[]
     while true
         if n_taken + n_buffered > n_room
-            output.is_full = true
-            return output
+            sink.is_full = true
+            return sink
         end
-        n_seen = Threads.atomic_cas!(output.n_reserved, n_taken, n_taken + n_buffered)
+        n_seen = Threads.atomic_cas!(sink.n_reserved, n_taken, n_taken + n_buffered)
         if n_seen == n_taken
             break
         end
         n_taken = n_seen
     end
 
-    copyto!(output.sum_terms, n_taken + 1, output.buffer_terms, 1, n_buffered)
-    copyto!(output.sum_coeffs, n_taken + 1, output.buffer_coeffs, 1, n_buffered)
-    output.n_written = 0
-    return output
+    copyto!(main_terms, n_taken + 1, sink.terms, 1, n_buffered)
+    copyto!(main_coeffs, n_taken + 1, sink.coeffs, 1, n_buffered)
+    sink.n_written = 0
+    return sink
 end
 
-# The main arrays of the zones of a multi sum, written by one task: a Pauli string goes to the output of the zone that owns it.
-struct ZoneOutputs{ZM,TO<:TaskOutput}
+# a shared sink copies what it holds into the arrays at the end of its task, as far as they have room
+function _finish!(sink::ArraySink)
+    if sink.is_shared
+        _flush!(sink)
+    end
+    return sink
+end
+
+"""
+    _collectsinks!(prop_cache, sinks)
+
+Makes the Pauli strings that `sinks` wrote into the main arrays of `prop_cache` its sum: what the only sink wrote, or
+what shared sinks copied into the arrays, followed by what their buffers kept when the arrays were full.
+"""
+function _collectsinks!(prop_cache, sinks::Vector{<:ArraySink})
+    if !first(sinks).is_shared
+        _setsum!(prop_cache, only(sinks).n_written)
+        return prop_cache
+    end
+
+    n_written = first(sinks).n_reserved[]
+    n_kept = sum(sink -> sink.n_written, sinks)
+    if n_kept > 0
+        PropagationBase._ensurecapacity!(prop_cache, n_written + n_kept)
+        main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
+        PropagationBase._checkfits(n_written + n_kept, main_terms, main_coeffs)
+        for sink in sinks
+            copyto!(main_terms, n_written + 1, sink.terms, 1, sink.n_written)
+            copyto!(main_coeffs, n_written + 1, sink.coeffs, 1, sink.n_written)
+            n_written += sink.n_written
+        end
+    end
+    _setsum!(prop_cache, n_written)
+    return prop_cache
+end
+
+# the first `n_written` Pauli strings of the main arrays, which are all different but not sorted, become the sum
+function _setsum!(prop_cache, n_written::Int)
+    setactivesize!(prop_cache, n_written)
+    PropagationBase.setsortedprefix!(mainsum(prop_cache), 0)
+    return prop_cache
+end
+
+# The sinks of one task for the zones of a multi sum, one per zone: a Pauli string goes to the sink of the zone that owns it.
+struct ZoneSinks{ZM,S<:ArraySink}
     zone_map::ZM
-    task_outputs::Vector{TO}
-    # how much of the main arrays of every zone the tasks have taken
-    n_reserved::Vector{Threads.Atomic{Int}}
+    sinks::Vector{S}
 end
 
-@inline function _emit!(output::ZoneOutputs, pstr, coeff)
-    _emit!(output.task_outputs[PropagationBase.zoneof(output.zone_map, pstr)], pstr, coeff)
+@inline function _emit!(zone_sinks::ZoneSinks, pstr, coeff)
+    _emit!(zone_sinks.sinks[PropagationBase.zoneof(zone_sinks.zone_map, pstr)], pstr, coeff)
     return
 end
 
-# copies what the buffers hold into the zones, as far as they have room
-function _finishoutput!(output::ZoneOutputs)
-    foreach(_flush!, output.task_outputs)
-    return output
+function _finish!(zone_sinks::ZoneSinks)
+    foreach(_finish!, zone_sinks.sinks)
+    return zone_sinks
 end
-
-_finishoutput!(output) = output
 
 # a term sum takes the Pauli strings one by one: a Pauli sum adds them, the outbox of a multi sum passes them to the zone that owns them
-@inline function _emit!(output::AbstractTermSum, pstr, coeff)
-    push!(output, pstr, coeff)
+@inline function _emit!(term_sum::AbstractTermSum, pstr, coeff)
+    push!(term_sum, pstr, coeff)
     return
 end
 
-
-### The scratch memory of a layer
-
-mutable struct TaskWorkspace{TT,CT}
-    # the rotations that anticommute with the Pauli strings of a class, in the order of the layer
-    rotations::Vector{Int32}
-
-    # the records of one partition grouped by the hash of their class, the groups found through `slots`, and the records
-    # of each group, which `_rotategroup!` orders class by class
-    slots::Vector{Int32}
-    group_of::Vector{Int32}
-    group_hashes::Vector{UInt64}
-    group_starts::Vector{Int}
-    class_records::Vector{Int32}
-
-    # the block of a class with few key bits: a coefficient and a Pauli string for every entry, and which are present
-    block_coeffs::Vector{CT}
-    block_terms::Vector{TT}
-    block_words::Vector{UInt64}
-
-    # The Pauli strings of a class with more key bits, their keys, whether they are present, and the last rotation that
-    # mixed them, found through the first `class_table_length` of `class_slots`: at their key where `class_hash_shift`
-    # is 0, and otherwise by the highest bits of the hash of their key from `class_hash_shift` on. The entries that a
-    # rotation mixes or that make a partner, and their partners.
-    entry_terms::Vector{TT}
-    entry_keys::Vector{UInt64}
-    entry_coeffs::Vector{CT}
-    entry_present::Vector{Bool}
-    entry_steps::Vector{Int32}
-    n_entries::Int
-    class_slots::Vector{Int32}
-    class_table_length::Int
-    class_hash_shift::Int
-    class_is_open::Bool
-    events::Vector{Int32}
-    event_partners::Vector{Int32}
-
-    # where the task writes when several tasks write to one array sum, and to the zones of a multi sum
-    output::TaskOutput{TT,CT}
-    zone_outputs::Vector{TaskOutput{TT,CT}}
-end
-
-function TaskWorkspace(::Type{TT}, ::Type{CT}) where {TT,CT}
-    return TaskWorkspace{TT,CT}(Int32[], Int32[], Int32[], UInt64[], Int[], Int32[], CT[], TT[], UInt64[],
-        TT[], UInt64[], CT[], Bool[], Int32[], 0, Int32[], 0, 64, false, Int32[], Int32[], TaskOutput(TT, CT), TaskOutput{TT,CT}[])
-end
-
-"""
-    LayerWorkspace(TT, CT)
-
-The scratch memory of a `RotationLayer` applied to Pauli strings of the type `TT` with coefficients of the type `CT`,
-which the layers of a propagation reuse.
-"""
-mutable struct LayerWorkspace{TT,CT}
-    tasks::Vector{TaskWorkspace{TT,CT}}
-
-    # the labels of the Pauli strings that every source holds, found when its records are counted
-    source_labels::Vector{Vector{Int}}
-
-    # the records of every zone that has no arrays to keep them in, those of a Pauli sum in the first
-    zone_terms::Vector{Vector{TT}}
-    zone_coeffs::Vector{Vector{CT}}
-    zone_labels::Vector{Vector{Int}}
-end
-
-LayerWorkspace(::Type{TT}, ::Type{CT}) where {TT,CT} =
-    LayerWorkspace{TT,CT}(TaskWorkspace{TT,CT}[], Vector{Int}[], Vector{TT}[], Vector{CT}[], Vector{Int}[])
-
-# Workspaces that no layer is using. A layer takes one out and puts it back when it is done, so that the next layer
-# uses the same memory, and propagations that run at the same time each have their own.
-const _IDLE_WORKSPACES = Dict{DataType,Vector{Any}}()
-const _IDLE_WORKSPACES_LOCK = ReentrantLock()
-
-function _takeworkspace(::Type{TT}, ::Type{CT}) where {TT,CT}
-    lock(_IDLE_WORKSPACES_LOCK)
-    try
-        idle_workspaces = get(_IDLE_WORKSPACES, LayerWorkspace{TT,CT}, nothing)
-        if !isnothing(idle_workspaces) && !isempty(idle_workspaces)
-            return pop!(idle_workspaces)::LayerWorkspace{TT,CT}
-        end
-    finally
-        unlock(_IDLE_WORKSPACES_LOCK)
-    end
-    return LayerWorkspace(TT, CT)
-end
-
-function _putbackworkspace!(workspace::LayerWorkspace)
-    lock(_IDLE_WORKSPACES_LOCK)
-    try
-        newlist() = Any[]
-        push!(get!(newlist, _IDLE_WORKSPACES, typeof(workspace)), workspace)
-    finally
-        unlock(_IDLE_WORKSPACES_LOCK)
-    end
-    return
-end
-
-# the memory of `n_tasks` tasks for a pass of `n_rotations` rotations
-function _taskworkspaces!(workspace::LayerWorkspace{TT,CT}, n_tasks::Int, n_rotations::Int) where {TT,CT}
-    tasks = workspace.tasks
-    while length(tasks) < n_tasks
-        push!(tasks, TaskWorkspace(TT, CT))
-    end
-
-    for task_id in 1:n_tasks
-        _ensurelength!(tasks[task_id].rotations, n_rotations)
-    end
-    return tasks
-end
-
-# the outputs of a task for `n_zones` zones, which flush at `flush_length`
-function _zonetaskoutputs!(task::TaskWorkspace{TT,CT}, n_zones::Int, flush_length::Int) where {TT,CT}
-    task_outputs = task.zone_outputs
-    if length(task_outputs) != n_zones || any(task_output -> task_output.flush_length != flush_length, task_outputs)
-        empty!(task_outputs)
-        for _ in 1:n_zones
-            push!(task_outputs, TaskOutput(TT, CT, flush_length))
-        end
-    end
-    return task_outputs
-end
-
-# at least `n` elements
-function _ensurelength!(array::Vector, n::Int)
-    if length(array) < n
-        resize!(array, max(n, 2 * length(array)))
-    end
-    return array
-end
+_finish!(term_sum::AbstractTermSum) = term_sum
