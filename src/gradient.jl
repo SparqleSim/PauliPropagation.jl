@@ -150,7 +150,7 @@ _layergradient(thetas, rotation_grads) = rotation_grads
 # carried by the same real rotations as the operator, and the gradient pairs the two with the real signs of the rotations.
 function wrapdual(prop_cache::AbstractPropagationCache, overlapfunc; thread::Bool=true)
     nq = nqubits(prop_cache)
-    singletonoverlap(term) = overlapfunc(_singletonvectorpaulisum(nq, term))
+    singletonoverlap(term) = overlapfunc(PauliString(nq, term, 1.0))
 
     dual_type = Base.promote_op(singletonoverlap, paulitype(prop_cache))
     if !isconcretetype(dual_type)
@@ -188,11 +188,6 @@ PropagationBase.numcoefftype(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO
 # only if the coefficient of the operator can reach the truncation threshold.
 _rotatesinclasses(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO <: Number && CD <: Number
 Base.abs(coeff::_DualCoeff) = abs(coeff.coeff)
-
-# A length-1 VectorPauliSum for a single Pauli string, for feeding into `overlapfunc`.
-function _singletonvectorpaulisum(nq::Int, term, coeff=1.0)
-    return VectorPauliSum(nq, [term], [coeff])
-end
 
 
 # Gradient contribution for one gate: real((i/2) * dual_sum(commutator(generator, op_sum))).
