@@ -12,16 +12,19 @@
 # whether the sum of the cache is propagated class by class
 _propagatesinclasses(prop_cache::AbstractPauliPropagationCache) = _propagatesinclasses(StorageType(prop_cache), prop_cache)
 _propagatesinclasses(::PropagationBase.StorageType, prop_cache) = false
-_propagatesinclasses(::PropagationBase.DictStorage, prop_cache) = coefftype(prop_cache) <: Number
+_propagatesinclasses(::PropagationBase.DictStorage, prop_cache) = _rotatesinclasses(coefftype(prop_cache))
 
 function _propagatesinclasses(::PropagationBase.ArrayStorage, prop_cache)
     main_terms, main_coeffs, _, _ = PropagationBase._mainauxarrays(prop_cache)
-    return coefftype(prop_cache) <: Number && main_terms isa Vector && main_coeffs isa Vector
+    return _rotatesinclasses(coefftype(prop_cache)) && main_terms isa Vector && main_coeffs isa Vector
 end
 
 function _propagatesinclasses(storage::PropagationBase.MultiSumStorage, prop_cache)
     return all(zonecache -> _propagatesinclasses(storage.zonestorage, zonecache), zonecaches(prop_cache))
 end
+
+# whether the classes are rotated with coefficients of this type: numbers, and any other type that opts in
+_rotatesinclasses(::Type{CT}) where {CT} = CT <: Number
 
 """
     _applylayer!(layer::RotationLayer, prop_cache, theta, truncfunc, min_abs_coeff; thread=true)
@@ -676,3 +679,7 @@ end
 end
 
 _finish!(term_sum::AbstractTermSum) = term_sum
+
+# What two Pauli strings that a rotation mixes contribute to the gradient of that rotation, which only the sink of a
+# gradient pass adds up (see gradient.jl).
+@inline _addgradient!(sink, rotation::Int, coeff, partner_coeff, sign_to_partner, sign_from_partner) = nothing

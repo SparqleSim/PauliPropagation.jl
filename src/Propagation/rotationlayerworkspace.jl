@@ -18,6 +18,9 @@ struct TaskWorkspace{TT,CT}
     # the rotations that anticommute with the Pauli strings of a class, in the order of the layer
     rotations::Vector{Int32}
 
+    # what the task adds to the gradient of every rotation of the layer in a gradient pass
+    gradient::Vector{Float64}
+
     # what the kernels rotate a class in
     block::BlockScratch{TT,CT}
     table::TableScratch{TT,CT}
@@ -27,7 +30,7 @@ struct TaskWorkspace{TT,CT}
     sink_coeffs::Vector{Vector{CT}}
 end
 
-TaskWorkspace{TT,CT}() where {TT,CT} = TaskWorkspace{TT,CT}(Int32[], Int32[], UInt64[], Int[], TT[], CT[], Int32[],
+TaskWorkspace{TT,CT}() where {TT,CT} = TaskWorkspace{TT,CT}(Int32[], Int32[], UInt64[], Int[], TT[], CT[], Int32[], Float64[],
     BlockScratch{TT,CT}(), TableScratch{TT,CT}(), Vector{TT}[], Vector{CT}[])
 
 """

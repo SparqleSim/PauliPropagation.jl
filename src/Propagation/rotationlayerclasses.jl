@@ -569,7 +569,7 @@ function _rotatetable!(sink, table, plan, truncfunc::F, class_terms, class_coeff
 
     for step in eachindex(rotations)
         rotation = Int(rotations[step])
-        _applytoclass!(table, plan, truncfunc, entry_keys, _keyof(plan.masks[rotation], key_bits), rotation, Int32(step), CT)
+        _applytoclass!(sink, table, plan, truncfunc, entry_keys, _keyof(plan.masks[rotation], key_bits), rotation, Int32(step), CT)
     end
 
     _emitclass!(sink, table)
@@ -603,7 +603,7 @@ end
 # than keep cos θ, so the entries that do more are listed first, and those that only keep cos θ are scaled after them.
 # A pair is listed at the entry whose key has the lowest bit of `key_mask` clear. Entries made by the rotation come after
 # the others and are not visited.
-function _applytoclass!(table, plan, truncfunc::F, entry_keys::Vector{K}, key_mask::K, rotation::Int, step::Int32, ::Type{CT}) where {F,K,CT}
+function _applytoclass!(sink, table, plan, truncfunc::F, entry_keys::Vector{K}, key_mask::K, rotation::Int, step::Int32, ::Type{CT}) where {F,K,CT}
 
     mask = plan.masks[rotation]
     cos_val = plan.cosines[rotation]
@@ -657,6 +657,7 @@ function _applytoclass!(table, plan, truncfunc::F, entry_keys::Vector{K}, key_ma
         # an entry that was truncated holds zero
         coeff = entry_coeffs[entry]
         partner_coeff = ifelse(partner == 0, zero(CT), entry_coeffs[max(partner, 1)])
+        _addgradient!(sink, rotation, coeff, partner_coeff, sign_to_partner, sign_from_partner)
         new_coeff = mergefunc(coeff * cos_val, partner_coeff * sin_val * sign_from_partner)
         new_partner_coeff = mergefunc(partner_coeff * cos_val, coeff * sin_val * sign_to_partner)
 
