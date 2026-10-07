@@ -385,7 +385,7 @@ function _undopass!(cache, plan, truncfunc::F, workspace, rotation_grads; thread
     if length(cache) == 0
         return rotation_grads
     end
-    sources = PropagationBase._recordsources(StorageType(cache), cache, workspace, thread)
+    sources = PropagationBase._passsources(StorageType(cache), cache, workspace, thread)
     n_tasks = length(sources)
     tasks = PropagationBase._ensurecount!(workspace.tasks, n_tasks)
     for task_id in 1:n_tasks
@@ -393,11 +393,11 @@ function _undopass!(cache, plan, truncfunc::F, workspace, rotation_grads; thread
     end
 
     classlabel(pstr) = PropagationBase._classlabel(plan, pstr)
-    function rotategroup!(sink, scratch, group_terms, group_coeffs)
-        PropagationBase._rotategroup!(_GradientSink(sink, scratch.gradient), scratch, plan, truncfunc, group_terms, group_coeffs)
+    function rotateclasses!(sink, scratch, label_terms, label_coeffs)
+        PropagationBase._rotateclasses!(_GradientSink(sink, scratch.gradient), scratch, plan, truncfunc, label_terms, label_coeffs)
         return sink
     end
-    PropagationBase._applytogroups!(classlabel, rotategroup!, cache, workspace, sources, thread)
+    PropagationBase._applytolabels!(classlabel, rotateclasses!, cache, workspace, sources, thread)
 
     for task_id in 1:n_tasks
         rotation_grads .+= tasks[task_id].scratch.gradient

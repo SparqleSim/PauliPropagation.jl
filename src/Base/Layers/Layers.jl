@@ -1,17 +1,13 @@
 # gatelayer.jl defines `GateLayer`, gates that commute with each other applied together.
 include("gatelayer.jl")
 
-# grouppass.jl applies a function to the terms of a sum grouped by a label, in one pass over the sum.
-include("grouppass.jl")
+# labelpass.jl applies a function to the terms of a sum label by label, in one pass over the sum, and holds the
+# workspaces that the passes of a propagation reuse.
+include("labelpass.jl")
 
-# classes.jl applies a layer of commuting rotations class by class: the plan of a layer, what a basis provides, and the classes.
+# classes.jl applies a layer of commuting rotations class by class: the plan of a layer, what a basis provides, the lookup
+# of the rotations acting on a term, and the classes.
 include("classes.jl")
 
-# classtables.jl rotates a class of many key bits in a table of its own.
-include("classtables.jl")
-
-# classblocks.jl rotates a class of few key bits as a dense block.
-include("classblocks.jl")
-
-# workspace.jl contains the scratch memory of a pass, which the layers of a propagation reuse.
-include("workspace.jl")
+# classkernels.jl rotates one class, densely if it has few distinguishing bits and sparsely otherwise.
+include("classkernels.jl")

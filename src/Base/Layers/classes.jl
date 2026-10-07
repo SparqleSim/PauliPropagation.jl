@@ -5,11 +5,12 @@
 # and a sign for each of the two; a Pauli rotation is one. The rotations of a layer commute: a term and the term with
 # the gate mask of any rotation of the layer flipped are acted on by the same rotations. The plan holds the reduced
 # echelon basis of the space that the gate masks span. A term reduced by the basis vectors whose pivot bits the
-# rotations acting on it flip is the key of its class, which no rotation of the layer leaves, and those pivot bits tell
-# the terms of a class apart. In one pass over the sum (`_applytogroups!`) the terms are grouped by the hash of the key
-# of their class, and every class is rotated one rotation after the other in the order of the layer, with the
-# truncations applied after each, as the rotations one by one do: a class of few key bits as a dense block
-# (classblocks.jl), any other in a table of its own (classtables.jl).
+# rotations acting on it flip is the representative of its class, which no rotation of the layer leaves, and those pivot
+# bits, the distinguishing bits of the class, tell its terms apart: gathered into an integer, the distinguishing bits of
+# a term are its coordinates in the class, the basis vectors that make the term from the representative. In one pass
+# over the sum (`_applytolabels!`) the terms are sorted by the hash of their class representative, and every class is
+# rotated one rotation after the other in the order of the layer, with the truncations applied after each, as the
+# rotations one by one do: a class of few distinguishing bits densely, any other sparsely (classkernels.jl).
 #
 # A basis provides, for a layer, a `ClassPlan` with the gate masks and angles of the rotations, a lookup that finds the
 # rotations acting on a term and the bits they flip (`_branchinggates`, a `PrecomputedLookup` built from the masks with
@@ -45,8 +46,9 @@ end
 The rotations of a layer, prepared for rotating the classes of terms: `gate_masks[i]` are the bits that the rotation `i`
 flips and `angles[i]` is its angle, `lookup` finds the rotations that act on a term, as `_branchinggates` describes, and
 `pairsigns(gate_mask, lower_term)` gives the signs that the rotation with the gate mask `gate_mask` gives the two terms
-of a pair it mixes, from `lower_term`, the term of the pair in which the lowest key bit of the rotation is clear: the
-sign of what the lower term contributes to its partner, and the sign of what the partner contributes to the lower term.
+of a pair it mixes, from `lower_term`, the term of the pair in which the lowest distinguishing bit that the rotation
+flips is clear: the sign of what the lower term contributes to its partner, and the sign of what the partner contributes
+to the lower term.
 Coefficients below `min_abs_coeff` are truncated, so a rotation makes no partner whose coefficient cannot reach it.
 """
 struct ClassPlan{TT,RT,L,F}
@@ -113,14 +115,14 @@ function _echelonbasis(gate_masks::Vector{TT}) where {TT}
     return pivots, reductions
 end
 
-# the XOR of the entries of `table` at the positions of the set bits of `bits`, plus one
-Base.@propagate_inbounds function _xorofbits(table::Vector{TT}, bits::TT) where {TT}
+# the XOR of the entries of `columns` at the positions of the set bits of `bits`, plus one
+Base.@propagate_inbounds function _xorofbits(columns::Vector{TT}, bits::TT) where {TT}
     sum = zero(TT)
     limbs = _limbs(bits)
     for limb_index in eachindex(limbs)
         limb = limbs[limb_index]
         while limb != 0
-            sum ⊻= table[64*(limb_index-1)+trailing_zeros(limb)+1]
+            sum ⊻= columns[64*(limb_index-1)+trailing_zeros(limb)+1]
             limb &= limb - one(UInt64)
         end
     end
@@ -220,25 +222,26 @@ end
 end
 
 """
-    _classkey(plan, term, flipped)
+    _classrepresentative(plan, term, flipped)
 
-The key of the class of `term`, from the bits `flipped` that the rotations acting on it flip together: the term reduced
-by every basis vector of the plan whose pivot bit is among those bits.
-A rotation acting on a term flips a sum of those basis vectors, so all terms of a class have the same key. Terms with the
-same key differ by a sum of gate masks of the layer, so the same rotations act on them, and they are one class.
+The representative of the class of `term`, from the bits `flipped` that the rotations acting on it flip together: the
+term reduced by every basis vector of the plan whose pivot bit is among those bits.
+A rotation acting on a term flips a sum of those basis vectors, so all terms of a class have the same representative.
+Terms with the same representative differ by a sum of gate masks of the layer, so the same rotations act on them, and
+they are one class.
 """
-@inline function _classkey(plan::ClassPlan, term, flipped)
+@inline function _classrepresentative(plan::ClassPlan, term, flipped)
     flipped_pivots = term & plan.pivots & flipped
     return term ⊻ flipped_pivots ⊻ _reduce(plan.reduction, flipped_pivots)
 end
 
 """
-    _keybits(plan, flipped)
+    _distinguishingbits(plan, flipped)
 
 The bits that tell the terms of a class apart, from the bits `flipped` that the rotations acting on them flip: the pivot
 bits among those. No two terms of a class agree on all of them, and every rotation of the class flips a fixed set of them.
 """
-@inline _keybits(plan::ClassPlan, flipped) = plan.pivots & flipped
+@inline _distinguishingbits(plan::ClassPlan, flipped) = plan.pivots & flipped
 
 
 ### What a basis provides
@@ -261,60 +264,132 @@ function _branchinggates end
 @inline _addgradient!(sink, rotation::Int, coeff, partner_coeff, sign_to_partner, sign_from_partner) = nothing
 
 
-### Finding the rotations acting on a term through tables
+### Chunk tables
+
+# A linear function of the bits of a term, the XOR of a column over its set bits, tabulated chunk by chunk: a table
+# holds the function's value on every chunk of a term and each of its values, and the function of a term is the XOR of
+# the entries of its chunks. The lookup of the rotations acting on a term adds up the rotations acting on its chunks
+# this way.
+
+# the bits of a term that a chunk table reads at once; the sums below hold for chunks of any size
+const _CHUNK_BITS = 2
 
 """
-    PrecomputedLookup(acting_masks, gate_masks, ::Val{B})
+    ChunkTable(columns, TT)
+
+A function of the bits of a term of the type `TT` that is the XOR of `columns[bit+1]` over its set bits, as a table of
+the function's value on every chunk of `_CHUNK_BITS` bits of a term and each of its values, so that the function of a
+term is the XOR of the entries of its chunks.
+"""
+struct ChunkTable{TT,E}
+    entries::Vector{E}
+
+    function ChunkTable{TT,E}(entries::Vector{E}) where {TT,E}
+        # `_xoroverchunks` reads the entry of every chunk value without bounds checks
+        if length(entries) != (1 << _CHUNK_BITS) * div(8 * sizeof(TT), _CHUNK_BITS)
+            throw(ArgumentError("a chunk table of terms of $(8 * sizeof(TT)) bits has $(length(entries)) entries"))
+        end
+        return new{TT,E}(entries)
+    end
+end
+
+# the entry of every chunk value is that of the value without its lowest bit, plus the column of that bit
+function ChunkTable(columns::Vector{E}, ::Type{TT}) where {E,TT}
+    if length(columns) != 8 * sizeof(TT)
+        throw(ArgumentError("a chunk table of terms of $(8 * sizeof(TT)) bits has $(length(columns)) columns"))
+    end
+    n_values = 1 << _CHUNK_BITS
+    n_chunks = div(length(columns), _CHUNK_BITS)
+    entries = Vector{E}(undef, n_values * n_chunks)
+    for chunk in 0:n_chunks-1
+        entries[n_values*chunk+1] = _zeroentry(E)
+        for value in 1:n_values-1
+            column = columns[_CHUNK_BITS*chunk+trailing_zeros(value)+1]
+            entries[n_values*chunk+value+1] = _xorentries(entries[n_values*chunk+(value&(value-1))+1], column)
+        end
+    end
+    return ChunkTable{TT,E}(entries)
+end
+
+# the entries of the chunks of `bits` that are not zero, added up
+@inline function _xoroverchunks(table::ChunkTable{TT,E}, bits::TT) where {TT,E}
+    sum = _zeroentry(E)
+    chunk_mask = (one(UInt64) << _CHUNK_BITS) - one(UInt64)
+    chunks_per_limb = div(64, _CHUNK_BITS)
+    limbs = _limbs(bits)
+    for limb_index in eachindex(limbs)
+        limb = limbs[limb_index]
+        occupied = _occupiedchunks(limb)
+        while occupied != 0
+            bit = trailing_zeros(occupied)
+            occupied &= occupied - one(UInt64)
+            value = (limb >> bit) & chunk_mask
+            chunk = chunks_per_limb * (limb_index - 1) + div(bit, _CHUNK_BITS)
+            sum = _xorentries(sum, @inbounds table.entries[(1<<_CHUNK_BITS)*chunk+(value%Int)+1])
+        end
+    end
+    return sum
+end
+
+# the lowest bit of every chunk of `limb` in which a bit is set
+@inline function _occupiedchunks(limb::UInt64)
+    folded = limb
+    for shift in 1:_CHUNK_BITS-1
+        folded |= limb >> shift
+    end
+    return folded & (typemax(UInt64) ÷ ((one(UInt64) << _CHUNK_BITS) - one(UInt64)))
+end
+
+# the XOR of two entries and the entry that adds nothing, for integers and tuples of them; an entry of another type
+# defines both
+@inline _xorentries(a::T, b::T) where {T<:Integer} = a ⊻ b
+@inline _xorentries(a::NTuple{N,T}, b::NTuple{N,T}) where {N,T} = ntuple(index -> a[index] ⊻ b[index], Val(N))
+_zeroentry(::Type{T}) where {T<:Integer} = zero(T)
+
+
+### Finding the rotations acting on a term through a chunk table
+
+struct _ActingRotations{W,D,TT}
+    positions::NTuple{W,UInt64}
+    mask_parts::NTuple{D,TT}
+end
+
+# the parts of a layer without rotations are an empty tuple, which does not name their type
+@inline _xorentries(a::_ActingRotations{W,D,TT}, b::_ActingRotations{W,D,TT}) where {W,D,TT} =
+    _ActingRotations{W,D,TT}(_xorentries(a.positions, b.positions), _xorentries(a.mask_parts, b.mask_parts))
+_zeroentry(::Type{_ActingRotations{W,D,TT}}) where {W,D,TT} =
+    _ActingRotations{W,D,TT}(ntuple(_ -> zero(UInt64), Val(W)), ntuple(_ -> zero(TT), Val(D)))
+
+"""
+    PrecomputedLookup(acting_masks, gate_masks)
 
 Finds the rotations of a plan that act on a term, for a basis in which the rotation `i` acts on a term if the bits that
 the term and `acting_masks[i]` share are odd in number, so that it acts on a term if it acts on an odd number of its
-chunks of `B` bits.
-For every chunk of a term and each of its values, the entry holds what the rotations acting on a term with only those
-bits contribute, and the contributions of the chunks of a term add up with XOR: the positions of the rotations, and the
-bits they flip, `gate_masks[i]` for the rotation `i`, in as many parts as rotations flip one bit, so that the parts of
-two rotations never share a bit and the bits that the acting rotations flip together are the union of the parts.
+chunks.
+A chunk table holds, for every chunk of a term and each of its values, the rotations acting on a term with only those
+bits, and those of the chunks of a term add up with XOR: their positions, and the bits they flip, `gate_masks[i]` for
+the rotation `i`, in as many parts as rotations flip one bit, so that the parts of two rotations never share a bit and
+the bits that the acting rotations flip together are the union of the parts.
 """
-struct PrecomputedLookup{TT,W,D,B}
-    entries::Vector{Tuple{NTuple{W,UInt64},NTuple{D,TT}}}
+const PrecomputedLookup{TT,W,D} = ChunkTable{TT,_ActingRotations{W,D,TT}}
 
-    function PrecomputedLookup{TT,W,D,B}(entries) where {TT,W,D,B}
-        # `_branchinggates` reads the entry of every chunk value without bounds checks
-        if 64 % B != 0 || length(entries) != (1 << B) * div(8 * sizeof(TT), B)
-            throw(ArgumentError("a lookup of terms of $(8 * sizeof(TT)) bits in chunks of $B bits has $(length(entries)) entries"))
-        end
-        return new{TT,W,D,B}(entries)
-    end
-end
-
-function PrecomputedLookup(acting_masks::Vector{TT}, gate_masks::Vector{TT}, ::Val{B}) where {TT,B}
+function PrecomputedLookup(acting_masks::Vector{TT}, gate_masks::Vector{TT}) where {TT}
     n_parts = maximum(_flippingcounts(gate_masks); init=0)
-    return _precomputedlookup(acting_masks, gate_masks, Val(cld(length(gate_masks), 64)), Val(n_parts), Val(B))
+    return _precomputedlookup(acting_masks, gate_masks, Val(cld(length(gate_masks), 64)), Val(n_parts))
 end
 
-function _precomputedlookup(acting_masks::Vector{TT}, gate_masks::Vector{TT}, ::Val{W}, ::Val{D}, ::Val{B}) where {TT,W,D,B}
-    no_contribution = (ntuple(_ -> zero(UInt64), Val(W)), ntuple(_ -> zero(TT), Val(D)))
+function _precomputedlookup(acting_masks::Vector{TT}, gate_masks::Vector{TT}, ::Val{W}, ::Val{D}) where {TT,W,D}
     mask_parts = _maskparts(gate_masks, Val(D))
 
-    # the contribution of every bit: that of the rotations whose acting mask has the bit
-    columns = fill(no_contribution, 8 * sizeof(TT))
+    # the rotations acting on a term with only one bit: those whose acting mask has the bit
+    columns = fill(_zeroentry(_ActingRotations{W,D,TT}), 8 * sizeof(TT))
     for rotation in eachindex(acting_masks)
-        contribution = (_withposition(first(no_contribution), rotation - 1), mask_parts[rotation])
+        acting = _ActingRotations{W,D,TT}(_withposition(ntuple(_ -> zero(UInt64), Val(W)), rotation - 1), mask_parts[rotation])
         for bit in _bitpositions(acting_masks[rotation])
-            columns[bit+1] = _xorcontributions(columns[bit+1], contribution)
+            columns[bit+1] = _xorentries(columns[bit+1], acting)
         end
     end
-
-    # the entry of every chunk value is that of the value without its lowest bit, plus the column of that bit
-    n_chunks = div(8 * sizeof(TT), B)
-    entries = Vector{typeof(no_contribution)}(undef, (1 << B) * n_chunks)
-    for chunk in 0:n_chunks-1
-        entries[(1<<B)*chunk+1] = no_contribution
-        for value in 1:(1<<B)-1
-            column = columns[B*chunk+trailing_zeros(value)+1]
-            entries[(1<<B)*chunk+value+1] = _xorcontributions(entries[(1<<B)*chunk+(value&(value-1))+1], column)
-        end
-    end
-    return PrecomputedLookup{TT,W,D,B}(entries)
+    return ChunkTable(columns, TT)
 end
 
 # for every bit, the number of gate masks that have it
@@ -343,46 +418,15 @@ function _maskparts(gate_masks::Vector{TT}, ::Val{D}) where {TT,D}
     return parts
 end
 
-# the contributions of the chunks of the term that are not zero, added up, with the flipped bits as the union of the parts
-@inline function _branchinggates(lookup::PrecomputedLookup{TT,W,D,B}, term::TT) where {TT,W,D,B}
-    positions = ntuple(_ -> zero(UInt64), Val(W))
-    mask_parts = ntuple(_ -> zero(TT), Val(D))
-    chunk_mask = (one(UInt64) << B) - one(UInt64)
-    limbs = _limbs(term)
-    for limb_index in eachindex(limbs)
-        limb = limbs[limb_index]
-        occupied = _occupiedchunks(limb, Val(B))
-        while occupied != 0
-            bit = trailing_zeros(occupied)
-            occupied &= occupied - one(UInt64)
-            value = (limb >> bit) & chunk_mask
-            chunk = div(64, B) * (limb_index - 1) + div(bit, B)
-            entry = @inbounds lookup.entries[(1<<B)*chunk+(value%Int)+1]
-            positions = _xortuples(positions, entry[1])
-            mask_parts = _xortuples(mask_parts, entry[2])
-        end
-    end
-
+# the rotations acting on the chunks of the term added up, with the flipped bits as the union of the parts
+@inline function _branchinggates(lookup::PrecomputedLookup{TT,W,D}, term::TT) where {TT,W,D}
+    acting = _xoroverchunks(lookup, term)
     flipped = zero(TT)
-    for part in mask_parts
+    for part in acting.mask_parts
         flipped |= part
     end
-    return positions, flipped
+    return acting.positions, flipped
 end
-
-# the lowest bit of every chunk of `B` bits of `limb` in which a bit is set
-@inline function _occupiedchunks(limb::UInt64, ::Val{B}) where {B}
-    folded = limb
-    for shift in 1:B-1
-        folded |= limb >> shift
-    end
-    return folded & (typemax(UInt64) ÷ ((one(UInt64) << B) - one(UInt64)))
-end
-
-@inline _xortuples(a::NTuple{N,T}, b::NTuple{N,T}) where {N,T} = ntuple(index -> a[index] ⊻ b[index], Val(N))
-
-# the sum of two contributions, positions with positions and mask parts with mask parts
-@inline _xorcontributions(a, b) = (_xortuples(a[1], b[1]), _xortuples(a[2], b[2]))
 
 # the positions with the bit of `position` set as well
 @inline function _withposition(positions::NTuple{W,UInt64}, position::Int) where {W}
@@ -393,75 +437,75 @@ end
 
 ### A pass over the sum
 
-# whether the classes of a layer can be rotated in the sum of the cache: its terms can be grouped in one pass, and its
+# whether the classes of a layer can be rotated in the sum of the cache: its terms can be sorted by label in one pass, and its
 # coefficients are of a type that the classes are rotated with
 _canrotateclasses(prop_cache::AbstractPropagationCache) =
-    _canapplytogroups(prop_cache) && _rotatesinclasses(coefftype(prop_cache))
+    _canapplytolabels(prop_cache) && _rotatesinclasses(coefftype(prop_cache))
 
 # whether the classes are rotated with coefficients of this type: numbers, and any other type that opts in
 _rotatesinclasses(::Type{CT}) where {CT} = CT <: Number
 
-# The label of the record of a term, the hash of the key of its class, which picks its partition and its group. A term
-# that no rotation acts on is its own key.
-@inline _classlabel(plan, term) = _hashbits(_classkey(plan, term, _flippedbits(plan.lookup, term))) % Int
+# The label of a term, the hash of its class representative, which picks its batch. A term
+# that no rotation acts on is its own representative.
+@inline _classlabel(plan, term) = _hashbits(_classrepresentative(plan, term, _flippedbits(plan.lookup, term))) % Int
 
 """
     _applypass!(prop_cache, plan, truncfunc, workspace; thread=true)
 
-One pass of the rotations of `plan` over the sum of the cache: the terms are grouped by the hash of the key of their
-class, every group is split into its classes, and every class is rotated, truncating the terms for which `truncfunc`
+One pass of the rotations of `plan` over the sum of the cache: the terms are sorted by the hash of their class
+representative, the terms of every label are split into their classes, and every class is rotated, truncating the terms for which `truncfunc`
 returns `true` after every rotation.
 """
 function _applypass!(prop_cache::AbstractPropagationCache, plan::ClassPlan, truncfunc::F, workspace; thread::Bool=true) where {F}
     if length(prop_cache) == 0
         return prop_cache
     end
-    sources = _recordsources(StorageType(prop_cache), prop_cache, workspace, thread)
+    sources = _passsources(StorageType(prop_cache), prop_cache, workspace, thread)
     _applypass!(prop_cache, plan, truncfunc, workspace, sources, thread)
     return prop_cache
 end
 
 function _applypass!(prop_cache::AbstractPropagationCache, plan::ClassPlan, truncfunc::F, workspace, sources, thread::Bool) where {F}
     classlabel(term) = _classlabel(plan, term)
-    rotategroup!(sink, scratch, group_terms, group_coeffs) = _rotategroup!(sink, scratch, plan, truncfunc, group_terms, group_coeffs)
-    _applytogroups!(classlabel, rotategroup!, prop_cache, workspace, sources, thread)
+    rotateclasses!(sink, scratch, label_terms, label_coeffs) = _rotateclasses!(sink, scratch, plan, truncfunc, label_terms, label_coeffs)
+    _applytolabels!(classlabel, rotateclasses!, prop_cache, workspace, sources, thread)
     return prop_cache
 end
 
 
-### Rotating the classes of a group
+### Rotating the classes of a label
 
-# The terms `group_terms` share the hash of the key of their class: they are one class, or, where two keys share a hash,
-# several. Every class is moved to the front in turn and rotated: the first term and the terms with its key, read with
-# the bits that the rotations acting on the first term flip.
-function _rotategroup!(sink, scratch, plan, truncfunc::F, group_terms, group_coeffs) where {F}
+# The terms `label_terms` share the hash of their class representative: they are one class, or, where two
+# representatives share a hash, several. Every class is moved to the front in turn and rotated: the first term and the
+# terms with its representative, read with the bits that the rotations acting on the first term flip.
+function _rotateclasses!(sink, scratch, plan, truncfunc::F, label_terms, label_coeffs) where {F}
     first = 1
-    last = length(group_terms)
+    last = length(label_terms)
     while first <= last
-        first_term = group_terms[first]
+        first_term = label_terms[first]
         positions, flipped = _branchinggates(plan.lookup, first_term)
-        # the last term of a group is a class of its own
-        key = if first < last
-            _classkey(plan, first_term, flipped)
+        # the last term of a label is a class of its own
+        representative = if first < last
+            _classrepresentative(plan, first_term, flipped)
         else
             first_term
         end
         class_end = first + 1
         for index in first+1:last
-            term = group_terms[index]
-            if _classkey(plan, term, flipped) == key
+            term = label_terms[index]
+            if _classrepresentative(plan, term, flipped) == representative
                 if index != class_end
-                    coeff = group_coeffs[index]
-                    group_terms[index] = group_terms[class_end]
-                    group_coeffs[index] = group_coeffs[class_end]
-                    group_terms[class_end] = term
-                    group_coeffs[class_end] = coeff
+                    coeff = label_coeffs[index]
+                    label_terms[index] = label_terms[class_end]
+                    label_coeffs[index] = label_coeffs[class_end]
+                    label_terms[class_end] = term
+                    label_coeffs[class_end] = coeff
                 end
                 class_end += 1
             end
         end
         class = first:class_end-1
-        _rotateclass!(sink, scratch, plan, truncfunc, view(group_terms, class), view(group_coeffs, class), positions, flipped)
+        _rotateclass!(sink, scratch, plan, truncfunc, view(label_terms, class), view(label_coeffs, class), positions, flipped)
         first = class_end
     end
     return sink
@@ -495,20 +539,20 @@ function _emitunrotated!(sink, truncfunc::F, class_terms, class_coeffs) where {F
     return sink
 end
 
-# the most key bits of a class that is rotated as a dense block
-const _MAX_BLOCK_KEY_BITS = 8
+# the most distinguishing bits of a class that is rotated densely, whose presence is one word
+const _MAX_DENSE_DISTINGUISHING_BITS = 6
 
-# whether a class of `n_key_bits` key bits is rotated as a dense block, rather than in a table
-_rotatesasblock(n_key_bits::Int) = n_key_bits <= _MAX_BLOCK_KEY_BITS
+# whether a class of `n_distinguishing_bits` distinguishing bits is rotated densely, rather than sparsely
+_rotatesdense(n_distinguishing_bits::Int) = n_distinguishing_bits <= _MAX_DENSE_DISTINGUISHING_BITS
 
-# the most bits that a key gathered into an integer can have
-const _MAX_KEY_BITS = 64
+# the most distinguishing bits whose coordinates fit an integer
+const _MAX_COORDINATE_BITS = 64
 
 """
     _rotateclass!(sink, scratch, plan, truncfunc, class_terms, class_coeffs, positions, flipped)
 
 Rotates the class of the terms `class_terms` with the coefficients `class_coeffs`, one rotation after the other, and
-writes what the truncations keep to `sink`: as a dense block if the class has few key bits, and in a table otherwise.
+writes what the truncations keep to `sink`: densely if the class has few distinguishing bits, and sparsely otherwise.
 `positions` and `flipped` are what `_branchinggates` reads from any term of the class.
 """
 function _rotateclass!(sink, scratch, plan, truncfunc::F, class_terms, class_coeffs, positions, flipped) where {F}
@@ -517,16 +561,16 @@ function _rotateclass!(sink, scratch, plan, truncfunc::F, class_terms, class_coe
         _emitunrotated!(sink, truncfunc, class_terms, class_coeffs)
         return sink
     end
-    key_bits = _keybits(plan, flipped)
-    n_key_bits = sum(count_ones, _limbs(key_bits))
+    distinguishing_bits = _distinguishingbits(plan, flipped)
+    n_distinguishing_bits = sum(count_ones, _limbs(distinguishing_bits))
 
-    # the kernels are compiled for keys of each type, behind this barrier
-    if _rotatesasblock(n_key_bits)
-        _rotateblock!(sink, scratch.block, plan, truncfunc, class_terms, class_coeffs, rotations, key_bits, n_key_bits)
-    elseif n_key_bits <= _MAX_KEY_BITS
-        _rotatetable!(sink, scratch.table, plan, truncfunc, class_terms, class_coeffs, rotations, scratch.table.entry_keys, key_bits, n_key_bits)
+    # the kernels are compiled for entries found by coordinates and by terms, behind this barrier
+    if _rotatesdense(n_distinguishing_bits)
+        _rotatedense!(sink, scratch.dense, plan, truncfunc, class_terms, class_coeffs, rotations, distinguishing_bits, n_distinguishing_bits)
+    elseif n_distinguishing_bits <= _MAX_COORDINATE_BITS
+        _rotatesparse!(sink, scratch.sparse, plan, truncfunc, class_terms, class_coeffs, rotations, scratch.sparse.entry_coordinates, distinguishing_bits, n_distinguishing_bits)
     else
-        _rotatetable!(sink, scratch.table, plan, truncfunc, class_terms, class_coeffs, rotations, scratch.table.entry_terms, nothing, n_key_bits)
+        _rotatesparse!(sink, scratch.sparse, plan, truncfunc, class_terms, class_coeffs, rotations, scratch.sparse.entry_terms, nothing, n_distinguishing_bits)
     end
     return sink
 end

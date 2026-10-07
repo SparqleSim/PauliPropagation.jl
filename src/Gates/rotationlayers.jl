@@ -170,18 +170,18 @@ end
 
 # A pair is a Pauli string that anticommutes with a rotation and its partner, the string with the mask flipped. 
 # The rotation mixes the two by the cosine and sine of its angle, with opposite signs.
-# The lower string of a pair is the one in which the lowest key bit of the rotation is clear.
+# The lower string of a pair is the one in which the lowest distinguishing bit that the rotation flips is clear.
 
 # A class is a set of Pauli strings that the rotations of a layer only mix among themselves. 
 # All its strings anticommute with the same rotations.
 
-# A key is a value that all strings of a class share and no other string has.
-# The key bits of a class tell its strings apart, so a class holds at most 2^(number of key bits) strings.
-# A pivot bit is a bit that only one mask has after the masks are reduced against each other with XOR. The key bits of a
-# class are the pivot bits that its rotations flip.
+# A representative is a value that all strings of a class share and no other string has.
+# The distinguishing bits of a class tell its strings apart, so a class holds at most 2^(number of distinguishing bits)
+# strings. A pivot bit is a bit that only one mask has after the masks are reduced against each other with XOR. The
+# distinguishing bits of a class are the pivot bits that its rotations flip.
 # A plan holds what is computed once per layer: the masks, cosines, sines, pivot bits and the lookup.
 # The lookup finds the rotations that anticommute with a Pauli string, the rotation `i` as the bit `i - 1` of a tuple of
-# words, and the bits that those rotations flip together, from a table of what the rotations anticommuting with each
+# words, and the bits that those rotations flip together, from a chunk table of what the rotations anticommuting with each
 # Pauli on each qubit contribute.
 
 # The plan of rotating the classes of Pauli strings of the type `TT` on `nqubits` qubits by the rotations `rotations`
@@ -198,7 +198,7 @@ function _prepareclasses(rotations::Vector{PauliRotation}, angles, ::Type{TT}, n
     gate_masks = [symboltoint(TT, rotation.symbols, rotation.qinds) for rotation in rotations]
 
     # a Pauli string anticommutes with a rotation if it shares an odd number of bits with the swapped generator, qubit by qubit
-    lookup = PropagationBase.PrecomputedLookup(_commutationmask.(gate_masks), gate_masks, Val(2))
+    lookup = PropagationBase.PrecomputedLookup(_commutationmask.(gate_masks), gate_masks)
 
     # the plan adds the cosines and sines of the angles and the pivot bits
     return PropagationBase.ClassPlan(gate_masks, angles, lookup, _pairsigns; min_abs_coeff)

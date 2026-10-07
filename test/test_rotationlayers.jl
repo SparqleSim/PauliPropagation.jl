@@ -101,7 +101,7 @@ function testanyqubitsandpairs()
 end
 
 function testclassesofmanyrotations()
-    # heavy Pauli strings anticommute with more rotations than a dense block takes
+    # heavy Pauli strings anticommute with more rotations than a dense class takes
     nq = 100
     rng = MersenneTwister(nq)
     psum = randompaulisum(rng, nq, 6, 12)
@@ -196,9 +196,8 @@ function testwiderotations()
     end
 end
 
-# The rotations of a layer are read from the whole Pauli string at once if their qubits are few distances apart, and
-# through byte tables otherwise, and a class is rotated as a dense block if it has few key bits, and in a table otherwise.
-# Every way is tested on the same layers.
+# A class is rotated densely if it has few distinguishing bits, and sparsely otherwise. Both ways are tested on the same
+# layers.
 function testlayers()
     testlayersagainstrotations()
     testanyqubitsandpairs()
@@ -230,8 +229,8 @@ end
 
 # The echelon basis of a plan spans the generators of its rotations, and its reduction adds up the other bits of the
 # basis vectors of any pivot bits. The partners of a Pauli string under the rotations it anticommutes with anticommute
-# with the same rotations and have its key, and where the rotations act on disjoint pairs of qubits, a class has as many
-# key bits as the rank of its rotations.
+# with the same rotations and have its representative, and where the rotations act on disjoint pairs of qubits, a class
+# has as many distinguishing bits as the rank of its rotations.
 function testplans()
     nq = 12
     rng = MersenneTwister(5)
@@ -250,23 +249,23 @@ function testplans()
             matches &= PB._reduce(plan.reduction, one(TT) << position) == reductions[position+1]
         end
         for gate_mask in plan.gate_masks
-            matches &= iszero(PB._classkey(plan, gate_mask, gate_mask))
+            matches &= iszero(PB._classrepresentative(plan, gate_mask, gate_mask))
         end
 
         for _ in 1:50
             pstr = PauliString(nq, rand(rng, [:I, :X, :Y, :Z], nq), 1:nq).term
             positions, flipped = PB._branchinggates(plan.lookup, pstr)
-            key = PB._classkey(plan, pstr, flipped)
+            representative = PB._classrepresentative(plan, pstr, flipped)
             rotations = [rotation for rotation in eachindex(plan.gate_masks) if !commutes(plan.gate_masks[rotation], pstr)]
             matches &= flipped == reduce(|, plan.gate_masks[rotations]; init=zero(TT))
             for rotation in rotations
                 partner = pstr ⊻ plan.gate_masks[rotation]
                 matches &= PB._branchinggates(plan.lookup, partner) == (positions, flipped)
-                matches &= PB._classkey(plan, partner, flipped) == key
+                matches &= PB._classrepresentative(plan, partner, flipped) == representative
             end
             if layer === heisenberg
                 rank = count_ones(first(PB._echelonbasis(plan.gate_masks[rotations])))
-                matches &= count_ones(PB._keybits(plan, flipped)) == rank
+                matches &= count_ones(PB._distinguishingbits(plan, flipped)) == rank
             end
         end
     end
@@ -277,28 +276,22 @@ end
     @test testplans()
 end
 
-@eval PauliPropagation.PropagationBase _rotatesasblock(n_key_bits::Int) = false
+@eval PauliPropagation.PropagationBase _rotatesdense(n_distinguishing_bits::Int) = false
 
-@testset "PauliRotationLayer with every class in a table" begin
+@testset "PauliRotationLayer with every class sparse" begin
     testlayers()
 end
 
-@eval PauliPropagation.PropagationBase _rotatesasblock(n_key_bits::Int) = n_key_bits <= 12
+@eval PauliPropagation.PropagationBase _rotatesdense(n_distinguishing_bits::Int) = n_distinguishing_bits <= _MAX_DENSE_DISTINGUISHING_BITS
 
-@testset "PauliRotationLayer with the classes of up to 12 key bits as blocks" begin
-    testlayers()
-end
-
-@eval PauliPropagation.PropagationBase _rotatesasblock(n_key_bits::Int) = n_key_bits <= _MAX_BLOCK_KEY_BITS
-
-# every class shares one hash, so that the classes of a partition are told apart by their keys alone
+# every class shares one hash, so that the classes of a batch are told apart by their representatives alone
 @eval PauliPropagation.PropagationBase _classlabel(plan, term) = 0
 
 @testset "PauliRotationLayer with classes that share their hash" begin
     testlayers()
 end
 
-@eval PauliPropagation.PropagationBase @inline _classlabel(plan, term) = _hashbits(_classkey(plan, term, _flippedbits(plan.lookup, term))) % Int
+@eval PauliPropagation.PropagationBase @inline _classlabel(plan, term) = _hashbits(_classrepresentative(plan, term, _flippedbits(plan.lookup, term))) % Int
 
 # A class is a Pauli string with its products with the generators of the rotations it anticommutes with. Each kernel takes
 # a class as two vectors and writes what it keeps to a Pauli sum, which has to hold what the rotations of the layer make
@@ -313,6 +306,7 @@ function testkernelsagainstrotations()
         (PauliRotationLayer([:X, :Y], [(i, i + 1) for i in 1:2:nq-1]), PauliString(nq, [:Z, :Z, :X], [1, 4, 6])),
     )
     matches = true
+    n_dense = 0
     for (layer, pstr) in classes, (max_weight, min_abs_coeff) in ((Inf, 0.0), (4.0, 1e-2))
         thetas = randn(rng, length(layer.gates))
         plan = PP._prepareclasses(layer.gates, thetas, TT, nq; min_abs_coeff)
@@ -320,8 +314,8 @@ function testkernelsagainstrotations()
         positions, flipped = PB._branchinggates(plan.lookup, pstr.term)
         rotation_buffer = zeros(Int32, length(layer.gates))
         rotations = view(rotation_buffer, 1:PB._rotationsinorder!(rotation_buffer, plan, positions))
-        key_bits = PB._keybits(plan, flipped)
-        n_key_bits = sum(count_ones, PB._limbs(key_bits))
+        distinguishing_bits = PB._distinguishingbits(plan, flipped)
+        n_distinguishing_bits = sum(count_ones, PB._limbs(distinguishing_bits))
 
         # members made by random sets of the anticommuting generators, some of them more than once
         class_terms = [reduce(xor, (plan.gate_masks[rotation] for rotation in rotations if rand(rng, Bool)); init=pstr.term) for _ in 1:8]
@@ -335,17 +329,22 @@ function testkernelsagainstrotations()
             reference = propagate(rotation, reference, angle; min_abs_coeff, max_weight)
         end
 
-        by_block = PauliSum(nq)
-        PB._rotateblock!(by_block, PB.BlockScratch{TT,Float64}(), plan, truncfunc, class_terms, class_coeffs, rotations, key_bits, n_key_bits)
-        table = PB.TableScratch{TT,Float64}()
-        by_table = PauliSum(nq)
-        PB._rotatetable!(by_table, table, plan, truncfunc, class_terms, class_coeffs, rotations, table.entry_keys, key_bits, n_key_bits)
+        sparse = PB.SparseScratch{TT,Float64}()
+        by_sparse = PauliSum(nq)
+        PB._rotatesparse!(by_sparse, sparse, plan, truncfunc, class_terms, class_coeffs, rotations, sparse.entry_coordinates, distinguishing_bits, n_distinguishing_bits)
 
         matches &= !isempty(reference) && length(rotations) > 1
-        matches &= length(by_block) == length(reference) && by_block == reference
-        matches &= length(by_table) == length(reference) && by_table == reference
+        matches &= length(by_sparse) == length(reference) && by_sparse == reference
+
+        # a class of few distinguishing bits is rotated densely too
+        if n_distinguishing_bits <= PB._MAX_DENSE_DISTINGUISHING_BITS
+            by_dense = PauliSum(nq)
+            PB._rotatedense!(by_dense, PB.DenseScratch{TT,Float64}(), plan, truncfunc, class_terms, class_coeffs, rotations, distinguishing_bits, n_distinguishing_bits)
+            matches &= length(by_dense) == length(reference) && by_dense == reference
+            n_dense += 1
+        end
     end
-    return matches
+    return matches && n_dense >= 2
 end
 
 @testset "PauliRotationLayer kernels rotate one class like its rotations" begin
