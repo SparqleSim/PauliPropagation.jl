@@ -26,8 +26,9 @@ end
 
 PropagationBase.qinds(frozen_gate::FrozenGate) = qinds(frozen_gate.gate)
 
+# A frozen layer has a vector as its parameter, of which every entry is rounded.
 function Base.show(io::IO, frozen_gate::FrozenGate)
-    print(io, "FrozenGate($(frozen_gate.gate), parameter = $(round(frozen_gate.parameter, sigdigits=3)))")
+    print(io, "FrozenGate(", frozen_gate.gate, ", parameter = ", round.(frozen_gate.parameter, sigdigits=3), ")")
 end
 
 """

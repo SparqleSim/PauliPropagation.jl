@@ -47,9 +47,34 @@ function _qindsoverlapcheck(gates)
     end
 end
 
+# A layer prints how many of its gates are of each type, by the name of the type without its parameters, in the order in
+# which the types first appear, as GateLayer(36 PauliRotation, 2 FrozenGate). After the first few types, the remaining
+# gates are only counted.
 function Base.show(io::IO, layer::GateLayer)
-    print(io, "GateLayer($(length(layer.gates)) gates)")
+    names = String[]
+    counts = Int[]
+    for gate in layer.gates
+        name = string(nameof(typeof(gate)))
+        index = findfirst(==(name), names)
+        if isnothing(index)
+            push!(names, name)
+            push!(counts, 1)
+        else
+            counts[index] += 1
+        end
+    end
+
+    n_shown = min(length(names), _MAX_SHOWN_NAMES)
+    parts = ["$(counts[index]) $(names[index])" for index in 1:n_shown]
+    n_more = sum(counts[n_shown+1:end]; init=0)
+    if n_more > 0
+        push!(parts, "$n_more more")
+    end
+    print(io, "GateLayer(", join(parts, ", "), ")")
 end
+
+# the number of types that a layer prints at most
+const _MAX_SHOWN_NAMES = 4
 
 """
     countparameters(layer::GateLayer)
@@ -57,6 +82,15 @@ end
 Returns the number of parametrized gates in the layer, which is the length of its parameter.
 """
 countparameters(layer::GateLayer) = countparameters(layer.gates)
+
+# the qubits that the gates of the layer act on
+function qinds(layer::GateLayer)
+    layer_qinds = Int[]
+    for gate in layer.gates
+        append!(layer_qinds, qinds(gate))
+    end
+    return unique(layer_qinds)
+end
 
 """
     applymergetruncate!(layer::GateLayer, prop_cache::AbstractPropagationCache, params; kwargs...)

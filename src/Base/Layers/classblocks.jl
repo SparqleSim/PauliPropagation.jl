@@ -66,9 +66,8 @@ function _rotateblock!(sink, block, plan, truncfunc::F, class_terms, class_coeff
         end
         for step in eachindex(rotations)
             rotation = Int(rotations[step])
-            entry_mask = _blockentry(plan.masks[rotation], key_bits)
-            signs = plan.signs[rotation]
-            present = _rotateblockword(sink, present, coeffs, block_terms, n_entries, entry_mask, plan, rotation, signs, truncfunc)
+            entry_mask = _blockentry(plan.gate_masks[rotation], key_bits)
+            present = _rotateblockword(sink, present, coeffs, block_terms, n_entries, entry_mask, plan, rotation, truncfunc)
         end
         _emitblockwords!(sink, (present,), 1, coeffs, block_terms)
     else
@@ -92,9 +91,8 @@ function _rotateblock!(sink, block, plan, truncfunc::F, class_terms, class_coeff
         end
         for step in eachindex(rotations)
             rotation = Int(rotations[step])
-            entry_mask = _blockentry(plan.masks[rotation], key_bits)
-            signs = plan.signs[rotation]
-            _rotateblockwords!(sink, present, n_words, coeffs, block_terms, n_entries, entry_mask, plan, rotation, signs, truncfunc)
+            entry_mask = _blockentry(plan.gate_masks[rotation], key_bits)
+            _rotateblockwords!(sink, present, n_words, coeffs, block_terms, n_entries, entry_mask, plan, rotation, truncfunc)
         end
         _emitblockwords!(sink, present, n_words, coeffs, block_terms)
     end
@@ -107,7 +105,7 @@ end
 # coefficient can reach the truncation threshold. Returns which lower entries and which upper entries the truncations
 # keep, both at the positions of the lower entries.
 @inline function _rotatepairs!(sink, coeffs::Vector{CT}, block_terms::Vector{TT}, word_base::Int, lower_present::UInt64, upper_present::UInt64,
-    lower_positions::UInt64, entry_mask::Int, mask::TT, cos_val, sin_val, signs, min_coeff_to_make, plan, rotation::Int,
+    lower_positions::UInt64, entry_mask::Int, gate_mask::TT, cos_val, sin_val, min_coeff_to_make, plan, rotation::Int,
     truncfunc::F) where {F,CT,TT}
 
     both = lower_present & upper_present & lower_positions
@@ -122,8 +120,8 @@ end
         entry = word_base + position
         partner = entry ⊻ entry_mask
         term = block_terms[entry+1]
-        partner_term = term ⊻ mask
-        sign_to_partner, sign_from_partner = _pairsigns(signs, term)
+        partner_term = term ⊻ gate_mask
+        sign_to_partner, sign_from_partner = plan.pairsigns(gate_mask, term)
         coeff = coeffs[entry+1]
         partner_coeff = coeffs[partner+1]
         _addgradient!(sink, rotation, coeff, partner_coeff, sign_to_partner, sign_from_partner)
@@ -145,8 +143,8 @@ end
         coeffs[entry+1] = new_coeff
         kept_lower |= UInt64(!@inline(truncfunc(term, new_coeff))) << position
         if abs(coeff) >= min_coeff_to_make
-            sign_to_partner, _ = _pairsigns(signs, term)
-            partner_term = term ⊻ mask
+            sign_to_partner, _ = plan.pairsigns(gate_mask, term)
+            partner_term = term ⊻ gate_mask
             new_partner_coeff = coeff * sin_val * sign_to_partner
             if !@inline(truncfunc(partner_term, new_partner_coeff))
                 partner = entry ⊻ entry_mask
@@ -168,8 +166,8 @@ end
         coeffs[partner+1] = new_partner_coeff
         kept_upper |= UInt64(!@inline(truncfunc(partner_term, new_partner_coeff))) << position
         if abs(partner_coeff) >= min_coeff_to_make
-            term = partner_term ⊻ mask
-            _, sign_from_partner = _pairsigns(signs, term)
+            term = partner_term ⊻ gate_mask
+            _, sign_from_partner = plan.pairsigns(gate_mask, term)
             new_coeff = partner_coeff * sin_val * sign_from_partner
             if !@inline(truncfunc(term, new_coeff))
                 coeffs[entry+1] = new_coeff
@@ -184,7 +182,7 @@ end
 
 # One rotation on a block of at most 64 entries, whose presence is one word. Returns which entries are present after it.
 @inline function _rotateblockword(sink, present::UInt64, coeffs::Vector{CT}, block_terms::Vector{TT}, n_entries::Int, entry_mask::Int, plan,
-    rotation::Int, signs, truncfunc::F) where {F,CT,TT}
+    rotation::Int, truncfunc::F) where {F,CT,TT}
 
     if !(0 < entry_mask < n_entries <= 64) || n_entries > min(length(coeffs), length(block_terms))
         throw(ArgumentError("the block does not fit the workspace"))
@@ -192,8 +190,8 @@ end
     sin_val = plan.sines[rotation]
     upper_present = _xorpositions(present, entry_mask)
     lower_positions = _LOWER_POSITIONS[trailing_zeros(entry_mask)+1]
-    kept_lower, kept_upper = _rotatepairs!(sink, coeffs, block_terms, 0, present, upper_present, lower_positions, entry_mask, plan.masks[rotation],
-        plan.cosines[rotation], sin_val, signs, plan.min_coeffs_to_make[rotation], plan, rotation, truncfunc)
+    kept_lower, kept_upper = _rotatepairs!(sink, coeffs, block_terms, 0, present, upper_present, lower_positions, entry_mask, plan.gate_masks[rotation],
+        plan.cosines[rotation], sin_val, plan.min_coeffs_to_make[rotation], plan, rotation, truncfunc)
     return kept_lower | _xorpositions(kept_upper, entry_mask)
 end
 
@@ -201,13 +199,13 @@ end
 # word of its lower entry, which writes the lower positions of that word and the upper positions of its partner word; a
 # pair across words is visited from the lower word, which writes both words.
 function _rotateblockwords!(sink, present::Vector{UInt64}, n_words::Int, coeffs::Vector{CT}, block_terms::Vector{TT}, n_entries::Int,
-    entry_mask::Int, plan, rotation::Int, signs, truncfunc::F) where {F,CT,TT}
+    entry_mask::Int, plan, rotation::Int, truncfunc::F) where {F,CT,TT}
 
     if !(0 < entry_mask < n_entries) || n_entries != 64 * n_words || n_words > length(present) ||
        n_entries > min(length(coeffs), length(block_terms))
         throw(ArgumentError("the block does not fit the workspace"))
     end
-    mask = plan.masks[rotation]
+    gate_mask = plan.gate_masks[rotation]
     cos_val = plan.cosines[rotation]
     sin_val = plan.sines[rotation]
     min_coeff_to_make = plan.min_coeffs_to_make[rotation]
@@ -222,7 +220,7 @@ function _rotateblockwords!(sink, present::Vector{UInt64}, n_words::Int, coeffs:
         end
         partner_word = word ⊻ word_mask
         kept_lower, kept_upper = _rotatepairs!(sink, coeffs, block_terms, 64 * word, present[word+1], _xorpositions(present[partner_word+1], low_mask),
-            lower_positions, entry_mask, mask, cos_val, sin_val, signs, min_coeff_to_make, plan, rotation, truncfunc)
+            lower_positions, entry_mask, gate_mask, cos_val, sin_val, min_coeff_to_make, plan, rotation, truncfunc)
         if lowest < 6
             present[word+1] = (present[word+1] & ~lower_positions) | kept_lower
             present[partner_word+1] = (present[partner_word+1] & lower_positions) | _xorpositions(kept_upper, low_mask)

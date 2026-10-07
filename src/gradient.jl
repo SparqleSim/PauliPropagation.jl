@@ -364,13 +364,13 @@ end
 # coefficients, and returns the gradient of every parametrized rotation: what the pairs of Pauli strings that it mixes
 # contribute, added up over the classes.
 function _undolayer!(layer::GateLayer, cache, params, truncfunc::F, min_abs_coeff::Real; thread::Bool=true) where {F}
-    rotations, angles = _rotationsandangles(layer, params)
+    rotations, angles = togates(layer, params)
     rotation_grads = zeros(length(rotations))
     TT = paulitype(cache)
     CT = coefftype(cache)
     workspace = PropagationBase._takeworkspace(TT, CT, PropagationBase.ClassScratch{TT,CT})
     try
-        plan = _prepareclasses(rotations, angles, TT, CT, nqubits(cache); min_abs_coeff)
+        plan = _prepareclasses(rotations, angles, TT, nqubits(cache); min_abs_coeff)
         _undopass!(cache, plan, truncfunc, workspace, rotation_grads; thread)
     finally
         PropagationBase._putbackworkspace!(workspace)

@@ -19,6 +19,19 @@ include("heisenbergschrodinger.jl")
 
 ## Helper functions
 
+"""
+    maxqind(circuit)
+
+Returns the highest index of a qubit that a gate of the circuit acts on, or 0 for a circuit without gates.
+"""
+function maxqind(circuit)
+    max_qind = 0
+    for gate in circuit
+        max_qind = max(max_qind, maximum(qinds(gate); init=0))
+    end
+    return max_qind
+end
+
 function _qinds_check(qinds)
     if any(qind -> qind <= 0, qinds)
         throw(ArgumentError("Qubit indices must be positive integers. Got $qinds."))

@@ -86,6 +86,7 @@ export
     PauliRotation,
     GateLayer,
     PauliRotationLayer,
+    tolayers,
     ImaginaryPauliRotation,
     CliffordGate,
     clifford_map,

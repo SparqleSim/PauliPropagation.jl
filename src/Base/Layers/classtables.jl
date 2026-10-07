@@ -47,7 +47,7 @@ function _rotatetable!(sink, table, plan, truncfunc::F, class_terms, class_coeff
 
     for step in eachindex(rotations)
         rotation = Int(rotations[step])
-        _applytoclass!(sink, table, plan, truncfunc, entry_keys, _keyof(plan.masks[rotation], key_bits), rotation, Int32(step), CT)
+        _applytoclass!(sink, table, plan, truncfunc, entry_keys, _keyof(plan.gate_masks[rotation], key_bits), rotation, Int32(step), CT)
     end
 
     _emitclass!(sink, table)
@@ -83,10 +83,9 @@ end
 # are not visited.
 function _applytoclass!(sink, table, plan, truncfunc::F, entry_keys::Vector{K}, key_mask::K, rotation::Int, step::Int32, ::Type{CT}) where {F,K,CT}
 
-    mask = plan.masks[rotation]
+    gate_mask = plan.gate_masks[rotation]
     cos_val = plan.cosines[rotation]
     sin_val = plan.sines[rotation]
-    signs = plan.signs[rotation]
     lower_bit = _lowestbit(key_mask)
 
     min_coeff_to_make = plan.min_coeffs_to_make[rotation]
@@ -123,11 +122,11 @@ function _applytoclass!(sink, table, plan, truncfunc::F, entry_keys::Vector{K}, 
         entry = Int(events[event])
         partner = Int(event_partners[event])
         term = entry_terms[entry]
-        partner_term = term ⊻ mask
+        partner_term = term ⊻ gate_mask
 
         # the signs are those of the lower term of the pair, which the entry is unless it makes its partner from above
         is_lower = iszero(entry_keys[entry] & lower_bit)
-        lower_to_upper, upper_to_lower = _pairsigns(signs, ifelse(is_lower, term, partner_term))
+        lower_to_upper, upper_to_lower = plan.pairsigns(gate_mask, ifelse(is_lower, term, partner_term))
         sign_to_partner = ifelse(is_lower, lower_to_upper, upper_to_lower)
         sign_from_partner = ifelse(is_lower, upper_to_lower, lower_to_upper)
 

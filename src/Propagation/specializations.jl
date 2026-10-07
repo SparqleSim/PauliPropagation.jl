@@ -105,12 +105,12 @@ end
 function _applylayer!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params, truncfunc::F, min_abs_coeff::Real;
     thread::Bool=true) where {F}
 
-    rotations, angles = _rotationsandangles(layer, params)
+    rotations, angles = togates(layer, params)
     TT = paulitype(prop_cache)
     CT = coefftype(prop_cache)
     workspace = PropagationBase._takeworkspace(TT, CT, PropagationBase.ClassScratch{TT,CT})
     try
-        plan = _prepareclasses(rotations, angles, TT, CT, nqubits(prop_cache); min_abs_coeff)
+        plan = _prepareclasses(rotations, angles, TT, nqubits(prop_cache); min_abs_coeff)
         PropagationBase._applypass!(prop_cache, plan, truncfunc, workspace; thread)
     finally
         PropagationBase._putbackworkspace!(workspace)

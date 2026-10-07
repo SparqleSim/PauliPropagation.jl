@@ -95,11 +95,6 @@ function testanyqubitsandpairs()
             PauliRotationLayer(:X, some_qubits), PauliRotationLayer([:X, :X], any_bonds)]
         thetas = randomangles(rng, layers)
 
-        # bonds that share their lowest qubit cannot be read in groups
-        bond_layer = layers[2]
-        plan = PauliPropagation._prepareclasses(bond_layer.gates, thetas[2], getinttype(nq), Float64, nq)
-        @test !plan.reader.reads_in_groups
-
         @test layersmatchrotations(layers, thetas, psum; max_weight=4.0, min_abs_coeff=1e-4)
         @test layersmatchrotations(layers, thetas, psum; max_weight=3.0, min_abs_coeff=0.0)
     end
@@ -249,28 +244,28 @@ function testplans()
         PauliRotationLayer(randomcommutingrotations(rng, nq, 8))]
     matches = true
     for layer in layers
-        plan = PP._prepareclasses(layer.gates, randn(rng, length(layer.gates)), TT, Float64, nq)
-        pivots, reductions = PB._echelonbasis(plan.masks)
+        plan = PP._prepareclasses(layer.gates, randn(rng, length(layer.gates)), TT, nq)
+        pivots, reductions = PB._echelonbasis(plan.gate_masks)
         for position in PB._bitpositions(pivots)
             matches &= PB._reduce(plan.reduction, one(TT) << position) == reductions[position+1]
         end
-        for mask in plan.masks
-            matches &= iszero(PB._classkey(plan, mask, mask))
+        for gate_mask in plan.gate_masks
+            matches &= iszero(PB._classkey(plan, gate_mask, gate_mask))
         end
 
         for _ in 1:50
             pstr = PauliString(nq, rand(rng, [:I, :X, :Y, :Z], nq), 1:nq).term
-            positions, flipped = PB._branchinggates(plan.reader, pstr)
+            positions, flipped = PB._branchinggates(plan.lookup, pstr)
             key = PB._classkey(plan, pstr, flipped)
-            rotations = [rotation for rotation in eachindex(plan.masks) if !commutes(plan.masks[rotation], pstr)]
-            matches &= flipped == reduce(|, plan.masks[rotations]; init=zero(TT))
+            rotations = [rotation for rotation in eachindex(plan.gate_masks) if !commutes(plan.gate_masks[rotation], pstr)]
+            matches &= flipped == reduce(|, plan.gate_masks[rotations]; init=zero(TT))
             for rotation in rotations
-                partner = pstr ⊻ plan.masks[rotation]
-                matches &= PB._branchinggates(plan.reader, partner) == (positions, flipped)
+                partner = pstr ⊻ plan.gate_masks[rotation]
+                matches &= PB._branchinggates(plan.lookup, partner) == (positions, flipped)
                 matches &= PB._classkey(plan, partner, flipped) == key
             end
             if layer === heisenberg
-                rank = count_ones(first(PB._echelonbasis(plan.masks[rotations])))
+                rank = count_ones(first(PB._echelonbasis(plan.gate_masks[rotations])))
                 matches &= count_ones(PB._keybits(plan, flipped)) == rank
             end
         end
@@ -281,17 +276,6 @@ end
 @testset "PauliRotationLayer plans find the classes from the echelon basis" begin
     @test testplans()
 end
-
-@eval PauliPropagation _readsingroups(groups) = false
-
-@testset "PauliRotationLayer with its rotations read through tables" begin
-    nq = 8
-    layer = PauliRotationLayer([:Z, :Z], staircasetopology(nq))
-    @test !PauliPropagation._prepareclasses(layer.gates, fill(0.3, nq - 1), getinttype(nq), Float64, nq).reader.reads_in_groups
-    testlayers()
-end
-
-@eval PauliPropagation _readsingroups(groups) = length(groups) <= _MAX_ROTATION_GROUPS
 
 @eval PauliPropagation.PropagationBase _rotatesasblock(n_key_bits::Int) = false
 
@@ -314,7 +298,7 @@ end
     testlayers()
 end
 
-@eval PauliPropagation.PropagationBase @inline _classlabel(plan, term) = _hashbits(_classkey(plan, term, _flippedbits(plan.reader, term))) % Int
+@eval PauliPropagation.PropagationBase @inline _classlabel(plan, term) = _hashbits(_classkey(plan, term, _flippedbits(plan.lookup, term))) % Int
 
 # A class is a Pauli string with its products with the generators of the rotations it anticommutes with. Each kernel takes
 # a class as two vectors and writes what it keeps to a Pauli sum, which has to hold what the rotations of the layer make
@@ -331,16 +315,16 @@ function testkernelsagainstrotations()
     matches = true
     for (layer, pstr) in classes, (max_weight, min_abs_coeff) in ((Inf, 0.0), (4.0, 1e-2))
         thetas = randn(rng, length(layer.gates))
-        plan = PP._prepareclasses(layer.gates, thetas, TT, Float64, nq; min_abs_coeff)
+        plan = PP._prepareclasses(layer.gates, thetas, TT, nq; min_abs_coeff)
         truncfunc = buildtruncfunc(PropagationCache(PauliSum(nq)); min_abs_coeff, max_weight)
-        positions, flipped = PB._branchinggates(plan.reader, pstr.term)
+        positions, flipped = PB._branchinggates(plan.lookup, pstr.term)
         rotation_buffer = zeros(Int32, length(layer.gates))
         rotations = view(rotation_buffer, 1:PB._rotationsinorder!(rotation_buffer, plan, positions))
         key_bits = PB._keybits(plan, flipped)
         n_key_bits = sum(count_ones, PB._limbs(key_bits))
 
         # members made by random sets of the anticommuting generators, some of them more than once
-        class_terms = [reduce(xor, (plan.masks[rotation] for rotation in rotations if rand(rng, Bool)); init=pstr.term) for _ in 1:8]
+        class_terms = [reduce(xor, (plan.gate_masks[rotation] for rotation in rotations if rand(rng, Bool)); init=pstr.term) for _ in 1:8]
         class_coeffs = [rand(rng, (-1, 1)) * (0.2 + rand(rng)) for _ in 1:8]
 
         reference = PauliSum(nq)
@@ -377,8 +361,7 @@ end
         layers = [PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], staircasetopology(nq))]
         thetas = randomangles(rng, layers)
         vpsum = propagate(layers, VectorPauliSum(psum), thetas; max_weight=5.0, min_abs_coeff=1e-4)
-        plans = [PauliPropagation._prepareclasses(layer.gates, theta, paulitype(vpsum), coefftype(vpsum), nq) for (layer, theta) in zip(layers, thetas)]
-        @test all(plan -> plan.reader.reads_in_groups, plans)
+        plans = [PauliPropagation._prepareclasses(layer.gates, theta, paulitype(vpsum), nq) for (layer, theta) in zip(layers, thetas)]
 
         matches = true
         for plan in plans, capacity in (length(vpsum), 4 * length(vpsum))
@@ -465,12 +448,67 @@ end
 
     @test_throws ArgumentError PauliRotationLayer([:X, :Z], staircasetopology(nq))
     @test_throws ArgumentError PauliRotationLayer([:Z, :Z], [1, 2])
-    @test !PauliPropagation._prepareclasses(PauliRotationLayer([:Z, :Z, :Z], [(1, 2, 3)]).gates, [0.1], getinttype(nq), Float64, nq).reader.reads_in_groups
     @test_throws ArgumentError PauliRotationLayer([PauliRotation([:X, :Z], [1, 2]), PauliRotation([:X, :Z], [2, 3])])
     @test_throws ArgumentError PauliRotationLayer(:X, [0, 1])
     @test_throws ArgumentError propagate(zz_layer, PauliString(nq, :X, 1), [0.1, 0.2])
     @test_throws ArgumentError propagate(zz_layer, PauliString(nq, :X, 1), 0.1)
     @test_throws ArgumentError propagate(zz_layer, PauliString(nq - 1, :X, 1), fill(0.3, nq - 1))
+end
+
+# the circuit and its layers propagate alike, on every kind of sum and in either picture
+function layeredmatchescircuit(circuit, thetas, psum; kwargs...)
+    layered_circuit, layered_thetas = tolayers(circuit, thetas)
+    matches = true
+    for (T, heisenberg) in LAYER_TEST_SUMS
+        layered = propagate(layered_circuit, T(psum), layered_thetas; heisenberg, kwargs...)
+        reference = propagate(circuit, T(psum), thetas; heisenberg, kwargs...)
+        matches &= !isempty(layered) && length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
+    end
+    return matches
+end
+
+@testset "tolayers gathers the commuting rotations of a circuit into layers" begin
+    nq = 6
+    circuit = Gate[
+        PauliRotation([:Z, :Z], [1, 2]), PauliRotation([:Z, :Z], [2, 3]), PauliRotation(:Z, 4, 0.3), PauliRotation([:Z, :Z, :Z], [4, 5, 6]),
+        # X on the first qubit anticommutes with ZZ on the first two, and a rotation may come twice
+        PauliRotation(:X, 1), PauliRotation(:X, 2), PauliRotation(:X, 2),
+        CliffordGate(:CNOT, [3, 4]),
+        # a layer of frozen rotations takes no parameter
+        PauliRotation(:Y, 5, 0.2), PauliRotation(:Y, 6, -0.4),
+        CliffordGate(:H, [1]),
+        # rotations on the same qubits that commute, and ZZ on the last two qubits, which anticommutes with X on the fifth on
+        # its second qubit
+        PauliRotation([:X, :X], [3, 4]), PauliRotation([:Y, :Y], [3, 4]), PauliRotation([:Z, :Z], [3, 4]), PauliRotation(:X, 5),
+        PauliRotation([:Z, :Z], [6, 5]),
+        PauliRotationLayer(:Z, 1:nq),
+        PauliRotation(:Y, 1),
+    ]
+    rng = MersenneTwister(5)
+    thetas = Any[randn(rng, 11)...]
+    push!(thetas, randn(rng, nq))
+    push!(thetas, randn(rng))
+
+    layered_circuit, layered_thetas = tolayers(circuit, thetas)
+    @test repr.(layered_circuit) == ["GateLayer(3 PauliRotation, 1 FrozenGate)", "GateLayer(3 PauliRotation)", "CliffordGate(:CNOT, [3, 4])",
+        "FrozenGate(GateLayer(2 PauliRotation), parameter = [0.2, -0.4])", "CliffordGate(:H, [1])", "GateLayer(4 PauliRotation)",
+        "PauliRotation([:Z, :Z], [6, 5])", "GateLayer(6 PauliRotation)", "PauliRotation([:Y], [1])"]
+    @test layered_thetas == [thetas[1:3], thetas[4:6], thetas[7:10], thetas[11], thetas[12], thetas[13]]
+    @test repr.(tolayers(circuit)) == repr.(layered_circuit)
+    @test isempty(tolayers(Gate[]))
+
+    psum = randompaulisum(rng, nq, 8, 3)
+    @test layeredmatchescircuit(circuit, thetas, psum; min_abs_coeff=0.0)
+    @test layeredmatchescircuit(circuit, thetas, psum; max_weight=3.0, min_abs_coeff=1e-3)
+
+    # the gradient by the parameters of the layers is that by the parameters of the circuit
+    value, gradient = rewindgradient(circuit, psum, thetas, overlapwithzero; min_abs_coeff=0.0)
+    layered_value, layered_gradient = rewindgradient(layered_circuit, psum, layered_thetas, overlapwithzero; min_abs_coeff=0.0)
+    @test layered_value ≈ value
+    @test reduce(vcat, layered_gradient) ≈ reduce(vcat, gradient)
+
+    # a Trotter circuit becomes a layer of ZZ rotations and a layer of X rotations per step
+    @test repr.(tolayers(tfitrottercircuit(nq, 2))) == ["GateLayer(5 PauliRotation)", "GateLayer(6 PauliRotation)", "GateLayer(5 PauliRotation)", "GateLayer(6 PauliRotation)"]
 end
 
 @testset "PauliRotationLayer truncates and merges what it is given" begin
