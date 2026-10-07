@@ -49,24 +49,25 @@ function _applytolabels!(labelof::L, applytolabel!::G, prop_cache::AbstractPropa
     n_bits = max(zone_bits, min(_MAX_BATCH_BITS, zone_bits + _batchbits(cld(n_terms, n_zones), term_bytes)))
     n_batches_per_zone = 1 << (n_bits - zone_bits)
 
-    # One row more than there are batches, so that the counts of a batch are not a power of two apart, which would
-    # put them all into one set of the processor cache. Every source clears its own column, so that the columns are
-    # cleared in parallel and each lies in the memory of the thread that reads the source.
-    batch_counts = Matrix{Int}(undef, n_zones * n_batches_per_zone + 1, n_sources)
+    # For every batch and source, first how many terms the source sends to the batch, then where it copies the next
+    # one. One row more than there are batches, so that the entries of a batch are not a power of two apart, which
+    # would put them all into one set of the processor cache. Every source clears its own column, so that the columns
+    # are cleared in parallel and each lies in the memory of the thread that reads the source.
+    source_batch_indices = Matrix{Int}(undef, n_zones * n_batches_per_zone + 1, n_sources)
     function count_source!(source_id)
         source, labels = sources[source_id]
-        _countbatchsizes!(labelof, fill!(view(batch_counts, :, source_id), 0), n_bits, zone_bits, source, labels)
+        _countbatchsizes!(labelof, fill!(view(source_batch_indices, :, source_id), 0), n_bits, zone_bits, source, labels)
     end
     _eachsource(count_source!, storage, prop_cache, n_sources, thread)
 
     # the batched terms of a zone are numbered from 1 on
-    batch_starts = _batchstarts!(batch_counts)
+    batch_starts = _batchstarts!(source_batch_indices)
     zone_starts = [batch_starts[(zone_id-1)*n_batches_per_zone+1] for zone_id in 1:n_zones+1]
     batched_terms, batched_coeffs, batched_labels = _batcharrays!(storage, prop_cache, workspace, diff(zone_starts))
     function write_source!(source_id)
         source, labels = sources[source_id]
-        _copytobatches!(batched_terms, batched_coeffs, batched_labels, zone_starts, view(batch_counts, :, source_id), n_bits,
-            zone_bits, source, labels)
+        _copytobatches!(batched_terms, batched_coeffs, batched_labels, zone_starts, view(source_batch_indices, :, source_id),
+            n_bits, zone_bits, source, labels)
     end
     _eachsource(write_source!, storage, prop_cache, n_sources, thread)
 
@@ -397,22 +398,22 @@ function _countbatchsizes!(labelof::L, batch_counts, n_bits::Int, n_zone_bits::I
 end
 
 """
-    _batchstarts!(batch_counts)
+    _batchstarts!(source_batch_indices)
 
 Turns the number of terms of every batch and source into the index at which the source copies its first term of the
 batch, and returns where every batch starts.
 The terms of a batch lie one source after the other, from `batch_starts[p]` to `batch_starts[p+1] - 1`.
 """
-function _batchstarts!(batch_counts::Matrix{Int})
-    n_batches, n_sources = size(batch_counts)
+function _batchstarts!(source_batch_indices::Matrix{Int})
+    n_batches, n_sources = size(source_batch_indices)
     batch_starts = Vector{Int}(undef, n_batches + 1)
 
     next_start = 1
     for batch in 1:n_batches
         batch_starts[batch] = next_start
         for source_id in 1:n_sources
-            n_here = batch_counts[batch, source_id]
-            batch_counts[batch, source_id] = next_start
+            n_here = source_batch_indices[batch, source_id]
+            source_batch_indices[batch, source_id] = next_start
             next_start += n_here
         end
     end
@@ -422,13 +423,14 @@ function _batchstarts!(batch_counts::Matrix{Int})
 end
 
 """
-    _copytobatches!(zone_terms, zone_coeffs, zone_labels, zone_starts, cursors, n_bits, n_zone_bits, source, labels)
+    _copytobatches!(zone_terms, zone_coeffs, zone_labels, zone_starts, next_indices, n_bits, n_zone_bits, source, labels)
 
-Copies every term of `source` with its coefficient and its label from `labels` to where `cursors` points for its
-batch, in the arrays of the zone that the batch belongs to.
+Copies every term of `source` with its coefficient and its label from `labels` to `next_indices[batch]`, the index
+of the next term that the source copies into its batch, which then moves on by one, in the arrays of the zone that the
+batch belongs to.
 """
 function _copytobatches!(zone_terms::Vector{Vector{TT}}, zone_coeffs::Vector{Vector{CT}}, zone_labels::Vector{Vector{Int}},
-    zone_starts::Vector{Int}, cursors, n_bits::Int, n_zone_bits::Int, source, labels::AbstractVector{Int}) where {TT,CT}
+    zone_starts::Vector{Int}, next_indices, n_bits::Int, n_zone_bits::Int, source, labels::AbstractVector{Int}) where {TT,CT}
 
     source_index = 0
     for (term, coeff) in source
@@ -436,11 +438,11 @@ function _copytobatches!(zone_terms::Vector{Vector{TT}}, zone_coeffs::Vector{Vec
         label = labels[source_index]
         zone_id, batch = _zonebatchof(label, n_bits, n_zone_bits)
 
-        index = cursors[batch] - zone_starts[zone_id] + 1
+        index = next_indices[batch] - zone_starts[zone_id] + 1
         zone_terms[zone_id][index] = term
         zone_coeffs[zone_id][index] = coeff
         zone_labels[zone_id][index] = label
-        cursors[batch] += 1
+        next_indices[batch] += 1
     end
 
     return zone_terms
