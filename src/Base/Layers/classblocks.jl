@@ -1,21 +1,21 @@
 ###
 ##
-# A class of few key bits rotated as a dense block. A class of n key bits has 2^n Pauli strings, and the block holds an
-# entry for each, at the key bits of the string gathered into an integer. A rotation flips a fixed set of key bits, so it
-# pairs every entry with the entry whose index differs by the rotation's key mask, and mixes the coefficients of every
-# pair with at least one entry present. Which entries are present is kept as bits, 64 to a word, so that a rotation
-# visits the words of the block and, in each, the pairs with an entry present.
+# A class of few key bits rotated as a dense block. A class of n key bits has 2^n terms, and the block holds an entry for
+# each, at the key bits of the term gathered into an integer. A rotation flips a fixed set of key bits, so it pairs every
+# entry with the entry whose index differs by the rotation's key mask, and mixes the coefficients of every pair with at
+# least one entry present. Which entries are present is kept as bits, 64 to a word, so that a rotation visits the words
+# of the block and, in each, the pairs with an entry present.
 ##
 ###
 
 # for the key bit b below 6, the positions in a word of the entries without bit b
 const _LOWER_POSITIONS = (0x5555555555555555, 0x3333333333333333, 0x0f0f0f0f0f0f0f0f, 0x00ff00ff00ff00ff, 0x0000ffff0000ffff, 0x00000000ffffffff)
 
-# the entry of `pstr` in the block of its class: its key bits gathered into an integer
-@inline _blockentry(pstr, key_bits) = _keyof(pstr, key_bits) % Int
+# the entry of `term` in the block of its class: its key bits gathered into an integer
+@inline _blockentry(term, key_bits) = _keyof(term, key_bits) % Int
 
 # Moves the bit at every position p of a word to p ⊻ low_mask, for low_mask below 64, one set bit of low_mask at a time:
-# a rotation flips the key bits of the qubits it acts on, so a layer takes the same few steps for every word.
+# a rotation flips the key bits it acts on, so a layer takes the same few steps for every word.
 @inline function _xorpositions(word::UInt64, low_mask::Int)
     bits = low_mask & 63
     while bits != 0
@@ -28,8 +28,8 @@ const _LOWER_POSITIONS = (0x5555555555555555, 0x3333333333333333, 0x0f0f0f0f0f0f
     return word
 end
 
-# The block of a class: a coefficient and a Pauli string for every entry, and which entries are present when they take
-# more than one word.
+# The block of a class: a coefficient and a term for every entry, and which entries are present when they take more
+# than one word.
 struct BlockScratch{TT,CT}
     coeffs::Vector{CT}
     terms::Vector{TT}
@@ -41,76 +41,64 @@ BlockScratch{TT,CT}() where {TT,CT} = BlockScratch{TT,CT}(CT[], TT[], UInt64[])
 """
     _rotateblock!(sink, block, plan, truncfunc, class_terms, class_coeffs, rotations, key_bits, n_key_bits)
 
-Rotates the class of the Pauli strings `class_terms` with the coefficients `class_coeffs` as a dense block of
-`2^n_key_bits` entries, by the `rotations` one after the other, and writes what the truncations keep to `sink`.
+Rotates the class of the terms `class_terms` with the coefficients `class_coeffs` as a dense block of `2^n_key_bits`
+entries, by the `rotations` one after the other, and writes what the truncations keep to `sink`.
 """
 function _rotateblock!(sink, block, plan, truncfunc::F, class_terms, class_coeffs, rotations, key_bits::TT, n_key_bits::Int) where {F,TT}
     n_entries = 1 << n_key_bits
-    coeffs = PropagationBase._ensurecapacity!(block.coeffs, n_entries)
-    block_terms = PropagationBase._ensurecapacity!(block.terms, n_entries)
+    coeffs = _ensurecapacity!(block.coeffs, n_entries)
+    block_terms = _ensurecapacity!(block.terms, n_entries)
 
     # a block of at most 64 entries keeps which are present in one word, any other in an array of words
     if n_entries <= 64
         present = zero(UInt64)
         for index in eachindex(class_terms, class_coeffs)
-            pstr = class_terms[index]
-            entry = _blockentry(pstr, key_bits)
+            term = class_terms[index]
+            entry = _blockentry(term, key_bits)
             bit = one(UInt64) << entry
             if present & bit != 0
                 coeffs[entry+1] = mergefunc(coeffs[entry+1], class_coeffs[index])
             else
                 coeffs[entry+1] = class_coeffs[index]
-                block_terms[entry+1] = pstr
+                block_terms[entry+1] = term
                 present |= bit
             end
         end
         for step in eachindex(rotations)
             rotation = Int(rotations[step])
             entry_mask = _blockentry(plan.masks[rotation], key_bits)
-            signs = _blocksigns(plan)
+            signs = plan.signs[rotation]
             present = _rotateblockword(sink, present, coeffs, block_terms, n_entries, entry_mask, plan, rotation, signs, truncfunc)
         end
         _emitblockwords!(sink, (present,), 1, coeffs, block_terms)
     else
         n_words = n_entries >> 6
-        present = PropagationBase._ensurecapacity!(block.words, n_words)
+        present = _ensurecapacity!(block.words, n_words)
         for word in 1:n_words
             present[word] = zero(UInt64)
         end
         for index in eachindex(class_terms, class_coeffs)
-            pstr = class_terms[index]
-            entry = _blockentry(pstr, key_bits)
+            term = class_terms[index]
+            entry = _blockentry(term, key_bits)
             word = (entry >> 6) + 1
             bit = one(UInt64) << (entry & 63)
             if present[word] & bit != 0
                 coeffs[entry+1] = mergefunc(coeffs[entry+1], class_coeffs[index])
             else
                 coeffs[entry+1] = class_coeffs[index]
-                block_terms[entry+1] = pstr
+                block_terms[entry+1] = term
                 present[word] |= bit
             end
         end
         for step in eachindex(rotations)
             rotation = Int(rotations[step])
             entry_mask = _blockentry(plan.masks[rotation], key_bits)
-            signs = _blocksigns(plan)
+            signs = plan.signs[rotation]
             _rotateblockwords!(sink, present, n_words, coeffs, block_terms, n_entries, entry_mask, plan, rotation, signs, truncfunc)
         end
         _emitblockwords!(sink, present, n_words, coeffs, block_terms)
     end
     return sink
-end
-
-# The signs that a rotation gives every lower entry and its partner, if they are all the same, as for a rotation on one
-# qubit, or `nothing`, and the signs are read for every pair.
-@inline _blocksigns(plan) = plan.acts_on_one_qubit ? plan.lower_signs : nothing
-
-# the signs that the rotation gives the partner of a lower entry and the lower entry, constant or read from its string
-@inline _pairsigns(signs::Tuple, plan, pstr, rotation::Int) = signs
-
-@inline function _pairsigns(::Nothing, plan, pstr, rotation::Int)
-    paulis = _gatherpaulis(pstr, plan.shifts[rotation])
-    return (plan.signs[paulis+1], plan.signs[(paulis⊻Int(plan.local_mask))+1])
 end
 
 # Rotates the pairs of one word: the entries at `lower_positions` of the word starting at `word_base` and their partners,
@@ -133,9 +121,9 @@ end
         both &= both - one(UInt64)
         entry = word_base + position
         partner = entry ⊻ entry_mask
-        pstr = block_terms[entry+1]
-        partner_pstr = pstr ⊻ mask
-        sign_to_partner, sign_from_partner = _pairsigns(signs, plan, pstr, rotation)
+        term = block_terms[entry+1]
+        partner_term = term ⊻ mask
+        sign_to_partner, sign_from_partner = _pairsigns(signs, term)
         coeff = coeffs[entry+1]
         partner_coeff = coeffs[partner+1]
         _addgradient!(sink, rotation, coeff, partner_coeff, sign_to_partner, sign_from_partner)
@@ -143,8 +131,8 @@ end
         new_partner_coeff = mergefunc(partner_coeff * cos_val, coeff * sin_val * sign_to_partner)
         coeffs[entry+1] = new_coeff
         coeffs[partner+1] = new_partner_coeff
-        kept_lower |= UInt64(!@inline(truncfunc(pstr, new_coeff))) << position
-        kept_upper |= UInt64(!@inline(truncfunc(partner_pstr, new_partner_coeff))) << position
+        kept_lower |= UInt64(!@inline(truncfunc(term, new_coeff))) << position
+        kept_upper |= UInt64(!@inline(truncfunc(partner_term, new_partner_coeff))) << position
     end
 
     @inbounds while lower_alone != 0
@@ -152,18 +140,18 @@ end
         lower_alone &= lower_alone - one(UInt64)
         entry = word_base + position
         coeff = coeffs[entry+1]
-        pstr = block_terms[entry+1]
+        term = block_terms[entry+1]
         new_coeff = coeff * cos_val
         coeffs[entry+1] = new_coeff
-        kept_lower |= UInt64(!@inline(truncfunc(pstr, new_coeff))) << position
+        kept_lower |= UInt64(!@inline(truncfunc(term, new_coeff))) << position
         if abs(coeff) >= min_coeff_to_make
-            sign_to_partner, _ = _pairsigns(signs, plan, pstr, rotation)
-            partner_pstr = pstr ⊻ mask
+            sign_to_partner, _ = _pairsigns(signs, term)
+            partner_term = term ⊻ mask
             new_partner_coeff = coeff * sin_val * sign_to_partner
-            if !@inline(truncfunc(partner_pstr, new_partner_coeff))
+            if !@inline(truncfunc(partner_term, new_partner_coeff))
                 partner = entry ⊻ entry_mask
                 coeffs[partner+1] = new_partner_coeff
-                block_terms[partner+1] = partner_pstr
+                block_terms[partner+1] = partner_term
                 kept_upper |= one(UInt64) << position
             end
         end
@@ -175,17 +163,17 @@ end
         entry = word_base + position
         partner = entry ⊻ entry_mask
         partner_coeff = coeffs[partner+1]
-        partner_pstr = block_terms[partner+1]
+        partner_term = block_terms[partner+1]
         new_partner_coeff = partner_coeff * cos_val
         coeffs[partner+1] = new_partner_coeff
-        kept_upper |= UInt64(!@inline(truncfunc(partner_pstr, new_partner_coeff))) << position
+        kept_upper |= UInt64(!@inline(truncfunc(partner_term, new_partner_coeff))) << position
         if abs(partner_coeff) >= min_coeff_to_make
-            pstr = partner_pstr ⊻ mask
-            _, sign_from_partner = _pairsigns(signs, plan, pstr, rotation)
+            term = partner_term ⊻ mask
+            _, sign_from_partner = _pairsigns(signs, term)
             new_coeff = partner_coeff * sin_val * sign_from_partner
-            if !@inline(truncfunc(pstr, new_coeff))
+            if !@inline(truncfunc(term, new_coeff))
                 coeffs[entry+1] = new_coeff
-                block_terms[entry+1] = pstr
+                block_terms[entry+1] = term
                 kept_lower |= one(UInt64) << position
             end
         end

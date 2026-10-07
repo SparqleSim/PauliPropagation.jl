@@ -1,13 +1,13 @@
 ###
 ##
-# The scratch memory of a `RotationLayer`: what every task of a pass works in, and the workspace that the layers of a
-# propagation reuse.
+# The scratch memory of a pass that applies a function to groups of terms: what every task of a pass works in, the
+# workspace that the layers of a propagation reuse, and what a task of a layer of rotations rotates the classes in.
 ##
 ###
 
-struct TaskWorkspace{TT,CT}
-    # the records of one partition grouped by the hash of their class: the groups found through `slots`, and the Pauli
-    # strings and coefficients of the records one group after the other
+struct TaskWorkspace{TT,CT,KS}
+    # the records of one partition grouped by their label: the groups found through `slots`, and the terms and
+    # coefficients of the records one group after the other
     slots::Vector{Int32}
     group_of::Vector{Int32}
     group_hashes::Vector{UInt64}
@@ -15,61 +15,54 @@ struct TaskWorkspace{TT,CT}
     group_terms::Vector{TT}
     group_coeffs::Vector{CT}
 
-    # the rotations that anticommute with the Pauli strings of a class, in the order of the layer
-    rotations::Vector{Int32}
-
-    # what the task adds to the gradient of every rotation of the layer in a gradient pass
-    gradient::Vector{Float64}
-
-    # what the kernels rotate a class in
-    block::BlockScratch{TT,CT}
-    table::TableScratch{TT,CT}
+    # what the function applied to the groups works in
+    scratch::KS
 
     # the buffers of the task's sinks: one for an array sum that several tasks write to, one per zone for a multi sum
     sink_terms::Vector{Vector{TT}}
     sink_coeffs::Vector{Vector{CT}}
 end
 
-TaskWorkspace{TT,CT}() where {TT,CT} = TaskWorkspace{TT,CT}(Int32[], Int32[], UInt64[], Int[], TT[], CT[], Int32[], Float64[],
-    BlockScratch{TT,CT}(), TableScratch{TT,CT}(), Vector{TT}[], Vector{CT}[])
+TaskWorkspace{TT,CT,KS}() where {TT,CT,KS} =
+    TaskWorkspace{TT,CT,KS}(Int32[], Int32[], UInt64[], Int[], TT[], CT[], KS(), Vector{TT}[], Vector{CT}[])
 
 """
-    LayerWorkspace(TT, CT)
+    LayerWorkspace(TT, CT, KS)
 
-The scratch memory of a `RotationLayer` applied to Pauli strings of the type `TT` with coefficients of the type `CT`,
-which the layers of a propagation reuse.
+The scratch memory of a pass over terms of the type `TT` with coefficients of the type `CT`, whose tasks each apply a
+function to the groups in a scratch of the type `KS`, which the layers of a propagation reuse.
 """
-mutable struct LayerWorkspace{TT,CT}
-    tasks::Vector{TaskWorkspace{TT,CT}}
+mutable struct LayerWorkspace{TT,CT,KS}
+    tasks::Vector{TaskWorkspace{TT,CT,KS}}
 
-    # the labels of the Pauli strings that every source holds, found when its records are counted
+    # the labels of the terms that every source holds, found when its records are counted
     source_labels::Vector{Vector{Int}}
 
-    # the records of every zone that has no arrays to keep them in, those of a Pauli sum in the first
+    # the records of every zone that has no arrays to keep them in, those of a sum without arrays in the first
     zone_terms::Vector{Vector{TT}}
     zone_coeffs::Vector{Vector{CT}}
     zone_labels::Vector{Vector{Int}}
 end
 
-LayerWorkspace(::Type{TT}, ::Type{CT}) where {TT,CT} =
-    LayerWorkspace{TT,CT}(TaskWorkspace{TT,CT}[], Vector{Int}[], Vector{TT}[], Vector{CT}[], Vector{Int}[])
+LayerWorkspace(::Type{TT}, ::Type{CT}, ::Type{KS}) where {TT,CT,KS} =
+    LayerWorkspace{TT,CT,KS}(TaskWorkspace{TT,CT,KS}[], Vector{Int}[], Vector{TT}[], Vector{CT}[], Vector{Int}[])
 
 # Workspaces that no layer is using. A layer takes one out and puts it back when it is done, so that the next layer
 # uses the same memory, and propagations that run at the same time each have their own.
 const _IDLE_WORKSPACES = Dict{DataType,Vector{Any}}()
 const _IDLE_WORKSPACES_LOCK = ReentrantLock()
 
-function _takeworkspace(::Type{TT}, ::Type{CT}) where {TT,CT}
+function _takeworkspace(::Type{TT}, ::Type{CT}, ::Type{KS}) where {TT,CT,KS}
     lock(_IDLE_WORKSPACES_LOCK)
     try
-        idle_workspaces = get(_IDLE_WORKSPACES, LayerWorkspace{TT,CT}, nothing)
+        idle_workspaces = get(_IDLE_WORKSPACES, LayerWorkspace{TT,CT,KS}, nothing)
         if !isnothing(idle_workspaces) && !isempty(idle_workspaces)
-            return pop!(idle_workspaces)::LayerWorkspace{TT,CT}
+            return pop!(idle_workspaces)::LayerWorkspace{TT,CT,KS}
         end
     finally
         unlock(_IDLE_WORKSPACES_LOCK)
     end
-    return LayerWorkspace(TT, CT)
+    return LayerWorkspace(TT, CT, KS)
 end
 
 function _putbackworkspace!(workspace::LayerWorkspace)
@@ -102,3 +95,18 @@ function _sinkbuffer!(task::TaskWorkspace{TT,CT}, index::Int, buffer_length::Int
     end
     return task.sink_terms[index], task.sink_coeffs[index]
 end
+
+# What every task of a pass of a layer of rotations rotates the classes in (classes.jl), as the scratch of its `TaskWorkspace`.
+struct ClassScratch{TT,CT}
+    # the rotations that act on the terms of a class, in the order of the layer
+    rotations::Vector{Int32}
+
+    # what the task adds to the gradient of every rotation of the layer in a gradient pass
+    gradient::Vector{Float64}
+
+    # what the kernels rotate a class in
+    block::BlockScratch{TT,CT}
+    table::TableScratch{TT,CT}
+end
+
+ClassScratch{TT,CT}() where {TT,CT} = ClassScratch{TT,CT}(Int32[], Float64[], BlockScratch{TT,CT}(), TableScratch{TT,CT}())

@@ -24,6 +24,8 @@ struct FrozenGate{GateType<:ParametrizedGate,T} <: StaticGate
 end
 
 
+PropagationBase.qinds(frozen_gate::FrozenGate) = qinds(frozen_gate.gate)
+
 function Base.show(io::IO, frozen_gate::FrozenGate)
     print(io, "FrozenGate($(frozen_gate.gate), parameter = $(round(frozen_gate.parameter, sigdigits=3)))")
 end

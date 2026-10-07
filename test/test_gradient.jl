@@ -308,18 +308,20 @@ end
     @testset "Circuits with rotation layers" begin
         nq = 6
         circuit = Gate[
-            RotationLayer(:X, 1:nq),
+            PauliRotationLayer(:X, 1:nq),
             CliffordGate(:H, [3]),
-            RotationLayer([:Z, :Z], staircasetopology(nq)),
+            PauliRotationLayer([:Z, :Z], staircasetopology(nq)),
             PauliRotation(:X, 4),
-            RotationLayer([:X, :Y], [(1, 2), (4, 5)]),
-            freeze(RotationLayer(:Z, 1:nq), 0.35),
-            RotationLayer(:Y, nq:-1:1),
+            PauliRotationLayer([:X, :Y], [(1, 2), (4, 5)]),
+            freeze(PauliRotationLayer(:Z, 1:nq), fill(0.35, nq)),
+            PauliRotationLayer(:Y, nq:-1:1),
             # swapped pairs, which the layer applies in two passes
-            RotationLayer([:X, :Z], [(1, 2), (2, 1), (4, 5), (5, 4)]),
+            PauliRotationLayer([:X, :Z], [(1, 2), (2, 1), (4, 5), (5, 4)]),
+            # a generator of its own for every rotation, and a frozen rotation
+            GateLayer([PauliRotation(:X, 1), PauliRotation([:Z, :Y], [2, 3]), PauliRotation(:Y, 4, 0.2), PauliRotation([:X, :X], [5, 6])]),
         ]
-        # one angle for a layer, or one per rotation, and none for the frozen layer
-        params = Any[0.3, [0.1 * i for i in 1:nq-1], -0.4, [0.5, -0.2], 0.25, [0.3, -0.2, 0.15, 0.4]]
+        # one angle per rotation, and none for the frozen layer and the frozen rotation
+        params = Any[fill(0.3, nq), [0.1 * i for i in 1:nq-1], -0.4, [0.5, -0.2], fill(0.25, nq), [0.3, -0.2, 0.15, 0.4], [0.35, -0.15, 0.45]]
 
         # A dense state gives every Pauli string an overlap, and Z on every qubit puts every rotation in the light cone, so
         # that no gradient entry is zero.
@@ -373,13 +375,12 @@ end
         rotations = Gate[]
         for _ in 1:4
             for (symbols, qinds) in ((:X, 1:nq), (:Z, 1:nq), ([:Z, :Z], topology))
-                push!(layers, RotationLayer(symbols, qinds))
+                push!(layers, PauliRotationLayer(symbols, qinds))
                 append!(rotations, [PauliRotation(symbols, collect(rotation_qinds)) for rotation_qinds in qinds])
             end
         end
-        layer_params = [0.2 + 0.05 * k for k in eachindex(layers)]
-        rotation_params = vcat([fill(theta, length(layer.qinds)) for (layer, theta) in zip(layers, layer_params)]...)
-        layer_of = vcat([fill(k, length(layer.qinds)) for (k, layer) in enumerate(layers)]...)
+        layer_params = [fill(0.2 + 0.05 * k, length(layer.gates)) for (k, layer) in enumerate(layers)]
+        rotation_params = reduce(vcat, layer_params)
 
         # a custom truncation reads the coefficient of the operator, and min_rel_coeff undoes the rotations of a layer one by one
         below_threshold(pstr, coeff::Float64) = abs(coeff) < 1e-4
@@ -393,7 +394,7 @@ end
             expec, grad = rewindgradient(layers, psum, layer_params, overlapwithzero; truncation...)
             ref_expec, ref_grad = rewindgradient(rotations, psum, rotation_params, overlapwithzero; truncation...)
             @test expec ≈ ref_expec rtol = 1e-12
-            @test grad ≈ [sum(ref_grad[layer_of.==k]) for k in eachindex(layers)] rtol = 1e-12
+            @test reduce(vcat, grad) ≈ ref_grad rtol = 1e-12
         end
     end
 

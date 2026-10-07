@@ -1,0 +1,113 @@
+###
+##
+# Layers of gates that commute with each other, applied together. By default a layer applies its gates one after the
+# other; a basis can apply the layers of its gates in one pass over the sum instead.
+##
+###
+
+"""
+A type for a layer of gates that commute with each other.
+"""
+struct GateLayer{G} <: ParametrizedGate
+    gates::Vector{G}
+    guaranteed_commutes::Bool
+
+    @doc """
+        GateLayer(gates; guaranteed_commutes=false)
+
+    A layer of `gates` that commute with each other.
+    The gates must act on different qubits, as `qinds` returns them, unless `guaranteed_commutes` is `true`.
+    Then gates may share qubits, and they are trusted to commute.
+    The parameter of the layer is a vector with one parameter per parametrized gate, in the order of `gates`, or a number if there is one parametrized gate.
+    `countparameters(layer)` returns how many there are.
+    In the Schrödinger picture, the gates are applied in the order of `gates`, with truncation after each.
+    """
+    function GateLayer(gates; guaranteed_commutes::Bool=false)
+        gates = [gate for gate in gates]
+        if !guaranteed_commutes
+            _qindsoverlapcheck(gates)
+        end
+        return new{eltype(gates)}(gates, guaranteed_commutes)
+    end
+end
+
+function _qindsoverlapcheck(gates)
+    gate_on_qubit = Dict{Int,Int}()
+    for (index, gate) in enumerate(gates)
+        for qind in qinds(gate)
+            other_index = get(gate_on_qubit, qind, index)
+            if other_index != index
+                throw(ArgumentError(
+                    "The gates $other_index and $index of the layer both act on the qubit $qind. " *
+                    "Pass `guaranteed_commutes=true` if the gates commute nonetheless."
+                ))
+            end
+            gate_on_qubit[qind] = index
+        end
+    end
+end
+
+function Base.show(io::IO, layer::GateLayer)
+    print(io, "GateLayer($(length(layer.gates)) gates)")
+end
+
+"""
+    countparameters(layer::GateLayer)
+
+Returns the number of parametrized gates in the layer, which is the length of its parameter.
+"""
+countparameters(layer::GateLayer) = countparameters(layer.gates)
+
+"""
+    applymergetruncate!(layer::GateLayer, prop_cache::AbstractPropagationCache, params; kwargs...)
+
+Applies the gates of the layer one after the other with `applymergetruncate!`, as a circuit of them would be.
+"""
+function applymergetruncate!(layer::GateLayer, prop_cache::AbstractPropagationCache, params; kwargs...)
+    _applygatesonebyone!(layer, prop_cache, params; kwargs...)
+    return
+end
+
+function _applygatesonebyone!(layer::GateLayer, prop_cache::AbstractPropagationCache, params; kwargs...)
+    function applygate!(gate, args...)
+        applymergetruncate!(gate, prop_cache, args...; kwargs...)
+        return
+    end
+    _foreachgate(applygate!, layer, params)
+    return prop_cache
+end
+
+# Calls `f(gate, param)` for every parametrized gate of the layer, with its own parameter, and `f(gate)` for every
+# other gate, in the order of the layer.
+function _foreachgate(f::F, layer::GateLayer, params) where {F}
+    _checklayerparameters(layer, params)
+    param_index = 0
+    for gate in layer.gates
+        if gate isa ParametrizedGate
+            param_index += 1
+            f(gate, _gateparameter(params, param_index))
+        else
+            f(gate)
+        end
+    end
+    return
+end
+
+# the parameter of the parametrized gate number `param_index` of a layer
+_gateparameter(param::Number, param_index::Int) = param
+_gateparameter(params, param_index::Int) = params[param_index]
+
+function _checklayerparameters(layer::GateLayer, params)
+    n_params = countparameters(layer)
+    is_valid = if params isa Number
+        n_params == 1
+    else
+        length(params) == n_params
+    end
+    if !is_valid
+        throw(ArgumentError(
+            "The parameter of a `GateLayer` is a vector with one entry per parametrized gate, here $n_params, " *
+            "or a number if there is one. Got $params."
+        ))
+    end
+end

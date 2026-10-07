@@ -16,6 +16,20 @@ Pages = ["src/Gates/paulirotations.jl"]
 Order = [:type, :function, :constant]
 ```
 
+## Gate Layers
+
+```@autodocs
+Modules = [PauliPropagation.PropagationBase]
+Pages = ["src/Base/Layers/gatelayer.jl"]
+Order = [:type, :function, :constant]
+```
+
+```@autodocs
+Modules = [PauliPropagation.PropagationBase]
+Pages = ["src/Base/gates.jl"]
+Filter = t -> t === PauliPropagation.PropagationBase.qinds
+```
+
 ## Rotation Layers
 
 ```@autodocs

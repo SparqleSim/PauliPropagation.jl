@@ -73,63 +73,53 @@ function paulirotationproduct(gate_mask::TT, pstr::TT) where TT
     return new_pstr, sign
 end
 
-### Rotation layers
+### Layers of Pauli rotations
 
 """
-    applymergetruncate!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta; thread=true, kwargs...)
+    applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params; thread=true, kwargs...)
 
-Overload of `applymergetruncate!` for `RotationLayer` gates.
-The truncations are applied after every rotation, so the result is that of the rotations propagated one after the other, in the order that `torotations` returns.
-A Pauli sum with numbers as coefficients is propagated class by class: the Pauli strings that anticommute with the same rotations are collected, and the rotations are applied to them one at a time.
+Overload of `applymergetruncate!` for a `GateLayer` on Pauli strings.
+A layer of Pauli rotations on one or two qubits each, frozen ones included, propagates a Pauli sum with numbers as coefficients class by class:
+the Pauli strings that anticommute with the same rotations are collected, and the rotations are applied to them one at a time.
+The truncations are applied after every rotation, so the result is that of the rotations propagated one after the other, in the order of the layer.
 A `VectorPauliSum` is left without duplicate Pauli strings but unsorted.
-Any other coefficient type, and a truncation by `min_rel_coeff`, propagate the rotations one by one.
+Any other layer or coefficient type, and a truncation by `min_rel_coeff`, propagate the gates one by one.
 """
-function PropagationBase.applymergetruncate!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta;
+function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
     min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-    _rotationanglecheck(layer, theta)
-
-    function applyrotation!(rotation, angle)
-        applymergetruncate!(rotation, prop_cache, angle;
+    if !_haslayerfastpath(layer, prop_cache) || !isnothing(min_rel_coeff)
+        PropagationBase._applygatesonebyone!(layer, prop_cache, params;
             min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread, kwargs...)
-        return prop_cache
-    end
-
-    if !_propagatesinclasses(prop_cache) || !isnothing(min_rel_coeff)
-        foreach(applyrotation!, torotations(layer, theta)...)
         return
     end
 
     truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
-    _applylayer!(layer, prop_cache, theta, truncfunc, min_abs_coeff; thread)
+    _applylayer!(layer, prop_cache, params, truncfunc, min_abs_coeff; thread)
     return
 end
 
-"""
-    applytoall!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta; thread=true, kwargs...)
+# Applies the rotations of the layer class by class, in one pass over the sum, and truncates the Pauli strings for which
+# `truncfunc` returns `true` after every rotation. `truncfunc` truncates every coefficient below `min_abs_coeff`.
+# A layer that acts on a qubit with two different Paulis takes more than one pass (see `_classpasses`).
+function _applylayer!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params, truncfunc::F, min_abs_coeff::Real;
+    thread::Bool=true) where {F}
 
-Overload of `applytoall!` for `RotationLayer` gates.
-The Pauli sum is left merged, so that no merging is required afterwards.
-"""
-function PropagationBase.applytoall!(layer::RotationLayer, prop_cache::AbstractPauliPropagationCache, theta; thread::Bool=true, kwargs...)
-    _rotationanglecheck(layer, theta)
-
-    function applyrotation!(rotation, angle)
-        applytoall!(rotation, prop_cache, angle; thread)
-        merge!(prop_cache; thread)
-        return prop_cache
+    rotations, angles = _rotationsandangles(layer, params)
+    TT = paulitype(prop_cache)
+    CT = coefftype(prop_cache)
+    workspace = PropagationBase._takeworkspace(TT, CT, PropagationBase.ClassScratch{TT,CT})
+    try
+        for pass in _classpasses(rotations)
+            plan = _prepareclasses(rotations, angles, TT, CT, nqubits(prop_cache), pass; min_abs_coeff)
+            PropagationBase._applypass!(prop_cache, plan, truncfunc, workspace; thread)
+        end
+    finally
+        PropagationBase._putbackworkspace!(workspace)
     end
-
-    if !_propagatesinclasses(prop_cache)
-        foreach(applyrotation!, torotations(layer, theta)...)
-        return prop_cache
-    end
-
-    return _applylayer!(layer, prop_cache, theta, _nevertruncate, 0; thread)
+    return prop_cache
 end
-
-PropagationBase.requiresmerging(::RotationLayer, ::AbstractPauliPropagationCache) = false
 
 ### Imaginary Pauli rotations
 

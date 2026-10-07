@@ -10,8 +10,8 @@
 
 Compute `overlapfunc(propagate(circuit, psum, params; kwargs...))` together with its gradient with
 respect to `params`, in one paired forward and backward sweep costing O(length(circuit)) gate applications.
-The only parametrized gates can be `PauliRotation`s and `RotationLayer`s.
-The gradient of a `RotationLayer` is the derivative by its angle, or a vector of the derivatives by the angles of its rotations.
+The only parametrized gates can be `PauliRotation`s and `GateLayer`s whose parametrized gates are `PauliRotation`s.
+The gradient of a `GateLayer` is a vector of the derivatives by the parameters of its rotations, or a number if its parameter is a number.
 All other gates must not be parametrized or frozen via `freeze(gate, param)` before inputting to `rewindgradient`.
 Noise channels are not supported, frozen or not, because the backward sweep cannot undo them.
 `overlapfunc` must be linear in the coefficients of the Pauli sum it is handed, e.g. any of
@@ -38,8 +38,8 @@ function rewindgradient!(circuit, psum::AbstractPauliSum, params, overlapfunc; k
 end
 
 function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
-    # check that the only parameterized gates are PauliRotations and RotationLayers
-    @assert all(gate -> isa(gate, StaticGate) || gate isa PauliRotation || gate isa RotationLayer, circuit) "All parameterized gates must be PauliRotations or RotationLayers."
+    # check that the only parameterized gates are PauliRotations and layers of them
+    @assert all(_isdifferentiable, circuit) "All parameterized gates must be PauliRotations or GateLayers of them."
     @assert all(_isrewindable, circuit) "Noise channels are not supported because they cannot be undone."
 
     # forward sweep: ordinary Heisenberg propagation, exactly as in `propagate`.
@@ -65,6 +65,13 @@ end
 _isrewindable(gate) = true
 _isrewindable(gate::ParametrizedNoiseChannel) = false
 _isrewindable(gate::FrozenGate) = _isrewindable(gate.gate)
+_isrewindable(layer::GateLayer) = all(_isrewindable, layer.gates)
+
+# the gates whose parameters the backward sweep differentiates by
+_isdifferentiable(gate::StaticGate) = true
+_isdifferentiable(gate::ParametrizedGate) = false
+_isdifferentiable(gate::PauliRotation) = true
+_isdifferentiable(layer::GateLayer) = all(_isdifferentiable, layer.gates)
 
 
 # a zero for the gradient by every parameter: a number, or a vector for a layer with one angle per rotation
@@ -113,35 +120,34 @@ function _undostep!(gate::StaticGate, state::_BackwardSweepState; thread::Bool=t
     return state
 end
 
-# Records the gradient of a RotationLayer: the derivative by its angle, or by the angle of each of its rotations.
+# Records the gradient of a GateLayer: the derivatives by the parameters of its rotations.
 # Where `applymergetruncate!` would apply the layer class by class, one pass undoes it and adds up the gradients of its
-# rotations, and otherwise its rotations are undone one by one, as PauliRotations.
-function _undostep!(layer::RotationLayer, state::_BackwardSweepState, theta; min_abs_coeff::Real=1e-10, max_weight::Real=Inf,
+# rotations, and otherwise its gates are undone one by one.
+function _undostep!(layer::GateLayer, state::_BackwardSweepState, params; min_abs_coeff::Real=1e-10, max_weight::Real=Inf,
     max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-    _rotationanglecheck(layer, theta)
-
-    if !_propagatesinclasses(state.cache) || !isnothing(min_rel_coeff)
-        rotations, angles = torotations(layer, theta)
-        rotation_state = _BackwardSweepState(state.cache, zeros(length(rotations)), 0)
-        for (rotation, angle) in zip(rotations, angles)
-            _undostep!(rotation, rotation_state, angle;
+    if !_haslayerfastpath(layer, state.cache) || !isnothing(min_rel_coeff)
+        gate_state = _BackwardSweepState(state.cache, zeros(countparameters(layer)), 0)
+        function undogate!(gate, args...)
+            _undostep!(gate, gate_state, args...;
                 min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread, kwargs...)
+            return
         end
-        rotation_grads = rotation_state.grad
+        PropagationBase._foreachgate(undogate!, layer, params)
+        rotation_grads = gate_state.grad
     else
         truncfunc = buildtruncfunc(state.cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
-        rotation_grads = _undolayer!(layer, state.cache, theta, truncfunc, min_abs_coeff; thread)
+        rotation_grads = _undolayer!(layer, state.cache, params, truncfunc, min_abs_coeff; thread)
     end
 
     state.param_idx += 1
-    state.grad[state.param_idx] = _layergradient(theta, rotation_grads)
+    state.grad[state.param_idx] = _layergradient(params, rotation_grads)
     return state
 end
 
-# the gradient of a layer from those of its rotations: their sum for one angle, and all of them for one angle per rotation
-_layergradient(theta::Number, rotation_grads) = sum(rotation_grads)
-_layergradient(thetas, rotation_grads) = rotation_grads
+# the gradient of a layer from those of its parametrized rotations: a number for a number as its parameter
+_layergradient(param::Number, rotation_grads) = only(rotation_grads)
+_layergradient(params, rotation_grads) = rotation_grads
 
 
 # The operator of `prop_cache` with its dual: every Pauli string keeps its coefficient and gets the overlap it has on its
@@ -184,9 +190,9 @@ truncatemincoeff(coeff::_DualCoeff, min_abs_coeff::Real) = truncatemincoeff(coef
 PropagationBase.tonumber(coeff::_DualCoeff) = coeff.coeff
 PropagationBase.numcoefftype(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO
 
-# The classes of a RotationLayer are rotated with these coefficients as with numbers, and a Pauli string makes its partner
+# The classes of a layer of Pauli rotations are rotated with these coefficients as with numbers, and a Pauli string makes its partner
 # only if the coefficient of the operator can reach the truncation threshold.
-_rotatesinclasses(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO <: Number && CD <: Number
+PropagationBase._rotatesinclasses(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO <: Number && CD <: Number
 Base.abs(coeff::_DualCoeff) = abs(coeff.coeff)
 
 
@@ -352,23 +358,27 @@ end
 end
 
 
-### Undoing a RotationLayer class by class
+### Undoing a layer of Pauli rotations class by class
 
 # Undoes the rotations of a layer as `_applylayer!` applies them, on the operator that carries the dual beside its
-# coefficients, and returns the gradient of every rotation: what the pairs of Pauli strings that it mixes contribute,
-# added up over the classes.
-function _undolayer!(layer::RotationLayer, cache, theta, truncfunc::F, min_abs_coeff::Real; thread::Bool=true) where {F}
-    rotation_grads = zeros(length(layer.qinds))
-    workspace = _takeworkspace(paulitype(cache), coefftype(cache))
+# coefficients, and returns the gradient of every parametrized rotation: what the pairs of Pauli strings that it mixes
+# contribute, added up over the classes.
+function _undolayer!(layer::GateLayer, cache, params, truncfunc::F, min_abs_coeff::Real; thread::Bool=true) where {F}
+    rotations, angles = _rotationsandangles(layer, params)
+    rotation_grads = zeros(length(rotations))
+    TT = paulitype(cache)
+    CT = coefftype(cache)
+    workspace = PropagationBase._takeworkspace(TT, CT, PropagationBase.ClassScratch{TT,CT})
     try
-        for rotations in _classpasses(layer)
-            plan = _prepareclasses(layer, theta, paulitype(cache), coefftype(cache), nqubits(cache), rotations; min_abs_coeff)
+        for pass in _classpasses(rotations)
+            plan = _prepareclasses(rotations, angles, TT, CT, nqubits(cache), pass; min_abs_coeff)
             _undopass!(cache, plan, truncfunc, workspace, rotation_grads; thread)
         end
     finally
-        _putbackworkspace!(workspace)
+        PropagationBase._putbackworkspace!(workspace)
     end
-    return rotation_grads
+    is_parametrized = [gate isa ParametrizedGate for gate in layer.gates]
+    return rotation_grads[is_parametrized]
 end
 
 # One pass as `_applypass!` makes it, in which every task adds up the gradients of the rotations in its own workspace,
@@ -377,22 +387,22 @@ function _undopass!(cache, plan, truncfunc::F, workspace, rotation_grads; thread
     if length(cache) == 0
         return rotation_grads
     end
-    sources = _recordsources(StorageType(cache), cache, workspace, thread)
+    sources = PropagationBase._recordsources(StorageType(cache), cache, workspace, thread)
     n_tasks = length(sources)
-    tasks = _ensurecount!(workspace.tasks, n_tasks)
+    tasks = PropagationBase._ensurecount!(workspace.tasks, n_tasks)
     for task_id in 1:n_tasks
-        fill!(resize!(tasks[task_id].gradient, length(rotation_grads)), 0.0)
+        fill!(resize!(tasks[task_id].scratch.gradient, length(rotation_grads)), 0.0)
     end
 
-    classlabel(pstr) = _classlabel(plan, pstr)
-    function rotategroup!(sink, task, group_terms, group_coeffs)
-        _rotategroup!(_GradientSink(sink, task.gradient), task, plan, truncfunc, group_terms, group_coeffs)
+    classlabel(pstr) = PropagationBase._classlabel(plan, pstr)
+    function rotategroup!(sink, scratch, group_terms, group_coeffs)
+        PropagationBase._rotategroup!(_GradientSink(sink, scratch.gradient), scratch, plan, truncfunc, group_terms, group_coeffs)
         return sink
     end
-    _applytogroups!(classlabel, rotategroup!, cache, workspace, sources, thread)
+    PropagationBase._applytogroups!(classlabel, rotategroup!, cache, workspace, sources, thread)
 
     for task_id in 1:n_tasks
-        rotation_grads .+= tasks[task_id].gradient
+        rotation_grads .+= tasks[task_id].scratch.gradient
     end
     return rotation_grads
 end
@@ -404,14 +414,14 @@ struct _GradientSink{ST}
     gradient::Vector{Float64}
 end
 
-@inline function _emit!(gradient_sink::_GradientSink, pstr, coeff)
-    _emit!(gradient_sink.sink, pstr, coeff)
+@inline function PropagationBase._emit!(gradient_sink::_GradientSink, pstr, coeff)
+    PropagationBase._emit!(gradient_sink.sink, pstr, coeff)
     return
 end
 
 # Each of the two contributes its coefficient in the operator times the dual coefficient of the other, with the sign that
 # the rotation gives the other, as every Pauli string does in `_generatorcommutatordot`.
-@inline function _addgradient!(gradient_sink::_GradientSink, rotation::Int, coeff::_DualCoeff, partner_coeff::_DualCoeff,
+@inline function PropagationBase._addgradient!(gradient_sink::_GradientSink, rotation::Int, coeff::_DualCoeff, partner_coeff::_DualCoeff,
     sign_to_partner, sign_from_partner)
 
     gradient_sink.gradient[rotation] += real(sign_to_partner * coeff.coeff * partner_coeff.dual) +

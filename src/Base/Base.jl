@@ -122,7 +122,8 @@ export
     Gate,
     StaticGate,
     ParametrizedGate,
-    countparameters
+    countparameters,
+    qinds
 
 include("./countterms.jl")
 
@@ -156,6 +157,9 @@ export
     xormerge!,
     xormergeandtruncate!,
     xorbranchmergeandtruncate!
+
+include("./Layers/Layers.jl")
+export GateLayer
 
 include("./MonteCarlo/MonteCarlo.jl")
 export

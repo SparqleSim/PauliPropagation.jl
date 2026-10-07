@@ -72,9 +72,9 @@ function _toheisenberg(gate::FrozenGate)
     return freeze(gate_heisenberg, param_heisenberg)
 end
 
-# The rotations of a `RotationLayer` are applied in reverse like the gates of the circuit.
-function _toheisenberg(layer::RotationLayer, theta)
-    return RotationLayer(layer.symbols, reverse(layer.qinds)), _reverseangles(theta)
+# The gates of a `GateLayer` are applied in reverse like the gates of the circuit, each in the Heisenberg picture.
+function _toheisenberg(layer::GateLayer, params)
+    return _transformlayer(toheisenberg, layer, params)
 end
 
 # ImaginaryPauliRotation are currently actively disallowed in Heisenberg picture
@@ -141,10 +141,22 @@ function _toschrodinger(gate::PauliRotation, θ)
 end
 
 
-# Method to transpose a `RotationLayer` gate for Schrödinger picture propagation.
-# This inverts the sign of every angle, as for a `PauliRotation`.
-function _toschrodinger(layer::RotationLayer, theta)
-    return layer, -theta
+# Method to transpose a `GateLayer` for Schrödinger picture propagation, by transposing each of its gates.
+function _toschrodinger(layer::GateLayer, params)
+    return _transformlayer(toschrodinger, layer, params)
+end
+
+# The layer of the gates of `layer` that `transform`, `toheisenberg` or `toschrodinger`, returns for them as a circuit,
+# with their parameters.
+function _transformlayer(transform::F, layer::GateLayer, params) where {F}
+    gates, gate_params = transform(layer.gates, params)
+    return GateLayer(gates; guaranteed_commutes=layer.guaranteed_commutes), gate_params
+end
+
+# A number as the parameter of a layer with one parametrized gate stays a number.
+function _transformlayer(transform::F, layer::GateLayer, param::Number) where {F}
+    new_layer, gate_params = _transformlayer(transform, layer, [param])
+    return new_layer, only(gate_params)
 end
 
 

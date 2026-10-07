@@ -33,6 +33,8 @@ using Random
 
     include("test_rotationlayers.jl")
 
+    include("test_gatelayers.jl")
+
     include("test_imaginary.jl")
 
     include("test_paulioperations.jl")
