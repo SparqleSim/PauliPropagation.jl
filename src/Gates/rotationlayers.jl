@@ -45,7 +45,7 @@ function _commutationcheck(rotations::Vector{PauliRotation}, ::Type{TT}) where {
         if !commutes(generators[index1], generators[index2])
             throw(ArgumentError(
                 "The rotations of a `PauliRotationLayer` must commute with each other. " *
-                "The rotations on the qubits $(rotations[index1].qinds) and $(rotations[index2].qinds) do not."
+                "The rotations $index1 and $index2 of the layer, $(rotations[index1]) and $(rotations[index2]), do not."
             ))
         end
     end

@@ -149,12 +149,14 @@ end
 # The layer of the gates of `layer` that `transform`, `toheisenberg` or `toschrodinger`, returns for them as a circuit,
 # with their parameters.
 function _transformlayer(transform::F, layer::GateLayer, params) where {F}
+    PropagationBase._checklayerparameters(layer, params)
     gates, gate_params = transform(layer.gates, params)
     return GateLayer(gates; guaranteed_commutes=layer.guaranteed_commutes), gate_params
 end
 
 # A number as the parameter of a layer with one parametrized gate stays a number.
 function _transformlayer(transform::F, layer::GateLayer, param::Number) where {F}
+    PropagationBase._checklayerparameters(layer, param)
     new_layer, gate_params = _transformlayer(transform, layer, [param])
     return new_layer, only(gate_params)
 end

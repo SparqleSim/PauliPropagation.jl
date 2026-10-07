@@ -140,8 +140,8 @@ function _checklayerparameters(layer::GateLayer, params)
     end
     if !is_valid
         throw(ArgumentError(
-            "The parameter of a `GateLayer` is a vector with one entry per parametrized gate, here $n_params, " *
-            "or a number if there is one. Got $params."
+            "The parameter of a `GateLayer` is a vector with one entry per parametrized gate. " *
+            "Got $n_params gates but parameter $params."
         ))
     end
 end
