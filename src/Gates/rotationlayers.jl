@@ -5,11 +5,9 @@
 # A layer is propagated as a whole, which is faster than propagating its rotations one after the other: class by class,
 # as PropagationBase applies a layer of commuting rotations (Base/Layers/classes.jl). A Pauli rotation acts on the Pauli
 # strings that anticommute with its generator, that is whose Paulis anticommute with those of the generator on an odd
-# number of qubits, and flips the bits of the generator on them. The Pauli strings that anticommute with the same
-# rotations of the layer, and agree on what those rotations leave unchanged, form a class. Below a layer is routed, split
-# into passes and the plan of a pass prepared, followed by how the classes are found: the reader of the rotations that
-# anticommute with a Pauli string, the key of a class and its key bits, and the signs of the two Pauli strings that a
-# rotation mixes.
+# number of qubits, and flips the bits of the generator on them. Below a layer is routed and its plan prepared, followed
+# by the reader of the rotations that anticommute with a Pauli string and the bits they flip, and the signs of the two
+# Pauli strings that a rotation mixes.
 ##
 ###
 
@@ -20,7 +18,7 @@
 Returns a `GateLayer` of the Pauli rotations `rotations`.
 With `symbols` and `qinds`, the layer holds one `PauliRotation(symbols, qinds[i])` for every entry of `qinds`.
 For example PauliRotationLayer(:X, 1:4) or PauliRotationLayer([:Z, :Z], staircasetopology(4)).
-The rotations act on one or two qubits each, on any qubits and in any order, and need to commute with each other.
+The rotations act on any qubits and in any order, and need to commute with each other.
 The parameter of the layer is a vector with one angle per rotation, or a number for a layer of one rotation.
 In the Schrödinger picture, the rotations are applied in the order of `rotations` or `qinds`, with truncation after each.
 """
@@ -31,20 +29,8 @@ end
 
 function PauliRotationLayer(rotations)
     rotations = PauliRotation[rotation for rotation in rotations]
-
-    for rotation in rotations
-        _rotationlayerweightcheck(rotation)
-    end
-
     _commutationcheck(rotations)
-
     return GateLayer(rotations; guaranteed_commutes=true)
-end
-
-function _rotationlayerweightcheck(rotation::PauliRotation)
-    if !(1 <= length(rotation.qinds) <= 2)
-        throw(ArgumentError("`PauliRotationLayer` is defined for rotations on one or two qubits. Got one on the qubits $(rotation.qinds)."))
-    end
 end
 
 function _commutationcheck(rotations::Vector{PauliRotation})
@@ -74,9 +60,9 @@ end
 _haslayerfastpath(layer::GateLayer, prop_cache::AbstractPropagationCache) =
     all(_haslayerfastpath, layer.gates) && PropagationBase._canrotateclasses(prop_cache)
 
-# whether a gate is applied on the fast path of a layer: a Pauli rotation on one or two qubits, frozen or not
+# whether a gate is applied on the fast path of a layer: a Pauli rotation, frozen or not
 _haslayerfastpath(gate::Gate) = false
-_haslayerfastpath(gate::PauliRotation) = length(gate.qinds) <= 2
+_haslayerfastpath(gate::PauliRotation) = true
 _haslayerfastpath(gate::FrozenGate) = _haslayerfastpath(gate.gate)
 
 # the Pauli rotations of a layer and their angles, those of frozen rotations included
@@ -94,71 +80,24 @@ function _rotationsandangles(layer::GateLayer, params)
 end
 
 
-### The passes of a layer
-
-# The rotations of the layer that each pass rotates class by class, as runs of the layer's order in which no qubit is
-# acted on with two different Paulis: all of them in one pass for most layers. The key of a class keeps, on every qubit
-# that its rotations act on with one Pauli, whether the string anticommutes with that Pauli there, and so tells apart
-# strings that anticommute with different rotations. A qubit acted on with two Paulis keeps neither, so strings with
-# different rotations could share a key there. In a layer of commuting rotations that happens for rotations on the same
-# two qubits, as XZ on (1, 2) and on (2, 1), or XX and ZZ on (1, 2).
-function _classpasses(rotations::Vector{PauliRotation})
-    passes = UnitRange{Int}[]
-    pauli_on_qubit = Dict{Int,Symbol}()
-    first_rotation = 1
-    for (index, rotation) in enumerate(rotations)
-        if any(((symbol, qind),) -> get(pauli_on_qubit, qind, symbol) != symbol, zip(rotation.symbols, rotation.qinds))
-            push!(passes, first_rotation:index-1)
-            empty!(pauli_on_qubit)
-            first_rotation = index
-        end
-        for (symbol, qind) in zip(rotation.symbols, rotation.qinds)
-            pauli_on_qubit[qind] = symbol
-        end
-    end
-    push!(passes, first_rotation:length(rotations))
-    return passes
-end
-
-
-### The plan of a pass
+### The plan of a layer
 
 # The plan of rotating the classes of Pauli strings of the type `TT` with coefficients of the type `CT` on `nqubits`
-# qubits by the rotations `rotations[pass]` with the `angles`, by default all of them, where coefficients below
-# `min_abs_coeff` are truncated.
-function _prepareclasses(rotations::Vector{PauliRotation}, angles, ::Type{TT}, ::Type{CT}, nqubits::Int, pass=eachindex(rotations);
+# qubits by the rotations `rotations` with the `angles`, where coefficients below `min_abs_coeff` are truncated.
+function _prepareclasses(rotations::Vector{PauliRotation}, angles, ::Type{TT}, ::Type{CT}, nqubits::Int;
     min_abs_coeff::Real=0) where {TT,CT}
 
-    n_rotations = length(rotations)
-
-    masks = zeros(TT, n_rotations)
-    qinds = fill((0, 0), n_rotations)
-    # where `_gatherpaulis` reads the Paulis of a rotation: a rotation on one qubit names its qubit twice, which its signs do
-    # not see, since its generator holds the identity in the upper half of the local Paulis
-    shifts = fill((0, 0), n_rotations)
-    # the Paulis of the generator of every rotation, that on its first qubit in the lower two bits
-    local_masks = zeros(UInt8, n_rotations)
-    for rotation in pass
-        rotation_qinds = rotations[rotation].qinds
-        rotation_symbols = rotations[rotation].symbols
-        _check_qind_range(nqubits, rotation_qinds)
-        masks[rotation] = symboltoint(TT, rotation_symbols, rotation_qinds)
-        qinds[rotation] = (rotation_qinds[1], get(rotation_qinds, 2, 0))
-        shifts[rotation] = (_bitshiftfromsiteindex(first(rotation_qinds)), _bitshiftfromsiteindex(last(rotation_qinds)))
-        first_pauli = UInt8(symboltoint(rotation_symbols[1]))
-        second_pauli = UInt8(symboltoint(get(rotation_symbols, 2, :I)))
-        local_masks[rotation] = first_pauli | (second_pauli << 2)
+    for rotation in rotations
+        _check_qind_range(nqubits, rotation.qinds)
     end
-
-    # the signs of every generator on one or two qubits, by its local Paulis
-    sign_tables = [_signsfor(CT, _localsigns(UInt8(local_mask))) for local_mask in 0:15]
-    signs = _rotationsigns(sign_tables, local_masks, shifts)
-    reader = _classreader(pass, masks, qinds, local_masks, TT, nqubits)
+    masks = [symboltoint(TT, rotation.symbols, rotation.qinds) for rotation in rotations]
+    signs = _rotationsigns(rotations, masks, _signtype(CT))
+    reader = _classreader(rotations, masks, TT, nqubits)
     return PropagationBase.ClassPlan(masks, angles, signs, reader; min_abs_coeff)
 end
 
 
-### Readers: the rotations that anticommute with a string, and the qubits they act on
+### Readers: the rotations that anticommute with a string, and the bits they flip
 
 # A layer whose rotations fall into more groups than this is read through byte tables instead.
 const _MAX_ROTATION_GROUPS = 4
@@ -177,36 +116,36 @@ struct _RotationGroup{TT}
     rotation_at_lower::Vector{Int32}
 end
 
-# Finds the rotations that anticommute with a string, as the bits of their positions in a tuple of `W` words, and the low
-# bits of the qubits that those rotations act on with X, with Y and with Z, which the key of a class is reduced on. A
-# layer whose rotations fall into few groups is read group by group from the whole string at once. Any other layer is read
-# through the byte tables of PropagationBase, from the generators with their two bits swapped on every qubit: a string
-# anticommutes with a rotation if the bits where the string and the swapped generator are both set are odd in number.
+# Finds the rotations that anticommute with a string, as the bits of their positions in a tuple of `W` words, and the
+# bits that those rotations flip. A layer whose rotations act on one or two qubits each and fall into few groups is read
+# group by group from the whole string at once. Any other layer is read through the byte tables of PropagationBase, from
+# the generators with their two bits swapped on every qubit: a string anticommutes with a rotation if the bits where the
+# string and the swapped generator are both set are odd in number.
 struct _ClassReader{TT,W}
     reads_in_groups::Bool
-
-    # the low and the high bit of the Pauli that the rotations act with on every qubit, both at the low bit, and the groups
-    pauli_low_bits::TT
-    pauli_high_bits::TT
     groups::Vector{_RotationGroup{TT}}
 
-    # the byte tables, with the qubits that every rotation acts on
-    tables::PropagationBase.TableReader{TT,W,NTuple{3,TT}}
+    # the byte tables, with the bits that every rotation flips
+    tables::PropagationBase.TableReader{TT,W}
 end
 
-function _classreader(pass, masks::Vector{TT}, qinds, local_masks::Vector{UInt8}, ::Type{TT}, nqubits::Int) where {TT}
+function _classreader(rotations::Vector{PauliRotation}, masks::Vector{TT}, ::Type{TT}, nqubits::Int) where {TT}
     n_words = cld(length(masks), 64)
-    # the generators of the rotations together, which within a pass act on every qubit with one Pauli
-    paulis = zero(TT)
     group_ids = Dict{Tuple{Int,UInt8,UInt8},Int}()
     groups = _RotationGroup{TT}[]
     shared_lower_qubit = false
+    on_more_qubits = false
 
-    for rotation in pass
-        paulis |= masks[rotation]
-        first_qind, second_qind = qinds[rotation]
-        first_pauli = local_masks[rotation] & 0x03
-        second_pauli = local_masks[rotation] >> 2
+    for rotation in eachindex(rotations)
+        qinds = rotations[rotation].qinds
+        symbols = rotations[rotation].symbols
+        if length(qinds) > 2
+            on_more_qubits = true
+            continue
+        end
+        first_qind, second_qind = qinds[1], get(qinds, 2, 0)
+        first_pauli = UInt8(symboltoint(symbols[1]))
+        second_pauli = UInt8(symboltoint(get(symbols, 2, :I)))
 
         shift, lower_pauli, upper_pauli, lower_qind = if second_qind == 0
             0, first_pauli, 0x00, first_qind
@@ -231,20 +170,14 @@ function _classreader(pass, masks::Vector{TT}, qinds, local_masks::Vector{UInt8}
             group.rotation_at_lower)
     end
 
-    reads_in_groups = _readsingroups(groups) && !shared_lower_qubit
+    reads_in_groups = !on_more_qubits && _readsingroups(groups) && !shared_lower_qubit
 
-    untouched = (zero(TT), zero(TT), zero(TT))
     tables = if reads_in_groups
-        PropagationBase.TableReader{TT,n_words,NTuple{3,TT}}(NTuple{n_words,UInt64}[], NTuple{3,TT}[], untouched)
+        PropagationBase.TableReader{TT,n_words}(NTuple{n_words,UInt64}[], TT[])
     else
-        touched = fill(untouched, length(masks))
-        for rotation in pass
-            touched[rotation] = _rotationtouches(local_masks[rotation], qinds[rotation], TT)
-        end
-        PropagationBase.TableReader(pass, _commutationmask.(masks), touched, untouched)
+        PropagationBase.TableReader(_commutationmask.(masks), masks)
     end
-    low_bits = alternatingmask(paulis)
-    return _ClassReader{TT,n_words}(reads_in_groups, paulis & low_bits, _shiftdown(paulis, 1) & low_bits, groups, tables)
+    return _ClassReader{TT,n_words}(reads_in_groups, groups, tables)
 end
 
 # the generator of a rotation with its two bits swapped on every qubit, with which a Pauli string shares an odd number of
@@ -254,32 +187,18 @@ function _commutationmask(mask::TT) where {TT}
     return ((mask >> 1) & low_bits) | ((mask & low_bits) << 1)
 end
 
-# the low bits of the qubits that a rotation with the Paulis `local_mask` on the qubits `qinds` acts on, by Pauli
-function _rotationtouches(local_mask::UInt8, qinds::Tuple{Int,Int}, ::Type{TT}) where {TT}
-    first_qind, second_qind = qinds
-    touched = _touch((zero(TT), zero(TT), zero(TT)), local_mask & 0x03, symboltoint(TT, :X, first_qind))
-    if second_qind != 0
-        touched = _touch(touched, local_mask >> 2, symboltoint(TT, :X, second_qind))
-    end
-    return touched
-end
-
-# the positions of the rotations that anticommute with `pstr`, and the low bits of the qubits that those rotations act on
-# with X, with Y and with Z
+# the positions of the rotations that anticommute with `pstr`, and the bits that those rotations flip
 @inline function PropagationBase._branchinggates(reader::_ClassReader{TT,W}, pstr::TT) where {TT,W}
     if !reader.reads_in_groups
         return PropagationBase._branchinggates(reader.tables, pstr)
     end
 
-    candidates = _candidates(reader, pstr)
+    low, high = _qubitbits(pstr)
     positions = ntuple(_ -> zero(UInt64), Val(W))
-    touched = (zero(TT), zero(TT), zero(TT))
+    flipped = zero(TT)
     for group in reader.groups
-        anticommuting = _groupanticommuting(group, candidates)
-        touched = _touch(touched, group.lower_pauli, anticommuting)
-        if group.shift != 0
-            touched = _touch(touched, group.upper_pauli, _shiftup(anticommuting, group.shift))
-        end
+        anticommuting = _groupanticommuting(group, low, high)
+        flipped |= _groupflips(group, anticommuting)
         limbs = PropagationBase._limbs(anticommuting)
         for limb_index in eachindex(limbs)
             limb = limbs[limb_index]
@@ -290,59 +209,67 @@ end
             end
         end
     end
-    return positions, touched
+    return positions, flipped
 end
 
-# the low bits of the qubits that the rotations anticommuting with `pstr` act on with X, with Y and with Z
-@inline function PropagationBase._touchedbits(reader::_ClassReader{TT}, pstr::TT) where {TT}
+# the bits that the rotations anticommuting with `pstr` flip, read group by group without their positions
+@inline function PropagationBase._flippedbits(reader::_ClassReader{TT}, pstr::TT) where {TT}
     if !reader.reads_in_groups
-        return PropagationBase._touchedbits(reader.tables, pstr)
+        return PropagationBase._flippedbits(reader.tables, pstr)
     end
 
-    candidates = _candidates(reader, pstr)
-    touched = (zero(TT), zero(TT), zero(TT))
+    low, high = _qubitbits(pstr)
+    flipped = zero(TT)
     for group in reader.groups
-        anticommuting = _groupanticommuting(group, candidates)
-        touched = _touch(touched, group.lower_pauli, anticommuting)
-        if group.shift != 0
-            touched = _touch(touched, group.upper_pauli, _shiftup(anticommuting, group.shift))
-        end
+        flipped |= _groupflips(group, _groupanticommuting(group, low, high))
     end
-    return touched
+    return flipped
 end
 
-# the low bit of every qubit in `low_bits`, added to the qubits that rotations act on with the Pauli `pauli`
-@inline function _touch(touched::NTuple{3,TT}, pauli::UInt8, low_bits::TT) where {TT}
-    touched_x, touched_y, touched_z = touched
-    if pauli == 0x01
-        touched_x |= low_bits
-    elseif pauli == 0x02
-        touched_y |= low_bits
-    elseif pauli == 0x03
-        touched_z |= low_bits
+# the bits that the rotations of the group flip whose lower qubits have their low bits in `anticommuting`
+@inline function _groupflips(group::_RotationGroup{TT}, anticommuting::TT) where {TT}
+    flipped = _paulibits(group.lower_pauli, anticommuting)
+    if group.shift != 0
+        flipped |= _paulibits(group.upper_pauli, _shiftup(anticommuting, group.shift))
     end
-    return (touched_x, touched_y, touched_z)
+    return flipped
 end
 
-# The low bit of every qubit on which `pstr` anticommutes with the Pauli that the rotations act with there. Two Paulis
-# anticommute where the low bit of one and the high bit of the other are set an odd number of times.
-@inline function _candidates(reader::_ClassReader, pstr)
-    return (pstr & reader.pauli_high_bits) ⊻ (_shiftdown(pstr, 1) & reader.pauli_low_bits)
+# the bits of the Pauli `pauli` on every qubit whose low bit is in `low_bits`
+@inline function _paulibits(pauli::UInt8, low_bits::TT) where {TT}
+    low = ifelse(pauli & 0x01 != 0x00, low_bits, zero(TT))
+    high = ifelse(pauli & 0x02 != 0x00, _shiftup(low_bits, 1), zero(TT))
+    return low | high
 end
 
-# the low bit of the lower qubit of every rotation of the group that anticommutes with the string of `candidates`
-@inline function _groupanticommuting(group::_RotationGroup, candidates)
+# the low and the high bit of every qubit of `pstr`, both at the low bit
+@inline function _qubitbits(pstr)
+    low_bits = alternatingmask(pstr)
+    return pstr & low_bits, _shiftdown(pstr, 1) & low_bits
+end
+
+# The low bit of every qubit on which the Pauli string of the bits `low` and `high` anticommutes with the Pauli `pauli`.
+# Two Paulis anticommute where the low bit of one and the high bit of the other are set an odd number of times.
+@inline function _anticommutingqubits(pauli::UInt8, low::TT, high::TT) where {TT}
+    return ifelse(pauli & 0x02 != 0x00, low, zero(TT)) ⊻ ifelse(pauli & 0x01 != 0x00, high, zero(TT))
+end
+
+# the low bit of the lower qubit of every rotation of the group that anticommutes with the Pauli string of the bits
+# `low` and `high`
+@inline function _groupanticommuting(group::_RotationGroup, low, high)
+    lower = _anticommutingqubits(group.lower_pauli, low, high)
     if group.shift == 0
-        return candidates & group.lower_mask
-    else
-        # a rotation on two qubits anticommutes if the Pauli string anticommutes with it on exactly one of them
-        return (candidates ⊻ _shiftdown(candidates, group.shift)) & group.lower_mask
+        return lower & group.lower_mask
     end
+    # a rotation on two qubits anticommutes if the Pauli string anticommutes with it on exactly one of them
+    upper = _anticommutingqubits(group.upper_pauli, low, high)
+    return (lower ⊻ _shiftdown(upper, group.shift)) & group.lower_mask
 end
 
 # Shifts of a whole Pauli string. Below 64 bits, a shift only moves bits between neighbouring limbs.
-@inline _shiftdown(pstr, shift::Int) = pstr >> shift
-@inline _shiftup(pstr, shift::Int) = pstr << shift
+# The shifts are never negative, so an unsigned shift needs no code for the other direction.
+@inline _shiftdown(pstr, shift::Int) = pstr >> (shift % UInt)
+@inline _shiftup(pstr, shift::Int) = pstr << (shift % UInt)
 
 @inline function _shiftdown(pstr::NTupleInteger{N}, shift::Int) where {N}
     if !(0 <= shift < 64)
@@ -363,79 +290,43 @@ end
 end
 
 
-### Keys
-
-# The Pauli string with every qubit that the rotations it anticommutes with act on reduced to what they leave unchanged:
-# X leaves the high bit, Y the low bit and Z the parity of the two, and a qubit acted on with two different Paulis is cleared.
-# All Pauli strings of a class have the same key. Within a pass no qubit is acted on with two different Paulis, so
-# reducing a string on the qubits that another string's rotations touch only multiplies it by Paulis that commute with
-# every rotation: two strings have the same key that way only if they anticommute with the same rotations.
-@inline function PropagationBase._classkey(pstr::TT, touched::NTuple{3,TT}) where {TT}
-    touched_x, touched_y, touched_z = touched
-    mixed = (touched_x & touched_y) | (touched_x & touched_z) | (touched_y & touched_z)
-    key = pstr & ~(mixed | _shiftup(mixed, 1))
-    key &= ~(touched_x & ~mixed)
-    key &= ~_shiftup(touched_y & ~mixed, 1)
-    low_z = key & touched_z & ~mixed
-    return key ⊻ (low_z | _shiftup(low_z, 1))
-end
-
-# The bits that tell the strings of a class apart, on the qubits that its rotations touch: the low bit where they touch
-# with X or Z, the high bit where they touch with Y, and both where with two Paulis.
-@inline function PropagationBase._keybits(touched::NTuple{3,TT}) where {TT}
-    touched_x, touched_y, touched_z = touched
-    mixed = (touched_x & touched_y) | (touched_x & touched_z) | (touched_y & touched_z)
-    return touched_x | touched_z | mixed | _shiftup(touched_y | mixed, 1)
-end
-
-
 ### Signs
 
-# the sign a rotation gives the Pauli string it creates from each combination of Paulis on its qubits, 0 where it commutes with them
-function _localsigns(local_mask::UInt8)
-    function sign_of(index)
-        paulis = UInt8(index - 1)
-        if commutes(local_mask, paulis)
-            return Int8(0)
-        end
-        _, sign = paulirotationproduct(local_mask, paulis)
-        return Int8(sign)
-    end
-    return ntuple(sign_of, 16)
+# The type that the signs take for coefficients of the type `CT`: the real type of floating-point coefficients, which
+# they multiply as the integers do, so that they are not converted for every entry, and integers otherwise.
+_signtype(::Type{CT}) where {CT<:Union{AbstractFloat,Complex{<:AbstractFloat}}} = real(CT)
+_signtype(::Type) = Int8
+
+# The signs of the pairs that a rotation on more than one qubit mixes, read from the lower Pauli string of a pair: the
+# sign that the rotation gives the partner it makes of that string, as `paulirotationproduct` gives it, and the opposite
+# sign, which it gives that string as made of the partner. The sign is read limb by limb for strings of any width.
+struct _ProductSigns{N,ST}
+    generator::NTupleInteger{N}
 end
 
-# The signs as the real type of floating-point coefficients, which they multiply as the integers do, so that they are not
-# converted for every entry.
-_signsfor(::Type{CT}, signs) where {CT<:Union{AbstractFloat,Complex{<:AbstractFloat}}} = map(sign -> convert(real(CT), sign), signs)
-_signsfor(::Type, signs) = signs
-
-# the signs that a generator on two qubits gives every combination of Paulis there, and where those are read
-struct _GeneratorSigns{ST}
-    signs::NTuple{16,ST}
-    local_mask::Int
-    shifts::Tuple{Int,Int}
+@inline function PropagationBase._pairsigns(product_signs::_ProductSigns{N,ST}, lower_pstr) where {N,ST}
+    exponent = _calculatesignexponent(product_signs.generator, NTupleInteger{N}(PropagationBase._limbs(lower_pstr)))
+    sign = (exponent & 2) - 1
+    return (ST(sign), ST(-sign))
 end
 
-# The signs of every rotation, which `PropagationBase._pairsigns` reads: those of its generator, read for every pair of a
-# rotation on two qubits, and the same two for every pair of a rotation on one qubit, which leaves every Pauli string of
-# its class with one of two Paulis there, the lower entry of a pair with the one whose key bit is clear.
-function _rotationsigns(sign_tables::Vector{NTuple{16,R}}, local_masks::Vector{UInt8}, shifts) where {R}
-    signs = Vector{Union{Tuple{R,R},_GeneratorSigns{R}}}(undef, length(local_masks))
-    for rotation in eachindex(local_masks)
-        local_mask = local_masks[rotation]
-        rotation_signs = sign_tables[local_mask+1]
-        signs[rotation] = if local_mask >> 2 == 0x00
-            lower_paulis = (local_mask & 0x03) == 0x02 ? 0x01 : 0x02
-            (rotation_signs[lower_paulis+1], rotation_signs[(lower_paulis⊻local_mask)+1])
+# The signs of every rotation, which `PropagationBase._pairsigns` reads: those of its products with the lower Pauli
+# strings of its pairs, and for a rotation on one qubit the same two for every pair, since it leaves every Pauli string
+# of its class with one of two Paulis there, the lower entry of a pair with the one whose key bit is clear. Every rotation
+# acting on that qubit acts with the same Pauli, so the pivot of the echelon basis there is the lowest bit of that Pauli:
+# the low bit of X and Z and the high bit of Y.
+function _rotationsigns(rotations::Vector{PauliRotation}, masks::Vector{TT}, ::Type{ST}) where {TT,ST}
+    n_limbs = length(PropagationBase._limbs(zero(TT)))
+    signs = Vector{Union{Tuple{ST,ST},_ProductSigns{n_limbs,ST}}}(undef, length(rotations))
+    for rotation in eachindex(rotations)
+        signs[rotation] = if length(rotations[rotation].qinds) == 1
+            pauli = UInt8(symboltoint(only(rotations[rotation].symbols)))
+            lower_pauli = pauli == 0x02 ? 0x01 : 0x02
+            _, sign = paulirotationproduct(pauli, lower_pauli)
+            (ST(sign), ST(-sign))
         else
-            _GeneratorSigns(rotation_signs, Int(local_mask), shifts[rotation])
+            _ProductSigns{n_limbs,ST}(NTupleInteger{n_limbs}(PropagationBase._limbs(masks[rotation])))
         end
     end
     return signs
-end
-
-# the signs that the rotation gives the partner of the lower Pauli string of a pair and the lower string, from its Paulis
-@inline function PropagationBase._pairsigns(generator_signs::_GeneratorSigns, lower_pstr)
-    paulis = _gatherpaulis(lower_pstr, generator_signs.shifts)
-    return (generator_signs.signs[paulis+1], generator_signs.signs[(paulis⊻generator_signs.local_mask)+1])
 end

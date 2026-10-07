@@ -4,7 +4,7 @@ include("gatelayer.jl")
 # grouppass.jl applies a function to the terms of a sum grouped by a label, in one pass over the sum.
 include("grouppass.jl")
 
-# classes.jl applies a layer of commuting rotations class by class: the plan of a pass, what a basis provides, and the classes.
+# classes.jl applies a layer of commuting rotations class by class: the plan of a layer, what a basis provides, and the classes.
 include("classes.jl")
 
 # classtables.jl rotates a class of many key bits in a table of its own.

@@ -309,19 +309,22 @@ end
         nq = 6
         circuit = Gate[
             PauliRotationLayer(:X, 1:nq),
+            # rotations on three qubits
+            PauliRotationLayer([PauliRotation([:Z, :Z, :Z], [1, 2, 3]), PauliRotation([:Y, :X, :Y], [4, 5, 6]), PauliRotation([:X, :X], [1, 2])]),
             CliffordGate(:H, [3]),
             PauliRotationLayer([:Z, :Z], staircasetopology(nq)),
             PauliRotation(:X, 4),
             PauliRotationLayer([:X, :Y], [(1, 2), (4, 5)]),
             freeze(PauliRotationLayer(:Z, 1:nq), fill(0.35, nq)),
             PauliRotationLayer(:Y, nq:-1:1),
-            # swapped pairs, which the layer applies in two passes
+            # swapped pairs, which act on their qubits with two different Paulis
             PauliRotationLayer([:X, :Z], [(1, 2), (2, 1), (4, 5), (5, 4)]),
             # a generator of its own for every rotation, and a frozen rotation
             GateLayer([PauliRotation(:X, 1), PauliRotation([:Z, :Y], [2, 3]), PauliRotation(:Y, 4, 0.2), PauliRotation([:X, :X], [5, 6])]),
         ]
         # one angle per rotation, and none for the frozen layer and the frozen rotation
-        params = Any[fill(0.3, nq), [0.1 * i for i in 1:nq-1], -0.4, [0.5, -0.2], fill(0.25, nq), [0.3, -0.2, 0.15, 0.4], [0.35, -0.15, 0.45]]
+        params = Any[fill(0.3, nq), [0.2, -0.3, 0.25], [0.1 * i for i in 1:nq-1], -0.4, [0.5, -0.2], fill(0.25, nq), [0.3, -0.2, 0.15, 0.4],
+            [0.35, -0.15, 0.45]]
 
         # A dense state gives every Pauli string an overlap, and Z on every qubit puts every rotation in the light cone, so
         # that no gradient entry is zero.

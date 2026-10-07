@@ -79,7 +79,7 @@ end
     applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params; thread=true, kwargs...)
 
 Overload of `applymergetruncate!` for a `GateLayer` on Pauli strings.
-A layer of Pauli rotations on one or two qubits each, frozen ones included, propagates a Pauli sum with numbers as coefficients class by class:
+A layer of Pauli rotations, frozen ones included, propagates a Pauli sum with numbers as coefficients class by class:
 the Pauli strings that anticommute with the same rotations are collected, and the rotations are applied to them one at a time.
 The truncations are applied after every rotation, so the result is that of the rotations propagated one after the other, in the order of the layer.
 A `VectorPauliSum` is left without duplicate Pauli strings but unsorted.
@@ -102,7 +102,6 @@ end
 
 # Applies the rotations of the layer class by class, in one pass over the sum, and truncates the Pauli strings for which
 # `truncfunc` returns `true` after every rotation. `truncfunc` truncates every coefficient below `min_abs_coeff`.
-# A layer that acts on a qubit with two different Paulis takes more than one pass (see `_classpasses`).
 function _applylayer!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params, truncfunc::F, min_abs_coeff::Real;
     thread::Bool=true) where {F}
 
@@ -111,10 +110,8 @@ function _applylayer!(layer::GateLayer, prop_cache::AbstractPauliPropagationCach
     CT = coefftype(prop_cache)
     workspace = PropagationBase._takeworkspace(TT, CT, PropagationBase.ClassScratch{TT,CT})
     try
-        for pass in _classpasses(rotations)
-            plan = _prepareclasses(rotations, angles, TT, CT, nqubits(prop_cache), pass; min_abs_coeff)
-            PropagationBase._applypass!(prop_cache, plan, truncfunc, workspace; thread)
-        end
+        plan = _prepareclasses(rotations, angles, TT, CT, nqubits(prop_cache); min_abs_coeff)
+        PropagationBase._applypass!(prop_cache, plan, truncfunc, workspace; thread)
     finally
         PropagationBase._putbackworkspace!(workspace)
     end

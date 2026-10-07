@@ -370,10 +370,8 @@ function _undolayer!(layer::GateLayer, cache, params, truncfunc::F, min_abs_coef
     CT = coefftype(cache)
     workspace = PropagationBase._takeworkspace(TT, CT, PropagationBase.ClassScratch{TT,CT})
     try
-        for pass in _classpasses(rotations)
-            plan = _prepareclasses(rotations, angles, TT, CT, nqubits(cache), pass; min_abs_coeff)
-            _undopass!(cache, plan, truncfunc, workspace, rotation_grads; thread)
-        end
+        plan = _prepareclasses(rotations, angles, TT, CT, nqubits(cache); min_abs_coeff)
+        _undopass!(cache, plan, truncfunc, workspace, rotation_grads; thread)
     finally
         PropagationBase._putbackworkspace!(workspace)
     end

@@ -1,10 +1,10 @@
 ###
 ##
-# A class of few key bits rotated as a dense block. A class of n key bits has 2^n terms, and the block holds an entry for
-# each, at the key bits of the term gathered into an integer. A rotation flips a fixed set of key bits, so it pairs every
-# entry with the entry whose index differs by the rotation's key mask, and mixes the coefficients of every pair with at
-# least one entry present. Which entries are present is kept as bits, 64 to a word, so that a rotation visits the words
-# of the block and, in each, the pairs with an entry present.
+# A class of few key bits rotated as a dense block. A class of n key bits has at most 2^n terms, and the block holds an
+# entry for each of those, at the key bits of the term gathered into an integer. A rotation flips a fixed set of key
+# bits, so it pairs every entry with the entry whose index differs by the rotation's key mask, and mixes the
+# coefficients of every pair with at least one entry present. Which entries are present is kept as bits, 64 to a word,
+# so that a rotation visits the words of the block and, in each, the pairs with an entry present.
 ##
 ###
 

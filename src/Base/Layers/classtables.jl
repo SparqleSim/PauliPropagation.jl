@@ -1,11 +1,10 @@
 ###
 ##
-# A class of many key bits rotated in a table of its own. The terms of a class differ only in its key bits, the bits
-# that its rotations flip, as `_keybits` gives them. These bits, gathered next to each other, are the key of a term in
-# its class. A rotation flips a fixed set of bits of the key, so the key of the partner it makes is the key of the term
-# with those bits flipped. The table of a class finds an entry by its key: through a slot of its own where the keys are
-# few enough, and through a hash of the key otherwise. A class with more such bits than an integer holds is keyed by its
-# terms themselves.
+# A class of many key bits rotated in a table of its own. The key bits of a class, as `_keybits` gives them, tell its
+# terms apart, and gathered next to each other they are the key of a term in its class. A rotation flips a fixed set of
+# bits of the key, so the key of the partner it makes is the key of the term with those bits flipped. The table of a
+# class finds an entry by its key: through a slot of its own where the keys are few enough, and through a hash of the
+# key otherwise. A class with more such bits than an integer holds is keyed by its terms themselves.
 ##
 ###
 
@@ -308,7 +307,7 @@ _entryarrays(table, entry_keys::Vector) =
 function _growclass!(table, entry_keys::Vector, n_slots::Int)
     table_length = nextpow(2, n_slots)
     slots = _ensurecapacity!(table.slots, table_length)
-    fill!(view(slots, 1:length(slots)), zero(Int32))
+    fill!(view(slots, 1:table_length), zero(Int32))
     slot_mask = table_length - 1
     hash_shift = 64 - trailing_zeros(table_length)
 
