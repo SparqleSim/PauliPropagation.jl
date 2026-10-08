@@ -148,13 +148,13 @@ function _Reduction(reductions::Vector{TT}) where {TT}
     remainders = copy(reductions)
     positions = [position for position in eachindex(reductions) .- 1 if !iszero(reductions[position+1])]
 
-    # the shifts that the most basis vectors share, each by at least two
-    shift_counts = Dict{Int,Int}()
+    # the shifts that the most basis vectors share, each by at least two; the other bits of a basis vector lie above its
+    # pivot bit, so every shift is at least one
+    shift_counts = zeros(Int, length(reductions))
     for position in positions, bit in _bitpositions(reductions[position+1])
-        shift_counts[bit-position] = get(shift_counts, bit - position, 0) + 1
+        shift_counts[bit-position] += 1
     end
-    shared_shifts = [shift for (shift, n_sharing) in sort(collect(shift_counts); by=((shift, n_sharing),) -> (-n_sharing, shift))
-                     if n_sharing >= 2]
+    shared_shifts = [shift for shift in first(sortperm(shift_counts; rev=true), 3) if shift_counts[shift] >= 2]
     shifts = ntuple(index -> UInt(get(shared_shifts, index, 0)), Val(3))
     shifted_pivots = ntuple(index -> _movepivots!(remainders, positions, get(shared_shifts, index, 0)), Val(3))
 

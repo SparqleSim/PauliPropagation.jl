@@ -140,9 +140,10 @@ function _checklayerparameters(layer::GateLayer, params)
         length(params) == n_params
     end
     if !is_valid
-        throw(ArgumentError(
-            "The parameter of a `GateLayer` is a vector with one entry per parametrized gate. " *
-            "Got $n_params gates but parameter $params."
-        ))
+        # a lazy message, so that printing the parameters is not compiled before it is needed
+        throw(ArgumentError(LazyString(
+            "The parameter of a `GateLayer` is a vector with one entry per parametrized gate. ",
+            "Got ", n_params, " gates but parameter ", params, "."
+        )))
     end
 end

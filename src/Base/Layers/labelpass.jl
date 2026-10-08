@@ -32,8 +32,8 @@ copied, and the batches are worked through by tasks that each take the next batc
 The storage of the sum decides what every task reads (`sources`, from `_passsources`), where the batches are kept
 (`_batcharrays!`), where the tasks write (`_passsinks!`) and how that becomes the sum (`_collectpass!`).
 """
-function _applytolabels!(labelof::L, applytolabel!::G, prop_cache::AbstractPropagationCache, workspace, sources,
-    thread::Bool) where {L,G}
+Base.@nospecializeinfer function _applytolabels!(@nospecialize(labelof), @nospecialize(applytolabel!),
+    prop_cache::AbstractPropagationCache, workspace, sources, thread::Bool)
 
     storage = StorageType(prop_cache)
     n_terms = length(prop_cache)
@@ -682,7 +682,7 @@ LayerWorkspace(::Type{TT}, ::Type{CT}, ::Type{KS}) where {TT,CT,KS} =
 
 # Workspaces that no layer is using. A layer takes one out and puts it back when it is done, so that the next layer
 # uses the same memory, and propagations that run at the same time each have their own.
-const _IDLE_WORKSPACES = Dict{DataType,Vector{Any}}()
+const _IDLE_WORKSPACES = IdDict{DataType,Vector{Any}}()
 const _IDLE_WORKSPACES_LOCK = ReentrantLock()
 
 function _takeworkspace(::Type{TT}, ::Type{CT}, ::Type{KS}) where {TT,CT,KS}
