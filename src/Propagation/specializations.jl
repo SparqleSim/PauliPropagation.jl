@@ -79,11 +79,12 @@ end
     applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params; thread=true, kwargs...)
 
 Overload of `applymergetruncate!` for a `GateLayer` on Pauli strings.
-A layer of Pauli rotations, frozen ones included, propagates a Pauli sum with numbers as coefficients class by class:
-the Pauli strings that anticommute with the same rotations are collected, and the rotations are applied to them one at a time.
-The truncations are applied after every rotation, so the result is that of the rotations propagated one after the other, in the order of the layer.
-A `VectorPauliSum` is left without duplicate Pauli strings but unsorted.
-Any other layer or coefficient type, and a truncation by `min_rel_coeff`, propagate the gates one by one.
+A layer of Pauli rotations is applied in one pass over a Pauli sum.
+The pass collects the Pauli strings that anticommute with the same rotations and applies those rotations to them, one at a time.
+Truncation is applied after every rotation, as when the rotations are applied one after the other.
+Unlike the rotations one after the other, the layer also merges and truncates the Pauli strings that none of its rotations act on.
+A `VectorPauliSum` is left without duplicate Pauli strings, but unsorted.
+Other layers, other coefficient types, and truncation by `min_rel_coeff` apply the gates one after the other.
 """
 function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,

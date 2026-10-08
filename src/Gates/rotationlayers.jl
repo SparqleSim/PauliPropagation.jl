@@ -12,14 +12,14 @@
 ###
 
 """
-    PauliRotationLayer(rotations::Vector{PauliRotation})
     PauliRotationLayer(symbols, all_qinds)
+    PauliRotationLayer(rotations::Vector{PauliRotation})
 
-Builds a `GateLayer` from a sequence of `PauliRotation` gates. 
-They must all mutually commute. 
-With `symbols` and `all_qinds`, the layer is built from one `PauliRotation(symbols, qinds)` for all `qinds` in `all_qinds`.
+A `GateLayer` of Pauli rotations that commute with each other.
+With `symbols` and `all_qinds`, the layer holds one `PauliRotation(symbols, qinds)` for each `qinds` in `all_qinds`.
 For example PauliRotationLayer(:X, 1:4) or PauliRotationLayer([:Z, :Z], staircasetopology(4)).
-Propagating through a layer instead of a sequence of rotations is often faster, especially for large layers.
+Rotations passed as a vector may act on the same qubits, but an error is thrown if two of them do not commute.
+The parameter of the layer is a vector with one angle per rotation, in the order of the rotations.
 """
 function PauliRotationLayer(symbols, all_qinds)
     rotations = [PauliRotation(symbols, qinds) for qinds in all_qinds]
@@ -55,14 +55,13 @@ end
 ### Layers of a circuit
 
 """
-    tolayers(circuit[, params])
+    tolayers(circuit)
+    tolayers(circuit, params)
 
-Returns the circuit with every run of two or more consecutive Pauli rotations that commute with each other, frozen ones
-included, as one `GateLayer`, and its parameters if they are given.
-A run ends at any other gate and at a rotation that does not commute with every rotation before it in the run.
-The parameter of a layer is the vector of the parameters of its rotations, and a layer of only frozen rotations is frozen
-itself, so that it takes no parameter.
-The layered circuit propagates like the circuit, as every layer applies its rotations in their order.
+Groups consecutive Pauli rotations of `circuit` that commute with each other into `GateLayer`s.
+Gates are not reordered, so only rotations that follow each other in `circuit` can end up in the same layer.
+Also transforms the parameters of the circuit accordingly. 
+Returns the new equivalent layered circuit and its corresponding parameter vector.
 """
 function tolayers(circuit, params)
     PropagationBase._checknumberofparams(circuit, params)

@@ -11,7 +11,7 @@
 Compute `overlapfunc(propagate(circuit, psum, params; kwargs...))` together with its gradient with
 respect to `params`, in one paired forward and backward sweep costing O(length(circuit)) gate applications.
 The only parametrized gates can be `PauliRotation`s and `GateLayer`s whose parametrized gates are `PauliRotation`s.
-The gradient of a `GateLayer` is a vector of the derivatives by the parameters of its rotations, or a number if its parameter is a number.
+The gradient has the same shape as `params`, with a vector of derivatives for every `GateLayer`.
 All other gates must not be parametrized or frozen via `freeze(gate, param)` before inputting to `rewindgradient`.
 Noise channels are not supported, frozen or not, because the backward sweep cannot undo them.
 `overlapfunc` must be linear in the coefficients of the Pauli sum it is handed, e.g. any of

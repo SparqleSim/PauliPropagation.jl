@@ -16,10 +16,11 @@ struct GateLayer{G} <: ParametrizedGate
         GateLayer(gates; guaranteed_commutes=false)
 
     A layer of `gates` that commute with each other.
-    The gates must act on different qubits, as `qinds` returns them, unless `guaranteed_commutes` is `true`.
-    Then gates may share qubits, and they are trusted to commute.
-    The parameter of the layer is a vector with one parameter per parametrized gate, in the order of `gates`, or a number if there is one parametrized gate.
-    `countparameters(layer)` returns how many there are.
+    By default, the gates must act on different qubits.
+    With `guaranteed_commutes=true`, gates may share qubits, and it is up to the caller that they commute.
+    In a circuit, a layer counts as one parametrized gate.
+    Its parameter is a vector with one entry per parametrized gate of the layer, in the order of `gates`,
+    so a circuit of two layers takes parameters like [thetas1, thetas2].
     In the Schrödinger picture, the gates are applied in the order of `gates`, with truncation after each.
     """
     function GateLayer(gates; guaranteed_commutes::Bool=false)
@@ -95,7 +96,7 @@ end
 """
     applymergetruncate!(layer::GateLayer, prop_cache::AbstractPropagationCache, params; kwargs...)
 
-Applies the gates of the layer one after the other with `applymergetruncate!`, as a circuit of them would be.
+Applies the gates of the layer one after the other, each with `applymergetruncate!`.
 """
 function applymergetruncate!(layer::GateLayer, prop_cache::AbstractPropagationCache, params; kwargs...)
     _applygatesonebyone!(layer, prop_cache, params; kwargs...)
