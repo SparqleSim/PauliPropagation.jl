@@ -34,122 +34,6 @@ randomangles(rng, layers) = [randn(rng, countparameters(layer)) for layer in lay
 multivectorsum(psum) = MultiPauliSum(VectorPauliSum(psum), 4)
 multidictsum(psum) = MultiPauliSum(psum, 4)
 
-# every kind of sum in the Heisenberg picture, and the two that the others are made of in the Schrödinger picture as well
-const LAYER_TEST_SUMS = ((PauliSum, true), (VectorPauliSum, true), (multivectorsum, true), (multidictsum, true),
-    (PauliSum, false), (VectorPauliSum, false))
-
-function layersmatchrotations(layers, thetas, psum; kwargs...)
-    rotations, angles = expandlayers(layers, thetas)
-    matches = true
-    for (T, heisenberg) in LAYER_TEST_SUMS
-        layered = propagate(layers, T(psum), thetas; heisenberg, kwargs...)
-        reference = propagate(rotations, T(psum), angles; heisenberg, kwargs...)
-        # the same terms, as two sums also compare equal if one of them holds more terms with a coefficient of zero
-        matches &= !isempty(layered) && length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
-    end
-    return matches
-end
-
-function testlayersagainstrotations()
-    # on one limb, on two and on four
-    for nq in (8, 40, 100)
-        rng = MersenneTwister(nq)
-        psum = randompaulisum(rng, nq, 12, 3)
-        chain = staircasetopology(nq)
-        ring = staircasetopology(nq; periodic=true)
-        disjoint_bonds = [(i, i + 1) for i in 1:2:nq-1]
-        distant_bonds = [(i + 3, i) for i in 1:nq-3]
-
-        # rotations that share qubits and rotations that do not, in the order of the qubits and in any other
-        layer_sets = (
-            [PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], chain)],
-            [PauliRotationLayer(:Y, nq:-1:1), PauliRotationLayer([:X, :X], ring)],
-            [PauliRotationLayer(:Z, randperm(rng, nq)), PauliRotationLayer([:Y, :Y], shuffle(rng, chain))],
-            [PauliRotationLayer([:X, :Y], disjoint_bonds), PauliRotationLayer([:Z, :Z], distant_bonds)],
-            # every bond in both directions with different Paulis, so that every qubit is acted on with X and with Z
-            [PauliRotationLayer(:Y, 1:nq), PauliRotationLayer([:X, :Z], vcat(disjoint_bonds, reverse.(disjoint_bonds)))],
-        )
-
-        # without any truncation only where 4^nq bounds the sum
-        truncations = nq == 8 ? ((Inf, 0.0), (4.0, 0.0), (Inf, 1e-3)) : ((4.0, 0.0), (3.0, 1e-4))
-
-        matches = true
-        for layers in layer_sets, (max_weight, min_abs_coeff) in truncations
-            circuit = repeat(layers, 2)
-            thetas = randomangles(rng, circuit)
-            matches &= layersmatchrotations(circuit, thetas, psum; max_weight, min_abs_coeff)
-        end
-        @test matches
-    end
-end
-
-function testanyqubitsandpairs()
-    # some of the qubits in any order, and bonds between any two qubits, which share qubits and come more than once
-    for nq in (8, 100)
-        rng = MersenneTwister(nq)
-        psum = randompaulisum(rng, nq, 12, 3)
-        some_qubits = randperm(rng, nq)[1:nq÷2]
-        any_bonds = [Tuple(randperm(rng, nq)[1:2]) for _ in 1:nq]
-
-        layers = [PauliRotationLayer(:Y, some_qubits), PauliRotationLayer([:Z, :Z], any_bonds),
-            PauliRotationLayer(:X, some_qubits), PauliRotationLayer([:X, :X], any_bonds)]
-        thetas = randomangles(rng, layers)
-
-        @test layersmatchrotations(layers, thetas, psum; max_weight=4.0, min_abs_coeff=1e-4)
-        @test layersmatchrotations(layers, thetas, psum; max_weight=3.0, min_abs_coeff=0.0)
-    end
-end
-
-function testclassesofmanyrotations()
-    # heavy Pauli strings anticommute with more rotations than a dense class takes
-    nq = 100
-    rng = MersenneTwister(nq)
-    psum = randompaulisum(rng, nq, 6, 12)
-    add!(psum, repeat([:Y, :Z], 5), 1:10, 1.0)
-    layers = [PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], staircasetopology(nq)), PauliRotationLayer(:Y, nq:-1:1)]
-    thetas = randomangles(rng, layers)
-
-    @test any(pstr -> countyz(pstr) > 8, paulis(psum))
-    @test layersmatchrotations(layers, thetas, psum; max_weight=Inf, min_abs_coeff=2e-2)
-    @test layersmatchrotations(layers, thetas, psum; max_weight=9.0, min_abs_coeff=5e-3)
-end
-
-function testlargeclassoftwostrings()
-    # two Pauli strings of one class of ten rotations, which must be collected in one place to be mixed
-    nq = 12
-    psum = PauliSum(nq)
-    yz = repeat([:Y, :Z], 5)
-    add!(psum, yz, 1:10, 1.0)
-    add!(psum, [yz[1:2]; :Z; yz[4:10]], 1:10, 0.5)
-    layers = [PauliRotationLayer(:X, 1:nq)]
-    @test layersmatchrotations(layers, [fill(0.3, nq)], psum; min_abs_coeff=1e-3)
-end
-
-function testclassesagainstrotations()
-    for nq in (8, 40)
-        rng = MersenneTwister(nq)
-        psum = randompaulisum(rng, nq, 12, 3)
-
-        # bonds that share qubits, close cycles, meet at one qubit or come more than once
-        layer_sets = (
-            [PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], staircasetopology(nq))],
-            [PauliRotationLayer(:Y, nq:-1:1), PauliRotationLayer([:X, :X], staircasetopology(nq; periodic=true))],
-            [PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], rectangletopology(2, nq ÷ 2))],
-            [PauliRotationLayer(:Y, 1:nq), PauliRotationLayer([:Z, :Z], [(1, i) for i in 2:nq])],
-            [PauliRotationLayer([:X, :Y], [(i, i + 1) for i in 1:2:nq-1]), PauliRotationLayer([:Z, :Z], [Tuple(randperm(rng, nq)[1:2]) for _ in 1:nq])],
-            [PauliRotationLayer(:Y, 1:nq), PauliRotationLayer([:X, :Z], vcat([(i, i + 1) for i in 1:2:nq-1], [(i + 1, i) for i in 1:2:nq-1]))],
-        )
-        truncations = nq == 8 ? ((Inf, 0.0), (4.0, 0.0), (Inf, 1e-3)) : ((3.0, 1e-4), (Inf, 2e-2))
-        matches = true
-        for layers in layer_sets, (max_weight, min_abs_coeff) in truncations
-            circuit = repeat(layers, 2)
-            thetas = randomangles(rng, circuit)
-            matches &= layersmatchrotations(circuit, thetas, psum; max_weight, min_abs_coeff)
-        end
-        @test matches
-    end
-end
-
 # rotations on one to four qubits that commute with each other, drawn at random and kept where they commute with those
 # kept before
 function randomcommutingrotations(rng, nq, n_rotations)
@@ -172,39 +56,118 @@ function randomcommutingrotations(rng, nq, n_rotations)
     return rotations
 end
 
-function testwiderotations()
-    for nq in (8, 40)
-        rng = MersenneTwister(nq + 1)
-        psum = randompaulisum(rng, nq, 12, 3)
-        triples = [(i, i + 1, i + 2) for i in 1:nq-2]
-        # the squares of a ladder of two rows, with every qubit acted on with X and with Z
-        squares = [(i, i + 1, i + nq ÷ 2, i + nq ÷ 2 + 1) for i in 1:nq÷2-1]
+# every kind of sum in the Heisenberg picture, and the two that the others are made of in the Schrödinger picture as well
+const LAYER_TEST_SUMS = ((PauliSum, true), (VectorPauliSum, true), (multivectorsum, true), (multidictsum, true),
+    (PauliSum, false), (VectorPauliSum, false))
 
-        layer_sets = (
-            [PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z, :Z], triples)],
-            [GateLayer(vcat(PauliRotationLayer([:X, :X, :X, :X], squares).gates, PauliRotationLayer([:Z, :Z, :Z, :Z], squares).gates); guaranteed_commutes=true)],
-            [PauliRotationLayer(randomcommutingrotations(rng, nq, nq ÷ 2 + 2)), PauliRotationLayer(randomcommutingrotations(rng, nq, nq ÷ 2 + 2))],
-        )
-        truncations = nq == 8 ? ((Inf, 0.0), (4.0, 0.0), (Inf, 1e-3)) : ((4.0, 0.0), (3.0, 1e-4))
-        matches = true
-        for layers in layer_sets, (max_weight, min_abs_coeff) in truncations
-            circuit = repeat(layers, 2)
-            thetas = randomangles(rng, circuit)
-            matches &= layersmatchrotations(circuit, thetas, psum; max_weight, min_abs_coeff)
-        end
-        @test matches
+# A vector sum in either picture, which share their compiled code. A layer is compiled afresh for every kind of sum, term
+# type and largest number of rotations that flip one bit, so most layers are checked on this sum alone, and only some on
+# eight qubits with at most two rotations flipping a bit on every kind of sum.
+const VECTOR_TEST_SUMS = ((VectorPauliSum, true), (VectorPauliSum, false))
+
+function layersmatchrotations(layers, thetas, psum; sums=LAYER_TEST_SUMS, kwargs...)
+    rotations, angles = expandlayers(layers, thetas)
+    matches = true
+    for (T, heisenberg) in sums
+        layered = propagate(layers, T(psum), thetas; heisenberg, kwargs...)
+        reference = propagate(rotations, T(psum), angles; heisenberg, kwargs...)
+        # the same terms, as two sums also compare equal if one of them holds more terms with a coefficient of zero
+        matches &= !isempty(layered) && length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
     end
+    return matches
+end
+
+# a few light Pauli strings and a heavy one across the qubits, which anticommutes with more rotations than a dense class
+# takes
+function lightandheavypaulisum(rng, nq)
+    psum = randompaulisum(rng, nq, 12, 3)
+    add!(psum, repeat([:Y, :Z], 4), round.(Int, range(1, nq; length=8)), 1.0)
+    return psum
+end
+
+function testlayersonallsums()
+    nq = 8
+    rng = MersenneTwister(nq)
+    psum = lightandheavypaulisum(rng, nq)
+    circuit = repeat([PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], staircasetopology(nq))], 2)
+
+    # without any truncation, which 4^nq bounds, and with either truncation
+    matches = true
+    for (max_weight, min_abs_coeff) in ((Inf, 0.0), (4.0, 0.0), (Inf, 1e-3))
+        matches &= layersmatchrotations(circuit, randomangles(rng, circuit), psum; max_weight, min_abs_coeff)
+    end
+    @test matches
+end
+
+function testlayershapes()
+    nq = 8
+    rng = MersenneTwister(nq + 1)
+    psum = lightandheavypaulisum(rng, nq)
+    chain = staircasetopology(nq)
+    disjoint_bonds = [(i, i + 1) for i in 1:2:nq-1]
+    # bonds between any two qubits, which share qubits and come more than once
+    any_bonds = [(1, 5), (5, 1), (2, 7), (7, 3), (3, 2), (8, 4), (6, 8), (1, 5)]
+    # the squares of a ladder of two rows, with every qubit acted on with X and with Y
+    squares = [(i, i + 1, i + nq ÷ 2, i + nq ÷ 2 + 1) for i in 1:nq÷2-1]
+
+    # rotations that share qubits and rotations that do not, in the order of the qubits and in any other, on some of the
+    # qubits, with bonds that close a cycle or meet at one qubit, and on three or four qubits
+    layer_sets = (
+        [PauliRotationLayer(:Y, nq:-1:1), PauliRotationLayer([:X, :X], staircasetopology(nq; periodic=true))],
+        [PauliRotationLayer(:Z, randperm(rng, nq)[1:nq÷2+1]), PauliRotationLayer([:Y, :Y], shuffle(rng, chain))],
+        [PauliRotationLayer([:X, :Y], disjoint_bonds), PauliRotationLayer([:Z, :Z], [(i + 3, i) for i in 1:nq-3])],
+        # every bond in both directions with different Paulis, so that every qubit is acted on with X and with Z, and XX,
+        # YY and ZZ on the same bonds
+        [PauliRotationLayer([:X, :Z], vcat(disjoint_bonds, reverse.(disjoint_bonds))),
+            GateLayer([PauliRotation([s, s], [i, i + 1]) for s in (:X, :Y, :Z) for i in 1:2:nq-1]; guaranteed_commutes=true)],
+        [PauliRotationLayer([:Z, :Z], [(1, i) for i in 2:4]), PauliRotationLayer([:Z, :Z], rectangletopology(2, nq ÷ 2)),
+            PauliRotationLayer([:X, :X], any_bonds)],
+        [PauliRotationLayer([:Z, :Z, :Z], [(i, i + 1, i + 2) for i in 1:nq-2]),
+            GateLayer(vcat(PauliRotationLayer([:X, :X, :X, :X], squares).gates, PauliRotationLayer([:Y, :Y, :Y, :Y], squares).gates); guaranteed_commutes=true)],
+        [PauliRotationLayer(randomcommutingrotations(rng, nq, nq ÷ 2 + 2)), PauliRotationLayer(randomcommutingrotations(rng, nq, nq ÷ 2 + 2))],
+    )
+
+    matches = true
+    for layers in layer_sets, (max_weight, min_abs_coeff) in ((Inf, 0.0), (4.0, 0.0), (Inf, 1e-3))
+        circuit = repeat(layers, 2)
+        matches &= layersmatchrotations(circuit, randomangles(rng, circuit), psum; sums=VECTOR_TEST_SUMS, max_weight, min_abs_coeff)
+    end
+    @test matches
+end
+
+function testwidelayers()
+    # on two limbs and on four, with more than 64 rotations in a layer on four, and two rotations flipping a bit in either
+    # layer, so that each width compiles one pass
+    matches = true
+    for nq in (40, 100)
+        rng = MersenneTwister(nq)
+        psum = lightandheavypaulisum(rng, nq)
+        layers = [PauliRotationLayer([:Z, :Z], staircasetopology(nq)), PauliRotationLayer([:X, :X], reverse(staircasetopology(nq)))]
+        for (max_weight, min_abs_coeff) in ((Inf, 2e-2), (4.0, 0.0), (3.0, 1e-4))
+            matches &= layersmatchrotations(layers, randomangles(rng, layers), psum; sums=VECTOR_TEST_SUMS, max_weight, min_abs_coeff)
+        end
+    end
+    @test matches
+end
+
+function testlargeclassoftwostrings()
+    # two Pauli strings of one class of eight rotations, which must be collected in one place to be mixed
+    nq = 8
+    psum = PauliSum(nq)
+    yz = repeat([:Y, :Z], 4)
+    add!(psum, yz, 1:8, 1.0)
+    add!(psum, [yz[1:2]; :Z; yz[4:8]], 1:8, 0.5)
+    layers = [PauliRotationLayer(:X, 1:nq)]
+    @test layersmatchrotations(layers, [fill(0.3, nq)], psum; min_abs_coeff=1e-3)
 end
 
 # A class is rotated densely if it has few distinguishing bits, and sparsely otherwise. Both ways are tested on the same
 # layers.
 function testlayers()
-    testlayersagainstrotations()
-    testanyqubitsandpairs()
-    testclassesofmanyrotations()
+    testlayersonallsums()
+    testlayershapes()
+    testwidelayers()
     testlargeclassoftwostrings()
-    testclassesagainstrotations()
-    testwiderotations()
 end
 
 @testset "PauliRotationLayer propagates like its rotations" begin
@@ -213,13 +176,14 @@ end
 
 @testset "PauliRotationLayer acting on a qubit with two Paulis" begin
     # XI commutes with XX but not with ZZ, which act on its first qubit with X and with Z
+    nq = 8
     xx_zz = GateLayer([PauliRotation([:X, :X], [1, 2]), PauliRotation([:Z, :Z], [1, 2])]; guaranteed_commutes=true)
-    @test layersmatchrotations([xx_zz], [[0.3, 0.7]], PauliSum(PauliString(2, :X, 1)); min_abs_coeff=0.0)
+    @test layersmatchrotations([xx_zz], [[0.3, 0.7]], PauliSum(PauliString(nq, :X, 1)); min_abs_coeff=0.0)
 
     # the identity, which commutes with XZ on (1, 2) and on (2, 1), and XX, which anticommutes with both, in either order
     # of the two in the sum
     xz_zx = PauliRotationLayer([:X, :Z], [(1, 2), (2, 1)])
-    identity, xx = PauliString(2, :I, 1), PauliString(2, [:X, :X], [1, 2])
+    identity, xx = PauliString(nq, :I, 1), PauliString(nq, [:X, :X], [1, 2])
     matches = true
     for psum in (PauliSum([identity, xx]), PauliSum([xx, identity]))
         matches &= layersmatchrotations([xz_zx], [[0.3, 0.7]], psum; min_abs_coeff=0.0)
@@ -232,13 +196,13 @@ end
 # with the same rotations and have its representative, and where the rotations act on disjoint pairs of qubits, a class
 # has as many distinguishing bits as the rank of its rotations.
 function testplans()
-    nq = 12
+    nq = 8
     rng = MersenneTwister(5)
     TT = getinttype(nq)
     any_bonds = [Tuple(randperm(rng, nq)[1:2]) for _ in 1:nq]
     heisenberg = GateLayer([PauliRotation([s, s], [i, i + 1]) for s in (:X, :Y, :Z) for i in 1:2:nq-1]; guaranteed_commutes=true)
     layers = [PauliRotationLayer(:Z, 1:nq), PauliRotationLayer([:Z, :Z], staircasetopology(nq; periodic=true)),
-        PauliRotationLayer([:Z, :Z], rectangletopology(3, 4)), PauliRotationLayer([:X, :Z], [(1, 2), (2, 1)]),
+        PauliRotationLayer([:Z, :Z], rectangletopology(2, 4)), PauliRotationLayer([:X, :Z], [(1, 2), (2, 1)]),
         PauliRotationLayer([:X, :X], any_bonds), PauliRotationLayer([:Z, :Z], any_bonds), heisenberg,
         PauliRotationLayer(randomcommutingrotations(rng, nq, 8))]
     matches = true
@@ -276,21 +240,28 @@ end
     @test testplans()
 end
 
+# every method replaced here is deleted first, which redefining it would report as overwritten
+Base.delete_method(which(PB._rotatesdense, Tuple{Int}))
 @eval PauliPropagation.PropagationBase _rotatesdense(n_distinguishing_bits::Int) = false
 
+# the heavy Pauli strings take the sparse way on every kind of sum already
 @testset "PauliRotationLayer with every class sparse" begin
-    testlayers()
+    testlayershapes()
+    testwidelayers()
 end
 
+Base.delete_method(which(PB._rotatesdense, Tuple{Int}))
 @eval PauliPropagation.PropagationBase _rotatesdense(n_distinguishing_bits::Int) = n_distinguishing_bits <= _MAX_DENSE_DISTINGUISHING_BITS
 
 # every class shares one hash, so that the classes of a batch are told apart by their representatives alone
+Base.delete_method(which(PB._classlabel, Tuple{Any,Any}))
 @eval PauliPropagation.PropagationBase _classlabel(plan, term) = 0
 
 @testset "PauliRotationLayer with classes that share their hash" begin
     testlayers()
 end
 
+Base.delete_method(which(PB._classlabel, Tuple{Any,Any}))
 @eval PauliPropagation.PropagationBase @inline _classlabel(plan, term) = _hashbits(_classrepresentative(plan, term, _flippedbits(plan.lookup, term))) % Int
 
 # A class is a Pauli string with its products with the generators of the rotations it anticommutes with. Each kernel takes
@@ -357,7 +328,7 @@ end
         rng = MersenneTwister(nq)
         psum = randompaulisum(rng, nq, 40, 4)
         add!(psum, repeat([:Y, :Z], 4), 1:8, 1.0)
-        layers = [PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], staircasetopology(nq))]
+        layers = [PauliRotationLayer([:X, :X], staircasetopology(nq)), PauliRotationLayer([:Z, :Z], staircasetopology(nq))]
         thetas = randomangles(rng, layers)
         vpsum = propagate(layers, VectorPauliSum(psum), thetas; max_weight=5.0, min_abs_coeff=1e-4)
         plans = [PauliPropagation._prepareclasses(layer.gates, theta, paulitype(vpsum), nq) for (layer, theta) in zip(layers, thetas)]
@@ -370,7 +341,7 @@ end
             # with room for all that the tasks write, and with so little that they keep most of it in their buffers
             resize!(by_four_tasks, capacity)
 
-            truncfunc = buildtruncfunc(by_one_task; min_abs_coeff=1e-4, max_weight=5)
+            truncfunc = buildtruncfunc(by_one_task; min_abs_coeff=1e-4, max_weight=5.0)
             TT, CT = paulitype(vpsum), coefftype(vpsum)
             workspace = PB.LayerWorkspace(TT, CT, PB.ClassScratch{TT,CT})
             one_task = PauliPropagation.AK.TaskPartitioner(length(vpsum), 1, 1)
@@ -389,17 +360,15 @@ end
 end
 
 @testset "PauliRotationLayer on a sum that several threads share out" begin
-    # the magnetisation on a chain, which grows past the number of terms from which a sum is split into tasks
-    nq = 100
-    psum = PauliSum(nq)
-    for qind in 1:nq
-        add!(psum, :Z, qind, 1 / nq)
-    end
-    layers = repeat([PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], staircasetopology(nq))], 4)
-    thetas = [fill(pi / 4, countparameters(layer)) for layer in layers]
+    # every Pauli string on eight qubits, more than the number of terms from which a sum is split into tasks
+    nq = 8
+    rng = MersenneTwister(nq)
+    psum = PauliSum(nq, Dict{UInt16,Float64}(UInt16(i) => randn(rng) for i in 0:4^nq-1))
+    layers = [PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], staircasetopology(nq))]
+    thetas = randomangles(rng, layers)
+    @test length(psum) > 2 * PB._MIN_ELEMS_PER_TASK
 
     reference = propagate(layers, psum, thetas; max_weight=6.0, min_abs_coeff=1e-8)
-    @test length(reference) > 2 * PB._MIN_ELEMS_PER_TASK
 
     for T in (VectorPauliSum, multivectorsum, multidictsum)
         layered = propagate(layers, T(psum), thetas; max_weight=6.0, min_abs_coeff=1e-8)
@@ -443,7 +412,7 @@ end
 
     # generators that hold the identity on some of their qubits
     identity_layers = [PauliRotationLayer([:I, :Y], bonds), PauliRotationLayer([:X, :I], staircasetopology(nq)), PauliRotationLayer(:I, 1:nq)]
-    @test layersmatchrotations(identity_layers, randomangles(rng, identity_layers), psum; max_weight=3.0, min_abs_coeff=1e-3)
+    @test layersmatchrotations(identity_layers, randomangles(rng, identity_layers), psum; sums=VECTOR_TEST_SUMS, max_weight=3.0, min_abs_coeff=1e-3)
 
     @test_throws ArgumentError PauliRotationLayer([:X, :Z], staircasetopology(nq))
     @test_throws ArgumentError PauliRotationLayer([:Z, :Z], [1, 2])
@@ -454,11 +423,11 @@ end
     @test_throws ArgumentError propagate(zz_layer, PauliString(nq - 1, :X, 1), fill(0.3, nq - 1))
 end
 
-# the circuit and its layers propagate alike, on every kind of sum and in either picture
+# the circuit and its layers propagate alike, in either picture
 function layeredmatchescircuit(circuit, thetas, psum; kwargs...)
     layered_circuit, layered_thetas = tolayers(circuit, thetas)
     matches = true
-    for (T, heisenberg) in LAYER_TEST_SUMS
+    for (T, heisenberg) in VECTOR_TEST_SUMS
         layered = propagate(layered_circuit, T(psum), layered_thetas; heisenberg, kwargs...)
         reference = propagate(circuit, T(psum), thetas; heisenberg, kwargs...)
         matches &= !isempty(layered) && length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)

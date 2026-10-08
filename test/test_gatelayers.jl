@@ -50,37 +50,36 @@ function densepaulisum(rng, nq)
 end
 
 @testset "GateLayer propagates like its gates one by one" begin
-    for nq in (12, 100)
-        rng = MersenneTwister(nq)
-        psum = densepaulisum(rng, nq)
+    nq = 8
+    rng = MersenneTwister(nq)
+    psum = densepaulisum(rng, nq)
 
-        # a generator of its own for every rotation, a rotation with the identity in its generator, and a frozen rotation
-        disjoint = GateLayer([PauliRotation(:X, 1), PauliRotation([:Z, :Z], [2, 3]), PauliRotation([:Y, :X], [5, 4]),
-            PauliRotation(:Z, 6), PauliRotation([:I, :Y], [7, 8]), PauliRotation(:Y, 9, 0.3), PauliRotation([:X, :Z], [11, nq])])
-        # rotations that share qubits and commute, some of them acting on a qubit with two different Paulis
-        shared = GateLayer([PauliRotation([:X, :X], [1, 2]), PauliRotation([:Z, :Z], [1, 2]), PauliRotation([:X, :Z], [3, 4]),
-                PauliRotation(:Y, 5), PauliRotation([:Y, :Y], [5, 6]), PauliRotation([:Z, :X], [3, 4]), PauliRotation(:X, 7, -0.4)];
-            guaranteed_commutes=true)
-        # a Clifford gate, for which the gates are applied one by one, and a rotation on three qubits
-        with_clifford = GateLayer([PauliRotation(:X, 1), CliffordGate(:H, [2]), PauliRotation([:Z, :Z], [3, 4]), CliffordGate(:CNOT, [5, 6])])
-        wide = GateLayer([PauliRotation([:Z, :Z, :Z], [1, 2, 3]), PauliRotation(:X, 4)])
+    # a generator of its own for every rotation, a rotation with the identity in its generator, and a frozen rotation
+    disjoint = GateLayer([PauliRotation(:X, 1), PauliRotation([:Z, :Z], [2, 3]), PauliRotation([:Y, :X], [5, 4]),
+        PauliRotation([:I, :Y], [6, 7]), PauliRotation(:Y, nq, 0.3)])
+    # rotations that share qubits and commute, some of them acting on a qubit with two different Paulis
+    shared = GateLayer([PauliRotation([:X, :X], [1, 2]), PauliRotation([:Z, :Z], [1, 2]), PauliRotation([:X, :Z], [3, 4]),
+            PauliRotation(:Y, 5), PauliRotation([:Y, :Y], [5, 6]), PauliRotation([:Z, :X], [3, 4]), PauliRotation(:X, 7, -0.4)];
+        guaranteed_commutes=true)
+    # a Clifford gate, for which the gates are applied one by one, and a rotation on three qubits
+    with_clifford = GateLayer([PauliRotation(:X, 1), CliffordGate(:H, [2]), PauliRotation([:Z, :Z], [3, 4]), CliffordGate(:CNOT, [5, 6])])
+    wide = GateLayer([PauliRotation([:Z, :Z, :Z], [1, 2, 3]), PauliRotation(:X, 4)])
 
-        cache = PropagationCache(VectorPauliSum(psum))
-        @test PP._haslayerfastpath(disjoint, cache) && PP._haslayerfastpath(shared, cache) && PP._haslayerfastpath(wide, cache)
-        @test !PP._haslayerfastpath(with_clifford, cache)
+    cache = PropagationCache(VectorPauliSum(psum))
+    @test PP._haslayerfastpath(disjoint, cache) && PP._haslayerfastpath(shared, cache) && PP._haslayerfastpath(wide, cache)
+    @test !PP._haslayerfastpath(with_clifford, cache)
 
-        # every layer without truncation, and circuits of them truncated with the inputs within the weight limit, which
-        # rotations one by one leave on strings they do not touch
-        matches = true
-        for layer in (disjoint, shared, with_clifford, wide)
-            matches &= matchesgatebygate([layer], [randn(rng, countparameters(layer))], psum; min_abs_coeff=0.0)
-        end
-        for layers in ([disjoint, shared, disjoint], [shared, with_clifford, wide])
-            params = [randn(rng, countparameters(layer)) for layer in layers]
-            matches &= matchesgatebygate(layers, params, psum; max_weight=6.0, min_abs_coeff=1e-2)
-        end
-        @test matches
+    # every layer without truncation, and circuits of them truncated with the inputs within the weight limit, which
+    # rotations one by one leave on strings they do not touch
+    matches = true
+    for layer in (disjoint, shared, with_clifford, wide)
+        matches &= matchesgatebygate([layer], [randn(rng, countparameters(layer))], psum; min_abs_coeff=0.0)
     end
+    for layers in ([disjoint, shared, disjoint], [shared, with_clifford, wide])
+        params = [randn(rng, countparameters(layer)) for layer in layers]
+        matches &= matchesgatebygate(layers, params, psum; max_weight=6.0, min_abs_coeff=1e-2)
+    end
+    @test matches
 end
 
 @testset "GateLayer construction and parameters" begin

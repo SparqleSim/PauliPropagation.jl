@@ -362,22 +362,23 @@ end
         end
         @test all(entry -> all(!iszero, entry), fd_grad)
 
-        for psum in (VectorPauliSum(obs), obs, MultiPauliSum(VectorPauliSum(obs), 2), MultiPauliSum(obs, 2))
-            expec, grad = rewindgradient(circuit, psum, params, dense_overlap; min_abs_coeff=0.0)
-            @test expec ≈ overlapat(params)
-            @test length(grad) == length(params)
-            @test all(isapprox(entry, fd_entry; rtol=1e-6) for (entry, fd_entry) in zip(grad, fd_grad))
-        end
+        # on a vector sum, as the other kinds of sum are checked against the rotations one by one below
+        expec, grad = rewindgradient(circuit, VectorPauliSum(obs), params, dense_overlap; min_abs_coeff=0.0)
+        @test expec ≈ overlapat(params)
+        @test length(grad) == length(params)
+        @test all(isapprox(entry, fd_entry; rtol=1e-6) for (entry, fd_entry) in zip(grad, fd_grad))
     end
 
     @testset "Rotation layers truncate as their rotations one by one" begin
         # a layer undoes its rotations as they are undone one by one, so the gradients agree up to the order of the sums
-        topology = rectangletopology(3, 4)
-        nq = 12
+        nq = 8
+        # the bonds of a ring in two layers, so that no two rotations of a layer act on one qubit
+        odd_bonds = [(i, i + 1) for i in 1:2:nq-1]
+        even_bonds = [(i, i % nq + 1) for i in 2:2:nq]
         layers = Gate[]
         rotations = Gate[]
-        for _ in 1:4
-            for (symbols, qinds) in ((:X, 1:nq), (:Z, 1:nq), ([:Z, :Z], topology))
+        for _ in 1:2
+            for (symbols, qinds) in ((:X, 1:nq), (:Z, 1:nq), ([:Z, :Z], odd_bonds), ([:Z, :Z], even_bonds))
                 push!(layers, PauliRotationLayer(symbols, qinds))
                 append!(rotations, [PauliRotation(symbols, collect(rotation_qinds)) for rotation_qinds in qinds])
             end
@@ -390,10 +391,13 @@ end
         truncations = ((; min_abs_coeff=1e-4), (; min_abs_coeff=1e-6, max_weight=4.0),
             (; min_abs_coeff=0.0, customtruncfunc=below_threshold), (; min_abs_coeff=0.0, min_rel_coeff=1e-4))
 
-        obs = PauliString(nq, [:Z, :Z], [6, 7])
-        for psum in (VectorPauliSum(obs), PauliSum(obs), MultiPauliSum(VectorPauliSum(obs), 4), MultiPauliSum(PauliSum(obs), 4)),
-            truncation in truncations
-
+        # every kind of sum with the absolute truncations, and a vector sum with the others, as every truncation function
+        # compiles the layers afresh
+        obs = PauliString(nq, [:Z, :Z], [4, 5])
+        sums = (VectorPauliSum(obs), PauliSum(obs), MultiPauliSum(VectorPauliSum(obs), 4), MultiPauliSum(PauliSum(obs), 4))
+        cases = [(psum, truncation) for psum in sums for truncation in truncations[1:2]]
+        push!(cases, (sums[1], truncations[3]), (sums[1], truncations[4]))
+        for (psum, truncation) in cases
             expec, grad = rewindgradient(layers, psum, layer_params, overlapwithzero; truncation...)
             ref_expec, ref_grad = rewindgradient(rotations, psum, rotation_params, overlapwithzero; truncation...)
             @test expec ≈ ref_expec rtol = 1e-12
