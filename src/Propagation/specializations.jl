@@ -79,10 +79,12 @@ end
     applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params; thread=true, kwargs...)
 
 Overload of `applymergetruncate!` for a `GateLayer` on Pauli strings.
-A layer of Pauli rotations is applied in one pass over a Pauli sum.
+A layer of gates that never create duplicate Pauli strings, by `requiresmerging`, such as Clifford gates and Pauli noise, is applied in one pass over a Pauli sum,
+with all of its gates applied to a Pauli string in one visit from lookups built from the transfer maps of the gates on their qubits.
+A layer of Pauli rotations is applied in one pass as well.
 The pass collects the Pauli strings that anticommute with the same rotations and applies those rotations to them, one at a time.
-Truncation is applied after every rotation, as when the rotations are applied one after the other.
-Unlike the rotations one after the other, the layer also merges and truncates the Pauli strings that none of its rotations act on.
+Truncation is applied after every gate acting on a Pauli string and at the end of the layer, as when the gates are applied one after the other to Pauli strings within the truncations.
+Unlike the rotations one after the other, a layer of rotations also merges and truncates the Pauli strings that none of its rotations act on.
 A `VectorPauliSum` is left without duplicate Pauli strings, but unsorted.
 Other layers, other coefficient types, and truncation by `min_rel_coeff` apply the gates one after the other.
 """
@@ -90,14 +92,15 @@ function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::Abstr
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
     min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-    if !_haslayerfastpath(layer, prop_cache) || !isnothing(min_rel_coeff)
+    if _hasmappath(layer, prop_cache) && isnothing(min_rel_coeff)
+        _applymap!(layer, prop_cache, params; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
+    elseif _haslayerfastpath(layer, prop_cache) && isnothing(min_rel_coeff)
+        truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
+        _applylayer!(layer, prop_cache, params, truncfunc, min_abs_coeff; thread)
+    else
         PropagationBase._applygatesonebyone!(layer, prop_cache, params;
             min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread, kwargs...)
-        return
     end
-
-    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
-    _applylayer!(layer, prop_cache, params, truncfunc, min_abs_coeff; thread)
     return
 end
 
@@ -396,6 +399,9 @@ Apply a `FrozenGate` through the `applytoall!` implementation of its wrapped gat
 function PropagationBase.applytoall!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
     return applytoall!(gate.gate, prop_cache, gate.parameter; kwargs...)
 end
+
+# a frozen gate requires merging if its wrapped gate does
+PropagationBase.requiresmerging(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache) = requiresmerging(gate.gate, prop_cache)
 
 ### Gates that branch by a fixed Pauli string
 

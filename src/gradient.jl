@@ -120,6 +120,12 @@ function _undostep!(gate::StaticGate, state::_BackwardSweepState; thread::Bool=t
     return state
 end
 
+# a layer without parametrized gates is undone like a static gate
+function _undostep!(layer::GateLayer, state::_BackwardSweepState; thread::Bool=true, kwargs...)
+    applymergetruncate!(layer, state.cache; thread, kwargs...)
+    return state
+end
+
 # Records the gradient of a GateLayer: the derivatives by the parameters of its rotations.
 # Where `applymergetruncate!` would apply the layer class by class, one pass undoes it and adds up the gradients of its
 # rotations, and otherwise its gates are undone one by one.

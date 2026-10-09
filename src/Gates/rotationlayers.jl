@@ -5,9 +5,9 @@
 # A layer is propagated as a whole, which is faster than propagating its rotations one after the other: class by class,
 # as PropagationBase applies a layer of commuting rotations (Base/Layers/classes.jl). A Pauli rotation acts on the Pauli
 # strings that anticommute with its generator, that is whose Paulis anticommute with those of the generator on an odd
-# number of qubits, and flips the bits of the generator on them. Below the rotations of a circuit are gathered into
-# layers, a layer is routed and its plan prepared, with the lookup of the rotations that anticommute with a Pauli string
-# and the signs of the two Pauli strings that a rotation mixes.
+# number of qubits, and flips the bits of the generator on them. Below a layer is routed and its plan prepared, with the
+# lookup of the rotations that anticommute with a Pauli string and the signs of the two Pauli strings that a rotation
+# mixes. Which gates of a circuit are gathered into a layer is decided in gatelayers.jl.
 ##
 ###
 
@@ -52,92 +52,10 @@ function _commutationcheck(rotations::Vector{PauliRotation}, ::Type{TT}) where {
 end
 
 
-### Layers of a circuit
-
-"""
-    tolayers(circuit)
-    tolayers(circuit, params)
-
-Groups consecutive Pauli rotations of `circuit` that commute with each other into `GateLayer`s.
-Gates are not reordered, so only rotations that follow each other in `circuit` can end up in the same layer.
-Also transforms the parameters of the circuit accordingly. 
-Returns the new equivalent layered circuit and its corresponding parameter vector.
-"""
-function tolayers(circuit, params)
-    PropagationBase._checknumberofparams(circuit, params)
-
-    # the generators are compared as integers of the type for the highest qubit of the circuit
-    TT = getinttype(maxqind(circuit))
-
-    layered_circuit = Gate[]
-    layered_params = []
-    # the rotations gathered for the next layer, their generators, and the parameters of those not frozen
-    layer = Gate[]
-    generators = TT[]
-    layer_params = []
-    param_index = 0
-    for gate in circuit
-        if gate isa ParametrizedGate
-            param_index += 1
-        end
-
-        if gate isa _LayerRotation
-            rotation = if gate isa FrozenGate
-                gate.gate
-            else
-                gate
-            end
-            generator = symboltoint(TT, rotation.symbols, rotation.qinds)
-            if !all(layer_generator -> commutes(generator, layer_generator), generators)
-                _pushlayer!(layered_circuit, layered_params, layer, generators, layer_params)
-            end
-            push!(layer, gate)
-            push!(generators, generator)
-            if gate isa ParametrizedGate
-                push!(layer_params, params[param_index])
-            end
-        else
-            _pushlayer!(layered_circuit, layered_params, layer, generators, layer_params)
-            push!(layered_circuit, gate)
-            if gate isa ParametrizedGate
-                push!(layered_params, params[param_index])
-            end
-        end
-    end
-    _pushlayer!(layered_circuit, layered_params, layer, generators, layer_params)
-    return layered_circuit, layered_params
-end
-
-function tolayers(circuit)
-    # the layers do not depend on the parameters
-    layered_circuit, _ = tolayers(circuit, zeros(countparameters(circuit)))
-    return layered_circuit
-end
+### Propagation of a layer
 
 # a gate that a layer applies class by class: a Pauli rotation, frozen or not
 const _LayerRotation = Union{PauliRotation,FrozenGate{PauliRotation}}
-
-# Pushes the gathered rotations with their parameters, a single one as it is and several as a layer, which is frozen if
-# all of them are. Then nothing is gathered.
-function _pushlayer!(layered_circuit, layered_params, layer, generators, layer_params)
-    if length(layer) == 1
-        push!(layered_circuit, only(layer))
-        append!(layered_params, layer_params)
-    elseif length(layer) > 1 && isempty(layer_params)
-        frozen_layer = GateLayer([gate.gate for gate in layer]; guaranteed_commutes=true)
-        push!(layered_circuit, freeze(frozen_layer, [gate.parameter for gate in layer]))
-    elseif length(layer) > 1
-        push!(layered_circuit, GateLayer(layer; guaranteed_commutes=true))
-        push!(layered_params, [param for param in layer_params])
-    end
-    empty!(layer)
-    empty!(generators)
-    empty!(layer_params)
-    return
-end
-
-
-### Propagation of a layer
 
 # Whether the layer has a fast path on the sum of the cache, on which its gates are applied together, class by class,
 # rather than one by one: every gate is a Pauli rotation, frozen or not, and the classes can be rotated in the sum.

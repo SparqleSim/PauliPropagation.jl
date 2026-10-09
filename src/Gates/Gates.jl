@@ -13,6 +13,7 @@ include("rotationlayers.jl")
 include("imaginarytime.jl")
 include("cliffordgates.jl")
 include("noisechannels.jl")
+include("gatelayers.jl")
 include("miscgates.jl")
 include("heisenbergschrodinger.jl")
 

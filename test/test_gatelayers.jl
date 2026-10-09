@@ -4,6 +4,23 @@ using Test
 # a gate without the fields that `qinds` reads
 struct NoQindsGate <: StaticGate end
 
+# A gate defined by its action alone, which conjugates with Z on its qubit like `CliffordGate(:Z, qind)`, and two gates that
+# a layer cannot apply in one visit: one branches every Pauli string into itself and X on its qubit, the other negates the
+# identity along with every other Pauli string. All three say that they never create duplicate Pauli strings.
+struct ZConjugation <: StaticGate
+    qind::Int
+end
+PB.apply(gate::ZConjugation, pstr, coeff; kwargs...) = ((pstr, getpauli(pstr, gate.qind) in (1, 2) ? -coeff : coeff),)
+struct BranchingGate <: StaticGate
+    qind::Int
+end
+PB.apply(gate::BranchingGate, pstr, coeff; kwargs...) = ((pstr, coeff / 2), (setpauli(pstr, :X, gate.qind), coeff / 2))
+struct NegatingGate <: StaticGate
+    qind::Int
+end
+PB.apply(::NegatingGate, pstr, coeff; kwargs...) = ((pstr, -coeff),)
+PB.requiresmerging(::Union{ZConjugation,BranchingGate,NegatingGate}, ::AbstractPauliPropagationCache) = false
+
 # the gates of the layers one after the other, as a circuit, with the parameters of the parametrized ones
 function flattenlayers(layers, params)
     gates = Gate[]
@@ -132,4 +149,117 @@ end
     # a frozen layer rounds every angle
     @test repr(freeze(PauliRotationLayer(:Z, 1:2), [0.1234, 0.5])) == "FrozenGate(GateLayer(2 PauliRotation), parameter = [0.123, 0.5])"
     @test repr(PauliRotation(:X, 1, 0.1234)) == "FrozenGate(PauliRotation([:X], [1]), parameter = 0.123)"
+end
+
+@testset "commutes decides whether two gates may share a layer" begin
+    # gates on different qubits commute, and so do Pauli rotations with commuting generators
+    @test commutes(PauliRotation(:X, 1), CliffordGate(:H, 2))
+    @test commutes(DepolarizingNoise(1), PauliRotation(:Z, 2))
+    @test commutes(PauliRotation([:X, :X], [1, 2]), PauliRotation([:Z, :Z], [1, 2]))
+    @test commutes(PauliRotation([:I, :Y], [1, 2]), PauliRotation(:Z, 1))
+    @test !commutes(PauliRotation(:X, 1), PauliRotation(:Z, 1))
+    @test !commutes(PauliRotation([:X, :X], [1, 2]), PauliRotation([:Z, :Z], [2, 3]))
+    # Clifford gates sharing a qubit are compared on every Pauli string of their qubits
+    @test commutes(CliffordGate(:CNOT, [1, 2]), CliffordGate(:CNOT, [1, 3]))
+    @test commutes(CliffordGate(:ZZpihalf, [1, 2]), CliffordGate(:ZZpihalf, [2, 3]))
+    @test !commutes(CliffordGate(:CNOT, [1, 2]), CliffordGate(:CNOT, [2, 3]))
+    @test !commutes(CliffordGate(:H, 1), CliffordGate(:S, 1))
+    # other gates sharing a qubit are not known to commute, and a frozen gate commutes like its gate
+    @test !commutes(CliffordGate(:H, 1), PauliRotation(:X, 1))
+    @test !commutes(DepolarizingNoise(1), CliffordGate(:X, 1))
+    @test commutes(PauliRotation(:X, 1, 0.3), PauliRotation(:X, 1))
+    @test !commutes(PauliRotation(:Z, 1, 0.3), PauliRotation(:X, 1, 0.2))
+end
+
+@testset "GateLayer of Clifford gates and noise propagates like its gates one by one" begin
+    nq = 8
+    rng = MersenneTwister(nq + 1)
+    psum = densepaulisum(rng, nq)
+
+    # Clifford gates on different qubits, ZZ entanglers that share qubits and commute, Pauli noise frozen or not, and a mix
+    cliffords = GateLayer([CliffordGate(:H, 1), CliffordGate(:CNOT, [2, 3]), CliffordGate(:S, 4), CliffordGate(:SWAP, [5, 6]), CliffordGate(:Y, nq)])
+    entanglers = GateLayer([CliffordGate(:ZZpihalf, [1, 2]), CliffordGate(:ZZpihalf, [2, 3]), CliffordGate(:ZZpihalf, [3, 4])]; guaranteed_commutes=true)
+    noise = GateLayer([DepolarizingNoise(1), PauliXNoise(2, 0.1), PauliZNoise(3), DepolarizingNoise(4, 0.2)])
+    mixed = GateLayer([CliffordGate(:H, 1), DepolarizingNoise(2, 0.1), CliffordGate(:CNOT, [3, 4]), PauliYNoise(5)])
+    cache = PropagationCache(psum)
+    @test all(layer -> PP._hasmappath(layer, cache), (cliffords, entanglers, noise, mixed))
+    @test !PP._hasmappath(GateLayer([CliffordGate(:H, 1), PauliRotation(:X, 2)]), cache)
+    @test PB.isparametrized(noise) && PB.isparametrized(mixed) && !PB.isparametrized(cliffords) && !PB.isparametrized(entanglers)
+
+    # the layers and their gates one after the other, with the parameters of the parametrized gates
+    layers = [cliffords, noise, entanglers, mixed]
+    params = [[0.05, 0.3], [0.2]]
+    gates = reduce(vcat, [layer.gates for layer in layers])
+    flat_params = [0.05, 0.3, 0.2]
+    @test countparameters(layers) == 2 && countparameters(gates) == 3
+
+    function layersmatchgates(layers, params, gates, flat_params, sums; kwargs...)
+        matches = true
+        for (T, heisenberg) in sums
+            layered = propagate(layers, T(psum), params; heisenberg, kwargs...)
+            reference = propagate(gates, T(psum), flat_params; heisenberg, kwargs...)
+            matches &= !isempty(layered) && length(layered) == length(reference) && PauliSum(layered) == PauliSum(reference)
+        end
+        return matches
+    end
+    @test layersmatchgates(layers, params, gates, flat_params, GATELAYER_TEST_SUMS; min_abs_coeff=0.0)
+    # with the inputs within the truncations, which the gates one after the other would otherwise truncate at the first gate
+    @test layersmatchgates(layers, params, gates, flat_params, VECTOR_TEST_SUMS; max_weight=6.0, min_abs_coeff=0.08)
+    # layers of Clifford gates without a weight limit truncate nothing
+    @test layersmatchgates([cliffords, entanglers], [], vcat(cliffords.gates, entanglers.gates), Float64[], VECTOR_TEST_SUMS; min_abs_coeff=1e-2)
+end
+
+@testset "a gate defined by its action alone joins a layer applied in one visit" begin
+    nq = 8
+    rng = MersenneTwister(nq + 2)
+    psum = densepaulisum(rng, nq)
+
+    # the transfer map of the gate is built from `apply`, and equals that of the Clifford gate it imitates
+    @test PP._localtransfermap(ZConjugation(2)) == PP._localtransfermap(CliffordGate(:Z, 2))
+    layer = GateLayer([ZConjugation(1), CliffordGate(:H, 2), ZConjugation(3), DepolarizingNoise(4, 0.1)])
+    reference = [CliffordGate(:Z, 1), CliffordGate(:H, 2), CliffordGate(:Z, 3), DepolarizingNoise(4, 0.1)]
+    cache = PropagationCache(psum)
+    @test PP._hasmappath(layer, cache) && !PP._hasmappath(GateLayer([ZConjugation(1), PauliRotation(:X, 2)]), cache)
+    for T in (PauliSum, VectorPauliSum)
+        @test PauliSum(propagate([layer], T(psum))) == PauliSum(propagate(reference, T(psum)))
+    end
+
+    # a gate that branches or changes the identity on its qubits has no lookup
+    @test_throws ArgumentError PP._locallookup(BranchingGate(1), UInt16)
+    @test_throws ArgumentError PP._locallookup(NegatingGate(1), UInt16)
+end
+
+@testset "tolayers gathers commuting gates of the same kind, and a layer without parametrized gates takes none" begin
+    nq = 6
+    circuit = Gate[
+        # gates on different qubits, of which the Clifford gate and the noise share a layer and the rotations stay alone
+        PauliRotation(:X, 1), CliffordGate(:H, 2), DepolarizingNoise(3, 0.1), PauliRotation(:Z, 4),
+        # ZZ entanglers that share qubits and commute
+        CliffordGate(:ZZpihalf, [1, 2]), CliffordGate(:ZZpihalf, [2, 3]), CliffordGate(:ZZpihalf, [3, 4]),
+        # noise on three qubits, then a rotation on one of them
+        DepolarizingNoise(1), DepolarizingNoise(2), DepolarizingNoise(3), PauliRotation(:X, 3),
+        # a layer stays as it is, and CNOTs sharing their control commute
+        PauliRotationLayer(:Y, 1:2), CliffordGate(:CNOT, [5, 6]), CliffordGate(:CNOT, [5, 4]),
+    ]
+    thetas = Any[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, [0.7, 0.8]]
+    layered_circuit, layered_thetas = tolayers(circuit, thetas)
+    @test repr.(layered_circuit) == ["PauliRotation([:X], [1])", "GateLayer(1 CliffordGate, 1 FrozenGate)", "PauliRotation([:Z], [4])",
+        "GateLayer(3 CliffordGate)", "GateLayer(3 DepolarizingNoise)", "PauliRotation([:X], [3])", "GateLayer(2 PauliRotation)", "GateLayer(2 CliffordGate)"]
+    @test layered_thetas == [0.1, 0.2, [0.3, 0.4, 0.5], 0.6, [0.7, 0.8]]
+    @test PB.isparametrized.(layered_circuit) == [true, false, true, false, true, true, true, false]
+    @test countparameters(layered_circuit) == 5 && countparameters(circuit) == 7
+
+    rng = MersenneTwister(nq)
+    psum = randompaulisum(rng, nq, 8, 3)
+    @test layeredmatchescircuit(circuit, thetas, psum; min_abs_coeff=0.0)
+    @test layeredmatchescircuit(circuit, thetas, psum; max_weight=3.0, min_abs_coeff=1e-3)
+
+    # a layer without parametrized gates takes no parameter wherever a circuit is walked
+    entanglers = layered_circuit[4]
+    @test propagate([entanglers], psum) == propagate(entanglers.gates, psum)
+    @test [gate.qinds for gate in only(toheisenberg([entanglers])).gates] == [[3, 4], [2, 3], [1, 2]]
+    @test freeze([entanglers, PauliRotation(:X, 1)], [0.3])[1] === entanglers
+    value, gradient = rewindgradient([PauliRotation(:X, 1), entanglers, PauliRotation(:Z, 2)], psum, [0.3, 0.4], overlapwithzero; min_abs_coeff=0.0)
+    reference_value, reference_gradient = rewindgradient([PauliRotation(:X, 1), entanglers.gates..., PauliRotation(:Z, 2)], psum, [0.3, 0.4], overlapwithzero; min_abs_coeff=0.0)
+    @test value ≈ reference_value && gradient ≈ reference_gradient
 end

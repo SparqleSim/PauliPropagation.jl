@@ -459,7 +459,7 @@ end
 
     layered_circuit, layered_thetas = tolayers(circuit, thetas)
     @test repr.(layered_circuit) == ["GateLayer(3 PauliRotation, 1 FrozenGate)", "GateLayer(3 PauliRotation)", "CliffordGate(:CNOT, [3, 4])",
-        "FrozenGate(GateLayer(2 PauliRotation), parameter = [0.2, -0.4])", "CliffordGate(:H, [1])", "GateLayer(4 PauliRotation)",
+        "GateLayer(2 FrozenGate)", "CliffordGate(:H, [1])", "GateLayer(4 PauliRotation)",
         "PauliRotation([:Z, :Z], [6, 5])", "GateLayer(6 PauliRotation)", "PauliRotation([:Y], [1])"]
     @test layered_thetas == [thetas[1:3], thetas[4:6], thetas[7:10], thetas[11], thetas[12], thetas[13]]
     @test repr.(tolayers(circuit)) == repr.(layered_circuit)

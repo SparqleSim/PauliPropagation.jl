@@ -34,7 +34,7 @@ Filter = t -> t === PauliPropagation.PropagationBase.qinds
 
 ```@autodocs
 Modules = [PauliPropagation]
-Pages = ["src/Gates/rotationlayers.jl"]
+Pages = ["src/Gates/gatelayers.jl", "src/Gates/rotationlayers.jl"]
 Order = [:type, :function, :constant]
 ```
 

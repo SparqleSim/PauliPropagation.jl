@@ -56,7 +56,7 @@ function freeze(gates, parameters)
     frozen_gates = Vector{Gate}(undef, length(gates))
     param_idx = 1
     for (i, gate) in enumerate(gates)
-        if isa(gate, ParametrizedGate)
+        if isparametrized(gate)
             frozen_gates[i] = FrozenGate(gate, parameters[param_idx])
             param_idx += 1
         else

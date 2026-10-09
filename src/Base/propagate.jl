@@ -55,7 +55,7 @@ function _propagate!(stepfunc::F, circuit, target, params=nothing; kwargs...) wh
 
     _withworkers(target, get(kwargs, :thread, true)) do
         for gate in circuit
-            if isa(gate, ParametrizedGate)
+            if isparametrized(gate)
                 param = popfirst!(parameter_iterator)
                 stepfunc(gate, target, param; kwargs...)
             else

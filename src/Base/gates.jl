@@ -18,15 +18,23 @@ abstract type StaticGate <: Gate end
 """
     countparameters(circuit)
 
-Utility function to count the number of gates of type `ParametrizedGate` in a circuit.
+Utility function to count the number of gates in a circuit that take a parameter, see `isparametrized`.
 """
 function countparameters(circuit)
     nparams = 0
     for gate in circuit
-        nparams += isa(gate, ParametrizedGate)
+        nparams += isparametrized(gate)
     end
     return nparams
 end
+
+"""
+    isparametrized(gate)
+
+Returns whether `gate` takes a parameter when a circuit is propagated.
+By default these are the gates of type `ParametrizedGate`.
+"""
+isparametrized(gate) = gate isa ParametrizedGate
 
 """
     qinds(gate)

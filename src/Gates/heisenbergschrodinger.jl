@@ -32,7 +32,7 @@ function toheisenberg(circuit, params)
     heisenberg_params = eltype(params)[]
 
     for gate in circuit
-        if gate isa ParametrizedGate
+        if isparametrized(gate)
             param = popfirst!(params_iterator)
 
             gate_heisenberg, param_heisenberg = _toheisenberg(gate, param)
@@ -77,6 +77,9 @@ function _toheisenberg(layer::GateLayer, params)
     return _transformlayer(toheisenberg, layer, params)
 end
 
+# a layer without parametrized gates is transformed without parameters
+_toheisenberg(layer::GateLayer) = first(_transformlayer(toheisenberg, layer, Float64[]))
+
 # ImaginaryPauliRotation are currently actively disallowed in Heisenberg picture
 # This has to do because we don't know how to handle the normalization
 function _toheisenberg(gate::ImaginaryPauliRotation, τ)
@@ -102,7 +105,7 @@ function toschrodinger(circuit, params)
     schrodinger_params = eltype(params)[]
 
     for gate in circuit
-        if gate isa ParametrizedGate
+        if isparametrized(gate)
             param = popfirst!(params_iterator)
 
             gate_schrodinger, param_schrodinger = _toschrodinger(gate, param)
@@ -145,6 +148,8 @@ end
 function _toschrodinger(layer::GateLayer, params)
     return _transformlayer(toschrodinger, layer, params)
 end
+
+_toschrodinger(layer::GateLayer) = first(_transformlayer(toschrodinger, layer, Float64[]))
 
 # The layer of the gates of `layer` that `transform`, `toheisenberg` or `toschrodinger`, returns for them as a circuit,
 # with their parameters.

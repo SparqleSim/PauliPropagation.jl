@@ -123,6 +123,7 @@ export
     StaticGate,
     ParametrizedGate,
     countparameters,
+    isparametrized,
     qinds
 
 include("./countterms.jl")
