@@ -16,7 +16,7 @@
 
 Groups consecutive gates of `circuit` that commute with each other into `GateLayer`s.
 Gates are not reordered, so only gates that follow each other in `circuit` can end up in the same layer.
-Whether two gates commute is decided by `commutes`, which by default requires them to act on different qubits.
+Gates on different qubits commute, and whether two gates that share a qubit commute is decided by `commutes`.
 Pauli rotations and other gates go into separate layers, because a layer of Pauli rotations and a layer of other gates are each propagated in their own way.
 Also transforms the parameters of the circuit accordingly.
 Returns the new equivalent layered circuit and its corresponding parameter vector.
@@ -29,6 +29,8 @@ function tolayers(circuit, params)
     # the gates gathered for the next layer, and the parameters of those parametrized
     layer = Gate[]
     layer_params = []
+    # the gathered gates on each qubit, so that a new gate is only compared with the gates it shares a qubit with
+    gates_on_qubit = Dict{Int,Vector{Gate}}()
     param_index = 0
     for gate in circuit
         if isparametrized(gate)
@@ -37,22 +39,26 @@ function tolayers(circuit, params)
 
         if gate isa GateLayer
             # a layer is not nested into another layer
-            _pushlayer!(layered_circuit, layered_params, layer, layer_params)
+            _pushlayer!(layered_circuit, layered_params, layer, layer_params, gates_on_qubit)
             push!(layered_circuit, gate)
             if isparametrized(gate)
                 push!(layered_params, params[param_index])
             end
         else
-            if !all(layer_gate -> _sharelayer(gate, layer_gate), layer)
-                _pushlayer!(layered_circuit, layered_params, layer, layer_params)
+            if !_joinslayer(gate, layer, gates_on_qubit)
+                _pushlayer!(layered_circuit, layered_params, layer, layer_params, gates_on_qubit)
             end
             push!(layer, gate)
+            # add the gate to the gates on each of its qubits
+            for qind in qinds(gate)
+                push!(get!(Vector{Gate}, gates_on_qubit, qind), gate)
+            end
             if isparametrized(gate)
                 push!(layer_params, params[param_index])
             end
         end
     end
-    _pushlayer!(layered_circuit, layered_params, layer, layer_params)
+    _pushlayer!(layered_circuit, layered_params, layer, layer_params, gates_on_qubit)
     return layered_circuit, layered_params
 end
 
@@ -64,7 +70,7 @@ end
 
 # Pushes the gathered gates with their parameters, a single gate as it is and several as a layer, which takes a parameter
 # if any of its gates does. Then nothing is gathered.
-function _pushlayer!(layered_circuit, layered_params, layer, layer_params)
+function _pushlayer!(layered_circuit, layered_params, layer, layer_params, gates_on_qubit)
     if length(layer) == 1
         push!(layered_circuit, only(layer))
         append!(layered_params, layer_params)
@@ -76,14 +82,27 @@ function _pushlayer!(layered_circuit, layered_params, layer, layer_params)
     end
     empty!(layer)
     empty!(layer_params)
+    empty!(gates_on_qubit)
     return
 end
 
-# Whether a gate joins a layer holding another gate: the two commute, and both are Pauli rotations or neither is, since a
-# layer of Pauli rotations is propagated class by class and a layer of other gates in one visit where it can, while a
-# layer of both applies its gates one after the other.
-function _sharelayer(gate, layer_gate)
-    return commutes(gate, layer_gate) && (gate isa _LayerRotation) == (layer_gate isa _LayerRotation)
+# Whether a gate joins the gathered gates: it is of the same kind, a Pauli rotation or not, and commutes with the gathered
+# gates on its qubits. The kinds stay apart because a layer of both kinds would apply its gates one after the other.
+function _joinslayer(gate, layer, gates_on_qubit)
+    if isempty(layer)
+        return true
+    end
+    # the gathered gates are either all Pauli rotations or none, so the first gate tells which
+    if (gate isa _LayerRotation) != (first(layer) isa _LayerRotation)
+        return false
+    end
+    # gates on other qubits always commute with it, so only the gates on its own qubits are compared
+    for qind in qinds(gate)
+        if !all(layer_gate -> commutes(gate, layer_gate), get(gates_on_qubit, qind, Gate[]))
+            return false
+        end
+    end
+    return true
 end
 
 
@@ -132,11 +151,11 @@ commutes(gate_a::FrozenGate, gate_b::FrozenGate) = commutes(gate_a.gate, gate_b.
 
 ### Propagation of a layer in one visit per Pauli string
 
-# Whether every gate of the layer maps a Pauli string to one Pauli string, so that the layer is applied with one visit of
-# every Pauli string. A gate says so through `requiresmerging`, which is `false` for a gate that never creates duplicate
-# Pauli strings, and the lookup built from its transfer map checks it.
+# Whether the layer is applied with one visit of every Pauli string: the coefficients are numbers, and every gate maps a
+# Pauli string to one Pauli string. A gate says so through `requiresmerging`, which is `false` for a gate that never
+# creates duplicate Pauli strings, and the lookup built from its transfer map checks it.
 function _hasmappath(layer::GateLayer, prop_cache::AbstractPropagationCache)
-    return all(gate -> !requiresmerging(gate, prop_cache), layer.gates)
+    return coefftype(prop_cache) <: Number && all(gate -> !requiresmerging(gate, prop_cache), layer.gates)
 end
 
 # What a gate does to a Pauli string, for every combination of the Paulis on its qubits: the bits it flips, and the factor
