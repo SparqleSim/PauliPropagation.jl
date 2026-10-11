@@ -1,7 +1,7 @@
 ###
 ##
 # A term sum held in a hash table, for the sums of a few to a few thousand terms that fit the cache, such as the terms
-# of one coset of a layer pass: an entry per term, found by a probe of the slots from the key of the term. A gate that
+# of one class of a layer pass: an entry per term, found by a probe of the slots from the key of the term. A gate that
 # branches by an XOR mask finds the partner of every term in place and merges as it branches, so that nothing is sorted
 # in afterwards. An entry the truncation drops stays where it is, absent with a zero coefficient, and takes its term
 # again when a gate creates it, so that no term ever has two entries.
@@ -403,7 +403,7 @@ _mergeandtruncate!(::HashedStorage, truncfunc::F, hsum::HashedTermSum; thread::B
 
 ### Propagation caches
 
-# A propagation cache over a hashed sum, of no basis in particular: the cache into which a layer pass loads its cosets
+# A propagation cache over a hashed sum, of no basis in particular: the cache into which a layer pass loads its classes
 # and applies the gates to them with `xorbranchmergeandtruncate!`. It holds the sum as it is, and the auxiliary sum only
 # takes the terms of the generic passes.
 mutable struct HashedPropagationCache{TT,CT} <: AbstractPropagationCache

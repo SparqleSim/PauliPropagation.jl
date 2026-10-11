@@ -104,7 +104,7 @@ function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::Abstr
     return
 end
 
-# Applies the rotations of the layer in one pass over the sum, coset by coset, and truncates the Pauli strings for which
+# Applies the rotations of the layer in one pass over the sum, class by class, and truncates the Pauli strings for which
 # `truncfunc` returns `true` after every rotation.
 function _applylayer!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params, truncfunc::F; thread::Bool=true) where {F}
     rotations, angles = togates(layer, params)

@@ -4,7 +4,7 @@
 # the propagation of a layer whose gates each map a Pauli string to one Pauli string, such as Clifford gates and Pauli
 # noise. Such a layer is applied in one pass over the sum, with all of its gates applied to a Pauli string in one visit
 # from lookups built from the transfer maps of the gates, which saves a pass over the sum per gate. Layers of Pauli
-# rotations are propagated in one pass as well, coset by coset, see rotationlayers.jl.
+# rotations are propagated in one pass as well, class by class, see rotationlayers.jl.
 ##
 ###
 

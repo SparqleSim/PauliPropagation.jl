@@ -149,8 +149,8 @@ function testwidelayers()
     @test matches
 end
 
-function testlargecosetoftwostrings()
-    # two Pauli strings of one coset of eight rotations, which must be collected in one place to be mixed
+function testlargeclassoftwostrings()
+    # two Pauli strings of one class of eight rotations, which must be collected in one place to be mixed
     nq = 8
     psum = PauliSum(nq)
     yz = repeat([:Y, :Z], 4)
@@ -164,7 +164,7 @@ function testlayers()
     testlayersonallsums()
     testlayershapes()
     testwidelayers()
-    testlargecosetoftwostrings()
+    testlargeclassoftwostrings()
 end
 
 @testset "PauliRotationLayer propagates like its rotations" begin
@@ -190,7 +190,7 @@ end
 
 # The echelon basis of a plan spans the generators of its rotations, and its reduction adds up the other bits of the
 # basis vectors of any pivot bits. The partners of a Pauli string under the rotations it anticommutes with anticommute
-# with the same rotations and have its coset representative, which is a representative of its own.
+# with the same rotations and have its class representative, which is a representative of its own.
 function testplans()
     nq = 8
     rng = MersenneTwister(5)
@@ -210,34 +210,34 @@ function testplans()
             matches &= PB._reduce(plan.reduction, one(TT) << position) == reductions[position+1]
         end
         for gate_mask in plan.gate_masks
-            matches &= iszero(PB._cosetrepresentative(plan, gate_mask))
+            matches &= iszero(PB._classrepresentative(plan, gate_mask))
         end
 
         for _ in 1:50
             pstr = PauliString(nq, rand(rng, [:I, :X, :Y, :Z], nq), 1:nq).term
             positions = PB._branchinggates(plan.lookup, pstr)
-            representative = PB._cosetrepresentative(plan, pstr)
-            matches &= PB._cosetrepresentative(plan, representative) == representative
+            representative = PB._classrepresentative(plan, pstr)
+            matches &= PB._classrepresentative(plan, representative) == representative
             rotations = [rotation for rotation in eachindex(plan.gate_masks) if !commutes(plan.gate_masks[rotation], pstr)]
             matches &= [rotation for rotation in eachindex(plan.gate_masks) if !iszero(positions[(rotation-1)>>6+1] & (one(UInt64) << ((rotation - 1) & 63)))] == rotations
             for rotation in rotations
                 partner = pstr ⊻ plan.gate_masks[rotation]
                 matches &= PB._branchinggates(plan.lookup, partner) == positions
-                matches &= PB._cosetrepresentative(plan, partner) == representative
+                matches &= PB._classrepresentative(plan, partner) == representative
             end
         end
     end
     return matches
 end
 
-@testset "PauliRotationLayer plans find the cosets from the echelon basis" begin
+@testset "PauliRotationLayer plans find the classes from the echelon basis" begin
     @test testplans()
 end
 
-# Every coset shares one hash, so that the cosets of a batch are told apart by their representatives alone. The method
+# Every class shares one hash, so that the classes of a batch are told apart by their representatives alone. The method
 # replaced here is deleted first, which redefining it would report as overwritten.
-Base.delete_method(which(PB._cosetlabel, Tuple{PB.LayerPlan,Any}))
-@eval PauliPropagation.PropagationBase _cosetlabel(plan::LayerPlan, term) = 0
+Base.delete_method(which(PB._classhash, Tuple{Any}))
+@eval PauliPropagation.PropagationBase _classhash(representative) = 0
 
 @testset "PauliRotationLayer rules on the Pauli strings a rotation acts on agree with the general rule" begin
     rng = MersenneTwister(9)
@@ -265,40 +265,40 @@ Base.delete_method(which(PB._cosetlabel, Tuple{PB.LayerPlan,Any}))
     end
 end
 
-@testset "PauliRotationLayer with cosets that share their hash" begin
+@testset "PauliRotationLayer with classes that share their hash" begin
     testlayers()
 end
 
-Base.delete_method(which(PB._cosetlabel, Tuple{PB.LayerPlan,Any}))
-@eval PauliPropagation.PropagationBase @inline _cosetlabel(plan::LayerPlan, term) = _hashbits(_cosetrepresentative(plan, term)) % Int
+Base.delete_method(which(PB._classhash, Tuple{Any}))
+@eval PauliPropagation.PropagationBase @inline _classhash(representative) = _hashbits(representative) % Int
 
-# A coset is a Pauli string with its products with the generators of the rotations it anticommutes with. The coset kernel
-# takes a coset as two vectors, applies the rotations to it in the cache of a scratch and writes what it keeps to a
-# Pauli sum, which has to hold what the rotations of the layer make of the coset alone; a cache over a dictionary sum
+# A class is a Pauli string with its products with the generators of the rotations it anticommutes with. The class kernel
+# takes a class as two vectors, applies the rotations to it in the cache of a scratch and writes what it keeps to a
+# Pauli sum, which has to hold what the rotations of the layer make of the class alone; a cache over a dictionary sum
 # does the same, through the dictionary path of the gates.
-function testcosetkernelagainstrotations()
+function testclasskernelagainstrotations()
     nq = 8
     rng = MersenneTwister(11)
     cache = PropagationCache(PauliSum(nq))
     TT = paulitype(cache)
-    cosets = (
+    classes = (
         (PauliRotationLayer([:Z, :Z], staircasetopology(nq; periodic=true)), PauliString(nq, [:X, :Y, :X], [1, 3, 6])),
         (PauliRotationLayer(:Y, 1:nq), PauliString(nq, [:X, :Z, :X, :Z], [1, 2, 5, 8])),
         (PauliRotationLayer([:X, :Y], [(i, i + 1) for i in 1:2:nq-1]), PauliString(nq, [:Z, :Z, :X], [1, 4, 6])),
     )
     matches = true
-    for (layer, pstr) in cosets, (max_weight, min_abs_coeff) in ((Inf, 0.0), (4.0, 1e-2))
+    for (layer, pstr) in classes, (max_weight, min_abs_coeff) in ((Inf, 0.0), (4.0, 1e-2))
         thetas = randn(rng, length(layer.gates))
         plan = PP._preparelayer(layer.gates, thetas, cache)
         truncfunc = buildtruncfunc(cache; min_abs_coeff, max_weight)
         rotations = [rotation for rotation in eachindex(plan.gate_masks) if !commutes(plan.gate_masks[rotation], pstr.term)]
 
         # members made by random sets of the anticommuting generators, some of them more than once
-        coset_terms = [reduce(xor, (plan.gate_masks[rotation] for rotation in rotations if rand(rng, Bool)); init=pstr.term) for _ in 1:8]
-        coset_coeffs = [rand(rng, (-1, 1)) * (0.2 + rand(rng)) for _ in 1:8]
+        class_terms = [reduce(xor, (plan.gate_masks[rotation] for rotation in rotations if rand(rng, Bool)); init=pstr.term) for _ in 1:8]
+        class_coeffs = [rand(rng, (-1, 1)) * (0.2 + rand(rng)) for _ in 1:8]
 
         reference = PauliSum(nq)
-        for (term, coeff) in zip(coset_terms, coset_coeffs)
+        for (term, coeff) in zip(class_terms, class_coeffs)
             add!(reference, term, coeff)
         end
         for (rotation, angle) in zip(expandlayers([layer], [thetas])...)
@@ -306,17 +306,17 @@ function testcosetkernelagainstrotations()
         end
         matches &= !isempty(reference) && length(rotations) > 1
 
-        for coset_cache in (PB.CosetScratch{TT,Float64}().cache, PropagationCache(PauliSum(nq)))
-            by_coset = PauliSum(nq)
-            PB._applytocoset!(by_coset, coset_cache, plan.rules, plan, truncfunc, copy(coset_terms), copy(coset_coeffs))
-            matches &= length(by_coset) == length(reference) && by_coset == reference
+        for class_cache in (PB.ClassScratch{TT,Float64}().cache, PropagationCache(PauliSum(nq)))
+            by_class = PauliSum(nq)
+            PB._applytoclass!(by_class, class_cache, plan.rules, plan, truncfunc, copy(class_terms), copy(class_coeffs))
+            matches &= length(by_class) == length(reference) && by_class == reference
         end
     end
     return matches
 end
 
-@testset "PauliRotationLayer applies the rotations to one coset like its rotations" begin
-    @test testcosetkernelagainstrotations()
+@testset "PauliRotationLayer applies the rotations to one class like its rotations" begin
+    @test testclasskernelagainstrotations()
 end
 
 @testset "PauliRotationLayer applied by several tasks" begin
@@ -340,7 +340,7 @@ end
 
             truncfunc = buildtruncfunc(by_one_task; min_abs_coeff=1e-4, max_weight=5.0)
             TT, CT = paulitype(vpsum), coefftype(vpsum)
-            workspace = PB.LayerWorkspace(TT, CT, PB.CosetScratch{TT,CT})
+            workspace = PB.LayerWorkspace(TT, CT, PB.ClassScratch{TT,CT})
             one_task = PauliPropagation.AK.TaskPartitioner(length(vpsum), 1, 1)
             four_tasks = PauliPropagation.AK.TaskPartitioner(length(vpsum), 4, 1)
 
@@ -374,8 +374,8 @@ end
     end
 end
 
-@testset "PauliRotationLayer branches large cosets in passes like its rotations" begin
-    # every Pauli string on six qubits, with coefficients from the cutoff to a hundred times it, so that the cosets hold
+@testset "PauliRotationLayer branches large classes in passes like its rotations" begin
+    # every Pauli string on six qubits, with coefficients from the cutoff to a hundred times it, so that the classes hold
     # 64 Pauli strings and many of their coefficients lie below what creates anything that the truncation keeps
     nq = 6
     rng = MersenneTwister(13)

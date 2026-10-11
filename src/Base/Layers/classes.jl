@@ -1,14 +1,15 @@
 ###
 ##
-# Layers of commuting gates applied in one pass over the sum, coset by coset, through the gate path. A gate here leaves
+# Layers of commuting gates applied in one pass over the sum, class by class, through the gate path. A gate here leaves
 # a term unchanged or mixes it with its partner, the term with the bits of the gate's mask flipped, by a rule of
 # `xorbranch!`; a Pauli rotation is one. The gates of a layer commute: a term and the term with the mask of any gate of
-# the layer flipped are acted on by the same gates. So the gates of the layer act on all terms of a coset of the span of
-# their masks or on none of them, and mix only terms of one coset. The plan holds the reduced echelon basis of that
-# span, by which a term is reduced to the representative of its coset. In one pass over the sum (`_applytolabels!`) the
-# terms are sorted by the hash of their representative, and every coset is loaded into a small sum of its own, to which
-# the gates acting on it are applied one after the other in the order of the layer as `propagate!` applies gates,
-# through `xorbranchmergeandtruncate!` with the rule of each, with the truncations after each, as the gates one by one do.
+# the layer flipped are acted on by the same gates. The terms that differ from each other by a sum of gate masks form a
+# class, so the gates of the layer act on all terms of a class or on none of them, and mix only terms of one class. The
+# plan holds the reduced echelon basis of the span of the masks, by which a term is reduced to the representative of its
+# class. In one pass over the sum (`_applytoclasses!`) the terms are grouped by their representative, and every class
+# is loaded into a small sum of its own, to which the gates acting on it are applied one after the other in the order
+# of the layer as `propagate!` applies gates, through `xorbranchmergeandtruncate!` with the rule of each, with the
+# truncations after each, as the gates one by one do.
 #
 # A basis provides, for a layer, a `LayerPlan` with the masks and rules of the gates and a lookup that finds the gates
 # acting on a term (`_branchinggates`, a `PrecomputedLookup` built from the masks with which the basis decides whether a
@@ -197,20 +198,16 @@ end
 end
 
 """
-    _cosetrepresentative(plan, term)
+    _classrepresentative(plan, term)
 
-The representative of the coset of `term` in the span of the gate masks of the plan: the term reduced by every basis
-vector whose pivot bit it has.
-A gate acting on a term flips a sum of basis vectors, so all terms of a coset have the same representative, and
+The representative of the class of `term`: the term reduced by every basis vector of the plan whose pivot bit it has.
+A gate acting on a term flips a sum of basis vectors, so all terms of a class have the same representative, and
 terms with the same representative differ by a sum of gate masks, so the same gates act on them.
 """
-@inline function _cosetrepresentative(plan::LayerPlan, term)
+@inline function _classrepresentative(plan::LayerPlan, term)
     set_pivots = term & plan.pivots
     return term ⊻ set_pivots ⊻ _reduce(plan.reduction, set_pivots)
 end
-
-# the label of a term, the hash of its coset representative, which picks its batch
-@inline _cosetlabel(plan::LayerPlan, term) = _hashbits(_cosetrepresentative(plan, term)) % Int
 
 
 ### What a basis provides
@@ -220,7 +217,7 @@ end
 
 The gates of the plan that act on `term`, as the bits of their positions in a tuple of words, the gate `i` of the plan
 at the position `i - 1`, so that the bits are in the order in which the layer applies the gates.
-Every lookup implements this. The terms of a coset give the same positions.
+Every lookup implements this. The terms of a class give the same positions.
 """
 function _branchinggates end
 
@@ -350,21 +347,20 @@ end
 
 ### A pass over the sum
 
-# whether a layer is applied in one pass on the sum of the cache: its terms can be sorted by label in one pass, and its
-# coefficients are of a type that the cosets are applied to with
+# whether a layer is applied in one pass on the sum of the cache: its terms can be grouped by class in one pass, and its
+# coefficients are of a type that the classes are applied to with
 _canapplylayer(prop_cache::AbstractPropagationCache) =
-    _canapplytolabels(prop_cache) && _appliesincosets(coefftype(prop_cache))
+    _canapplytoclasses(prop_cache) && _appliesinclasses(coefftype(prop_cache))
 
-# whether the cosets are applied to with coefficients of this type: numbers, and any other type that opts in
-_appliesincosets(::Type{CT}) where {CT} = CT <: Number
+# whether the classes are applied to with coefficients of this type: numbers, and any other type that opts in
+_appliesinclasses(::Type{CT}) where {CT} = CT <: Number
 
 """
     _applypass!(prop_cache, plan, truncfunc; thread=true)
 
-One pass of the gates of `plan` over the sum of the cache: the terms are sorted by the hash of their coset
-representative, the terms of every label are split into their cosets, and every coset is loaded into the cache of the
-`CosetScratch` of a task, where the gates acting on it are applied, truncating the terms for which `truncfunc` returns
-`true` after every gate.
+One pass of the gates of `plan` over the sum of the cache: the terms are grouped by their class representative, and
+every class is loaded into the cache of the `ClassScratch` of a task, where the gates acting on it are applied,
+truncating the terms for which `truncfunc` returns `true` after every gate.
 """
 function _applypass!(prop_cache::AbstractPropagationCache, plan::LayerPlan, truncfunc::F; thread::Bool=true) where {F}
     if length(prop_cache) == 0
@@ -372,7 +368,7 @@ function _applypass!(prop_cache::AbstractPropagationCache, plan::LayerPlan, trun
     end
     TT = termtype(prop_cache)
     CT = coefftype(prop_cache)
-    workspace = _takeworkspace(TT, CT, CosetScratch{TT,CT})
+    workspace = _takeworkspace(TT, CT, ClassScratch{TT,CT})
     try
         sources = _passsources(StorageType(prop_cache), prop_cache, workspace, thread)
         _applypass!(prop_cache, plan, truncfunc, workspace, sources, thread)
@@ -383,79 +379,45 @@ function _applypass!(prop_cache::AbstractPropagationCache, plan::LayerPlan, trun
 end
 
 # the pass with its workspace and the sources of its tasks given: the scratch of every task holds the cache that the
-# cosets are loaded into, and the rules that the gates are applied with are those `_rulesof` gives
+# classes are loaded into, and the rules that the gates are applied with are those `_rulesof` gives
 function _applypass!(prop_cache::AbstractPropagationCache, plan::LayerPlan, truncfunc::F, workspace, sources, thread::Bool) where {F}
-    cosetlabel(term) = _cosetlabel(plan, term)
-    applytolabel!(sink, scratch, label_terms, label_coeffs) =
-        _applytocosets!(sink, scratch.cache, _rulesof(scratch, plan), plan, truncfunc, label_terms, label_coeffs)
-    _applytolabels!(cosetlabel, applytolabel!, prop_cache, workspace, sources, thread)
+    representativeof(term) = _classrepresentative(plan, term)
+    applytoclass!(sink, scratch, class_terms, class_coeffs) =
+        _applytoclass!(sink, scratch.cache, _rulesof(scratch, plan), plan, truncfunc, class_terms, class_coeffs)
+    _applytoclasses!(representativeof, applytoclass!, prop_cache, workspace, sources, thread)
     return prop_cache
 end
 
 # the rules that a task applies the gates with: those of the plan, unless its scratch holds rules of its own
 _rulesof(scratch, plan::LayerPlan) = plan.rules
 
-# The scratch of a task of a layer pass: a cache over a hashed sum, into which the task loads the cosets it applies the
+# The scratch of a task of a layer pass: a cache over a hashed sum, into which the task loads the classes it applies the
 # gates to, one after the other. The sum is on no number of sites in particular, since it holds the terms of any layer
 # on its term type.
-struct CosetScratch{TT,CT}
+struct ClassScratch{TT,CT}
     cache::HashedPropagationCache{TT,CT}
 end
 
-CosetScratch{TT,CT}() where {TT,CT} = CosetScratch{TT,CT}(PropagationCache(HashedTermSum{TT,CT}(0)))
-
-
-### The cosets of a label
-
-# The terms `label_terms` share the hash of their coset representative: they are one coset, or, where two
-# representatives share a hash, several. Every coset is moved to the front in turn and applied to: the first term and
-# the terms with its representative.
-function _applytocosets!(sink, cache, rules, plan, truncfunc::F, label_terms, label_coeffs) where {F}
-    first = 1
-    last = length(label_terms)
-    while first <= last
-        coset_end = first + 1
-        if first < last
-            representative = _cosetrepresentative(plan, label_terms[first])
-            for index in first+1:last
-                term = label_terms[index]
-                if _cosetrepresentative(plan, term) == representative
-                    if index != coset_end
-                        coeff = label_coeffs[index]
-                        label_terms[index] = label_terms[coset_end]
-                        label_coeffs[index] = label_coeffs[coset_end]
-                        label_terms[coset_end] = term
-                        label_coeffs[coset_end] = coeff
-                    end
-                    coset_end += 1
-                end
-            end
-        end
-        coset = first:coset_end-1
-        _applytocoset!(sink, cache, rules, plan, truncfunc, view(label_terms, coset), view(label_coeffs, coset))
-        first = coset_end
-    end
-    return sink
-end
+ClassScratch{TT,CT}() where {TT,CT} = ClassScratch{TT,CT}(PropagationCache(HashedTermSum{TT,CT}(0)))
 
 """
-    _applytocoset!(sink, cache, rules, plan, truncfunc, coset_terms, coset_coeffs)
+    _applytoclass!(sink, cache, rules, plan, truncfunc, class_terms, class_coeffs)
 
-Applies the gates of the plan that act on the terms `coset_terms` with the coefficients `coset_coeffs`, one coset, as
+Applies the gates of the plan that act on the terms `class_terms` with the coefficients `class_coeffs`, one class, as
 `propagate!` applies gates to a sum: the terms are added to the emptied sum of `cache`, every acting gate `i` is
 applied with `xorbranchmergeandtruncate!` and `rules[i]` in the order of the layer, and what is left in the sum is
-written to `sink`. A coset that no gate acts on is merged and truncated by `truncfunc`.
+written to `sink`. A class that no gate acts on is merged and truncated by `truncfunc`.
 """
-function _applytocoset!(sink, cache, rules, plan, truncfunc::F, coset_terms, coset_coeffs) where {F}
-    positions = _branchinggates(plan.lookup, first(coset_terms))
-    coset_sum = mainsum(cache)
+function _applytoclass!(sink, cache, rules, plan, truncfunc::F, class_terms, class_coeffs) where {F}
+    positions = _branchinggates(plan.lookup, first(class_terms))
+    class_sum = mainsum(cache)
     empty!(cache)
-    # the terms of a coset differ in their pivot bits
-    _distinguishby!(coset_sum, plan.pivots)
-    # room for twice the terms, which loading the coset and branching it by its first gate need at most
-    resize!(cache, 2 * length(coset_terms))
-    for index in eachindex(coset_terms, coset_coeffs)
-        add!(coset_sum, coset_terms[index], coset_coeffs[index])
+    # the terms of a class differ in their pivot bits
+    _distinguishby!(class_sum, plan.pivots)
+    # room for twice the terms, which loading the class and branching it by its first gate need at most
+    resize!(cache, 2 * length(class_terms))
+    for index in eachindex(class_terms, class_coeffs)
+        add!(class_sum, class_terms[index], class_coeffs[index])
     end
 
     if all(iszero, positions)
@@ -470,7 +432,7 @@ function _applytocoset!(sink, cache, rules, plan, truncfunc::F, coset_terms, cos
         end
     end
 
-    for (term, coeff) in coset_sum
+    for (term, coeff) in class_sum
         _emit!(sink, term, coeff)
     end
     return sink

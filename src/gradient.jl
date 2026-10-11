@@ -196,8 +196,8 @@ PropagationBase.truncatemincoeff(coeff::_DualCoeff, min_abs_coeff::Real) = trunc
 PropagationBase.tonumber(coeff::_DualCoeff) = coeff.coeff
 PropagationBase.numcoefftype(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO
 
-# the cosets of a layer of Pauli rotations are rotated with these coefficients as with numbers
-PropagationBase._appliesincosets(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO <: Number && CD <: Number
+# the classes of a layer of Pauli rotations are rotated with these coefficients as with numbers
+PropagationBase._appliesinclasses(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO <: Number && CD <: Number
 
 
 # Gradient contribution for one gate: real((i/2) * dual_sum(commutator(generator, op_sum))).
@@ -362,11 +362,11 @@ end
 end
 
 
-### Undoing a layer of Pauli rotations coset by coset
+### Undoing a layer of Pauli rotations class by class
 
 # Undoes the rotations of a layer as `_applylayer!` applies them, on the operator that carries the dual beside its
 # coefficients, and returns the gradient of every parametrized rotation: what the pairs of Pauli strings that a rotation
-# mixes contribute, recorded by the rules the rotations are applied through and added up over the cosets.
+# mixes contribute, recorded by the rules the rotations are applied through and added up over the classes.
 function _undolayer!(layer::GateLayer, cache, params, truncfunc::F; thread::Bool=true) where {F}
     rotations, angles = togates(layer, params)
     rotation_grads = zeros(length(rotations))
@@ -407,7 +407,7 @@ PropagationBase._creationfloor(gradient_rule::_GradientRule, cutoff) = Propagati
     return new_coeff, new_partner_coeff, acts
 end
 
-# The scratch of a task of a gradient pass: the cache that the cosets are loaded into, as in a layer pass, what the task
+# The scratch of a task of a gradient pass: the cache that the classes are loaded into, as in a layer pass, what the task
 # adds to the gradient of every rotation of the layer, and the rules that record it there. They record through
 # `branchpair`, which the branch of the hashed sum of the cache calls for every two Pauli strings it mixes.
 struct GradientScratch{TT,CT,R}

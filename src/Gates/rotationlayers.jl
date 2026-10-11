@@ -2,8 +2,8 @@
 ##
 # A file for layers of Pauli rotations that commute with each other.
 # For example PauliRotationLayer([:Z, :Z], staircasetopology(4)) holds the rotations RZZ_12, RZZ_23 and RZZ_34.
-# A layer is propagated as a whole, which is faster than propagating its rotations one after the other: coset by coset,
-# as PropagationBase applies a layer of commuting gates (Base/Layers/cosets.jl). A Pauli rotation acts on the Pauli
+# A layer is propagated as a whole, which is faster than propagating its rotations one after the other: class by class,
+# as PropagationBase applies a layer of commuting gates (Base/Layers/classes.jl). A Pauli rotation acts on the Pauli
 # strings that anticommute with its generator, that is whose Paulis anticommute with those of the generator on an odd
 # number of qubits, and flips the bits of the generator on them. Below a layer is routed and its plan prepared, with the
 # lookup of the rotations that anticommute with a Pauli string and the rule of each rotation on the strings it acts on.
@@ -54,8 +54,8 @@ end
 
 ### Propagation of a layer
 
-# Whether the layer has a fast path on the sum of the cache, on which its gates are applied together, coset by coset,
-# rather than one by one: every gate is a Pauli rotation, frozen or not, and the cosets can be applied to in the sum.
+# Whether the layer has a fast path on the sum of the cache, on which its gates are applied together, class by class,
+# rather than one by one: every gate is a Pauli rotation, frozen or not, and the classes can be applied to in the sum.
 _haslayerfastpath(layer::GateLayer, prop_cache::AbstractPropagationCache) =
     all(_isrotation, layer.gates) && PropagationBase._canapplylayer(prop_cache)
 
@@ -82,7 +82,7 @@ end
 
 ### The plan of a layer
 
-# The plan of applying the rotations `rotations` with the `angles` to the cosets of the Pauli strings of the cache: the
+# The plan of applying the rotations `rotations` with the `angles` to the classes of the Pauli strings of the cache: the
 # generators of the rotations as integers, which the rotations flip, the rules of the rotations, and the lookup of the
 # rotations acting on a Pauli string.
 function _preparelayer(rotations::Vector{PauliRotation}, angles, prop_cache)
@@ -95,7 +95,7 @@ function _preparelayer(rotations::Vector{PauliRotation}, angles, prop_cache)
     # integer representations of the PauliRotation generators
     gate_masks = [_branchmask(rotation, prop_cache) for rotation in rotations]
 
-    # a rotation acts on all Pauli strings of a coset it is applied to, so its rule need not ask whether it does
+    # a rotation acts on all Pauli strings of a class it is applied to, so its rule need not ask whether it does
     rules = [onlimbs(ActingRotationRule, gate_mask, cos(angle), sin(angle)) for (gate_mask, angle) in zip(gate_masks, angles)]
 
     # a Pauli string anticommutes with a rotation if it shares an odd number of bits with the swapped generator, qubit by qubit
