@@ -159,6 +159,9 @@ export
     xormergeandtruncate!,
     xorbranchmergeandtruncate!
 
+# a term sum held in a hash table, for small sums such as the cosets of a layer pass
+include("./hashedtermsum.jl")
+
 include("./Layers/Layers.jl")
 export GateLayer
 

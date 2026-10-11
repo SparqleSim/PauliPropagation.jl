@@ -5,9 +5,6 @@ include("gatelayer.jl")
 # workspaces that the passes of a propagation reuse.
 include("labelpass.jl")
 
-# classes.jl applies a layer of commuting rotations class by class: the plan of a layer, what a basis provides, the lookup
-# of the rotations acting on a term, and the classes.
-include("classes.jl")
-
-# classkernels.jl rotates one class, densely if it has few distinguishing bits and sparsely otherwise.
-include("classkernels.jl")
+# cosets.jl applies a layer of commuting gates coset by coset through the gate path: the plan of a layer, what a basis
+# provides, the lookup of the gates acting on a term, and the pass over the cosets.
+include("cosets.jl")

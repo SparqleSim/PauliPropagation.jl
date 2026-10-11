@@ -4,7 +4,7 @@
 # the propagation of a layer whose gates each map a Pauli string to one Pauli string, such as Clifford gates and Pauli
 # noise. Such a layer is applied in one pass over the sum, with all of its gates applied to a Pauli string in one visit
 # from lookups built from the transfer maps of the gates, which saves a pass over the sum per gate. Layers of Pauli
-# rotations are propagated class by class in rotationlayers.jl.
+# rotations are propagated in one pass as well, coset by coset, see rotationlayers.jl.
 ##
 ###
 
@@ -93,7 +93,7 @@ function _joinslayer(gate, layer, gates_on_qubit)
         return true
     end
     # the gathered gates are either all Pauli rotations or none, so the first gate tells which
-    if (gate isa _LayerRotation) != (first(layer) isa _LayerRotation)
+    if _isrotation(gate) != _isrotation(first(layer))
         return false
     end
     # gates on other qubits always commute with it, so only the gates on its own qubits are compared

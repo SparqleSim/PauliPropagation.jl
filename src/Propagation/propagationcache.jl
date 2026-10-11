@@ -24,6 +24,9 @@ function PropagationBase.PropagationCache(psum::PauliString)
     return PauliPropagationCache(PauliSum(psum))
 end
 
+# a hashed sum of Pauli strings propagates through the default cache, given explicitly as `PauliPropagationCache(hsum)`
+nqubits(hsum::PropagationBase.HashedTermSum) = PropagationBase.nsites(hsum)
+
 PropagationBase.mainsum(prop_cache::AbstractPauliPropagationCache) = prop_cache.psum
 PropagationBase.auxsum(prop_cache::AbstractPauliPropagationCache) = prop_cache.aux_psum
 

@@ -127,7 +127,7 @@ function _undostep!(layer::GateLayer, state::_BackwardSweepState; thread::Bool=t
 end
 
 # Records the gradient of a GateLayer: the derivatives by the parameters of its rotations.
-# Where `applymergetruncate!` would apply the layer class by class, one pass undoes it and adds up the gradients of its
+# Where `applymergetruncate!` would apply the layer in one pass, one pass undoes it and adds up the gradients of its
 # rotations, and otherwise its gates are undone one by one.
 function _undostep!(layer::GateLayer, state::_BackwardSweepState, params; min_abs_coeff::Real=1e-10, max_weight::Real=Inf,
     max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
@@ -143,7 +143,7 @@ function _undostep!(layer::GateLayer, state::_BackwardSweepState, params; min_ab
         rotation_grads = gate_state.grad
     else
         truncfunc = buildtruncfunc(state.cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
-        rotation_grads = _undolayer!(layer, state.cache, params, truncfunc, min_abs_coeff; thread)
+        rotation_grads = _undolayer!(layer, state.cache, params, truncfunc; thread)
     end
 
     state.param_idx += 1
@@ -192,14 +192,12 @@ Base.zero(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = _DualCoeff(zero(CO), zero(C
 Base.convert(::Type{_DualCoeff{CO,CD}}, coeff::Number) where {CO,CD} = _DualCoeff{CO,CD}(coeff, zero(CD))
 
 # the truncations read the coefficient of the operator
-truncatemincoeff(coeff::_DualCoeff, min_abs_coeff::Real) = truncatemincoeff(coeff.coeff, min_abs_coeff)
+PropagationBase.truncatemincoeff(coeff::_DualCoeff, min_abs_coeff::Real) = truncatemincoeff(coeff.coeff, min_abs_coeff)
 PropagationBase.tonumber(coeff::_DualCoeff) = coeff.coeff
 PropagationBase.numcoefftype(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO
 
-# The classes of a layer of Pauli rotations are rotated with these coefficients as with numbers, and a Pauli string makes its partner
-# only if the coefficient of the operator can reach the truncation threshold.
-PropagationBase._rotatesinclasses(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO <: Number && CD <: Number
-Base.abs(coeff::_DualCoeff) = abs(coeff.coeff)
+# the cosets of a layer of Pauli rotations are rotated with these coefficients as with numbers
+PropagationBase._appliesincosets(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO <: Number && CD <: Number
 
 
 # Gradient contribution for one gate: real((i/2) * dual_sum(commutator(generator, op_sum))).
@@ -364,19 +362,19 @@ end
 end
 
 
-### Undoing a layer of Pauli rotations class by class
+### Undoing a layer of Pauli rotations coset by coset
 
 # Undoes the rotations of a layer as `_applylayer!` applies them, on the operator that carries the dual beside its
-# coefficients, and returns the gradient of every parametrized rotation: what the pairs of Pauli strings that it mixes
-# contribute, added up over the classes.
-function _undolayer!(layer::GateLayer, cache, params, truncfunc::F, min_abs_coeff::Real; thread::Bool=true) where {F}
+# coefficients, and returns the gradient of every parametrized rotation: what the pairs of Pauli strings that a rotation
+# mixes contribute, recorded by the rules the rotations are applied through and added up over the cosets.
+function _undolayer!(layer::GateLayer, cache, params, truncfunc::F; thread::Bool=true) where {F}
     rotations, angles = togates(layer, params)
     rotation_grads = zeros(length(rotations))
+    plan = _preparelayer(rotations, angles, cache)
     TT = paulitype(cache)
     CT = coefftype(cache)
-    workspace = PropagationBase._takeworkspace(TT, CT, PropagationBase.ClassScratch{TT,CT})
+    workspace = PropagationBase._takeworkspace(TT, CT, GradientScratch{TT,CT,eltype(plan.rules)})
     try
-        plan = _prepareclasses(rotations, angles, TT, nqubits(cache); min_abs_coeff)
         _undopass!(cache, plan, truncfunc, workspace, rotation_grads; thread)
     finally
         PropagationBase._putbackworkspace!(workspace)
@@ -385,8 +383,46 @@ function _undolayer!(layer::GateLayer, cache, params, truncfunc::F, min_abs_coef
     return rotation_grads[is_parametrized]
 end
 
-# One pass as `_applypass!` makes it, in which every task adds up the gradients of the rotations in its own workspace,
-# and those of all tasks are added to `rotation_grads` at the end.
+# The rule of a rotation in a gradient pass: the rotation's rule, which also adds what every two Pauli strings it mixes
+# contribute to the gradient of the rotation. Each of the two contributes its coefficient in the operator times the dual
+# coefficient of the other, with the sign that the rotation gives the other, as every Pauli string does in
+# `_generatorcommutatordot`; a partner that is absent contributes nothing, since its coefficients are zero.
+struct _GradientRule{R}
+    rule::R
+    gradient::Vector{Float64}
+    rotation::Int
+end
+
+@inline (gradient_rule::_GradientRule)(pstr, coeff) = @inline gradient_rule.rule(pstr, coeff)
+
+PropagationBase._creationfloor(gradient_rule::_GradientRule, cutoff) = PropagationBase._creationfloor(gradient_rule.rule, cutoff)
+
+@inline function PropagationBase.branchpair(gradient_rule::_GradientRule, pstr, coeff::_DualCoeff, partner, partner_coeff::_DualCoeff)
+    new_coeff, new_partner_coeff, acts = PropagationBase.branchpair(gradient_rule.rule, pstr, coeff, partner, partner_coeff)
+    if acts
+        sign_to_partner = _partnersign(gradient_rule.rule, pstr)
+        gradient_rule.gradient[gradient_rule.rotation] +=
+            real(sign_to_partner * coeff.coeff * partner_coeff.dual) - real(sign_to_partner * partner_coeff.coeff * coeff.dual)
+    end
+    return new_coeff, new_partner_coeff, acts
+end
+
+# The scratch of a task of a gradient pass: the cache that the cosets are loaded into, as in a layer pass, what the task
+# adds to the gradient of every rotation of the layer, and the rules that record it there. They record through
+# `branchpair`, which the branch of the hashed sum of the cache calls for every two Pauli strings it mixes.
+struct GradientScratch{TT,CT,R}
+    cache::PropagationBase.HashedPropagationCache{TT,CT}
+    gradient::Vector{Float64}
+    rules::Vector{_GradientRule{R}}
+end
+
+GradientScratch{TT,CT,R}() where {TT,CT,R} =
+    GradientScratch{TT,CT,R}(PropagationCache(PropagationBase.HashedTermSum{TT,CT}(0)), Float64[], _GradientRule{R}[])
+
+PropagationBase._rulesof(scratch::GradientScratch, plan::PropagationBase.LayerPlan) = scratch.rules
+
+# One pass as `_applypass!` makes it, in which every task applies the rotations through rules of its own, which add up
+# the gradients in its scratch, and those of all tasks are added to `rotation_grads` at the end.
 function _undopass!(cache, plan, truncfunc::F, workspace, rotation_grads; thread::Bool=true) where {F}
     if length(cache) == 0
         return rotation_grads
@@ -394,41 +430,20 @@ function _undopass!(cache, plan, truncfunc::F, workspace, rotation_grads; thread
     sources = PropagationBase._passsources(StorageType(cache), cache, workspace, thread)
     n_tasks = length(sources)
     tasks = PropagationBase._ensurecount!(workspace.tasks, n_tasks)
+    n_rotations = length(rotation_grads)
     for task_id in 1:n_tasks
-        fill!(resize!(tasks[task_id].scratch.gradient, length(rotation_grads)), 0.0)
+        scratch = tasks[task_id].scratch
+        fill!(resize!(scratch.gradient, n_rotations), 0.0)
+        resize!(scratch.rules, n_rotations)
+        for rotation in 1:n_rotations
+            scratch.rules[rotation] = _GradientRule(plan.rules[rotation], scratch.gradient, rotation)
+        end
     end
 
-    classlabel(pstr) = PropagationBase._classlabel(plan, pstr)
-    function rotateclasses!(sink, scratch, label_terms, label_coeffs)
-        PropagationBase._rotateclasses!(_GradientSink(sink, scratch.gradient), scratch, plan, truncfunc, label_terms, label_coeffs)
-        return sink
-    end
-    PropagationBase._applytolabels!(classlabel, rotateclasses!, cache, workspace, sources, thread)
+    PropagationBase._applypass!(cache, plan, truncfunc, workspace, sources, thread)
 
     for task_id in 1:n_tasks
         rotation_grads .+= tasks[task_id].scratch.gradient
     end
     return rotation_grads
-end
-
-# The sink of a task in a gradient pass: it hands the Pauli strings on to the sink of the task, and adds what the two
-# Pauli strings that a rotation mixes contribute to the gradient of that rotation.
-struct _GradientSink{ST}
-    sink::ST
-    gradient::Vector{Float64}
-end
-
-@inline function PropagationBase._emit!(gradient_sink::_GradientSink, pstr, coeff)
-    PropagationBase._emit!(gradient_sink.sink, pstr, coeff)
-    return
-end
-
-# Each of the two contributes its coefficient in the operator times the dual coefficient of the other, with the sign that
-# the rotation gives the other, as every Pauli string does in `_generatorcommutatordot`.
-@inline function PropagationBase._addgradient!(gradient_sink::_GradientSink, rotation::Int, coeff::_DualCoeff, partner_coeff::_DualCoeff,
-    sign_to_partner, sign_from_partner)
-
-    gradient_sink.gradient[rotation] += real(sign_to_partner * coeff.coeff * partner_coeff.dual) +
-                                        real(sign_from_partner * partner_coeff.coeff * coeff.dual)
-    return
 end

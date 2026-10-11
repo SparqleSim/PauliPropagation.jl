@@ -53,6 +53,8 @@ using Random
 
     include("test_mergeandtruncate.jl")
 
+    include("test_hashedtermsum.jl")
+
     include("test_gradient.jl")
 
     include("test_xortailmerge.jl")

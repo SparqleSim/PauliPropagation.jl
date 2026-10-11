@@ -2,12 +2,12 @@
 ##
 # A file for layers of Pauli rotations that commute with each other.
 # For example PauliRotationLayer([:Z, :Z], staircasetopology(4)) holds the rotations RZZ_12, RZZ_23 and RZZ_34.
-# A layer is propagated as a whole, which is faster than propagating its rotations one after the other: class by class,
-# as PropagationBase applies a layer of commuting rotations (Base/Layers/classes.jl). A Pauli rotation acts on the Pauli
+# A layer is propagated as a whole, which is faster than propagating its rotations one after the other: coset by coset,
+# as PropagationBase applies a layer of commuting gates (Base/Layers/cosets.jl). A Pauli rotation acts on the Pauli
 # strings that anticommute with its generator, that is whose Paulis anticommute with those of the generator on an odd
 # number of qubits, and flips the bits of the generator on them. Below a layer is routed and its plan prepared, with the
-# lookup of the rotations that anticommute with a Pauli string and the signs of the two Pauli strings that a rotation
-# mixes. Which gates of a circuit are gathered into a layer is decided in gatelayers.jl.
+# lookup of the rotations that anticommute with a Pauli string and the rule of each rotation on the strings it acts on.
+# Which gates of a circuit are gathered into a layer is decided in gatelayers.jl.
 ##
 ###
 
@@ -54,13 +54,10 @@ end
 
 ### Propagation of a layer
 
-# a gate that a layer applies class by class: a Pauli rotation, frozen or not
-const _LayerRotation = Union{PauliRotation,FrozenGate{PauliRotation}}
-
-# Whether the layer has a fast path on the sum of the cache, on which its gates are applied together, class by class,
-# rather than one by one: every gate is a Pauli rotation, frozen or not, and the classes can be rotated in the sum.
+# Whether the layer has a fast path on the sum of the cache, on which its gates are applied together, coset by coset,
+# rather than one by one: every gate is a Pauli rotation, frozen or not, and the cosets can be applied to in the sum.
 _haslayerfastpath(layer::GateLayer, prop_cache::AbstractPropagationCache) =
-    all(gate -> gate isa _LayerRotation, layer.gates) && PropagationBase._canrotateclasses(prop_cache)
+    all(_isrotation, layer.gates) && PropagationBase._canapplylayer(prop_cache)
 
 # the Pauli rotations of a layer and their angles, those of frozen rotations included
 function togates(layer::GateLayer, params)
@@ -71,11 +68,11 @@ function togates(layer::GateLayer, params)
     param_index = 0
     for gate in layer.gates
         if gate isa FrozenGate
-            push!(rotations, gate.gate)
+            push!(rotations, _rotationof(gate))
             push!(angles, gate.parameter)
         else
             param_index += 1
-            push!(rotations, gate)
+            push!(rotations, _rotationof(gate))
             push!(angles, PropagationBase._gateparameter(params, param_index))
         end
     end
@@ -85,40 +82,25 @@ end
 
 ### The plan of a layer
 
-# A pair is a Pauli string that anticommutes with a rotation and its partner, the string with the mask flipped. 
-# The rotation mixes the two by the cosine and sine of its angle, with opposite signs.
-# The lower string of a pair is the one in which the lowest distinguishing bit that the rotation flips is clear.
-
-# A class is a set of Pauli strings that the rotations of a layer only mix among themselves. 
-# All its strings anticommute with the same rotations.
-
-# A representative is a value that all strings of a class share and no other string has.
-# The distinguishing bits of a class tell its strings apart, so a class holds at most 2^(number of distinguishing bits)
-# strings. A pivot bit is a bit that only one mask has after the masks are reduced against each other with XOR. The
-# distinguishing bits of a class are the pivot bits that its rotations flip.
-# A plan holds what is computed once per layer: the masks, cosines, sines, pivot bits and the lookup.
-# The lookup finds the rotations that anticommute with a Pauli string, the rotation `i` as the bit `i - 1` of a tuple of
-# words, and the bits that those rotations flip together, from a chunk table of what the rotations anticommuting with each
-# Pauli on each qubit contribute.
-
-# The plan of rotating the classes of Pauli strings of the type `TT` on `nqubits` qubits by the rotations `rotations`
-# with the `angles`, where coefficients below `min_abs_coeff` are truncated.
-function _prepareclasses(rotations::Vector{PauliRotation}, angles, ::Type{TT}, nqubits::Int;
-    min_abs_coeff::Real=0) where {TT}
+# The plan of applying the rotations `rotations` with the `angles` to the cosets of the Pauli strings of the cache: the
+# generators of the rotations as integers, which the rotations flip, the rules of the rotations, and the lookup of the
+# rotations acting on a Pauli string.
+function _preparelayer(rotations::Vector{PauliRotation}, angles, prop_cache)
 
     # every rotation acts on qubits of the Pauli strings
     for rotation in rotations
-        _check_qind_range(nqubits, rotation.qinds)
+        _check_qind_range(nqubits(prop_cache), rotation.qinds)
     end
 
     # integer representations of the PauliRotation generators
-    gate_masks = [symboltoint(TT, rotation.symbols, rotation.qinds) for rotation in rotations]
+    gate_masks = [_branchmask(rotation, prop_cache) for rotation in rotations]
+
+    # a rotation acts on all Pauli strings of a coset it is applied to, so its rule need not ask whether it does
+    rules = [onlimbs(ActingRotationRule, gate_mask, cos(angle), sin(angle)) for (gate_mask, angle) in zip(gate_masks, angles)]
 
     # a Pauli string anticommutes with a rotation if it shares an odd number of bits with the swapped generator, qubit by qubit
-    lookup = PropagationBase.PrecomputedLookup(_commutationmask.(gate_masks), gate_masks)
-
-    # the plan adds the cosines and sines of the angles and the pivot bits
-    return PropagationBase.ClassPlan(gate_masks, angles, lookup, _pairsigns; min_abs_coeff)
+    lookup = PropagationBase.PrecomputedLookup(_commutationmask.(gate_masks))
+    return PropagationBase.LayerPlan(gate_masks, rules, lookup)
 end
 
 # the generator of a rotation with its two bits swapped on every qubit, with which a Pauli string shares an odd number of
@@ -128,12 +110,68 @@ function _commutationmask(gate_mask::TT) where {TT}
     return ((gate_mask >> 1) & low_bits) | ((gate_mask & low_bits) << 1)
 end
 
-# The signs that a rotation with the gate mask `gate_mask` gives the two Pauli strings of a pair: that of the partner it
-# makes of the lower string, as `paulirotationproduct` gives it, and the opposite sign for the lower string made of the
-# partner.
-@inline function _pairsigns(gate_mask, lower_pstr)
-    _, sign = paulirotationproduct(gate_mask, lower_pstr)
-    return sign, -sign
+# The rule of a Pauli rotation on the Pauli strings it acts on: it keeps `cos_val` of a coefficient and creates `sin_val`
+# of it with the sign that the rotation gives the partner. For a rotation on at most two qubits, that sign depends on the
+# two Paulis of the Pauli string on those qubits alone, so the bit of `signs` for those two Paulis, read from the lowest
+# bits `bit1` and `bit2` of the qubits, is set where the sign is -1.
+struct ActingRotationRule{TT,RT}
+    gate_mask::TT
+    cos_val::RT
+    sin_val::RT
+    tabulated::Bool
+    bit1::Int
+    bit2::Int
+    signs::UInt16
 end
 
+function ActingRotationRule(gate_mask::TT, cos_val, sin_val) where {TT}
+    # the lowest bit of every qubit that the generator acts on
+    qubit_bits = (gate_mask | (gate_mask >> 1)) & alternatingmask(gate_mask)
+    if count_ones(qubit_bits) > 2
+        return ActingRotationRule(gate_mask, cos_val, sin_val, false, 0, 0, zero(UInt16))
+    end
+    # a generator that is the identity acts on no Pauli string, and its table is not read
+    bit1, bit2 = if iszero(qubit_bits)
+        0, 0
+    else
+        trailing_zeros(qubit_bits), 8 * sizeof(TT) - 1 - leading_zeros(qubit_bits)
+    end
+    signs = zero(UInt16)
+    for index in 0:15
+        pstr = _withpauli(_withpauli(zero(TT), bit1, index & 3), bit2, ifelse(bit2 == bit1, 0, index >> 2))
+        if !commutes(gate_mask, pstr) && last(paulirotationproduct(gate_mask, pstr)) == -1
+            signs |= one(UInt16) << index
+        end
+    end
+    return ActingRotationRule(gate_mask, cos_val, sin_val, true, bit1, bit2, signs)
+end
 
+# `pstr` with the two bits from `bit` on set to `pauli`
+_withpauli(pstr::TT, bit::Int, pauli::Int) where {TT} =
+    pstr | ifelse(isodd(pauli), one(TT) << bit, zero(TT)) | ifelse(pauli >= 2, one(TT) << (bit + 1), zero(TT))
+
+# the sign that the rotation gives the partner of a Pauli string it acts on
+@inline function _partnersign(rule::ActingRotationRule, pstr)
+    if rule.tabulated
+        pauli1 = (PropagationBase._wordat(pstr, rule.bit1) >> (rule.bit1 & 63)) & 3
+        pauli2 = (PropagationBase._wordat(pstr, rule.bit2) >> (rule.bit2 & 63)) & 3
+        return 1 - 2 * Int((rule.signs >> (pauli1 | (pauli2 << 2))) & 1)
+    end
+    return last(paulirotationproduct(rule.gate_mask, pstr))
+end
+
+_partnersign(rule::PropagationBase.OnLimbs, pstr) = _partnersign(rule.rule, PropagationBase.limbwindow(pstr, rule.inds))
+
+@inline (rule::ActingRotationRule)(pstr, coeff) = Branch(coeff * rule.cos_val, coeff * rule.sin_val * _partnersign(rule, pstr))
+
+# the partner of a Pauli string has the opposite sign, so the two need only one
+@inline function PropagationBase.branchpair(rule::ActingRotationRule, pstr, coeff, partner, partner_coeff)
+    sign = _partnersign(rule, pstr)
+    new_coeff = mergefunc(coeff * rule.cos_val, partner_coeff * rule.sin_val * -sign)
+    new_partner_coeff = mergefunc(partner_coeff * rule.cos_val, coeff * rule.sin_val * sign)
+    return new_coeff, new_partner_coeff, true
+end
+
+# A coefficient creates `sin_val` of itself, so one below `cutoff / abs(sin_val)` creates nothing that the cutoff keeps;
+# the margin covers the rounding of the quotient and of the product.
+PropagationBase._creationfloor(rule::ActingRotationRule, cutoff) = (1 - 1e-12) * cutoff / abs(rule.sin_val)

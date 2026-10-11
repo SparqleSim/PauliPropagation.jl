@@ -96,7 +96,7 @@ function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::Abstr
         _applymap!(layer, prop_cache, params; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
     elseif _haslayerfastpath(layer, prop_cache) && isnothing(min_rel_coeff)
         truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
-        _applylayer!(layer, prop_cache, params, truncfunc, min_abs_coeff; thread)
+        _applylayer!(layer, prop_cache, params, truncfunc; thread)
     else
         PropagationBase._applygatesonebyone!(layer, prop_cache, params;
             min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread, kwargs...)
@@ -104,21 +104,12 @@ function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::Abstr
     return
 end
 
-# Applies the rotations of the layer class by class, in one pass over the sum, and truncates the Pauli strings for which
-# `truncfunc` returns `true` after every rotation. `truncfunc` truncates every coefficient below `min_abs_coeff`.
-function _applylayer!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params, truncfunc::F, min_abs_coeff::Real;
-    thread::Bool=true) where {F}
-
+# Applies the rotations of the layer in one pass over the sum, coset by coset, and truncates the Pauli strings for which
+# `truncfunc` returns `true` after every rotation.
+function _applylayer!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params, truncfunc::F; thread::Bool=true) where {F}
     rotations, angles = togates(layer, params)
-    TT = paulitype(prop_cache)
-    CT = coefftype(prop_cache)
-    workspace = PropagationBase._takeworkspace(TT, CT, PropagationBase.ClassScratch{TT,CT})
-    try
-        plan = _prepareclasses(rotations, angles, TT, nqubits(prop_cache); min_abs_coeff)
-        PropagationBase._applypass!(prop_cache, plan, truncfunc, workspace; thread)
-    finally
-        PropagationBase._putbackworkspace!(workspace)
-    end
+    plan = _preparelayer(rotations, angles, prop_cache)
+    PropagationBase._applypass!(prop_cache, plan, truncfunc; thread)
     return prop_cache
 end
 
