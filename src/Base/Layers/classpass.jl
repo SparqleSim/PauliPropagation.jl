@@ -459,17 +459,8 @@ function _copytobatches!(zone_terms::Vector{Vector{TT}}, zone_coeffs::Vector{Vec
     return zone_terms
 end
 
-# A hash of a term. The limbs are mixed independently of each other, so that the hash of a wide term is
-# no chain over its limbs. A product keeps the highest bit of a limb only in its own highest bit, so the high half of
-# every limb is folded onto its low half first, or strings that differ only in which limb has that bit set would collide.
-@inline function _hashbits(term)
-    limbs = _limbs(term)
-    folded = zero(UInt64)
-    for i in eachindex(limbs)
-        folded ⊻= (limbs[i] ⊻ (limbs[i] >> 32)) * _foldfactor(i)
-    end
-    return _mix64(folded)
-end
+# a hash of a term: the limbs folded onto 64 bits as for the slot of a hashed sum, then mixed
+@inline _hashbits(term) = _mix64(_slothash(term))
 
 # an odd factor for every limb
 const _FOLD_FACTORS = ntuple(i -> _mix64(UInt64(i)) | one(UInt64), 64)

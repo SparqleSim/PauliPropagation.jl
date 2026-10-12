@@ -50,6 +50,14 @@ using Test
     @test length(hsum) == count(coeff -> abs(coeff) >= 1.0, collect(coefficients(copied)) .* 2) + (abs(getcoeff(copied, term)) * 2 < 1.0)
     @test maxabscoeff(hsum) == maximum(abs, collect(coefficients(hsum)))
 
+    # a storage without a way to append adds the term, and ignores a hint for its size
+    push!(hsum, term, 0.5)
+    @test getcoeff(hsum, term) == 3.5
+    @test sizehint!(hsum, 1000) === hsum
+    # it has no order to sort by, and an empty sum like it holds the same type of terms
+    @test sortterms!(hsum) === hsum && sortcoeffs!(hsum) === hsum
+    @test emptylike(hsum) isa typeof(hsum) && isempty(emptylike(hsum)) && !isempty(hsum)
+
     # emptied, with slots for many terms, it holds nothing and takes terms again
     empty!(hsum; sizehint=1000)
     @test length(hsum) == 0
@@ -131,6 +139,33 @@ end
     @test length(hashed) == length(reference)
     @test all(getcoeff(mainsum(reference), term) == coeff for (term, coeff) in hashed)
     @test_throws ArgumentError PB.xorbranchmergeandtruncate!((term, coeff) -> coeff, nothing, hashed, mask)
+end
+
+@testset "xorbranchmergeandtruncate! on a HashedTermSum is right after the stamp counter has run long" begin
+    nq = 5
+    TT = UInt16
+    cache = PropagationCache(PauliSum(PauliString(nq, :Z, 1, 1.0)))
+    mask = PP._branchmask(PauliRotation(:Y, 2), cache)
+    rule = PB.onlimbs(PP.ActingRotationRule, mask, cos(0.3), sin(0.3))
+    truncfunc = buildtruncfunc(cache; min_abs_coeff=1e-3)
+
+    # 8 terms are branched one by one, and of 40 terms, most of them below the creation floor, in passes
+    function branched(n_terms, stamp)
+        hashed = PropagationCache(PB.HashedTermSum{TT,Float64}(nq))
+        # a sum emptied when the next stamp would be 0, the stamp of a fresh entry
+        mainsum(hashed).stamp = stamp
+        empty!(mainsum(hashed))
+        for term in 1:n_terms
+            add!(mainsum(hashed), TT(term), n_terms > 32 && term <= 30 ? 1e-6 : 0.5)
+        end
+        PB.xorbranchmergeandtruncate!(rule, truncfunc, hashed, mask)
+        return Dict(term => coeff for (term, coeff) in hashed)
+    end
+    for n_terms in (8, 40)
+        reference = branched(n_terms, Int32(0))
+        @test !isempty(reference)
+        @test branched(n_terms, Int32(-1)) == reference
+    end
 end
 
 @testset "a HashedTermSum keyed by distinguishing bits propagates as a PauliSum does" begin

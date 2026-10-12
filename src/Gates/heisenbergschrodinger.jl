@@ -101,7 +101,8 @@ function toschrodinger(circuit, params)
     PropagationBase._checknumberofparams(circuit, params)
 
     params_iterator = Iterators.Stateful(params)
-    schrodinger_circuit = eltype(circuit)[]
+    # a gate may change its type, as a T gate becomes a frozen rotation
+    schrodinger_circuit = Gate[]
     schrodinger_params = eltype(params)[]
 
     for gate in circuit
@@ -118,7 +119,8 @@ function toschrodinger(circuit, params)
             push!(schrodinger_circuit, gate_schrodinger)
         end
     end
-    return schrodinger_circuit, schrodinger_params
+    # the gates in the narrowest vector that holds them, as the circuit had them
+    return [gate for gate in schrodinger_circuit], schrodinger_params
 end
 
 function toschrodinger(circuit)
@@ -142,6 +144,10 @@ _toschrodinger(gate, args...) = PropagationBase._thrownotimplemented(gate, :tosc
 function _toschrodinger(gate::PauliRotation, θ)
     return gate, -θ
 end
+
+# Method to transpose a `TGate` for Schrödinger picture propagation.
+# A T gate is the rotation about Z by π/4, so it becomes that rotation by -π/4, frozen as it takes no parameter.
+_toschrodinger(gate::TGate) = freeze(PauliRotation(:Z, gate.qind), -π / 4)
 
 
 # Method to transpose a `GateLayer` for Schrödinger picture propagation, by transposing each of its gates.

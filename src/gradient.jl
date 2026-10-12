@@ -127,28 +127,31 @@ function _undostep!(layer::GateLayer, state::_BackwardSweepState; thread::Bool=t
 end
 
 # Records the gradient of a GateLayer: the derivatives by the parameters of its rotations.
-# Where `applymergetruncate!` would apply the layer in one pass, one pass undoes it and adds up the gradients of its
-# rotations, and otherwise its gates are undone one by one.
-function _undostep!(layer::GateLayer, state::_BackwardSweepState, params; min_abs_coeff::Real=1e-10, max_weight::Real=Inf,
-    max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
-
-    if !_haslayerfastpath(layer, state.cache) || !isnothing(min_rel_coeff)
-        gate_state = _BackwardSweepState(state.cache, zeros(countparameters(layer)), 0)
-        function undogate!(gate, args...)
-            _undostep!(gate, gate_state, args...;
-                min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread, kwargs...)
-            return
-        end
-        PropagationBase._foreachgate(undogate!, layer, params)
-        rotation_grads = gate_state.grad
+# A layer that `applymergetruncate!` applies as rotations class by class is undone in one pass, which adds up the
+# gradients of its rotations, and any other layer has its gates undone one by one.
+function _undostep!(layer::GateLayer, state::_BackwardSweepState, params; min_rel_coeff=nothing, kwargs...)
+    undo! = if _layerroute(layer, state.cache, min_rel_coeff) === _applyrotationlayer!
+        _undolayer!
     else
-        truncfunc = buildtruncfunc(state.cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
-        rotation_grads = _undolayer!(layer, state.cache, params, truncfunc; thread)
+        _undogatesonebyone!
     end
+    # past a barrier to inference, so that a layer compiles only the way it is undone
+    rotation_grads = Base.inferencebarrier(undo!)(layer, state.cache, params; min_rel_coeff, kwargs...)
 
     state.param_idx += 1
     state.grad[state.param_idx] = _layergradient(params, rotation_grads)
     return state
+end
+
+# Undoes the gates of the layer one by one, and returns the gradients of its parametrized gates.
+function _undogatesonebyone!(layer::GateLayer, cache, params; kwargs...)
+    gate_state = _BackwardSweepState(cache, zeros(countparameters(layer)), 0)
+    function undogate!(gate, args...)
+        _undostep!(gate, gate_state, args...; kwargs...)
+        return
+    end
+    PropagationBase._foreachgate(undogate!, layer, params)
+    return gate_state.grad
 end
 
 # the gradient of a layer from those of its parametrized rotations: a number for a number as its parameter
@@ -364,11 +367,14 @@ end
 
 ### Undoing a layer of Pauli rotations class by class
 
-# Undoes the rotations of a layer as `_applylayer!` applies them, on the operator that carries the dual beside its
-# coefficients, and returns the gradient of every parametrized rotation: what the pairs of Pauli strings that a rotation
-# mixes contribute, recorded by the rules the rotations are applied through and added up over the classes.
-function _undolayer!(layer::GateLayer, cache, params, truncfunc::F; thread::Bool=true) where {F}
-    rotations, angles = togates(layer, params)
+# Undoes the rotations of a layer as `_applyrotationlayer!` applies them, on the operator that carries the dual beside
+# its coefficients, and returns the gradient of every parametrized rotation: what the pairs of Pauli strings that a
+# rotation mixes contribute, recorded by the rules the rotations are applied through and added up over the classes.
+function _undolayer!(layer::GateLayer, cache, params; min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf,
+    max_sins::Real=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
+
+    truncfunc = buildtruncfunc(cache; min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread)
+    rotations, angles = _rotationsandangles(layer, params)
     rotation_grads = zeros(length(rotations))
     plan = _preparelayer(rotations, angles, cache)
     TT = paulitype(cache)
@@ -379,7 +385,7 @@ function _undolayer!(layer::GateLayer, cache, params, truncfunc::F; thread::Bool
     finally
         PropagationBase._putbackworkspace!(workspace)
     end
-    is_parametrized = [gate isa ParametrizedGate for gate in layer.gates]
+    is_parametrized = [isparametrized(gate) for gate in layer.gates]
     return rotation_grads[is_parametrized]
 end
 

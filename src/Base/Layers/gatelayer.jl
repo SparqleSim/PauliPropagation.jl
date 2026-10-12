@@ -33,19 +33,30 @@ struct GateLayer{G} <: ParametrizedGate
 end
 
 function _qindsoverlapcheck(gates)
+    shared = _sharedqubit(gates)
+    if !isnothing(shared)
+        other_index, index, qind = shared
+        throw(ArgumentError(
+            "The gates $other_index and $index of the layer both act on the qubit $qind. " *
+            "Pass `guaranteed_commutes=true` if the gates commute nonetheless."
+        ))
+    end
+end
+
+# the first two gates that act on the same qubit, as their indices and the qubit, or `nothing` if every gate acts on
+# qubits of its own
+function _sharedqubit(gates)
     gate_on_qubit = Dict{Int,Int}()
     for (index, gate) in enumerate(gates)
         for qind in qinds(gate)
             other_index = get(gate_on_qubit, qind, index)
             if other_index != index
-                throw(ArgumentError(
-                    "The gates $other_index and $index of the layer both act on the qubit $qind. " *
-                    "Pass `guaranteed_commutes=true` if the gates commute nonetheless."
-                ))
+                return other_index, index, qind
             end
             gate_on_qubit[qind] = index
         end
     end
+    return nothing
 end
 
 # A layer prints how many of its gates are of each type, by the name of the type without its parameters, in the order in
@@ -128,7 +139,7 @@ function _foreachgate(f::F, layer::GateLayer, params) where {F}
     _checklayerparameters(layer, params)
     param_index = 0
     for gate in layer.gates
-        if gate isa ParametrizedGate
+        if isparametrized(gate)
             param_index += 1
             f(gate, _gateparameter(params, param_index))
         else
@@ -136,6 +147,23 @@ function _foreachgate(f::F, layer::GateLayer, params) where {F}
         end
     end
     return
+end
+
+"""
+    togates(layer::GateLayer, params)
+
+The gates of `layer` and the parameters of its parametrized gates, as a circuit and its parameters in the order of the layer.
+Propagating them applies the gates of the layer one after the other.
+"""
+function togates(layer::GateLayer, params)
+    gate_params = []
+    function pushparameter!(gate, param)
+        push!(gate_params, param)
+        return
+    end
+    pushparameter!(gate) = nothing
+    _foreachgate(pushparameter!, layer, params)
+    return copy(layer.gates), [param for param in gate_params]
 end
 
 # the parameter of the parametrized gate number `param_index` of a layer

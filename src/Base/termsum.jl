@@ -141,9 +141,9 @@ function getmergedcoeff(term_sum::AbstractTermSum, trm)
     return _getmergedcoeff(StorageType(term_sum), term_sum, trm)
 end
 
-# for the DictStorage, this is the same as getcoeff
-function _getmergedcoeff(::DictStorage, term_sum::AbstractTermSum, trm)
-    return _getcoeff(DictStorage(), term_sum, trm)
+# for the DictStorage, and any storage without a lookup of its own, this is the same as getcoeff
+function _getmergedcoeff(storage::StorageType, term_sum::AbstractTermSum, trm)
+    return _getcoeff(storage, term_sum, trm)
 end
 
 # binary-search a fully sorted, duplicate-free sum
@@ -432,10 +432,11 @@ end
 
 Append `term` with coefficient `coeff` without checking whether `term_sum` already contains `term`.
 An array-based term sum then holds the term twice until it is merged, while a dict-based one merges immediately, because its terms are the keys.
+Any other storage adds the term, as a dict-based one does.
 """
 Base.push!(term_sum::AbstractTermSum, term, coeff) = _push!(StorageType(term_sum), term_sum, term, coeff)
 
-@inline _push!(::DictStorage, term_sum, term, coeff) = add!(term_sum, term, coeff)
+@inline _push!(::StorageType, term_sum, term, coeff) = add!(term_sum, term, coeff)
 
 @inline function _push!(::ArrayStorage, term_sum, term, coeff)
     push!(terms(term_sum), term)
@@ -453,6 +454,9 @@ Base.sizehint!(term_sum::AbstractTermSum, n) = _sizehint!(StorageType(term_sum),
 _sizehint!(::DictStorage, term_sum::AbstractTermSum, n) = (sizehint!(storage(term_sum), n); term_sum)
 _sizehint!(::ArrayStorage, term_sum::AbstractTermSum, n) =
     (sizehint!(terms(term_sum), n); sizehint!(coefficients(term_sum), n); term_sum)
+
+# a storage without a way to reserve space ignores the hint
+_sizehint!(::StorageType, term_sum::AbstractTermSum, n) = term_sum
 
 
 Base.similar(term_sum::AbstractTermSum) = _similar(StorageType(term_sum), term_sum)
@@ -474,6 +478,9 @@ The default implementations assume the constructor `TS(nsites, storage...)` and 
 emptylike(term_sum::AbstractTermSum) = _emptylike(StorageType(term_sum), term_sum)
 _emptylike(::DictStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(storage(term_sum)))
 _emptylike(::ArrayStorage, term_sum::TS) where {TS} = Base.typename(TS).wrapper(nsites(term_sum), empty(terms(term_sum)), empty(coefficients(term_sum)))
+
+# any other storage empties a sum like it
+_emptylike(::StorageType, term_sum) = empty!(similar(term_sum))
 
 # a term sum of one type is built from one of any other by pushing every term into an empty one
 function (::Type{TS})(term_sum::AbstractTermSum) where {TS<:AbstractTermSum}

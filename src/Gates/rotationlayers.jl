@@ -54,28 +54,35 @@ end
 
 ### Propagation of a layer
 
-# Whether the layer has a fast path on the sum of the cache, on which its gates are applied together, class by class,
-# rather than one by one: every gate is a Pauli rotation, frozen or not, and the classes can be applied to in the sum.
-_haslayerfastpath(layer::GateLayer, prop_cache::AbstractPropagationCache) =
+# Whether the layer is applied as rotations, class by class, rather than its gates one by one: every gate is a Pauli
+# rotation, frozen or not, and the classes can be applied to in the sum.
+_hasrotationpath(layer::GateLayer, prop_cache::AbstractPropagationCache) =
     all(_isrotation, layer.gates) && PropagationBase._canapplylayer(prop_cache)
 
-# the Pauli rotations of a layer and their angles, those of frozen rotations included
-function togates(layer::GateLayer, params)
-    PropagationBase._checklayerparameters(layer, params)
+# Applies the rotations of the layer in one pass over the sum, class by class, truncating after every rotation.
+function _applyrotationlayer!(layer::GateLayer, prop_cache::AbstractPropagationCache, params;
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing,
+    customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
+    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread)
+    rotations, angles = _rotationsandangles(layer, params)
+    plan = _preparelayer(rotations, angles, prop_cache)
+    PropagationBase._applypass!(prop_cache, plan, truncfunc; thread)
+    return prop_cache
+end
+
+# The Pauli rotations of a layer and their angles, those of rotations without a parameter included. Every gate of the
+# layer must be a Pauli rotation, as `_hasrotationpath` checks before a layer is applied as rotations.
+function _rotationsandangles(layer::GateLayer, params)
     rotations = PauliRotation[]
     angles = []
-    param_index = 0
-    for gate in layer.gates
-        if gate isa FrozenGate
-            push!(rotations, _rotationof(gate))
-            push!(angles, gate.parameter)
-        else
-            param_index += 1
-            push!(rotations, _rotationof(gate))
-            push!(angles, PropagationBase._gateparameter(params, param_index))
-        end
+    function pushrotation!(gate, angle)
+        push!(rotations, _rotationof(gate))
+        push!(angles, angle)
+        return
     end
+    pushrotation!(gate) = pushrotation!(gate, _angleof(gate))
+    PropagationBase._foreachgate(pushrotation!, layer, params)
     return rotations, [angle for angle in angles]
 end
 

@@ -32,6 +32,10 @@ end
 
 const _tgate_unitary = [[1 0]; [0 exp(1.0im * pi / 4)]]
 
+# a T gate is a Pauli rotation with a fixed angle, so it joins layers of rotations
+_rotationof(gate::TGate) = PauliRotation(:Z, gate.qind)
+_angleof(::TGate) = π / 4
+
 
 ## TransferMapGate
 """
@@ -79,7 +83,7 @@ end
 TransferMapGate(transfer_map::AbstractVector{<:AbstractVector{<:Tuple}}, qinds) = TransferMapGate(TransferMap(transfer_map), qinds)
 
 # the transfer map of the gate on its qubits, from which a layer of gates finds what the gate does
-_localtransfermap(gate::TransferMapGate) = gate.transfer_map
+_localtransfermap(gate::TransferMapGate; kwargs...) = gate.transfer_map
 
 function _qindsarecontiguous(qinds)
     for ii in 2:length(qinds)

@@ -4,13 +4,19 @@ using Test
 # a gate without the fields that `qinds` reads
 struct NoQindsGate <: StaticGate end
 
-# A gate defined by its action alone, which conjugates with Z on its qubit like `CliffordGate(:Z, qind)`, and two gates that
-# a layer cannot apply in one visit: one branches every Pauli string into itself and X on its qubit, the other negates the
-# identity along with every other Pauli string. All three say that they never create duplicate Pauli strings.
+# A gate defined by its action alone, which conjugates with Z on its qubit like `CliffordGate(:Z, qind)`, one that does so
+# only when the propagation passes `conjugate=true`, and two gates that a layer cannot apply in one visit: one branches
+# every Pauli string into itself and X on its qubit, the other negates the identity along with every other Pauli string.
+# All four say that they never create duplicate Pauli strings.
 struct ZConjugation <: StaticGate
     qind::Int
 end
 PB.apply(gate::ZConjugation, pstr, coeff; kwargs...) = ((pstr, getpauli(pstr, gate.qind) in (1, 2) ? -coeff : coeff),)
+struct KeywordConjugation <: StaticGate
+    qind::Int
+end
+PB.apply(gate::KeywordConjugation, pstr, coeff; conjugate=false, kwargs...) =
+    ((pstr, conjugate && getpauli(pstr, gate.qind) in (1, 2) ? -coeff : coeff),)
 struct BranchingGate <: StaticGate
     qind::Int
 end
@@ -19,7 +25,7 @@ struct NegatingGate <: StaticGate
     qind::Int
 end
 PB.apply(::NegatingGate, pstr, coeff; kwargs...) = ((pstr, -coeff),)
-PB.requiresmerging(::Union{ZConjugation,BranchingGate,NegatingGate}, ::AbstractPauliPropagationCache) = false
+PB.requiresmerging(::Union{ZConjugation,KeywordConjugation,BranchingGate,NegatingGate}, ::AbstractPauliPropagationCache) = false
 
 # A gate defined by its action alone that branches every Pauli other than the identity on its qubit into X, Y and Z, by
 # the columns of `rotation`, as a rotation of the Bloch sphere would.
@@ -43,14 +49,9 @@ function flattenlayers(layers, params)
     gates = Gate[]
     flat_params = Float64[]
     for (layer, layer_params) in zip(layers, params)
-        param_index = 0
-        for gate in layer.gates
-            push!(gates, gate)
-            if gate isa ParametrizedGate
-                param_index += 1
-                push!(flat_params, layer_params[param_index])
-            end
-        end
+        layer_gates, gate_params = PB.togates(layer, layer_params)
+        append!(gates, layer_gates)
+        append!(flat_params, gate_params)
     end
     return gates, flat_params
 end
@@ -100,8 +101,8 @@ end
     wide = GateLayer([PauliRotation([:Z, :Z, :Z], [1, 2, 3]), PauliRotation(:X, 4)])
 
     cache = PropagationCache(VectorPauliSum(psum))
-    @test PP._haslayerfastpath(disjoint, cache) && PP._haslayerfastpath(shared, cache) && PP._haslayerfastpath(wide, cache)
-    @test !PP._haslayerfastpath(with_clifford, cache)
+    @test PP._hasrotationpath(disjoint, cache) && PP._hasrotationpath(shared, cache) && PP._hasrotationpath(wide, cache)
+    @test !PP._hasrotationpath(with_clifford, cache)
 
     # every layer without truncation, and circuits of them truncated with the inputs within the weight limit, which
     # rotations one by one leave on strings they do not touch
@@ -114,6 +115,20 @@ end
         matches &= matchesgatebygate(layers, params, psum; max_weight=6.0, min_abs_coeff=1e-2)
     end
     @test matches
+
+    # a T gate is the rotation about Z by π/4 and is applied with the rotations it commutes with, in either picture, and
+    # undone with them in a gradient as that rotation, frozen
+    with_t = GateLayer([TGate(1), PauliRotation([:Z, :Z], [1, 2]), PauliRotation(:X, 3), TGate(4)]; guaranteed_commutes=true)
+    @test PP._hasrotationpath(with_t, cache)
+    t_params = randn(rng, countparameters(with_t))
+    @test matchesgatebygate([with_t], [t_params], psum; min_abs_coeff=0.0)
+    frozen_t = GateLayer([PauliRotation(:Z, 1, π / 4), PauliRotation([:Z, :Z], [1, 2]), PauliRotation(:X, 3), PauliRotation(:Z, 4, π / 4)];
+        guaranteed_commutes=true)
+    t_circuit = [PauliRotation(:Y, 2), with_t, TGate(3)]
+    frozen_circuit = [PauliRotation(:Y, 2), frozen_t, PauliRotation(:Z, 3, π / 4)]
+    value, gradient = rewindgradient(t_circuit, psum, [0.3, t_params], overlapwithzero; min_abs_coeff=0.0)
+    reference_value, reference_gradient = rewindgradient(frozen_circuit, psum, [0.3, t_params], overlapwithzero; min_abs_coeff=0.0)
+    @test value ≈ reference_value && gradient ≈ reference_gradient
 end
 
 @testset "GateLayer construction and parameters" begin
@@ -141,6 +156,12 @@ end
     @test_throws ArgumentError propagate(layer, psum, [0.1, 0.2, 0.3])
     single = GateLayer([PauliRotation(:Y, 1), CliffordGate(:H, [2])])
     @test propagate(single, psum, 0.3) == propagate(single, psum, [0.3])
+
+    # a gate of a layer takes a parameter where `isparametrized` says so, so a layer without parametrized gates takes none
+    entanglers = GateLayer([CliffordGate(:CNOT, [1, 2]), CliffordGate(:H, [3])])
+    nested = GateLayer([entanglers, PauliRotation(:X, 4)])
+    two_qubits = PauliSum(PauliString(5, [:Z, :Z], [1, 4]))
+    @test propagate(nested, two_qubits, [0.3]) ≈ propagate([entanglers.gates..., PauliRotation(:X, 4)], two_qubits, [0.3])
 
     # each gate in the other picture, and in reverse order in the Heisenberg picture
     schrodinger_layer, schrodinger_params = toschrodinger(layer, [0.1, 0.2])
@@ -186,6 +207,9 @@ end
     @test !commutes(DepolarizingNoise(1), CliffordGate(:X, 1))
     @test commutes(PauliRotation(:X, 1, 0.3), PauliRotation(:X, 1))
     @test !commutes(PauliRotation(:Z, 1, 0.3), PauliRotation(:X, 1, 0.2))
+    # a T gate commutes as the rotation about Z it is
+    @test commutes(TGate(1), PauliRotation([:Z, :Z], [1, 2])) && commutes(PauliRotation(:Z, 1, 0.3), TGate(1))
+    @test !commutes(TGate(1), PauliRotation(:X, 1)) && !commutes(TGate(1), CliffordGate(:H, 1))
 end
 
 @testset "GateLayer of Clifford gates and noise propagates like its gates one by one" begin
@@ -256,6 +280,11 @@ end
     for T in (PauliSum, VectorPauliSum)
         @test PauliSum(propagate([layer], T(psum))) == PauliSum(propagate(reference, T(psum)))
     end
+
+    # the keywords of the propagation reach the action of a gate, from which its transfer map is built
+    keyword_layer = GateLayer([KeywordConjugation(1), CliffordGate(:H, 2), KeywordConjugation(3)])
+    @test PP._hasmappath(keyword_layer, cache)
+    @test propagate([keyword_layer], psum; conjugate=true) == propagate(keyword_layer.gates, psum; conjugate=true)
 
     # a gate that branches or changes the identity on its qubits has no lookup
     @test_throws ArgumentError PP._locallookup(BranchingGate(1), UInt16)
@@ -343,4 +372,12 @@ end
     value, gradient = rewindgradient([PauliRotation(:X, 1), entanglers, PauliRotation(:Z, 2)], psum, [0.3, 0.4], overlapwithzero; min_abs_coeff=0.0)
     reference_value, reference_gradient = rewindgradient([PauliRotation(:X, 1), entanglers.gates..., PauliRotation(:Z, 2)], psum, [0.3, 0.4], overlapwithzero; min_abs_coeff=0.0)
     @test value ≈ reference_value && gradient ≈ reference_gradient
+    # and the operator with its dual in the gradient takes the route that the operator takes
+    @test PP._layerroute(entanglers, PP.wrapdual(PropagationCache(psum), overlapwithzero), nothing) === PP._applymap!
+
+    # a T gate is gathered with the rotations it commutes with
+    t_circuit = Gate[TGate(1), PauliRotation([:Z, :Z], [1, 2]), PauliRotation(:X, 1)]
+    t_layered, t_thetas = tolayers(t_circuit, [0.2, 0.3])
+    @test length(t_layered) == 2 && t_layered[1] isa GateLayer && length(t_layered[1].gates) == 2
+    @test layeredmatchescircuit(t_circuit, [0.2, 0.3], psum; min_abs_coeff=0.0)
 end

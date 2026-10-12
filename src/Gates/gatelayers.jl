@@ -115,9 +115,15 @@ end
 
 Returns whether the two gates commute with each other, for every value of their parameters.
 By default this is whether the gates act on different qubits, from `qinds`.
-Two Pauli rotations commute if their generators commute, and two Clifford gates if they map every Pauli string on their qubits alike in either order.
+Two Pauli rotations, a T gate among them, commute if their generators commute, and two Clifford gates if they map every Pauli string on their qubits alike in either order.
 """
-commutes(gate_a::Gate, gate_b::Gate) = isdisjoint(qinds(gate_a), qinds(gate_b))
+function commutes(gate_a::Gate, gate_b::Gate)
+    # gates that are Pauli rotations, such as a T gate, commute as their rotations do
+    if _isrotation(gate_a) && _isrotation(gate_b)
+        return commutes(_rotationof(gate_a), _rotationof(gate_b))
+    end
+    return isdisjoint(qinds(gate_a), qinds(gate_b))
+end
 
 # the generators are compared as integers of the type for the highest qubit that the rotations act on
 function commutes(gate_a::PauliRotation, gate_b::PauliRotation)
@@ -153,11 +159,12 @@ commutes(gate_a::FrozenGate, gate_b::FrozenGate) = commutes(gate_a.gate, gate_b.
 
 ### Propagation of a layer in one visit per Pauli string
 
-# Whether the layer is applied with one visit of every Pauli string: the coefficients are numbers, and every gate maps a
-# Pauli string to one Pauli string. A gate says so through `requiresmerging`, which is `false` for a gate that never
-# creates duplicate Pauli strings, and the lookup built from its transfer map checks it.
+# Whether the layer is applied with one visit of every Pauli string: the coefficients are of a type that a layer is
+# applied to in one pass, and every gate maps a Pauli string to one Pauli string. A gate says so through
+# `requiresmerging`, which is `false` for a gate that never creates duplicate Pauli strings, and the lookup built from
+# its transfer map checks it.
 function _hasmappath(layer::GateLayer, prop_cache::AbstractPropagationCache)
-    return coefftype(prop_cache) <: Number && all(gate -> !requiresmerging(gate, prop_cache), layer.gates)
+    return PropagationBase._appliesinclasses(coefftype(prop_cache)) && all(gate -> !requiresmerging(gate, prop_cache), layer.gates)
 end
 
 # What a gate does to a Pauli string, for every combination of the Paulis on its qubits: the bits it flips, and the factor
@@ -191,14 +198,14 @@ end
 # one after the other in the order of the layer, truncating after each as the gates one after the other would. As for a
 # Clifford gate, nothing is truncated when the gates keep the magnitudes of the coefficients and no weight limit is given.
 function _applymap!(layer::GateLayer, prop_cache::AbstractPropagationCache, params;
-    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, customtruncfunc=nothing,
-    thread::Bool=true)
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing,
+    customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-    plan = _preparemap(layer, params, prop_cache)
+    plan = _preparemap(layer, params, prop_cache; kwargs...)
     if isinf(max_weight) && isnothing(customtruncfunc) && _keepsmagnitudes(plan)
         map!(_applyactinggates(plan, nothing), prop_cache; thread)
     else
-        truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
+        truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread)
         mapandtruncate!(_applyactinggates(plan, truncfunc), truncfunc, prop_cache; thread)
     end
     return prop_cache
@@ -255,22 +262,13 @@ _nwords(pstr) = cld(8 * sizeof(pstr), 64)
     @inbounds return pstr ⊻ plan.changes[index], coeff * plan.factors[index]
 end
 
-# the Paulis of `pstr` on `qinds` as one integer, as `getpauli(pstr, qinds)` reads them
-@inline function _localpaulis(pstr, qinds::Vector{Int})
-    paulis = 0
-    for (index, qind) in enumerate(qinds)
-        paulis |= Int(_getpaulibits(pstr, qind)) << (2 * (index - 1))
-    end
-    return paulis
-end
-
 # the plan of the layer on the Pauli strings of the cache, with the parameters of the parametrized gates and of the
 # frozen ones
-function _preparemap(layer::GateLayer, params, prop_cache::AbstractPropagationCache)
+function _preparemap(layer::GateLayer, params, prop_cache::AbstractPropagationCache; kwargs...)
     TT = paulitype(prop_cache)
     lookups = _LocalLookup{TT}[]
     function pushlookup!(gate, param...)
-        push!(lookups, _locallookup(gate, TT, param...))
+        push!(lookups, _locallookup(gate, TT, param...; kwargs...))
         return
     end
     PropagationBase._foreachgate(pushlookup!, layer, params)
@@ -336,26 +334,26 @@ end
 
 # The lookup of a gate from its transfer map on its qubits. The map must send every Pauli string to one Pauli string and
 # leave the identity as it is, because the gate is not applied to the Pauli strings that are the identity on its qubits.
-function _locallookup(gate, ::Type{TT}, param...) where {TT}
+function _locallookup(gate, ::Type{TT}, param...; kwargs...) where {TT}
     # `qinds` is an integer for a gate with a `qind` field
     gate_qinds = Int[qinds(gate)...]
-    transfer_map = _localtransfermap(gate, param...)
+    transfer_map = _localtransfermap(gate, param...; kwargs...)
     if _ncolumns(transfer_map) != 4^length(gate_qinds)
-        throw(ArgumentError("The transfer map of $gate has $(_ncolumns(transfer_map)) columns instead of 4^$(length(gate_qinds)) for its qubits."))
+        throw(ArgumentError(lazy"The transfer map of $gate has $(_ncolumns(transfer_map)) columns instead of 4^$(length(gate_qinds)) for its qubits."))
     end
 
     changes = TT[]
     factors = Float64[]
     for (index, column) in enumerate(transfer_map)
         if length(column) != 1
-            throw(ArgumentError(
-                "$gate maps a Pauli string to $(length(column)) Pauli strings, although `requiresmerging` says that it never " *
+            throw(ArgumentError(LazyString(
+                gate, " maps a Pauli string to ", length(column), " Pauli strings, although `requiresmerging` says that it never ",
                 "creates duplicate Pauli strings. A gate of a layer applied in one visit maps every Pauli string to one."
-            ))
+            )))
         end
         new_paulis, factor = only(column)
         if index == 1 && !(new_paulis == 0 && factor == 1)
-            throw(ArgumentError("$gate changes the identity on its qubits, which a gate of a layer applied in one visit leaves as it is."))
+            throw(ArgumentError(lazy"$gate changes the identity on its qubits, which a gate of a layer applied in one visit leaves as it is."))
         end
         push!(changes, setpauli(zero(TT), TT(Int(new_paulis) ⊻ (index - 1)), gate_qinds))
         push!(factors, factor)
@@ -366,35 +364,19 @@ end
 
 ### Propagation of a layer of gates on different qubits, class by class
 
-# Whether the layer is applied class by class: the coefficients are numbers, the Pauli strings of the sum can be grouped
-# by class in one pass, the gates act on different qubits, and every gate can be applied to a part of the sum.
+# Whether the layer is applied class by class: the sum can be applied to in one pass with its coefficients, the gates
+# act on different qubits, and every gate can be applied to a part of the sum.
 function _hasclasspath(layer::GateLayer, prop_cache::AbstractPropagationCache)
-    return coefftype(prop_cache) <: Number && PropagationBase._canapplytoclasses(prop_cache) &&
-           _ondifferentqubits(layer) && all(_appliesbyclass, layer.gates)
+    return PropagationBase._canapplylayer(prop_cache) && _ondifferentqubits(layer) &&
+           all(PropagationBase._appliesbyclass, layer.gates)
 end
 
 # whether the gates of the layer act on different qubits, as a layer built without `guaranteed_commutes` checks
-function _ondifferentqubits(layer::GateLayer)
-    if !layer.guaranteed_commutes
-        return true
-    end
-    taken_qinds = Set{Int}()
-    for gate in layer.gates
-        for qind in qinds(gate)
-            if qind in taken_qinds
-                return false
-            end
-            push!(taken_qinds, qind)
-        end
-    end
-    return true
-end
+_ondifferentqubits(layer::GateLayer) = !layer.guaranteed_commutes || isnothing(PropagationBase._sharedqubit(layer.gates))
 
-# A gate whose step depends on the whole sum is not applied to a part of it: an imaginary-time rotation normalizes the
-# sum by the coefficient of the identity.
-_appliesbyclass(gate) = true
-_appliesbyclass(::ImaginaryPauliRotation) = false
-_appliesbyclass(gate::FrozenGate) = _appliesbyclass(gate.gate)
+# An imaginary-time rotation normalizes the sum by the coefficient of the identity, so it is not applied to a part of it
+PropagationBase._appliesbyclass(::ImaginaryPauliRotation) = false
+PropagationBase._appliesbyclass(gate::FrozenGate) = PropagationBase._appliesbyclass(gate.gate)
 
 # The classes of a layer. The class of a Pauli string is the Pauli string with the Paulis on the qubits of every gate
 # replaced by the first of their local class, which `representatives` does as a layer applied in one visit. The gates
@@ -407,13 +389,16 @@ end
 
 # Applies the layer class by class. The Pauli strings are grouped by the representative of their class, which every
 # gate maps into itself, and the gates acting on a class are applied to it one after the other in the order of the
-# layer, each with `applymergetruncate!` as `propagate!` applies it, so that the class is merged and truncated after
-# every gate. The Pauli strings of a class that no gate acts on are truncated by `truncfunc`.
-function _applyclasses!(layer::GateLayer, prop_cache::AbstractPropagationCache, params, truncfunc::F;
-    thread::Bool=true, kwargs...) where {F}
+# layer, each with `applymergetruncate!` and the keywords as `propagate!` applies it, so that the class is merged and
+# truncated after every gate. The Pauli strings of a class that no gate acts on are truncated alike.
+function _applyclasses!(layer::GateLayer, prop_cache::AbstractPropagationCache, params;
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf, min_rel_coeff=nothing,
+    customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-    plan = _prepareclasses(layer, params, prop_cache)
-    _applyclasses!(plan, layer, prop_cache, params, truncfunc; thread, kwargs...)
+    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread)
+    plan = _prepareclasses(layer, params, prop_cache; kwargs...)
+    _applyclasses!(plan, layer, prop_cache, params, truncfunc;
+        min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     return prop_cache
 end
 
@@ -453,7 +438,7 @@ end
 
 # one gate of the layer on the Pauli strings of a class, with its parameter if it takes one
 function _applygatetoclass!(gate, class_cache, params, param_index::Int; kwargs...)
-    if gate isa ParametrizedGate
+    if isparametrized(gate)
         param = PropagationBase._gateparameter(params, param_index)
         applymergetruncate!(gate, class_cache, param; thread=false, kwargs...)
     else
@@ -467,7 +452,7 @@ function _parameterindices(layer::GateLayer)
     param_indices = zeros(Int, length(layer.gates))
     param_index = 0
     for (gate_index, gate) in enumerate(layer.gates)
-        if gate isa ParametrizedGate
+        if isparametrized(gate)
             param_index += 1
             param_indices[gate_index] = param_index
         end
@@ -476,12 +461,12 @@ function _parameterindices(layer::GateLayer)
 end
 
 # the classes of the layer on the Pauli strings of the cache, from the transfer maps of its gates at their parameters
-function _prepareclasses(layer::GateLayer, params, prop_cache::AbstractPropagationCache)
+function _prepareclasses(layer::GateLayer, params, prop_cache::AbstractPropagationCache; kwargs...)
     TT = paulitype(prop_cache)
     lookups = _LocalLookup{TT}[]
     moving_identity = Int[]
     function pushgate!(gate, param...)
-        transfer_map = _localtransfermap(gate, param...)
+        transfer_map = _localtransfermap(gate, param...; kwargs...)
         push!(lookups, _classlookup(transfer_map, Int[qinds(gate)...], TT))
         # the first column is what the gate makes of the identity on its qubits
         if first(transfer_map) != [(0, 1.0)]
@@ -533,40 +518,46 @@ end
 ### Transfer maps of gates on their qubits
 
 # The transfer map of a gate on its qubits, indexed by the Paulis on `qinds(gate)` as `getpauli(pstr, qinds)` reads them,
-# with the parameter of a parametrized gate. A Clifford gate has its map in `clifford_map`, with one Pauli string and sign
-# per column.
-_localtransfermap(gate::CliffordGate) = TransferMap([[entry] for entry in clifford_map[gate.symbol]])
+# with the parameter of a parametrized gate. The keywords of the propagation other than the truncations reach a gate
+# that is applied to get its map, and a gate with a map of its own ignores them. A Clifford gate has its map in
+# `clifford_map`, with one Pauli string and sign per column.
+_localtransfermap(gate::CliffordGate; kwargs...) = TransferMap([[entry] for entry in clifford_map[gate.symbol]])
 
 # Pauli noise keeps every Pauli string, and damps the coefficient of those that `isdamped` selects
-function _localtransfermap(gate::PauliNoise, lambda)
+function _localtransfermap(gate::PauliNoise, lambda; kwargs...)
     _check_noise_strength(PauliNoise, lambda)
     return TransferMap([[(UInt8(pauli), isdamped(gate, UInt8(pauli)) ? Float64(1 - lambda) : 1.0)] for pauli in 0:3])
 end
 
 # a frozen gate has the map of its gate at its parameter
-_localtransfermap(gate::FrozenGate) = _localtransfermap(gate.gate, gate.parameter)
+_localtransfermap(gate::FrozenGate; kwargs...) = _localtransfermap(gate.gate, gate.parameter; kwargs...)
 
 # any other gate gets its map from what it does to every Pauli string on its qubits
-_localtransfermap(gate) = _transfermapbyapplying(gate, nothing)
-_localtransfermap(gate, param) = _transfermapbyapplying(gate, [param])
+_localtransfermap(gate; kwargs...) = _transfermapbyapplying(gate; kwargs...)
+_localtransfermap(gate, param; kwargs...) = _transfermapbyapplying(gate, param; kwargs...)
 
-# Propagates every Pauli string on the qubits of the gate through the gate, as `totransfermap` does for a circuit, and
-# reads the Paulis on those qubits from the Pauli strings that come out, which must be the identity on the other qubits.
-function _transfermapbyapplying(gate, params)
+# Applies the gate to every Pauli string on its qubits, as a layer applies it to a class, and reads the Paulis on those
+# qubits from the Pauli strings that come out, which must be the identity on the other qubits.
+function _transfermapbyapplying(gate, param...; kwargs...)
     gate_qinds = Int[qinds(gate)...]
     nq = maximum(gate_qinds)
-    TT = getinttype(nq)
+    # one type for the gates on the first 64 qubits, so that applying a gate is not compiled for each of their types
+    TT = getinttype(max(nq, 64))
     # the type of the Pauli strings on the qubits of the gate alone
     LT = getinttype(length(gate_qinds))
+    # the cache into which a layer loads its classes
+    cache = PauliClassScratch{TT,Float64}().cache
     columns = Vector{Tuple{LT,Float64}}[]
     for paulis in 0:4^length(gate_qinds)-1
         pstr = setpauli(zero(TT), TT(paulis), gate_qinds)
-        psum = propagate([gate], PauliString(nq, pstr, 1.0), params; min_abs_coeff=0.0, thread=false)
+        empty!(cache)
+        add!(mainsum(cache), pstr, 1.0)
+        applymergetruncate!(gate, cache, param...; min_abs_coeff=0.0, thread=false, kwargs...)
         column = Tuple{LT,Float64}[]
-        for (new_pstr, coeff) in psum
-            new_paulis = _localpaulis(new_pstr, gate_qinds)
-            if setpauli(zero(TT), TT(new_paulis), gate_qinds) != new_pstr
-                throw(ArgumentError("$gate acts on qubits other than its qubits $gate_qinds."))
+        for (new_pstr, coeff) in mainsum(cache)
+            new_paulis = getpauli(new_pstr, gate_qinds)
+            if setpauli(zero(TT), new_paulis, gate_qinds) != new_pstr
+                throw(ArgumentError(lazy"$gate acts on qubits other than its qubits $gate_qinds."))
             end
             push!(column, (LT(new_paulis), coeff))
         end

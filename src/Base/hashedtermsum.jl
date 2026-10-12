@@ -75,8 +75,11 @@ function _similar(::HashedStorage, hsum::HashedTermSum{TT,CT}) where {TT,CT}
     _distinguishby!(similar_sum, hsum.distinguishing_bits)
     return similar_sum
 end
-_emptylike(::HashedStorage, hsum::HashedTermSum) = similar(hsum)
 _lookupcost(::HashedStorage, hsum::HashedTermSum) = 1
+
+# the terms come out in no particular order, as from a dictionary, so sorting leaves the sum as it is
+_sortterms!(::HashedStorage, thing::Union{AbstractTermSum,AbstractPropagationCache}; kwargs...) = thing
+_sortcoeffs!(::HashedStorage, thing::Union{AbstractTermSum,AbstractPropagationCache}; kwargs...) = thing
 
 # the present entries, as (term, coefficient)
 function _iterate(::HashedStorage, hsum::HashedTermSum, entry::Int=1)
@@ -96,6 +99,8 @@ Empties the sum, with slots for `sizehint` terms before they have to grow.
 """
 function Base.empty!(hsum::HashedTermSum; sizehint::Int=0)
     hsum.n_entries = 0
+    # entries are made with the stamp 0, so the stamps of the branches count from 0 again and never wrap around to it
+    hsum.stamp = zero(Int32)
     _setslots!(hsum, max(64, nextpow(2, _SLOTS_PER_ENTRY * max(sizehint, 1))))
     _reserve!(hsum, 0)
     return hsum
@@ -147,7 +152,10 @@ end
     return gathered
 end
 
-# a hash of a term whose highest bits pick its slot: the limbs folded onto 64 bits as in `_hashbits`, without its final mixing
+# A hash of a term whose highest bits pick its slot: its limbs folded onto 64 bits. The limbs are mixed independently of
+# each other, so that the hash of a wide term is no chain over its limbs. A product keeps the highest bit of a limb only
+# in its own highest bit, so the high half of every limb is folded onto its low half first, or strings that differ only
+# in which limb has that bit set would collide.
 @inline function _slothash(term)
     limbs = _limbs(term)
     folded = zero(UInt64)
@@ -354,8 +362,6 @@ function _getcoeff(::HashedStorage, hsum::HashedTermSum, term)
     return zero(coefftype(hsum))
 end
 
-_getmergedcoeff(::HashedStorage, hsum::HashedTermSum, term) = _getcoeff(HashedStorage(), hsum, term)
-
 function _copy!(::HashedStorage, dst::HashedTermSum, src::HashedTermSum)
     empty!(dst; sizehint=length(src))
     for (term, coeff) in src
@@ -372,17 +378,6 @@ function _mapcoeffs!(::HashedStorage, transform::F, hsum::HashedTermSum; thread:
     end
     return hsum
 end
-
-function _mapreduce(::HashedStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O}
-    accumulated = init
-    for (term, coefficient) in thing
-        accumulated = reducer(accumulated, @inline mapper(term, coefficient))
-    end
-    return accumulated
-end
-
-_mapreducecoeffs(::HashedStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O} =
-    _mapreduce(HashedStorage(), (term, coefficient) -> mapper(coefficient), reducer, thing; init, neutral, thread)
 
 # a dropped entry stays where it is, absent, with a zero coefficient
 function _filter!(::HashedStorage, keep::F, hsum::HashedTermSum{TT,CT}; thread::Bool=true) where {F,TT,CT}

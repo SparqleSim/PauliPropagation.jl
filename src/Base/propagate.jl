@@ -153,6 +153,8 @@ such as `(new_term, new_coeff)`, instead of `((new_term, new_coeff),)`.
 The keyword arguments of the propagation, such as the truncations, are passed on to `apply`, so its methods take `kwargs...`.
 On an array sum, several tasks call `apply` once to count the pairs and once to write them, possibly at the same time on different terms,
 so it must return the same pairs for the same term every time and must not return a one-shot iterator.
+In a `GateLayer`, a gate may be applied to one class of terms at a time, so what it does to a term must not depend on the rest of the sum;
+a gate for which it does defines `PropagationBase._appliesbyclass(::NewGate) = false`.
 
 Example:
 ```julia
