@@ -78,6 +78,9 @@ end
 
 TransferMapGate(transfer_map::AbstractVector{<:AbstractVector{<:Tuple}}, qinds) = TransferMapGate(TransferMap(transfer_map), qinds)
 
+# the transfer map of the gate on its qubits, from which a layer of gates finds what the gate does
+_localtransfermap(gate::TransferMapGate) = gate.transfer_map
+
 function _qindsarecontiguous(qinds)
     for ii in 2:length(qinds)
         qinds[ii] == qinds[ii-1] + 1 || return false

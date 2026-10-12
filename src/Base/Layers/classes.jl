@@ -13,7 +13,8 @@
 #
 # A basis provides, for a layer, a `LayerPlan` with the masks and rules of the gates and a lookup that finds the gates
 # acting on a term (`_branchinggates`, a `PrecomputedLookup` built from the masks with which the basis decides whether a
-# gate acts), and applies it with `_applypass!`.
+# gate acts), and applies it with `_applypass!`. For gates of other kinds, a basis that knows classes the gates map into
+# themselves applies the gates to every class through the gate path with `_applygatesbyclass!`.
 ##
 ###
 
@@ -436,4 +437,46 @@ function _applytoclass!(sink, cache, rules, plan, truncfunc::F, class_terms, cla
         _emit!(sink, term, coeff)
     end
     return sink
+end
+
+
+### A pass over the sum through the gate path
+
+"""
+    _applygatesbyclass!(applygates!, representativeof, prop_cache, ::Type{S}; thread=true)
+
+One pass over the sum in which the terms of every class, by their representative `representativeof(term)`, are loaded
+into the cache of the scratch of a task, of type `S` with a field `cache`, `applygates!(cache, class_terms)` applies the
+gates acting on them as `propagate!` applies gates to a sum, and the terms left in the cache are written back.
+The gates must map every class into itself.
+"""
+function _applygatesbyclass!(applygates!::A, representativeof::R, prop_cache::AbstractPropagationCache, ::Type{S};
+    thread::Bool=true) where {A,R,S}
+
+    if length(prop_cache) == 0
+        return prop_cache
+    end
+    function applytoclass!(sink, scratch, class_terms, class_coeffs)
+        cache = scratch.cache
+        empty!(cache)
+        resize!(cache, 2 * length(class_terms))
+        for index in eachindex(class_terms, class_coeffs)
+            add!(mainsum(cache), class_terms[index], class_coeffs[index])
+        end
+        applygates!(cache, class_terms)
+        # a gate may leave its terms in the auxiliary sum and swap the two, so the terms are those of the main sum now
+        for (term, coeff) in mainsum(cache)
+            _emit!(sink, term, coeff)
+        end
+        return sink
+    end
+
+    workspace = _takeworkspace(termtype(prop_cache), coefftype(prop_cache), S)
+    try
+        sources = _passsources(StorageType(prop_cache), prop_cache, workspace, thread)
+        _applytoclasses!(representativeof, applytoclass!, prop_cache, workspace, sources, thread)
+    finally
+        _putbackworkspace!(workspace)
+    end
+    return prop_cache
 end

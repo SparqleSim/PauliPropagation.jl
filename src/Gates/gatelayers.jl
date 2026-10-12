@@ -3,8 +3,10 @@
 # A file for layers of gates of any kind: which gates of a circuit are gathered into a layer, when two gates commute, and
 # the propagation of a layer whose gates each map a Pauli string to one Pauli string, such as Clifford gates and Pauli
 # noise. Such a layer is applied in one pass over the sum, with all of its gates applied to a Pauli string in one visit
-# from lookups built from the transfer maps of the gates, which saves a pass over the sum per gate. Layers of Pauli
-# rotations are propagated in one pass as well, class by class, see rotationlayers.jl.
+# from lookups built from the transfer maps of the gates, which saves a pass over the sum per gate. A layer of any other
+# gates on different qubits is applied in one pass as well, class by class, with the classes found from the transfer maps
+# of its gates and every gate applied to a class through its own methods. Layers of Pauli rotations are propagated class
+# by class too, see rotationlayers.jl.
 ##
 ###
 
@@ -168,11 +170,21 @@ struct _LocalLookup{TT}
     factors::Vector{Float64}
 end
 
-# the lookups of the gates of a layer in its order, and for every qubit the gates acting on it, the gate `i` as the bit
-# `i - 1` of a tuple of words
-struct _MapPlan{TT,W}
-    lookups::Vector{_LocalLookup{TT}}
+# The gates of a layer in its order: the bit shifts of their qubits and 4^K entries each in `changes` and `factors`,
+# `K` the largest number of qubits of a gate, and for every qubit the gates acting on it, the gate `i` as the bit
+# `i - 1` of a tuple of words.
+struct _MapPlan{TT,W,K}
+    shifts::Vector{NTuple{K,Int}}
+    changes::Vector{TT}
+    factors::Vector{Float64}
     qubit_gates::Vector{NTuple{W,UInt64}}
+
+    function _MapPlan(shifts::Vector{NTuple{K,Int}}, changes::Vector{TT}, factors::Vector{Float64},
+        qubit_gates::Vector{NTuple{W,UInt64}}) where {TT,W,K}
+        plan = new{TT,W,K}(shifts, changes, factors, qubit_gates)
+        _checkplan(plan)
+        return plan
+    end
 end
 
 # Applies the layer in one pass over the sum. Every Pauli string is visited once, and the gates acting on it are applied
@@ -183,7 +195,7 @@ function _applymap!(layer::GateLayer, prop_cache::AbstractPropagationCache, para
     thread::Bool=true)
 
     plan = _preparemap(layer, params, prop_cache)
-    if isinf(max_weight) && isnothing(customtruncfunc) && all(_keepsmagnitudes, plan.lookups)
+    if isinf(max_weight) && isnothing(customtruncfunc) && _keepsmagnitudes(plan)
         map!(_applyactinggates(plan, nothing), prop_cache; thread)
     else
         truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
@@ -192,19 +204,20 @@ function _applymap!(layer::GateLayer, prop_cache::AbstractPropagationCache, para
     return prop_cache
 end
 
-_keepsmagnitudes(lookup::_LocalLookup) = all(factor -> abs(factor) == 1, lookup.factors)
+_keepsmagnitudes(plan::_MapPlan) = all(factor -> abs(factor) == 1, plan.factors)
 
 # The function that applies the gates of the plan acting on a Pauli string to it and its coefficient, in the order of the
 # layer. It stops at the first gate after which `truncfunc` truncates the pair, which it returns as it is then, and
 # `mapandtruncate!` truncates it by the same test. With `truncfunc = nothing`, nothing is truncated.
 function _applyactinggates(plan::_MapPlan{TT,W}, truncfunc::F) where {TT,W,F}
+    _checkplan(plan)
     function applyactinggates(pstr, coeff)
         acting = _actinggates(plan, pstr)
         for word_index in 1:W
             bits = acting[word_index]
             while bits != 0
-                lookup = plan.lookups[64*(word_index-1)+trailing_zeros(bits)+1]
-                pstr, coeff = _applylookup(lookup, pstr, coeff)
+                gate_index = 64 * (word_index - 1) + trailing_zeros(bits) + 1
+                pstr, coeff = _applygate(plan, gate_index, pstr, coeff)
                 if !isnothing(truncfunc) && truncfunc(pstr, coeff)
                     return pstr, coeff
                 end
@@ -235,10 +248,11 @@ end
 # the number of 64-bit words of a Pauli string
 _nwords(pstr) = cld(8 * sizeof(pstr), 64)
 
-# the Pauli string and coefficient after the gate of the lookup
-@inline function _applylookup(lookup::_LocalLookup, pstr, coeff)
-    index = _localpaulis(pstr, lookup.qinds) + 1
-    return pstr ⊻ lookup.changes[index], coeff * lookup.factors[index]
+# the Pauli string and coefficient after the gate `gate_index` of the plan
+@inline function _applygate(plan::_MapPlan{TT,W,K}, gate_index::Int, pstr, coeff) where {TT,W,K}
+    # `_checkplan` ensures that the plan has the gate `gate_index` and 4^K entries for it
+    @inbounds index = 4^K * (gate_index - 1) + _gatherpaulis(pstr, plan.shifts[gate_index]) + 1
+    @inbounds return pstr ⊻ plan.changes[index], coeff * plan.factors[index]
 end
 
 # the Paulis of `pstr` on `qinds` as one integer, as `getpauli(pstr, qinds)` reads them
@@ -260,8 +274,11 @@ function _preparemap(layer::GateLayer, params, prop_cache::AbstractPropagationCa
         return
     end
     PropagationBase._foreachgate(pushlookup!, layer, params)
+    return _MapPlan(lookups, nqubits(prop_cache))
+end
 
-    nq = nqubits(prop_cache)
+# the plan from the lookups of the gates on Pauli strings on `nq` qubits, with the gates acting on every qubit
+function _MapPlan(lookups::Vector{_LocalLookup{TT}}, nq::Int) where {TT}
     n_words = cld(length(lookups), 64)
     qubit_gates = fill(ntuple(_ -> zero(UInt64), n_words), nq)
     for (gate_index, lookup) in enumerate(lookups)
@@ -270,7 +287,51 @@ function _preparemap(layer::GateLayer, params, prop_cache::AbstractPropagationCa
             qubit_gates[qind] = PropagationBase._withposition(qubit_gates[qind], gate_index - 1)
         end
     end
-    return _MapPlan(lookups, qubit_gates)
+    K = maximum(lookup -> length(lookup.qinds), lookups; init=0)
+    return _MapPlan(lookups, qubit_gates, Val(K))
+end
+
+# A gate on fewer than K qubits reads its last qubit again in place of the missing ones, and repeats its entries so that
+# the Paulis read there do not change which entry it takes. `K` comes as a type, so that the tuples of shifts have a
+# length known to the compiler.
+function _MapPlan(lookups::Vector{_LocalLookup{TT}}, qubit_gates, ::Val{K}) where {TT,K}
+    shifts = NTuple{K,Int}[]
+    changes = TT[]
+    factors = Float64[]
+    for lookup in lookups
+        n_qinds = length(lookup.qinds)
+        push!(shifts, ntuple(ii -> _bitshiftfromsiteindex(lookup.qinds[min(ii, n_qinds)]), Val(K)))
+        for paulis in 0:4^K-1
+            index = paulis % 4^n_qinds + 1
+            push!(changes, lookup.changes[index])
+            push!(factors, lookup.factors[index])
+        end
+    end
+    return _MapPlan(shifts, changes, factors, qubit_gates)
+end
+
+# `_applygate` reads the entries of the plan without bounds checks, so every gate needs its 4^K entries, and every gate
+# acting on a qubit needs to be a gate of the plan. The plan is checked when it is built and again before it is applied.
+function _checkplan(plan::_MapPlan{TT,W,K}) where {TT,W,K}
+    n_entries = 4^K * length(plan.shifts)
+    if length(plan.changes) != n_entries || length(plan.factors) != n_entries
+        throw(ArgumentError(
+            "The plan of a layer has $(length(plan.changes)) changes and $(length(plan.factors)) factors " *
+            "instead of $n_entries for $(length(plan.shifts)) gates on up to $K qubits."
+        ))
+    end
+    for (qind, gates) in enumerate(plan.qubit_gates)
+        for (word_index, word) in enumerate(gates)
+            # the number of the last gate of this word acting on the qubit, counted from one
+            last_gate = 64 * word_index - leading_zeros(word)
+            if word != 0 && last_gate > length(plan.shifts)
+                throw(ArgumentError(
+                    "The plan of a layer has $(length(plan.shifts)) gates, but more act on the qubit $qind."
+                ))
+            end
+        end
+    end
+    return
 end
 
 # The lookup of a gate from its transfer map on its qubits. The map must send every Pauli string to one Pauli string and
@@ -301,6 +362,175 @@ function _locallookup(gate, ::Type{TT}, param...) where {TT}
     end
     return _LocalLookup(gate_qinds, changes, factors)
 end
+
+
+### Propagation of a layer of gates on different qubits, class by class
+
+# Whether the layer is applied class by class: the coefficients are numbers, the Pauli strings of the sum can be grouped
+# by class in one pass, the gates act on different qubits, and every gate can be applied to a part of the sum.
+function _hasclasspath(layer::GateLayer, prop_cache::AbstractPropagationCache)
+    return coefftype(prop_cache) <: Number && PropagationBase._canapplytoclasses(prop_cache) &&
+           _ondifferentqubits(layer) && all(_appliesbyclass, layer.gates)
+end
+
+# whether the gates of the layer act on different qubits, as a layer built without `guaranteed_commutes` checks
+function _ondifferentqubits(layer::GateLayer)
+    if !layer.guaranteed_commutes
+        return true
+    end
+    taken_qinds = Set{Int}()
+    for gate in layer.gates
+        for qind in qinds(gate)
+            if qind in taken_qinds
+                return false
+            end
+            push!(taken_qinds, qind)
+        end
+    end
+    return true
+end
+
+# A gate whose step depends on the whole sum is not applied to a part of it: an imaginary-time rotation normalizes the
+# sum by the coefficient of the identity.
+_appliesbyclass(gate) = true
+_appliesbyclass(::ImaginaryPauliRotation) = false
+_appliesbyclass(gate::FrozenGate) = _appliesbyclass(gate.gate)
+
+# The classes of a layer. The class of a Pauli string is the Pauli string with the Paulis on the qubits of every gate
+# replaced by the first of their local class, which `representatives` does as a layer applied in one visit. The gates
+# that map the identity on their qubits to more than the identity act on every class, the gate `i` as the bit `i - 1` of
+# `acting_everywhere`.
+struct _ClassPlan{TT,W,K}
+    representatives::_MapPlan{TT,W,K}
+    acting_everywhere::NTuple{W,UInt64}
+end
+
+# Applies the layer class by class. The Pauli strings are grouped by the representative of their class, which every
+# gate maps into itself, and the gates acting on a class are applied to it one after the other in the order of the
+# layer, each with `applymergetruncate!` as `propagate!` applies it, so that the class is merged and truncated after
+# every gate. The Pauli strings of a class that no gate acts on are truncated by `truncfunc`.
+function _applyclasses!(layer::GateLayer, prop_cache::AbstractPropagationCache, params, truncfunc::F;
+    thread::Bool=true, kwargs...) where {F}
+
+    plan = _prepareclasses(layer, params, prop_cache)
+    _applyclasses!(plan, layer, prop_cache, params, truncfunc; thread, kwargs...)
+    return prop_cache
+end
+
+function _applyclasses!(plan::_ClassPlan{TT,W}, layer::GateLayer, prop_cache::AbstractPropagationCache, params,
+    truncfunc::F; thread::Bool=true, kwargs...) where {TT,W,F}
+
+    torepresentative = _applyactinggates(plan.representatives, nothing)
+    representativeof(pstr) = first(torepresentative(pstr, 1.0))
+    param_indices = _parameterindices(layer)
+
+    function applygates!(class_cache, class_pstrs)
+        # The gates act on the qubits where a Pauli string of the class is not the identity, since they leave the
+        # identity on their qubits as it is, except those acting everywhere.
+        support = zero(TT)
+        for pstr in class_pstrs
+            support |= pstr
+        end
+        acting = map(|, _actinggates(plan.representatives, support), plan.acting_everywhere)
+        if all(iszero, acting)
+            mergeandtruncate!(truncfunc, class_cache; thread=false)
+        end
+        for word_index in 1:W
+            bits = acting[word_index]
+            while bits != 0
+                gate_index = 64 * (word_index - 1) + trailing_zeros(bits) + 1
+                _applygatetoclass!(layer.gates[gate_index], class_cache, params, param_indices[gate_index]; kwargs...)
+                bits &= bits - 1
+            end
+        end
+        return class_cache
+    end
+
+    scratch_type = PauliClassScratch{TT,coefftype(prop_cache)}
+    PropagationBase._applygatesbyclass!(applygates!, representativeof, prop_cache, scratch_type; thread)
+    return prop_cache
+end
+
+# one gate of the layer on the Pauli strings of a class, with its parameter if it takes one
+function _applygatetoclass!(gate, class_cache, params, param_index::Int; kwargs...)
+    if gate isa ParametrizedGate
+        param = PropagationBase._gateparameter(params, param_index)
+        applymergetruncate!(gate, class_cache, param; thread=false, kwargs...)
+    else
+        applymergetruncate!(gate, class_cache; thread=false, kwargs...)
+    end
+    return class_cache
+end
+
+# the position of the parameter of every gate in the parameter of the layer, 0 for a gate without one
+function _parameterindices(layer::GateLayer)
+    param_indices = zeros(Int, length(layer.gates))
+    param_index = 0
+    for (gate_index, gate) in enumerate(layer.gates)
+        if gate isa ParametrizedGate
+            param_index += 1
+            param_indices[gate_index] = param_index
+        end
+    end
+    return param_indices
+end
+
+# the classes of the layer on the Pauli strings of the cache, from the transfer maps of its gates at their parameters
+function _prepareclasses(layer::GateLayer, params, prop_cache::AbstractPropagationCache)
+    TT = paulitype(prop_cache)
+    lookups = _LocalLookup{TT}[]
+    moving_identity = Int[]
+    function pushgate!(gate, param...)
+        transfer_map = _localtransfermap(gate, param...)
+        push!(lookups, _classlookup(transfer_map, Int[qinds(gate)...], TT))
+        # the first column is what the gate makes of the identity on its qubits
+        if first(transfer_map) != [(0, 1.0)]
+            push!(moving_identity, length(lookups))
+        end
+        return
+    end
+    PropagationBase._foreachgate(pushgate!, layer, params)
+
+    representatives = _MapPlan(lookups, nqubits(prop_cache))
+    acting_everywhere = ntuple(_ -> zero(UInt64), cld(length(lookups), 64))
+    for gate_index in moving_identity
+        acting_everywhere = PropagationBase._withposition(acting_everywhere, gate_index - 1)
+    end
+    return _ClassPlan(representatives, acting_everywhere)
+end
+
+# the lookup that replaces the Paulis on the qubits of a gate by the first of their local class
+function _classlookup(transfer_map, gate_qinds::Vector{Int}, ::Type{TT}) where {TT}
+    first_paulis = _localclasses(transfer_map)
+    n_paulis = length(first_paulis)
+    changes = [setpauli(zero(TT), TT(paulis ⊻ first_paulis[paulis+1]), gate_qinds) for paulis in 0:n_paulis-1]
+    return _LocalLookup(gate_qinds, changes, ones(length(changes)))
+end
+
+# For every combination of Paulis on the qubits of a gate, the first of its local class: the smallest combination that
+# the transfer map connects with it, directly or through others. Every entry of a column joins the class of the column
+# with the class of the entry, at whichever of the two first combinations is smaller. An entry with a zero factor joins
+# them as well, since the gate still makes its Pauli string.
+function _localclasses(transfer_map)
+    first_paulis = collect(0:_ncolumns(transfer_map)-1)
+    function firstof(paulis)
+        while first_paulis[paulis+1] != paulis
+            paulis = first_paulis[paulis+1]
+        end
+        return paulis
+    end
+    for (index, column) in enumerate(transfer_map)
+        for (new_paulis, _) in column
+            column_first = firstof(index - 1)
+            entry_first = firstof(Int(new_paulis))
+            first_paulis[max(column_first, entry_first)+1] = min(column_first, entry_first)
+        end
+    end
+    return [firstof(paulis) for paulis in 0:length(first_paulis)-1]
+end
+
+
+### Transfer maps of gates on their qubits
 
 # The transfer map of a gate on its qubits, indexed by the Paulis on `qinds(gate)` as `getpauli(pstr, qinds)` reads them,
 # with the parameter of a parametrized gate. A Clifford gate has its map in `clifford_map`, with one Pauli string and sign

@@ -73,7 +73,7 @@ function paulirotationproduct(gate_mask::TT, pstr::TT) where TT
     return new_pstr, sign
 end
 
-### Layers of Pauli rotations
+### Layers of gates
 
 """
     applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params; thread=true, kwargs...)
@@ -83,10 +83,14 @@ A layer of gates that never create duplicate Pauli strings, by `requiresmerging`
 with all of its gates applied to a Pauli string in one visit from lookups built from the transfer maps of the gates on their qubits.
 A layer of Pauli rotations is applied in one pass as well.
 The pass collects the Pauli strings that anticommute with the same rotations and applies those rotations to them, one at a time.
+Any other layer of gates on different qubits, such as `TransferMapGate`s or custom gates that define `apply`, is applied in one pass too.
+That pass collects the Pauli strings that the gates map into each other, which it finds from the transfer maps of the gates on their qubits, and applies the gates acting on them with `applymergetruncate!`, one at a time.
+A gate without a transfer map of its own gets one from `apply` on every Pauli string on its qubits.
+Every gate of such a layer is applied to a part of the sum at a time, so what it does to a Pauli string must not depend on the rest of the sum.
 Truncation is applied after every gate acting on a Pauli string and at the end of the layer, as when the gates are applied one after the other to Pauli strings within the truncations.
-Unlike the rotations one after the other, a layer of rotations also merges and truncates the Pauli strings that none of its rotations act on.
+Unlike the gates one after the other, a layer of rotations or of other gates on different qubits also merges and truncates the Pauli strings that none of its gates act on.
 A `VectorPauliSum` is left without duplicate Pauli strings, but unsorted.
-Other layers, other coefficient types, and truncation by `min_rel_coeff` apply the gates one after the other.
+Other layers, such as layers of imaginary-time rotations, which normalize the whole sum, other coefficient types, and truncation by `min_rel_coeff` apply the gates one after the other.
 """
 function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
@@ -97,6 +101,10 @@ function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::Abstr
     elseif _haslayerfastpath(layer, prop_cache) && isnothing(min_rel_coeff)
         truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
         _applylayer!(layer, prop_cache, params, truncfunc; thread)
+    elseif _hasclasspath(layer, prop_cache) && isnothing(min_rel_coeff)
+        truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
+        _applyclasses!(layer, prop_cache, params, truncfunc;
+            min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread, kwargs...)
     else
         PropagationBase._applygatesonebyone!(layer, prop_cache, params;
             min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread, kwargs...)

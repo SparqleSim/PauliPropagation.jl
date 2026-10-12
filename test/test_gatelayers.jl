@@ -21,6 +21,23 @@ end
 PB.apply(::NegatingGate, pstr, coeff; kwargs...) = ((pstr, -coeff),)
 PB.requiresmerging(::Union{ZConjugation,BranchingGate,NegatingGate}, ::AbstractPauliPropagationCache) = false
 
+# A gate defined by its action alone that branches every Pauli other than the identity on its qubit into X, Y and Z, by
+# the columns of `rotation`, as a rotation of the Bloch sphere would.
+struct AxisRotation <: StaticGate
+    qind::Int
+    rotation::NTuple{9,Float64}
+end
+function PB.apply(gate::AxisRotation, pstr, coeff; kwargs...)
+    pauli = getpauli(pstr, gate.qind)
+    if pauli == 0
+        return ((pstr, coeff),)
+    end
+    column = 3 * (pauli - 1)
+    return ((setpauli(pstr, :X, gate.qind), coeff * gate.rotation[column+1]),
+        (setpauli(pstr, :Y, gate.qind), coeff * gate.rotation[column+2]),
+        (setpauli(pstr, :Z, gate.qind), coeff * gate.rotation[column+3]))
+end
+
 # the gates of the layers one after the other, as a circuit, with the parameters of the parametrized ones
 function flattenlayers(layers, params)
     gates = Gate[]
@@ -209,6 +226,22 @@ end
     @test layersmatchgates([cliffords, entanglers], [], vcat(cliffords.gates, entanglers.gates), Float64[], VECTOR_TEST_SUMS; min_abs_coeff=1e-2)
 end
 
+@testset "the plan of a layer applied in one visit is checked before its entries are read" begin
+    cache = PropagationCache(VectorPauliSum(PauliString(4, :Z, 1)))
+    layer = GateLayer([CliffordGate(:H, 1), CliffordGate(:CNOT, [2, 3])])
+    plan = PP._preparemap(layer, Float64[], cache)
+    @test PP._applyactinggates(plan, nothing) isa Function
+
+    # the last gate misses an entry
+    pop!(plan.factors)
+    @test_throws ArgumentError PP._applyactinggates(plan, nothing)
+
+    # a third gate acts on the fourth qubit, but the plan holds two
+    plan = PP._preparemap(layer, Float64[], cache)
+    plan.qubit_gates[4] = (UInt64(1) << 2,)
+    @test_throws ArgumentError PP._applyactinggates(plan, nothing)
+end
+
 @testset "a gate defined by its action alone joins a layer applied in one visit" begin
     nq = 8
     rng = MersenneTwister(nq + 2)
@@ -227,6 +260,54 @@ end
     # a gate that branches or changes the identity on its qubits has no lookup
     @test_throws ArgumentError PP._locallookup(BranchingGate(1), UInt16)
     @test_throws ArgumentError PP._locallookup(NegatingGate(1), UInt16)
+end
+
+@testset "a layer of branching gates on different qubits propagates like its gates one by one" begin
+    nq = 8
+    rng = MersenneTwister(nq + 3)
+    psum = densepaulisum(rng, nq)
+
+    # a rotation of the Bloch sphere by 0.3 about the axis (1, 2, 2) / 3, column by column
+    rotation = (0.9601, 0.2036, -0.1912, -0.1688, 0.9677, 0.1874, 0.2232, -0.1487, 0.9632)
+    # transfer maps of rotations on one and two qubits, and a map that turns the identity partly into Z
+    one_qubit_map = totransfermap(1, [PauliRotation(:X, 1), PauliRotation(:Z, 1)], [0.3, 0.4])
+    two_qubit_map = totransfermap(2, [PauliRotation([:X, :Y], [1, 2]), PauliRotation(:Z, 1)], [0.2, 0.5])
+    moving_identity = [[(0x00, 1.0), (0x03, 0.2)], [(0x01, 0.9)], [(0x02, 0.9)], [(0x03, 0.8)]]
+
+    custom = GateLayer([AxisRotation(qind, rotation) for qind in 1:4])
+    transfer_maps = GateLayer([TransferMapGate(one_qubit_map, [1]), TransferMapGate(one_qubit_map, [3]), TransferMapGate(two_qubit_map, [5, 6])])
+    # the gate on qubit 7 acts on the Pauli strings that are the identity there, nearly all of them
+    mixed = GateLayer([AxisRotation(1, rotation), CliffordGate(:H, 2), AmplitudeDampingNoise(3), PauliRotation(:Y, 4),
+        DepolarizingNoise(5), TransferMapGate(moving_identity, [7])])
+    cache = PropagationCache(psum)
+    @test all(layer -> PP._hasclasspath(layer, cache), (custom, transfer_maps, mixed))
+
+    # gates sharing a qubit, and gates that normalize the whole sum, apply one after the other
+    @test !PP._hasclasspath(GateLayer([AxisRotation(1, rotation), AxisRotation(1, rotation)]; guaranteed_commutes=true), cache)
+    @test !PP._hasclasspath(GateLayer([ImaginaryPauliRotation(:Z, 1), ImaginaryPauliRotation(:X, 2)]), cache)
+
+    # The layers and their gates one after the other agree up to the order in which coefficients are added. Transfer map
+    # gates have no Schrödinger picture, so the sums are those of the Heisenberg picture.
+    function agreeswithgates(layers, params, gates, flat_params; kwargs...)
+        agrees = true
+        for (T, heisenberg) in GATELAYER_TEST_SUMS
+            if !heisenberg
+                continue
+            end
+            layered = PauliSum(propagate(layers, T(psum), params; heisenberg, kwargs...))
+            reference = PauliSum(propagate(gates, T(psum), flat_params; heisenberg, kwargs...))
+            agrees &= !isempty(layered) && length(layered) == length(reference) &&
+                      all(isapprox(getcoeff(layered, pstr), coeff; atol=1e-14) for (pstr, coeff) in reference)
+        end
+        return agrees
+    end
+    layers = [custom, transfer_maps, mixed]
+    params = [[0.1, 0.3, 0.05]]
+    gates = reduce(vcat, [layer.gates for layer in layers])
+    flat_params = [0.1, 0.3, 0.05]
+    @test agreeswithgates(layers, params, gates, flat_params; min_abs_coeff=0.0)
+    # with the inputs within the truncations, which the gates one after the other would otherwise truncate at the first gate
+    @test agreeswithgates(layers, params, gates, flat_params; max_weight=6.0, min_abs_coeff=0.08)
 end
 
 @testset "tolayers gathers commuting gates of the same kind, and a layer without parametrized gates takes none" begin

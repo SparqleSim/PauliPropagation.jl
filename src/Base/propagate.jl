@@ -150,17 +150,18 @@ Is expected to return a tuple of (new_term, new_coeff) pairs.
 This function must be overloaded for each custom gate type.
 Common mistakes are to return a single pair instead of a tuple of pairs, 
 such as `(new_term, new_coeff)`, instead of `((new_term, new_coeff),)`.
+The keyword arguments of the propagation, such as the truncations, are passed on to `apply`, so its methods take `kwargs...`.
 On an array sum, several tasks call `apply` once to count the pairs and once to write them, possibly at the same time on different terms,
 so it must return the same pairs for the same term every time and must not return a one-shot iterator.
 
 Example:
 ```julia
-function apply(gate::NewStaticGate, term, coeff)
+function apply(gate::NewStaticGate, term, coeff; kwargs...)
     # how some gate acts in the term and updates coeff
     ...
     return ((new_term1, new_coeff1), (new_term2, new_coeff2), ...)
 end
-function apply(gate::NewParametrizedGate, term, coeff, param)
+function apply(gate::NewParametrizedGate, term, coeff, param; kwargs...)
     # how some gate acts in the term and updates coeff
     # a parameter `param` will be automatically passed if NewParametrizedGate <: ParametrizedGate
     ...
