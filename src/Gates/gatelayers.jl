@@ -125,23 +125,31 @@ function commutes(gate_a::Gate, gate_b::Gate)
     return isdisjoint(qinds(gate_a), qinds(gate_b))
 end
 
-# the generators are compared as integers of the type for the highest qubit that the rotations act on
+# the generators commute if they have different Paulis, neither the identity, on an even number of shared qubits
 function commutes(gate_a::PauliRotation, gate_b::PauliRotation)
-    TT = getinttype(max(maximum(gate_a.qinds), maximum(gate_b.qinds)))
-    return commutes(symboltoint(TT, gate_a.symbols, gate_a.qinds), symboltoint(TT, gate_b.symbols, gate_b.qinds))
+    n_anticommuting = 0
+    for (symbol_a, qind_a) in zip(gate_a.symbols, gate_a.qinds), (symbol_b, qind_b) in zip(gate_b.symbols, gate_b.qinds)
+        if qind_a == qind_b && symbol_a != symbol_b && symbol_a != :I && symbol_b != :I
+            n_anticommuting += 1
+        end
+    end
+    return iseven(n_anticommuting)
 end
 
-# Clifford gates sharing a qubit commute if applying them in either order maps every Pauli string on their qubits alike
+# Clifford gates sharing a qubit commute if applying them in either order maps every Pauli string on their qubits alike,
+# which they do if they map X and Z on each of the qubits alike, since a Clifford map is fixed by what it makes of those.
+# The gates are compared on their qubits alone, numbered from one, so that the Pauli strings are small integers.
 function commutes(gate_a::CliffordGate, gate_b::CliffordGate)
     if isdisjoint(gate_a.qinds, gate_b.qinds)
         return true
     end
     qinds = union(gate_a.qinds, gate_b.qinds)
-    TT = getinttype(maximum(qinds))
-    lookup_a = _preparecliffordmap(TT, gate_a)
-    lookup_b = _preparecliffordmap(TT, gate_b)
-    for paulis in 0:4^length(qinds)-1
-        pstr = setpauli(zero(TT), TT(paulis), qinds)
+    gate_a = CliffordGate(gate_a.symbol, indexin(gate_a.qinds, qinds))
+    gate_b = CliffordGate(gate_b.symbol, indexin(gate_b.qinds, qinds))
+    lookup_a = _preparecliffordmap(UInt64, gate_a)
+    lookup_b = _preparecliffordmap(UInt64, gate_b)
+    for qind in eachindex(qinds), pauli in (:X, :Z)
+        pstr = setpauli(zero(UInt64), pauli, qind)
         after_a = only(apply(gate_a, pstr, 1, lookup_a))
         after_b = only(apply(gate_b, pstr, 1, lookup_b))
         if only(apply(gate_b, after_a..., lookup_b)) != only(apply(gate_a, after_b..., lookup_a))

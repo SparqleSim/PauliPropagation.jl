@@ -210,6 +210,30 @@ end
     # a T gate commutes as the rotation about Z it is
     @test commutes(TGate(1), PauliRotation([:Z, :Z], [1, 2])) && commutes(PauliRotation(:Z, 1, 0.3), TGate(1))
     @test !commutes(TGate(1), PauliRotation(:X, 1)) && !commutes(TGate(1), CliffordGate(:H, 1))
+
+    # every pair of the library's Clifford gates sharing the second qubit, against propagating every Pauli string on three
+    # qubits through the gates in either order
+    layouts(symbol) = length(PP.clifford_map[symbol]) == 4 ? ([2],) : ([1, 2], [2, 3], [2, 1])
+    gates = [CliffordGate(symbol, qinds) for symbol in sort(collect(keys(PP.clifford_map))) for qinds in layouts(symbol)]
+    inorder(gate_a, gate_b, paulis) = propagate([gate_a, gate_b], PauliString(3, UInt8(paulis), 1.0))
+    agrees = true
+    for gate_a in gates, gate_b in gates
+        alike = all(paulis -> inorder(gate_a, gate_b, paulis) == inorder(gate_b, gate_a, paulis), 0:63)
+        agrees &= commutes(gate_a, gate_b) == alike
+    end
+    @test agrees
+
+    # Pauli rotations, against their generators as integers
+    Random.seed!(5)
+    agrees = true
+    for _ in 1:2000
+        qinds_a, qinds_b = randperm(5)[1:rand(1:3)], randperm(5)[1:rand(1:3)]
+        rotation_a = PauliRotation(rand([:I, :X, :Y, :Z], length(qinds_a)), qinds_a)
+        rotation_b = PauliRotation(rand([:I, :X, :Y, :Z], length(qinds_b)), qinds_b)
+        generators = [PP.symboltoint(UInt16, rotation.symbols, rotation.qinds) for rotation in (rotation_a, rotation_b)]
+        agrees &= commutes(rotation_a, rotation_b) == commutes(generators...)
+    end
+    @test agrees
 end
 
 @testset "GateLayer of Clifford gates and noise propagates like its gates one by one" begin
