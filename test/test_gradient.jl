@@ -278,4 +278,31 @@ end
         end
     end
 
+    @testset "Truncations read the coefficient of the operator" begin
+        nq = 4
+        circuit = Gate[]
+        for _ in 1:3
+            append!(circuit, [PauliRotation(:X, q) for q in 1:nq])
+            append!(circuit, [PauliRotation([:Z, :Z], [q, q + 1]) for q in 1:nq-1])
+            push!(circuit, PauliRotation(:Y, 2))
+            push!(circuit, CliffordGate(:H, [3]))
+        end
+        params = [0.2 + 0.1 * k for k in 1:countparameters(circuit)]
+
+        # a custom truncation that drops what min_abs_coeff drops gives the same gradient, in both sweeps
+        below_threshold(pstr, coeff::Float64) = abs(coeff) < 1e-3
+        for psum in (VectorPauliSum(PauliString(nq, :Z, 2)), PauliSum(PauliString(nq, :Z, 2)))
+            expec, grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=0.0, customtruncfunc=below_threshold)
+            ref_expec, ref_grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=1e-3)
+            untruncated_grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=0.0)[2]
+            @test expec == ref_expec
+            @test grad == ref_grad
+            @test grad != untruncated_grad
+
+            # a relative threshold is taken from the coefficients of the operator
+            rel_grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=0.0, min_rel_coeff=1e-14)[2]
+            @test rel_grad ≈ untruncated_grad
+        end
+    end
+
 end
