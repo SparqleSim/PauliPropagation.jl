@@ -158,8 +158,8 @@ function _xorbranchmergeandtruncate!(::MultiSumStorage, rule::F, truncfunc::G, p
     return _syncsums!(prop_cache)
 end
 
-# the first box of the outbox of `zone_id`, which is where a zone parks the terms it branches when
-# the owner takes them straight from there
+# the first box of the outbox of `zone_id`, which is where a zone parks the terms it makes when
+# their owners take them straight from there
 @inline _firstbox(prop_cache::AbstractPropagationCache, zone_id::Int) = first(zones(outboxes(prop_cache)[zone_id]))
 
 # whether every active term of each array zone is in its sorted prefix; other zones sort nothing in
