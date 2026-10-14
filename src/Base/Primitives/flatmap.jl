@@ -179,11 +179,16 @@ end
 
 ### Multi sum storage
 
-# Every zone parks the pairs its terms make in its outbox, sorted by the zones that own them, and
-# then takes delivery of the pairs the other zones made for it.
 function _flatmap!(::MultiSumStorage, f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
     _checkauxempty(prop_cache)
+    _flatmapzones!(zonestorage(prop_cache), f, prop_cache; thread)
+    _syncsums!(prop_cache)
+    return prop_cache
+end
 
+# Every zone parks the pairs its terms make in its outbox, sorted by the zones that own them, and
+# then takes delivery of the pairs the other zones made for it.
+function _flatmapzones!(::StorageType, f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
     function scatter_zone!(zone_id)
         outbox = outboxes(prop_cache)[zone_id]
         zonecache = zonecaches(prop_cache)[zone_id]
@@ -198,7 +203,90 @@ function _flatmap!(::MultiSumStorage, f::F, prop_cache::AbstractPropagationCache
         return
     end
     _eachzone(scatter_zone!, prop_cache, thread)
-    _deliverboxes!(prop_cache; thread)
+    return _deliverboxes!(prop_cache; thread)
+end
 
-    return _syncsums!(prop_cache)
+# An array zone maps its terms itself and keeps the pairs it owns, and parks the others in the first
+# box of its outbox, one slice for each zone that owns some of them, so that one box per zone grows
+# instead of one per pair of zones. Every zone then appends its slice of each box.
+function _flatmapzones!(::ArrayStorage, f::F, prop_cache::AbstractPropagationCache; thread::Bool=true) where {F}
+    box_offsets = Vector{Vector{Int}}(undef, nzones(prop_cache))
+
+    function map_zone!(source)
+        flatmap!(f, zonecaches(prop_cache)[source]; thread=false)
+        box_offsets[source] = _parkforeignpairs!(prop_cache, source)
+        return
+    end
+    _eachzone(map_zone!, prop_cache, thread)
+
+    deliver_to_zone!(owner) = _deliverslicesto!(prop_cache, owner, box_offsets)
+    _eachzone(deliver_to_zone!, prop_cache, thread)
+
+    for source in 1:nzones(prop_cache)
+        empty!(_firstbox(prop_cache, source))
+    end
+    return prop_cache
+end
+
+# Moves the pairs of zone `source` that other zones own into the first box of its outbox, those for
+# zone `owner` at `offsets[owner]:offsets[owner+1]-1`, keeps its own pairs in order and returns the
+# offsets. The pairs are walked once to count them by owner and once to move them.
+function _parkforeignpairs!(prop_cache::AbstractPropagationCache, source::Int)
+    zone_map = zonemap(prop_cache)
+    zonecache = zonecaches(prop_cache)[source]
+    box = _firstbox(prop_cache, source)
+    n_pairs = activesize(zonecache)
+    main_terms, main_coefficients, _, _ = _mainauxarrays(zonecache)
+
+    pair_counts = zeros(Int, nzones(zone_map))
+    for ii in 1:n_pairs
+        pair_counts[zoneof(zone_map, main_terms[ii])] += 1
+    end
+    n_kept = pair_counts[source]
+    pair_counts[source] = 0
+    offsets = _offsetsfromcounts(pair_counts)
+
+    resize!(box, offsets[end] - 1)
+    box_terms = terms(box)
+    box_coefficients = coefficients(box)
+    write_positions = offsets[1:end-1]
+    keep_pos = 1
+    for ii in 1:n_pairs
+        term = main_terms[ii]
+        owner = zoneof(zone_map, term)
+        if owner == source
+            main_terms[keep_pos] = term
+            main_coefficients[keep_pos] = main_coefficients[ii]
+            keep_pos += 1
+        else
+            box_terms[write_positions[owner]] = term
+            box_coefficients[write_positions[owner]] = main_coefficients[ii]
+            write_positions[owner] += 1
+        end
+    end
+
+    setactivesize!(zonecache, n_kept)
+    return offsets
+end
+
+# Zone `owner` appends the slices that the other zones parked for it to the pairs it kept.
+function _deliverslicesto!(prop_cache::AbstractPropagationCache, owner::Int, box_offsets)
+    zonecache = zonecaches(prop_cache)[owner]
+    n_kept = activesize(zonecache)
+    n_pairs = n_kept + sum(offsets -> offsets[owner+1] - offsets[owner], box_offsets)
+
+    _ensurecapacity!(zonecache, n_pairs)
+    main_terms, main_coefficients, _, _ = _mainauxarrays(zonecache)
+
+    write_pos = n_kept + 1
+    for (source, offsets) in enumerate(box_offsets)
+        box = _firstbox(prop_cache, source)
+        n_slice = offsets[owner+1] - offsets[owner]
+        copyto!(main_terms, write_pos, terms(box), offsets[owner], n_slice)
+        copyto!(main_coefficients, write_pos, coefficients(box), offsets[owner], n_slice)
+        write_pos += n_slice
+    end
+
+    setactivesize!(zonecache, n_pairs)
+    return zonecache
 end
