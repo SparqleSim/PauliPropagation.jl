@@ -55,7 +55,7 @@ function _propagate!(stepfunc::F, circuit, target, params=nothing; kwargs...) wh
 
     _withworkers(target, get(kwargs, :thread, true)) do
         for gate in circuit
-            if isa(gate, ParametrizedGate)
+            if isparametrized(gate)
                 param = popfirst!(parameter_iterator)
                 stepfunc(gate, target, param; kwargs...)
             else
@@ -150,17 +150,20 @@ Is expected to return a tuple of (new_term, new_coeff) pairs.
 This function must be overloaded for each custom gate type.
 Common mistakes are to return a single pair instead of a tuple of pairs, 
 such as `(new_term, new_coeff)`, instead of `((new_term, new_coeff),)`.
+The keyword arguments of the propagation, such as the truncations, are passed on to `apply`, so its methods take `kwargs...`.
 On an array sum, several tasks call `apply` once to count the pairs and once to write them, possibly at the same time on different terms,
 so it must return the same pairs for the same term every time and must not return a one-shot iterator.
+In a `GateLayer`, a gate may be applied to one class of terms at a time, so what it does to a term must not depend on the rest of the sum;
+a gate for which it does defines `PropagationBase._appliesbyclass(::NewGate) = false`.
 
 Example:
 ```julia
-function apply(gate::NewStaticGate, term, coeff)
+function apply(gate::NewStaticGate, term, coeff; kwargs...)
     # how some gate acts in the term and updates coeff
     ...
     return ((new_term1, new_coeff1), (new_term2, new_coeff2), ...)
 end
-function apply(gate::NewParametrizedGate, term, coeff, param)
+function apply(gate::NewParametrizedGate, term, coeff, param; kwargs...)
     # how some gate acts in the term and updates coeff
     # a parameter `param` will be automatically passed if NewParametrizedGate <: ParametrizedGate
     ...

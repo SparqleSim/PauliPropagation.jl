@@ -31,6 +31,10 @@ using Random
 
     include("test_paulirotations.jl")
 
+    include("test_rotationlayers.jl")
+
+    include("test_gatelayers.jl")
+
     include("test_imaginary.jl")
 
     include("test_paulioperations.jl")
@@ -48,6 +52,8 @@ using Random
     include("test_primitives.jl")
 
     include("test_mergeandtruncate.jl")
+
+    include("test_hashedtermsum.jl")
 
     include("test_gradient.jl")
 

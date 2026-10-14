@@ -9,6 +9,8 @@ using Base.Threads
 
 include("./Base/Base.jl")
 using .PropagationBase
+# the coefficient test of the truncations, which the coefficient types of this package extend
+using .PropagationBase: truncatemincoeff
 
 
 include("./PauliDataTypes/PauliDataTypes.jl")
@@ -84,6 +86,9 @@ export
     ParametrizedGate,
     StaticGate,
     PauliRotation,
+    GateLayer,
+    PauliRotationLayer,
+    tolayers,
     ImaginaryPauliRotation,
     CliffordGate,
     clifford_map,
