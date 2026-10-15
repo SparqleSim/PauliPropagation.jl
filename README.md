@@ -1,6 +1,6 @@
 | **Documentation**| **Paper**|
 |:----------------:|:--------:|
-|[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://SparqleSim.github.io/PauliPropagation.jl/stable/)[![](https://img.shields.io/badge/docs-dev-green.svg)](https://SparqleSim.github.io/PauliPropagation.jl/dev/)|[![arXiv](https://img.shields.io/badge/arXiv-2505.21606-b31b1b.svg)](https://arxiv.org/abs/2505.21606)|
+|[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://SparqleSim.github.io/PauliPropagation.jl/stable/)[![](https://img.shields.io/badge/docs-dev-green.svg)](https://SparqleSim.github.io/PauliPropagation.jl/dev/)|[![Journal](https://img.shields.io/badge/Journal-PRX%20Quantum-b31b1b.svg)](https://journals.aps.org/prxquantum/abstract/10.1103/6vd7-l9bn)[![arXiv](https://img.shields.io/badge/arXiv-2505.21606-ca5f5f.svg)](https://arxiv.org/abs/2505.21606)|
 
 # PauliPropagation.jl
 `PauliPropagation.jl` is a Julia package for simulating Pauli propagation in quantum circuits and systems. It focuses on simulating the evolution of observables expressed in the Pauli basis under the action of unitary gates and non-unitary channels in a quantum circuit.
@@ -32,23 +32,16 @@ Pkg.add(url="https://github.com/SparqleSim/PauliPropagation.jl.git", rev="branch
 where you can use the keyword `rev="branchname"` to install development versions of the package.
 We don't recommend using branches other than `main` or `dev`.
 
-
-### A note on installing Julia 
-It is recommended to install julia using `juliaup` with instructions from [here](https://github.com/JuliaLang/juliaup). Then, Julia's _long-term support_ version (currently a `1.10` version) can be installed via
-
-```juliaup add lts```
-
-To get started running Jupyter notebooks, start a Julia session and install the `IJulia` package.
-
-If you are working on several projects with potentially conflicting packages, it is recommended to work with within local environments or projects.
-
-For more details, we refer to this useful [guide](https://modernjuliaworkflows.org/writing/).
-
 ## Quick Start
 
-You can find detailed example notebooks in the `examples` folder. We provide a brief example of how to use `PauliPropagation.jl`.
+You can find detailed example notebooks in the `examples` folder. We provide a brief example of how to use `PauliPropagation.jl`. 
 
-Consider simulating the dynamics of an operator $O=Z_{16}$ under the evolution of a unitary  channel $\mathcal{E}(\cdot) = U^\dagger \cdot U$ in a $n=32$ qubits system. 
+The main data structures for computing evolving Pauli sums are:
+- `PauliSum` for ease of use and robustness,
+- `VectorPauliSum` for maximal single-threaded performance on gates defined in this library,
+- `MultiPauliSum` for maximal multithreaded performance.
+
+Consider simulating the dynamics of an operator $O=Z_{16}$ under the evolution of a unitary  channel $\mathcal{E}(\cdot) = U^\dagger \cdot U$ in a $n=32$ qubits system. We can easily define it via `PauliString`.
 
 ```julia
 using PauliPropagation
@@ -99,10 +92,13 @@ max_weight = 6 # maximum Pauli weight
 
 min_abs_coeff = 1e-4 # minimal coefficient magnitude
 
-## propagate through the circuit
-init_pauli_sum = PauliSum(pstr)  # you can also propagate `pstr` 
-# init_pauli_sum = VectorPauliSum(pstr)  # for faster propagation on library gates
+# convert the PauliString to one of the Pauli sum options
+init_pauli_sum = PauliSum(observable)
+```
+You can also convert to `VectorPauliSum(observable)` or `MultiPauliSum(VectorPauliSum(observable))` for performance.
 
+```julia
+## propagate through the circuit
 pauli_sum = propagate(circuit, init_pauli_sum, parameters; max_weight, min_abs_coeff)
 ```
 The output `pauli_sum` gives us an approximation of propagated Pauli strings
@@ -209,7 +205,7 @@ Otherwise, feel free to reach out to the developers!
 The main developer of this package is [Manuel S. Rudolph](https://github.com/MSRudolph) in the Quantum Information and Computation Laboratory of Prof. Zoë Holmes at EPFL, Switzerland.
 Contact Manuel via manuel.rudolph@epfl.ch.
 
-Further contributors to this package include [Yanting Teng](https://github.com/teng10), [Tyson Jones](https://github.com/TysonRayJones), and [Su Yeon Chang](https://github.com/sychang42).
+Further contributors to this package include [Yanting Teng](https://github.com/teng10), [Matteo D'Anna](https://github.com/MatteDAnna), [Tyson Jones](https://github.com/TysonRayJones), and [Su Yeon Chang](https://github.com/sychang42).
 This package is the derivative of ongoing work at the Quantum Information and Computation lab at EPFL, supervised by Prof. Zoë Holmes.
 
 For more specific code issues, bug fixes, etc. please open a [GitHub issue](https://github.com/SparqleSim/PauliPropagation.jl/issues).
@@ -218,12 +214,15 @@ For more specific code issues, bug fixes, etc. please open a [GitHub issue](http
 
 If you are publishing research using `PauliPropagation.jl`, please cite this library and our paper: 
 ```
-@article{rudolph2025pauli,
-  title={Pauli Propagation: A Computational Framework for Simulating Quantum Systems},
-  author={Rudolph, Manuel S and Jones, Tyson and Teng, Yanting and Angrisani, Armando and Holmes, Zoe},
-  journal={arXiv preprint arXiv:2501.13101},
-  year={2025},
-  url={https://arxiv.org/abs/2501.13101}
+@article{rudolph2026pauli,
+  title={Pauli propagation: A computational framework for simulating quantum systems},
+  author={Rudolph, Manuel S and Jones, Tyson and Teng, Yanting and Angrisani, Armando and Holmes, Zo{\"e}},
+  journal={PRX Quantum},
+  volume={7},
+  number={3},
+  pages={032001},
+  year={2026},
+  publisher={APS}
 }
 ```
 

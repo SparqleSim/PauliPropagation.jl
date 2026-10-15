@@ -45,12 +45,13 @@ function _sortedtailmergeandtruncate!(truncfunc::F, prop_cache::AbstractPropagat
         tail_terms, tail_coeffs, n_tail, truncfunc, thread)
 end
 
-# scratch for a sorted copy of the tail: aux capacity beyond n_new (the merge writes only aux[1:n_new]), else allocate
+# scratch for a sorted copy of the tail: aux capacity beyond n_new (the merge writes only aux[1:n_new]), else allocate;
+# a view either way, so that the merge after it compiles for one array type
 function _tailscratch(aux_terms, aux_coeffs, n_new::Int, n_tail::Int, main_terms, main_coeffs)
     if length(aux_terms) - n_new >= n_tail
         return view(aux_terms, n_new+1:n_new+n_tail), view(aux_coeffs, n_new+1:n_new+n_tail)
     end
-    return similar(main_terms, n_tail), similar(main_coeffs, n_tail)
+    return view(similar(main_terms, n_tail), 1:n_tail), view(similar(main_coeffs, n_tail), 1:n_tail)
 end
 
 # merge the sorted head main[1:n_old] against an already sorted tail into aux, and commit; shared by

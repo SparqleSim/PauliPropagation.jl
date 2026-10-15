@@ -3,9 +3,13 @@ using LinearAlgebra
 using AcceleratedKernels
 const AK = AcceleratedKernels
 using Base.Threads
+using Random
 
 include("./utils.jl")
 export tonumber
+
+include("./NTupleInteger/datatype.jl")
+export NTupleInteger, anylimbs
 
 include("./threading_utils.jl")
 export maxtasks, withworkers
@@ -97,7 +101,8 @@ export
     maxabscoeff,
     flatmap,
     flatmap!,
-    mapandtruncate!
+    mapandtruncate!,
+    mapcoeffsandtruncate!
 
 include("./vectorbackend.jl")
 export
@@ -109,6 +114,8 @@ export
     filterviaflags!,
     coeffcumsum,
     coeffcumsum!
+
+include("./dictbackend.jl")
 
 include("./gates.jl")
 export
@@ -138,6 +145,9 @@ export
     Kept,
     Branch
 
+include("./NTupleInteger/limbreads.jl")
+export onlimbs
+
 include("./Merge/Merge.jl")
 export
     merge,
@@ -157,7 +167,6 @@ export
     mcapplytoall!,
     resample,
     resample!,
-    mapslots!,
     multinomial_resample!,
     systematic_resample!,
     semideterministic_systematic_resample!

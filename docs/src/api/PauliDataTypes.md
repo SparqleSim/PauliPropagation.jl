@@ -47,3 +47,9 @@ Modules = [PauliPropagation.PropagationBase]
 Pages = ["src/Base/termsum.jl"]
 Filter = t -> t in (Base.push!, PauliPropagation.PropagationBase.emptylike)
 ```
+
+## NTupleInteger
+```@autodocs
+Modules = [PauliPropagation.PropagationBase]
+Pages = ["src/Base/NTupleInteger/datatype.jl"]
+```

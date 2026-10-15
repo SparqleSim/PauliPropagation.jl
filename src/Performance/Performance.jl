@@ -12,12 +12,8 @@ using AcceleratedKernels
 const AK = AcceleratedKernels
 
 
-# Truncation shared by the fused gate applications
-include("./truncation.jl")
-
-
-# Byte-local masks for one- and two-qubit gates on wide Pauli strings
-include("./bytemasks.jl")
+# Dispatch shared by the fused gate applications
+include("./dispatch.jl")
 
 
 # PauliSum overload for PauliRotation

@@ -26,6 +26,12 @@ Modules = [PauliPropagation.PropagationBase]
 Pages = ["src/Base/Merge/mergeandtruncate.jl", "src/Base/xorbranch.jl", "src/Base/Merge/xortailmerge.jl", "src/Base/Primitives/mapandtruncate.jl"]
 ```
 
+```@autodocs
+Modules = [PauliPropagation.PropagationBase]
+Pages = ["src/Base/NTupleInteger/limbreads.jl"]
+Filter = t -> t === PauliPropagation.PropagationBase.onlimbs
+```
+
 ## Counting Pauli Strings
 
 ```@autodocs

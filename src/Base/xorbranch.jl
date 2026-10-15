@@ -91,6 +91,10 @@ end
 # Two terms never create the same new term, so each is set rather than added. 
 # Returns the number of terms the rule touched.
 function _branchdict!(rule::F, term_sum, new_sum, mask) where {F}
+    if _hasdictinternals(storage(term_sum))
+        return _branchdict_internals!(rule, storage(term_sum), new_sum, mask)
+    end
+
     n_touched = 0
 
     for (term, coefficient) in term_sum
@@ -151,7 +155,7 @@ function _branchserially!(rule::F, prop_cache, n_old::Int, mask) where {F}
     lo = 1
 
     while lo <= n_old
-        _growto!(prop_cache, write_pos)
+        _ensurecapacity!(prop_cache, write_pos)
         main_terms, main_coefficients, _, _ = _mainauxarrays(prop_cache)
 
         hi = min(n_old, lo + capacity(prop_cache) - write_pos)
@@ -185,7 +189,7 @@ function _branchintasks!(rule::F, prop_cache, n_old::Int, task_partitioner, n_ta
     if n_touched == 0
         return 0, 0
     end
-    _growto!(prop_cache, n_old + n_new)
+    _ensurecapacity!(prop_cache, n_old + n_new)
 
     # each task writes within the room its count reserved and reports what it made
     written = Vector{Int}(undef, n_tasks)
@@ -245,7 +249,7 @@ function _branchflagged!(rule::F, prop_cache, mask; thread::Bool=true) where {F}
     flagstoindices!(prop_cache; thread)
 
     n_new = lastactiveindex(prop_cache)
-    _growto!(prop_cache, n_old + n_new)
+    _ensurecapacity!(prop_cache, n_old + n_new)
 
     main_terms, main_coefficients, _, _ = _mainauxarrays(prop_cache)
     write_positions = activeindices(prop_cache)

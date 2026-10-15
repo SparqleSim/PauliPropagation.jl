@@ -81,13 +81,39 @@ function mapreducecoeffs(mapper, reducer, thing::Union{AbstractTermSum,AbstractP
     return _mapreducecoeffs(StorageType(thing), mapper, reducer, thing; init, neutral, thread)
 end
 
-_mapreducecoeffs(::DictStorage, mapper, reducer, thing; init, neutral, thread::Bool) =
-    mapreduce(mapper, reducer, coefficients(thing); init)
+# a dictionary reduces its coefficients over its pairs, whose iteration reads the slots eight at a time where it can
+_mapreducecoeffs(::DictStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O} =
+    _mapreduce(DictStorage(), (_, coefficient) -> mapper(coefficient), reducer, thing; init, neutral, thread)
 
-# `AcceleratedKernels` handles CPU and accelerator arrays here; both need the same chunk identity.
-_mapreducecoeffs(::ArrayStorage, mapper, reducer, thing; init, neutral, thread::Bool) =
-    AK.mapreduce(mapper, reducer, coefficients(thing); init, neutral,
+function _mapreducecoeffs(::ArrayStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O}
+    active_coefficients = coefficients(thing)
+    if _iscpuarray(active_coefficients)
+        return _mapreducecoeffscpu(mapper, reducer, active_coefficients; init, neutral, thread)
+    end
+
+    # `AcceleratedKernels` reduces independent chunks of accelerator arrays, which need the chunk identity.
+    return AK.mapreduce(mapper, reducer, active_coefficients; init, neutral,
         max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+end
+
+# Every task reduces its part pairwise, as Base does, on the workers of the propagation in progress.
+function _mapreducecoeffscpu(mapper::F, reducer::O, coefficients; init, neutral, thread::Bool) where {F,O}
+    if isempty(coefficients)
+        return init
+    end
+
+    task_partitioner, n_tasks = _preparetasks(length(coefficients), thread)
+    mappedtype = Base.promote_op(mapper, eltype(coefficients))
+    partialtype = Base.promote_op(reducer, typeof(neutral), mappedtype)
+    partials = Vector{partialtype}(undef, n_tasks)
+
+    function reduce_chunk!(task_id)
+        partials[task_id] = mapreduce(mapper, reducer, view(coefficients, task_partitioner[task_id]))
+    end
+    _eachtask(reduce_chunk!, n_tasks)
+
+    return reduce(reducer, partials; init)
+end
 
 
 function _mapreduce(::MultiSumStorage, f::F, op::O, msum::AbstractTermSum; init, neutral, thread::Bool) where {F,O}

@@ -158,8 +158,8 @@ function _xorbranchmergeandtruncate!(::MultiSumStorage, rule::F, truncfunc::G, p
     return _syncsums!(prop_cache)
 end
 
-# the first box of the outbox of `zone_id`, which is where a zone parks the terms it branches when
-# the owner takes them straight from there
+# the first box of the outbox of `zone_id`, which is where a zone parks the terms it makes when
+# their owners take them straight from there
 @inline _firstbox(prop_cache::AbstractPropagationCache, zone_id::Int) = first(zones(outboxes(prop_cache)[zone_id]))
 
 # whether every active term of each array zone is in its sorted prefix; other zones sort nothing in
@@ -253,12 +253,9 @@ function _xorsortedboxmergeandtruncate!(groups, truncfunc::F, prop_cache::Abstra
     n_old = activesize(prop_cache)
 
     # the head keeps its place, the sorted tail lands past it or stays in the box, and the merge
-    # writes both into aux: room for all of them in main and aux alike, and half as much again
+    # writes both into aux: room for all of them in main and aux alike
     n_new = n_old + n_tail
-    if capacity(prop_cache) < n_new
-        n_room = n_new + n_tail
-        resize!(prop_cache, n_room + n_room >> 1)
-    end
+    _ensurecapacity!(prop_cache, n_new)
     main_terms, main_coeffs, aux_terms, aux_coeffs = _mainauxarrays(prop_cache)
 
     # ping-pong pair A: the box, in place

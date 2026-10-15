@@ -4,6 +4,9 @@
 # Pauli string is a rule for `xorbranch!`, one that only rescales coefficients a function for
 # `mapcoeffsbypair!`, and one with a single output per input a transform for `map!`.
 # The storage decides how each of them runs.
+# The rule of a gate for `xorbranch!` is built from the gate's own Pauli string, its mask, and numbers
+# alone, so it reads a Pauli string only through the mask, and `onlimbs` builds it for only the limbs
+# the gate acts on where the Pauli strings span more.
 ##
 ###
 
@@ -24,11 +27,11 @@ end
 # gate against the cache. A coefficient type that branches differently overloads it for its cache.
 function _branchrule(gate::PauliRotation, prop_cache::AbstractPauliPropagationCache, theta)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
+    return onlimbs(_rotationrule, _branchmask(gate, prop_cache), cos(theta), sin(theta))
+end
 
-    gate_mask = _branchmask(gate, prop_cache)
-    cos_val = cos(theta)
-    sin_val = sin(theta)
-
+# a Pauli string that anticommutes with `gate_mask` keeps `cos_val` of its coefficient and branches with `sin_val`
+function _rotationrule(gate_mask, cos_val, sin_val)
     function rotate(pstr, coeff)
         if commutes(gate_mask, pstr)
             return Unchanged()
@@ -111,11 +114,11 @@ end
 
 function _branchrule(gate::ImaginaryPauliRotation, prop_cache::AbstractPauliPropagationCache, tau)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
+    return onlimbs(_imaginaryrotationrule, _branchmask(gate, prop_cache), cosh(tau), sinh(tau))
+end
 
-    gate_mask = _branchmask(gate, prop_cache)
-    cosh_val = cosh(tau)
-    sinh_val = sinh(tau)
-
+# a Pauli string that commutes with `gate_mask` keeps `cosh_val` of its coefficient and branches with `sinh_val`
+function _imaginaryrotationrule(gate_mask, cosh_val, sinh_val)
     # the sign of paulirotationproduct is also the minus sign in
     # e^{-τ/2 P} Q e^{-τ/2 P} = cosh(τ) Q - sinh(τ) PQ for commuting P and Q
     function rotate(pstr, coeff)
@@ -141,34 +144,51 @@ input, so the pair transformation is handled by `map!`.
 function PropagationBase.applytoall!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache; thread::Bool=true, kwargs...)
     _check_qind_range(nqubits(prop_cache), gate.qinds)
 
-    lookup_map = clifford_map[gate.symbol]
+    lookup_map = _preparecliffordmap(paulitype(prop_cache), gate)
     transform(term, coefficient) = only(apply(gate, term, coefficient, lookup_map))
 
-    return map!(transform, prop_cache; thread)
+    map!(transform, prop_cache; thread)
+    return prop_cache
+end
+
+"""
+    applymergetruncate!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
+
+Apply a Clifford gate and truncate in the same walk.
+The gate never creates duplicate terms, so no merge is needed.
+It changes only the signs of the coefficients, so `min_abs_coeff`, `min_rel_coeff`, `max_freq` and `max_sins` would drop nothing that the truncation after the previous gate kept.
+The terms are therefore truncated only when `max_weight` or `customtruncfunc` is given, and `min_rel_coeff` is never applied.
+"""
+function PropagationBase.applymergetruncate!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache;
+    thread::Bool=true, min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf,
+    max_sins::Real=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, kwargs...)
+
+    if isinf(max_weight) && isnothing(customtruncfunc)
+        applytoall!(gate, prop_cache; thread)
+        return prop_cache
+    end
+
+    _check_qind_range(nqubits(prop_cache), gate.qinds)
+
+    lookup_map = _preparecliffordmap(paulitype(prop_cache), gate)
+    transform(term, coefficient) = only(apply(gate, term, coefficient, lookup_map))
+    truncfunc = buildtruncfunc(prop_cache;
+        min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
+
+    mapandtruncate!(transform, truncfunc, prop_cache; thread)
+    return prop_cache
 end
 
 # a Clifford gate maps distinct Pauli strings to distinct Pauli strings
 PropagationBase.requiresmerging(::CliffordGate, ::AbstractPauliPropagationCache) = false
 
 function PropagationBase.apply(gate::CliffordGate, pstr, coeff, lookup_map; kwargs...)
-    # the lookup array carries the new Paulis + sign for every occuring old Pauli combination
-
-    qinds = gate.qinds
-
-    # this integer carries the active Paulis on its bits
-    lookup_int = getpauli(pstr, qinds)
-
-    # this integer can be used to index into the array returning the new Paulis
-    # +1 because Julia is 1-indexed and lookup_int is 0-indexed
-    partial_pstr, sign = lookup_map[lookup_int+1]
-
-    # insert the bits of the new Pauli into the old Pauli
-    pstr = setpauli(pstr, partial_pstr, qinds)
-
-    coeff *= sign
+    # the lookup map carries the change to the Paulis + sign for every occurring Pauli combination
+    # +1 because Julia is 1-indexed and the packed Paulis are 0-indexed
+    index = _gatherpaulis(pstr, lookup_map.shifts) + 1
 
     # always a length-1 tuple, which will be compiled away
-    return ((pstr, coeff),)
+    return ((pstr ⊻ lookup_map.changes[index], coeff * lookup_map.signs[index]),)
 end
 
 ### Pauli noise
@@ -214,7 +234,7 @@ function PropagationBase.applymergetruncate!(gate::PauliNoise, prop_cache::Abstr
     damp(pstr, coeff) = isdamped(gate, getpauli(pstr, qind)) ? coeff * damp_val : coeff
     truncfunc = buildtruncfunc(prop_cache;
         min_abs_coeff, max_weight, max_freq, max_sins, customtruncfunc, thread)
-    return mapandtruncate!(damp, truncfunc, prop_cache; thread)
+    return mapcoeffsandtruncate!(damp, truncfunc, prop_cache; thread)
 end
 
 PropagationBase.requiresmerging(::PauliNoise, ::AbstractPauliPropagationCache) = false
@@ -235,15 +255,19 @@ end
 function _branchrule(gate::AmplitudeDampingNoise, prop_cache::AbstractPauliPropagationCache, gamma)
     _check_qind_range(nqubits(prop_cache), gate.qind)
     _check_noise_strength(AmplitudeDampingNoise, gamma)
+    return onlimbs(_dampingrule, _branchmask(gate, prop_cache), gamma)
+end
 
-    qind = gate.qind
+# The mask holds Z on the damped qubit, so a Pauli string shares none of its bits there for I, both for Z,
+# and one for X and Y.
+function _dampingrule(gate_mask, gamma)
     damp_val = sqrt(1 - gamma)
 
     function damp(pstr, coeff)
-        pauli = getpauli(pstr, qind)
-        if pauli == 0
+        pauli = pstr & gate_mask
+        if iszero(pauli)
             return Unchanged()
-        elseif pauli == 3
+        elseif pauli == gate_mask
             return Branch((1 - gamma) * coeff, gamma * coeff)
         else
             return Kept(damp_val * coeff)
