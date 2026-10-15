@@ -20,6 +20,7 @@ Groups consecutive gates of `circuit` that commute with each other into `GateLay
 By default gates are not reordered, so only gates that follow each other in `circuit` can end up in the same layer.
 With `reorder=true`, a gate is first moved back to the earliest run of gates of its kind that it reaches passing only gates it commutes with, which regroups e.g. the RX, RZ, RX that `hardwareefficientcircuit` applies qubit by qubit into three layers over all qubits.
 The layers applied in order give the same operator as the circuit either way; with truncation, a reordered circuit can give a different result than the circuit as written.
+Keep the default to speed up propagation without changing the result of the circuit as written, as `Performance.propagate` does; use `reorder=true` where the layers must be as large as the gates allow, as [`symmetrypropagate`](@ref) does.
 Layers already in the circuit, frozen or not, stay as they are, and no gate is moved past them.
 Gates on different qubits commute, and whether two gates that share a qubit commute is decided by `commutes`.
 Pauli rotations and other gates go into separate layers, because a layer of Pauli rotations and a layer of other gates are each propagated in their own way.

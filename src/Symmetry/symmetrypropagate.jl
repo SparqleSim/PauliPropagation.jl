@@ -1,27 +1,37 @@
 ### symmetrypropagate.jl
 ##
 # Propagation with subgroup merging. The circuit is cut into layers of mutually commuting Pauli
-# rotations and runs of other gates (`_commutinglayers`, Circuits/utils.jl). Every rotation layer
-# gets a `SubgroupSchedule` (subgroups.jl); the driver applies each gate and merges under the
-# scheduled group. A layer applied as a whole has the trivial group after every gate but the last.
+# rotations and layers of other gates (`tolayers(circuit, thetas; reorder=true)`,
+# Gates/gatelayers.jl). Every rotation layer gets a `SubgroupSchedule` (subgroups.jl); the driver
+# applies each gate and merges under the scheduled group. A layer applied as a whole has the
+# trivial group after every gate but the last.
 ##
 ###
 
 
-## Layers given by the caller
+## The gates of a layer
 
-# The layers as index vectors into the prepared circuit. Caller-given layers are contiguous ranges
-# of the circuit as written, so that no gate is moved past one it may not commute with; the
-# Heisenberg picture reverses the circuit, and with it the ranges.
-function _layerindices(prepared_circuit, layers, heisenberg::Bool)
-    layers === :auto && return _commutinglayers(prepared_circuit)
-    m = length(prepared_circuit)
-    ranges = [first(layer):last(layer) for layer in layers]
-    valid = all(!isempty(r) && collect(r) == collect(l) for (r, l) in zip(ranges, layers)) &&
-            reduce(vcat, ranges; init=Int[]) == 1:m
-    valid || throw(ArgumentError("`layers` must be non-empty contiguous ranges that partition 1:$(m) in order, got $(layers)."))
-    heisenberg || return [collect(r) for r in ranges]
-    return [collect(m-last(r)+1:m-first(r)+1) for r in reverse(ranges)]
+# the gates of an entry of a layered circuit, each frozen with its parameter
+_frozengates(entry::GateLayer) = entry.gates                                     # a layer without parameters
+_frozengates(entry::FrozenGate{<:GateLayer}) = freeze(entry.gate.gates, entry.parameter)
+_frozengates(entry) = [entry]
+
+# The gates the driver applies between merges, as blocks of frozen gates: a rotation layer, a
+# rotation on its own, and other gates in the commuting layers `tolayers` found when they are
+# checked. Without the check, consecutive other gates form one block merged only afterwards,
+# the structure a caller asserting invariance can see.
+function _gateblocks(layered, check::Bool)
+    blocks = Vector{Gate}[]
+    for entry in layered
+        gates = _frozengates(entry)
+        isempty(gates) && continue          # an empty layer given in the circuit
+        if !check && !all(_isrotation, gates) && !isempty(blocks) && !all(_isrotation, blocks[end])
+            append!(blocks[end], gates)
+        else
+            push!(blocks, collect(Gate, gates))
+        end
+    end
+    return blocks
 end
 
 
@@ -30,7 +40,7 @@ end
 # a rotation layer must commute and be G-invariant for the merges inside and after it to be exact
 function _checkrotationlayer(G::AbstractSiteSymmetry, layer::RotationLayer)
     iscommuting(layer) || throw(ArgumentError(
-        "A caller-given layer of Pauli rotations does not commute. Split it, use `layers=:auto`, or pass `check=false`."))
+        "A layer of Pauli rotations given in the circuit does not commute. Build it with `PauliRotationLayer`, which checks, or pass `check=false`."))
     perm = _breakinggenerator(G, _angles(layer))
     perm === nothing || throw(ArgumentError(
         "A layer of Pauli rotations is not invariant under $(G): the site permutation $(perm) maps one of its " *
@@ -62,22 +72,19 @@ function _gatekey(gate, perm)
     return (typeof(inner), qubits, others, param)
 end
 
-# A layer of other gates is applied as given, so it is only known to be G-invariant if its gates
-# act on disjoint qubits (then their order does not matter) and their multiset is G-invariant.
+# A layer of other gates is applied as given and merged afterwards, so its gates must commute, so
+# that their order does not matter, and their multiset must be G-invariant. `tolayers` gathers only
+# commuting gates; a layer given in the circuit is verified here.
 function _checkotherlayer(G::AbstractSiteSymmetry, gates)
     nq = nqubits(G)
-    occupied = falses(nq)
     for gate in gates
-        qubits = _gatequbits(gate)
-        qubits === nothing && throw(ArgumentError(
+        _gatequbits(gate) === nothing && throw(ArgumentError(
             "Cannot check whether a layer with a $(typeof(gate)) is invariant under the symmetry; pass `check=false`."))
-        for q in qubits
-            occupied[q] && throw(ArgumentError(
-                "Gates of a layer other than Pauli rotations share qubit $(q), so the order of the gates matters and the " *
-                "invariance of the layer cannot be verified ($(typeof(gate)) at qubits $(qubits)). " *
-                "Pass `check=false` if the layer is known to be invariant under the symmetry."))
-            occupied[q] = true
-        end
+    end
+    for ii in eachindex(gates), jj in ii+1:lastindex(gates)
+        commutes(gates[ii], gates[jj]) || throw(ArgumentError(
+            "The gates $(gates[ii]) and $(gates[jj]) of a layer do not commute, so the order of the gates matters and " *
+            "the invariance of the layer cannot be verified. Pass `check=false` if the layer is known to be invariant under the symmetry."))
     end
     identity_perm = collect(1:nq)
     counts = Dict{Any,Int}()
@@ -135,8 +142,10 @@ end
 Propagate `psum` through `circuit` like [`propagate`](@ref), merging Pauli strings related by
 the symmetry group `G` as early as the circuit allows.
 
-The circuit is split into layers of mutually commuting Pauli rotations and layers of other gates.
-A rotation layer is applied one gate at a time in the order of its [`subgroupschedule`](@ref),
+The circuit is split into layers of mutually commuting Pauli rotations and layers of other gates
+by [`tolayers`](@ref) with `reorder=true`, which gathers every gate into the earliest layer it
+commutes into, so that e.g. the gates of a circuit written qubit by qubit form `G`-invariant
+layers. A rotation layer is applied one gate at a time in the order of its [`subgroupschedule`](@ref),
 and after every gate the Pauli sum is merged under the stabilizer of the gates applied so far,
 the subgroup of `G` that maps them onto themselves. Other layers are applied whole. After every
 layer the sum is merged under `G`.
@@ -144,8 +153,8 @@ layer the sum is merged under `G`.
 Without truncation the result is the merge under `G` of what `propagate` returns, provided every
 layer and the state the propagated sum is finally contracted with are `G`-invariant. With
 `check=true` the layers are verified: rotations must commute and be invariant, angles included;
-other gates must act on disjoint qubits and be invariant as a set. As with any symmetry merge, the
-returned sum is to be contracted with `G`-invariant states only.
+other gates must commute and be invariant as a set. As with any symmetry merge, the returned sum
+is to be contracted with `G`-invariant states only.
 
 # Keyword arguments
 - `subgroups=true`: merge inside rotation layers. `false` applies every layer whole and merges
@@ -172,20 +181,22 @@ overlapwithplus(merged) ≈ overlapwithplus(propagate(circuit, psum, thetas))
 ```
 
 # Extended help
-- `layers=:auto` finds the layers as maximal sets of mutually commuting rotations, moving a
-  rotation only past rotations it commutes with and never past other gates. Alternatively pass
-  a vector of contiguous index ranges that partitions the circuit as written, in order.
+- To control the layering, put `GateLayer`s (e.g. [`PauliRotationLayer`](@ref)) into the
+  circuit: they are kept as they are, and no gate is moved past them. A given layer mixing
+  rotations with other gates is applied whole and checked as a set of whole gates.
 - `heisenberg=true` as in `propagate`.
 - With `check=false`, `order=:auto` means `:given`, since reordering relies on the commutation
-  check. An explicit permutation as `order` applies to every rotation layer, which must then all
-  have that length. Layers that cannot be verified, e.g. a ring of `CNOT`s, need `check=false`.
+  check, and consecutive gates other than rotations are applied as one block merged only
+  afterwards, since the caller cannot see the layers found among them. An explicit permutation
+  as `order` applies to every rotation layer, which must then all have that length. Gates whose
+  invariance cannot be verified, e.g. a `SWAP` written as three `CNOT`s, need `check=false`.
 - With truncation the result differs from `propagate`, as for any reordering of the gates;
   coefficients are truncated after each merge rather than before. `max_freq` and `max_sins`
   need a sum whose coefficients are already wrapped in a `PauliFreqTracker`.
 - As with `propagate`, use a `VectorPauliSum` (or a cache built on one) for large simulations.
 """
 function symmetrypropagate!(G::AbstractSiteSymmetry, circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing;
-    layers=:auto, order=:auto, subgroups::Bool=true, check::Bool=true, heisenberg::Bool=true, record=nothing, kwargs...)
+    order=:auto, subgroups::Bool=true, check::Bool=true, heisenberg::Bool=true, record=nothing, kwargs...)
 
     _checknqubits(G, prop_cache)
     if !check && order === :auto
@@ -193,16 +204,15 @@ function symmetrypropagate!(G::AbstractSiteSymmetry, circuit, prop_cache::Abstra
     end
 
     # as in `propagate` (a single gate becomes a circuit, the Heisenberg picture reverses circuit
-    # and parameters), then every gate carries its own parameter
+    # and parameters), then the gates are gathered into layers and every gate carries its parameter
     circuit, thetas = _preparecircuit(circuit, thetas, heisenberg)
-    circuit = freeze(circuit, thetas)
+    layered = freeze(tolayers(circuit, thetas; reorder=true)...)
     TT = getinttype(nqubits(G))     # for the schedules; the merges use the cache's own Pauli type
     schedules = Dict{RotationLayer{TT},SubgroupSchedule}()   # identical layers share a schedule
     thread = get(kwargs, :thread, true)
 
     PropagationBase._withworkers(prop_cache, thread) do
-        for (layer_index, indices) in enumerate(_layerindices(circuit, layers, heisenberg))
-            gates = circuit[indices]
+        for (layer_index, gates) in enumerate(_gateblocks(layered, check))
             if all(_isrotation, gates)
                 layer = RotationLayer(TT, gates)
                 schedule = get!(schedules, layer) do

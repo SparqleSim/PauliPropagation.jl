@@ -294,9 +294,22 @@ end
     # Schrödinger picture, explicit layers, frozen gates
     reference_s = permutationmerge(propagate(circuit, obs, thetas; heisenberg=false, min_abs_coeff=0.0))
     @test _sp_maxdiff(symmetrypropagate(S, circuit, obs, thetas; heisenberg=false, min_abs_coeff=0.0), reference_s) < 1e-12
-    ranges = [15k-14:15k for k in 1:6]
-    @test _sp_maxdiff(symmetrypropagate(S, circuit, obs, thetas; layers=ranges, min_abs_coeff=0.0), reference) < 1e-12
-    @test _sp_maxdiff(symmetrypropagate(S, circuit, obs, thetas; layers=ranges, heisenberg=false, min_abs_coeff=0.0), reference_s) < 1e-12
+    layered = [PauliRotationLayer(circuit[15k-14:15k]) for k in 1:6]
+    layered_thetas = [thetas[15k-14:15k] for k in 1:6]
+    @test _sp_maxdiff(symmetrypropagate(S, layered, obs, layered_thetas; min_abs_coeff=0.0), reference) < 1e-12
+    @test _sp_maxdiff(symmetrypropagate(S, layered, obs, layered_thetas; heisenberg=false, min_abs_coeff=0.0), reference_s) < 1e-12
+    # a layer given in the circuit is kept, so three layers are applied although all gates commute
+    zfields = [PauliRotation(:Z, i) for i in 1:4]
+    zzlayer = PauliRotationLayer([:Z, :Z], [[i, j] for (i, j) in _sp_alltoall(4)])
+    given = Gate[zfields..., zzlayer, zfields...]
+    given_thetas = Any[fill(0.2, 4)..., fill(0.3, 6), fill(0.4, 4)...]
+    flat = Gate[zfields..., zzlayer.gates..., zfields...]
+    flat_thetas = vcat(fill(0.2, 4), fill(0.3, 6), fill(0.4, 4))
+    obs4 = _sp_observable(4)
+    record_given = []
+    @test _sp_maxdiff(symmetrypropagate(PermutationSymmetry(4), given, obs4, given_thetas; min_abs_coeff=0.0, record=record_given),
+        permutationmerge(propagate(flat, obs4, flat_thetas; min_abs_coeff=0.0))) < 1e-12
+    @test length(unique(r.layer for r in record_given)) == 3
     frozen = freeze(circuit, thetas)
     @test _sp_maxdiff(symmetrypropagate(S, frozen, obs; min_abs_coeff=0.0), reference) < 1e-12
 
@@ -357,7 +370,7 @@ end
     @test !PP.iscommuting(PP.RotationLayer(TT, circuit[1:16], thetas[1:16]))
     @test_throws ArgumentError PP.RotationLayer(TT, [CliffordGate(:H, 1)])
     @test_throws ArgumentError PP.RotationLayer(TT, circuit[1:15], thetas[1:3])
-    @test length.(PP._commutinglayers(circuit)) == fill(15, 6)
+    @test [length(layer.gates) for layer in tolayers(circuit; reorder=true)] == fill(15, 6)
 end
 
 
@@ -368,14 +381,8 @@ end
     S = PermutationSymmetry(nq)
     # unequal angles break the symmetry of a layer
     @test_throws ArgumentError symmetrypropagate(S, circuit, obs, 0.1 .* (1:countparameters(circuit)))
-    # a layer that does not commute
-    @test_throws ArgumentError symmetrypropagate(S, circuit, obs, fill(0.1, countparameters(circuit)); layers=[1:length(circuit)])
-    # layers that do not partition the circuit
-    @test_throws ArgumentError symmetrypropagate(S, circuit, obs, fill(0.1, countparameters(circuit)); layers=[1:15, 16:30])
-    @test_throws ArgumentError symmetrypropagate(S, circuit, obs, fill(0.1, countparameters(circuit)); layers=[1:15, 31:45, 16:30])
-    # an empty layer, with and without subgroup merging
-    @test_throws ArgumentError symmetrypropagate(S, circuit, obs, fill(0.1, countparameters(circuit)); layers=[1:0, 1:15, 16:30, 31:45])
-    @test_throws ArgumentError symmetrypropagate(S, circuit, obs, fill(0.1, countparameters(circuit)); layers=[1:0, 1:15, 16:30, 31:45], subgroups=false)
+    # a layer given in the circuit that does not commute
+    @test_throws ArgumentError symmetrypropagate(S, [GateLayer(circuit; guaranteed_commutes=true)], obs, [fill(0.1, countparameters(circuit))])
     # an explicit order of the wrong length
     @test_throws ArgumentError symmetrypropagate(S, circuit, obs, fill(0.1, countparameters(circuit)); order=[1, 2, 3])
     # the wrong number of qubits
@@ -386,7 +393,7 @@ end
     @test symmetrypropagate(S, noise, obs; check=false) isa PauliSum
     # check=false skips the tests and applies the gates as given
     @test symmetrypropagate(S, circuit, obs, 0.1 .* (1:countparameters(circuit)); check=false) isa PauliSum
-    # other gates are checked as a set of whole gates on disjoint qubits
+    # other gates are checked as a set of whole gates that commute
     cliffords = [CliffordGate(:H, i) for i in 1:nq]
     @test _sp_maxdiff(symmetrypropagate(S, cliffords, obs), permutationmerge(propagate(cliffords, obs))) < 1e-12
     @test_throws ArgumentError symmetrypropagate(S, cliffords[1:1], obs)
@@ -397,12 +404,33 @@ end
     @test symmetrypropagate(PermutationSymmetry(4, [[1, 2], [3, 4]]), cz, PauliSum(4)) isa PauliSum
     @test symmetrypropagate(PermutationSymmetry(4, [[1, 2], [3, 4]]), cz, PauliSum(4); heisenberg=false) isa PauliSum   # transposed CZ
     @test symmetrypropagate(ReflectionSymmetry(4), cz, PauliSum(4)) isa PauliSum
+    # a ring of CNOTs does not commute, so its gates are checked one by one and are not invariant
     cnots = [CliffordGate(:CNOT, [i, mod1(i + 1, 3)]) for i in 1:3]
     @test_throws ArgumentError symmetrypropagate(TranslationSymmetry(3), cnots, PauliSum(3))
     @test symmetrypropagate(TranslationSymmetry(3), cnots, PauliSum(3); check=false) isa PauliSum
-    # a user layer mixing rotations with other gates on the same qubits is refused as well
+    # Clifford gates that commute on shared qubits form a layer that is checked as a set, in both pictures
+    czring = [CliffordGate(:CZ, [i, mod1(i + 1, 3)]) for i in 1:3]
+    czobs = PauliSum(3)
+    add!(czobs, [:X, :Z], [1, 2])
+    add!(czobs, :Y, 3, 0.4)
+    for heisenberg in (true, false)
+        @test _sp_maxdiff(symmetrypropagate(TranslationSymmetry(3), czring, czobs; heisenberg), translationmerge(propagate(czring, czobs; heisenberg))) < 1e-12
+    end
+    # with check=false, consecutive other gates are one block merged only afterwards: a SWAP as three CNOTs
+    swapgates = [CliffordGate(:CNOT, [1, 2]), CliffordGate(:CNOT, [2, 1]), CliffordGate(:CNOT, [1, 2])]
+    S2 = SiteSymmetry(2, [[2, 1]])
+    swapobs = PauliSum(2)
+    add!(swapobs, :X, 1)
+    add!(swapobs, :Z, 2, 0.5)
+    add!(swapobs, [:Y, :Z], [1, 2], 0.3)
+    @test_throws ArgumentError symmetrypropagate(S2, swapgates, swapobs)
+    @test _sp_maxdiff(symmetrypropagate(S2, swapgates, swapobs; check=false), symmetrymerge(S2, propagate(swapgates, swapobs))) < 1e-12
+    # a given layer whose gates do not commute, whatever it asserts, is refused
+    noncommuting = Gate[CliffordGate(:H, 1), PauliRotation(:X, 1), PauliRotation(:X, 2), CliffordGate(:H, 2), PauliRotation(:X, 3), CliffordGate(:H, 3)]
+    @test_throws ArgumentError symmetrypropagate(TranslationSymmetry(3), [GateLayer(noncommuting; guaranteed_commutes=true)], PauliSum(3), [[0.3, 0.3, 0.3]])
+    # a given layer mixing rotations with other gates is checked as a set of whole gates; this one is not invariant
     mixedlayer = [PauliRotation(:X, 1), PauliRotation(:Z, 2), CliffordGate(:H, 1), CliffordGate(:H, 2)]
-    @test_throws ArgumentError symmetrypropagate(PermutationSymmetry(2), mixedlayer, PauliSum(2), [0.7, 0.7]; layers=[1:4])
+    @test_throws ArgumentError symmetrypropagate(PermutationSymmetry(2), [GateLayer(mixedlayer; guaranteed_commutes=true)], PauliSum(2), [[0.7, 0.7]])
 end
 
 
@@ -443,10 +471,8 @@ end
     @test length(counts) == 45
 
     # a rotation in a mixed layer is recognised however it lists its qubits
-    swapped = [PauliRotation([:X, :Z], [1, 2]), PauliRotation([:Z, :X], [4, 3]), CliffordGate(:H, 1), CliffordGate(:H, 3)]
-    @test_throws ArgumentError symmetrypropagate(SiteSymmetry(4, [[3, 4, 1, 2]]), swapped, PauliSum(4), [0.7, 0.7]; layers=[1:4])   # shared qubits
     swapped = [PauliRotation([:X, :Z], [1, 2]), PauliRotation([:Z, :X], [4, 3]), CliffordGate(:H, 5), CliffordGate(:H, 6)]
-    @test symmetrypropagate(SiteSymmetry(6, [[3, 4, 1, 2, 6, 5]]), swapped, PauliSum(6), [0.7, 0.7]; layers=[1:4]) isa PauliSum
+    @test symmetrypropagate(SiteSymmetry(6, [[3, 4, 1, 2, 6, 5]]), [GateLayer(swapped)], PauliSum(6), [[0.7, 0.7]]) isa PauliSum
     # docstrings are bound to the exported names
     @test !occursin("No documentation", string(@doc symmetrypropagate))
 end
