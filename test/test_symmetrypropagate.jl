@@ -395,6 +395,7 @@ end
     @test_throws ArgumentError symmetrypropagate(PermutationSymmetry(2), mixed, PauliSum(2))
     cz = [CliffordGate(:CZ, [1, 2]), CliffordGate(:CZ, [4, 3])]
     @test symmetrypropagate(PermutationSymmetry(4, [[1, 2], [3, 4]]), cz, PauliSum(4)) isa PauliSum
+    @test symmetrypropagate(PermutationSymmetry(4, [[1, 2], [3, 4]]), cz, PauliSum(4); heisenberg=false) isa PauliSum   # transposed CZ
     @test symmetrypropagate(ReflectionSymmetry(4), cz, PauliSum(4)) isa PauliSum
     cnots = [CliffordGate(:CNOT, [i, mod1(i + 1, 3)]) for i in 1:3]
     @test_throws ArgumentError symmetrypropagate(TranslationSymmetry(3), cnots, PauliSum(3))
@@ -427,6 +428,11 @@ end
     pstr = PauliString(nq, :Z, 1)
     @test _sp_maxdiff(symmetrypropagate(TranslationSymmetry(nq), circ, pstr, th; min_abs_coeff=0.0),
         translationmerge(propagate(circ, pstr, th; min_abs_coeff=0.0))) < 1e-12
+
+    # T gates count as rotations with their fixed angle
+    tobs = PauliSum(2)
+    add!(tobs, [:X, :Y], [1, 2])
+    @test _sp_maxdiff(symmetrypropagate(PermutationSymmetry(2), [TGate(1), TGate(2)], tobs), permutationmerge(propagate([TGate(1), TGate(2)], tobs))) < 1e-12
 
     # one count per gate, the last one after the merge of the layer
     noise = [DepolarizingNoise(i, 0.1) for i in 1:nq]

@@ -46,8 +46,8 @@ function _gatequbits(gate)
     return nothing
 end
 
-# Clifford gates that do not care about the order of their qubits
-const _SYMMETRIC_CLIFFORDS = (:CZ, :SWAP, :ZZpihalf)
+# Clifford gates that do not care about the order of their qubits, as the Schrödinger picture transposes them
+const _SYMMETRIC_CLIFFORDS = (:CZ, :SWAP, :ZZpihalf, :CZ_transpose, :SWAP_transpose, :ZZpihalf_transpose)
 
 # A gate as (type, qubits, other fields, parameter) with its qubits replaced by their images under
 # `perm`. A Pauli rotation is keyed by its permuted Pauli string instead. Other fields are

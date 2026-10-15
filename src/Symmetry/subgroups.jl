@@ -32,7 +32,7 @@ function RotationLayer(::Type{TT}, gates, thetas=nothing) where {TT}
     all(_isrotation, frozen) || throw(ArgumentError(
         "A rotation layer may only contain Pauli rotations (`PauliRotation` or frozen ones), got $(unique(typeof.(filter(!_isrotation, gates))))."))
     pstrs = [_paulistringof(TT, _rotationof(gate)) for gate in frozen]
-    return RotationLayer{TT}(frozen, pstrs, [Float64(gate.parameter) for gate in frozen])
+    return RotationLayer{TT}(frozen, pstrs, [Float64(_angleof(gate)) for gate in frozen])
 end
 
 Base.length(layer::RotationLayer) = length(layer.gates)
