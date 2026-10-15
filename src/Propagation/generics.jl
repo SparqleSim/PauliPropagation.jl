@@ -230,24 +230,38 @@ function buildtruncfunc(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCac
     effective_min_abs_coeff = isnothing(min_rel_coeff) ? min_abs_coeff :
         max(min_rel_coeff * maxabscoeff(pobj; thread), min_abs_coeff)
 
-    # `let` prevents the effective threshold from being captured in a `Core.Box`.
-    # The predicate is called in the innermost propagation loops, so it must retain
-    # concrete captures to avoid type-erased calls and per-call allocations.
-    return let effective_min_abs_coeff = effective_min_abs_coeff
-        function coefftruncfunc(pstr, coeff)
-            truncatemincoeff(coeff, effective_min_abs_coeff) && return true
-            truncatefrequency(coeff, max_freq) && return true
-            truncatesins(coeff, max_sins) && return true
-            return !isnothing(customtruncfunc) && customtruncfunc(pstr, coeff)
-        end
-
-        # Decided once here rather than for every term: a predicate that never reads the Pauli string lets
-        # the loops calling it move each string they keep without first handing it to the predicate.
-        if isinf(max_weight)
-            return coefftruncfunc
-        end
-
-        truncfunc(pstr, coeff) = truncateweight(pstr, max_weight) || coefftruncfunc(pstr, coeff)
-        return truncfunc
+    coefftruncfunc = CoefficientTruncation(effective_min_abs_coeff, max_freq, max_sins, customtruncfunc)
+    # Decided once here rather than for every term: a predicate that never reads the Pauli string lets
+    # the loops calling it move each string they keep without first handing it to the predicate.
+    if isinf(max_weight)
+        return coefftruncfunc
     end
+    return WeightTruncation(max_weight, coefftruncfunc)
 end
+
+# The truncation of the coefficients alone, which never reads the Pauli string, and of the Pauli strings above a
+# weight. Both are callable as `truncfunc(pstr, coeff)`, and the propagation loops ask them for their cutoff.
+struct CoefficientTruncation{M<:Real,Q<:Real,S<:Real,F}
+    min_abs_coeff::M
+    max_freq::Q
+    max_sins::S
+    customtruncfunc::F
+end
+
+@inline function (truncation::CoefficientTruncation)(pstr, coeff)
+    return truncatemincoeff(coeff, truncation.min_abs_coeff) ||
+           truncatefrequency(coeff, truncation.max_freq) ||
+           truncatesins(coeff, truncation.max_sins) ||
+           (!isnothing(truncation.customtruncfunc) && truncation.customtruncfunc(pstr, coeff))
+end
+
+struct WeightTruncation{W<:Real,C<:CoefficientTruncation}
+    max_weight::W
+    coefficients::C
+end
+
+@inline (truncation::WeightTruncation)(pstr, coeff) =
+    truncateweight(pstr, truncation.max_weight) || truncation.coefficients(pstr, coeff)
+
+PropagationBase._coefficientcutoff(truncation::CoefficientTruncation) = truncation.min_abs_coeff
+PropagationBase._coefficientcutoff(truncation::WeightTruncation) = PropagationBase._coefficientcutoff(truncation.coefficients)

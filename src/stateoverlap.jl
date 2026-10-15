@@ -80,9 +80,10 @@ end
 
 """
     overlapwithmaxmixed(psum::AbstractPauliSum)
+    overlapwithmaxmixed(pstr::PauliString)
 
-Calculates the overlap of an `AbstractPauliSum` with the maximally mixed state I/2^n,
-i.e., Tr[psum * I/2^n].
+Calculates the overlap of an `AbstractPauliSum` or `PauliString` with the maximally mixed state I/2^n,
+i.e., Tr[psum * I/2^n] or Tr[pstr * I/2^n].
 """
 function overlapwithmaxmixed(psum)
     if length(psum) == 0
@@ -90,6 +91,11 @@ function overlapwithmaxmixed(psum)
     end
 
     return getcoeff(psum, zero(paulitype(psum)))
+end
+
+
+function overlapwithmaxmixed(pstr::PauliString)
+    return iszero(pstr.term) * tonumber(pstr.coeff)
 end
 
 """

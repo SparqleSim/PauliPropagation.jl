@@ -7,6 +7,8 @@ module Performance
 
 using PauliPropagation
 using PauliPropagation.PropagationBase
+# exported from Base only since Julia 1.11
+using Base: IdSet
 
 using AcceleratedKernels
 const AK = AcceleratedKernels
@@ -24,22 +26,34 @@ include("./fused_dict.jl")
 include("./fused_rotations.jl")
 
 
+# Layers of commuting gates where they are faster than their gates one by one
+include("./layers.jl")
+
+
 """
-    propagate(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
+    propagate(circuit, thing, thetas=nothing; fused::Bool=true, layers::Bool=fused, kwargs...)
 
 Like `PauliPropagation.propagate`, but defaults `fused=true` to use this module's fused
 `applymergetruncate!` overloads. Pass `fused=false` for byte-identical default results.
+With `layers=true`, consecutive commuting gates are gathered into layers with `tolayers` where there are enough of them for a layer to be faster than its gates one by one on the type of `thing`.
+Layers that are already in `circuit` are kept as they are.
 """
-function propagate(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
+function propagate(circuit, thing, thetas=nothing; fused::Bool=true, layers::Bool=fused, kwargs...)
+    if layers
+        circuit, thetas = _tolayers(circuit, thetas, thing)
+    end
     return PauliPropagation.propagate(circuit, thing, thetas; fused, kwargs...)
 end
 
 """
-    propagate!(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
+    propagate!(circuit, thing, thetas=nothing; fused::Bool=true, layers::Bool=fused, kwargs...)
 
 In-place counterpart of `propagate`. See `propagate` for details.
 """
-function propagate!(circuit, thing, thetas=nothing; fused::Bool=true, kwargs...)
+function propagate!(circuit, thing, thetas=nothing; fused::Bool=true, layers::Bool=fused, kwargs...)
+    if layers
+        circuit, thetas = _tolayers(circuit, thetas, thing)
+    end
     return PauliPropagation.propagate!(circuit, thing, thetas; fused, kwargs...)
 end
 

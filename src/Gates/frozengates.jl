@@ -24,8 +24,11 @@ struct FrozenGate{GateType<:ParametrizedGate,T} <: StaticGate
 end
 
 
+PropagationBase.qinds(frozen_gate::FrozenGate) = qinds(frozen_gate.gate)
+
+# A frozen layer has a vector as its parameter, of which every entry is rounded.
 function Base.show(io::IO, frozen_gate::FrozenGate)
-    print(io, "FrozenGate($(frozen_gate.gate), parameter = $(round(frozen_gate.parameter, sigdigits=3)))")
+    print(io, "FrozenGate(", frozen_gate.gate, ", parameter = ", round.(frozen_gate.parameter, sigdigits=3), ")")
 end
 
 """
@@ -53,7 +56,7 @@ function freeze(gates, parameters)
     frozen_gates = Vector{Gate}(undef, length(gates))
     param_idx = 1
     for (i, gate) in enumerate(gates)
-        if isa(gate, ParametrizedGate)
+        if isparametrized(gate)
             frozen_gates[i] = FrozenGate(gate, parameters[param_idx])
             param_idx += 1
         else
