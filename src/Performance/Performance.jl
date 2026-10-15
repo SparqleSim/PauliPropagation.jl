@@ -7,6 +7,8 @@ module Performance
 
 using PauliPropagation
 using PauliPropagation.PropagationBase
+# exported from Base only since Julia 1.11
+using Base: IdSet
 
 using AcceleratedKernels
 const AK = AcceleratedKernels
