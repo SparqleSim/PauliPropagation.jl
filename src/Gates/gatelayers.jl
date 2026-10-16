@@ -13,18 +13,24 @@
 ### Layers of a circuit
 
 """
-    tolayers(circuit)
-    tolayers(circuit, params)
+    tolayers(circuit; reorder=false)
+    tolayers(circuit, params; reorder=false)
 
-Groups consecutive gates of `circuit` that commute with each other into `GateLayer`s.
-Gates are not reordered, so only gates that follow each other in `circuit` can end up in the same layer.
+Groups consecutive gates of `circuit` that commute with each other into `GateLayer`s; a gate that shares no layer stays a gate.
+By default gates are not reordered, so only gates that follow each other in `circuit` can end up in the same layer.
+With `reorder=true`, a gate is first moved back to the earliest run of gates of its kind that it reaches passing only gates it commutes with, which regroups e.g. the RX, RZ, RX that `hardwareefficientcircuit` applies qubit by qubit into three layers over all qubits.
+The layers applied in order give the same operator as the circuit either way; with truncation, a reordered circuit can give a different result than the circuit as written.
+Layers already in the circuit, frozen or not, stay as they are, and no gate is moved past them.
 Gates on different qubits commute, and whether two gates that share a qubit commute is decided by `commutes`.
 Pauli rotations and other gates go into separate layers, because a layer of Pauli rotations and a layer of other gates are each propagated in their own way.
 Also transforms the parameters of the circuit accordingly.
 Returns the new equivalent layered circuit and its corresponding parameter vector.
 """
-function tolayers(circuit, params)
+function tolayers(circuit, params; reorder::Bool=false)
     PropagationBase._checknumberofparams(circuit, params)
+    if reorder
+        circuit, params = _reordercommuting(circuit, params)
+    end
 
     layered_circuit = Gate[]
     layered_params = []
@@ -64,9 +70,9 @@ function tolayers(circuit, params)
     return layered_circuit, layered_params
 end
 
-function tolayers(circuit)
+function tolayers(circuit; reorder::Bool=false)
     # the layers do not depend on the parameters
-    layered_circuit, _ = tolayers(circuit, zeros(countparameters(circuit)))
+    layered_circuit, _ = tolayers(circuit, zeros(countparameters(circuit)); reorder)
     return layered_circuit
 end
 
@@ -105,6 +111,66 @@ function _joinslayer(gate, layer, gates_on_qubit)
         end
     end
     return true
+end
+
+
+### Reordering a circuit so that commuting gates follow each other
+
+# The gates of `circuit` reordered so that gates that commute with each other follow each other: every gate is moved
+# back to the earliest run of gates of its kind that it reaches passing only gates it commutes with, so that the runs
+# are the layers `tolayers` then gathers. Layers given in the circuit, frozen or not, stay in place and no gate is
+# moved past them. The parameters follow their gates.
+function _reordercommuting(circuit, params)
+    order = Int[]
+    # the open runs since the last layer given in the circuit, as the positions of their gates, and for each run the
+    # positions of its gates on each qubit, so that a gate is only compared with the gates it shares a qubit with
+    runs = Vector{Int}[]
+    runs_on_qubit = Dict{Int,Vector{Int}}[]
+    for (position, gate) in enumerate(circuit)
+        if _islayer(gate)
+            foreach(run -> append!(order, run), runs)
+            empty!(runs)
+            empty!(runs_on_qubit)
+            push!(order, position)
+            continue
+        end
+        run = _joinedrun(gate, circuit, runs, runs_on_qubit)
+        if run == 0
+            push!(runs, Int[])
+            push!(runs_on_qubit, Dict{Int,Vector{Int}}())
+            run = length(runs)
+        end
+        push!(runs[run], position)
+        for qind in qinds(gate)
+            push!(get!(Vector{Int}, runs_on_qubit[run], qind), position)
+        end
+    end
+    foreach(run -> append!(order, run), runs)
+    return circuit[order], _reorderedparams(circuit, params, order)
+end
+
+# a layer given in the circuit, frozen with its parameters or not
+_islayer(gate) = gate isa GateLayer || (gate isa FrozenGate && gate.gate isa GateLayer)
+
+# The run that `gate` joins, or 0 if it starts a new one: the earliest run of its kind, a Pauli rotation or not, that
+# it reaches walking back over runs whose gates on its qubits all commute with it.
+function _joinedrun(gate, circuit, runs, runs_on_qubit)
+    joined = 0
+    for run in reverse(eachindex(runs))
+        for qind in qinds(gate)
+            all(position -> commutes(gate, circuit[position]), get(runs_on_qubit[run], qind, Int[])) || return joined
+        end
+        if _isrotation(gate) == _isrotation(circuit[first(runs[run])])
+            joined = run
+        end
+    end
+    return joined
+end
+
+# the parameters of the parametrized gates of `circuit` in the order `order` of the gates
+function _reorderedparams(circuit, params, order)
+    param_index = cumsum(isparametrized(gate) for gate in circuit)
+    return [params[param_index[position]] for position in order if isparametrized(circuit[position])]
 end
 
 

@@ -405,3 +405,49 @@ end
     @test length(t_layered) == 2 && t_layered[1] isa GateLayer && length(t_layered[1].gates) == 2
     @test layeredmatchescircuit(t_circuit, [0.2, 0.3], psum; min_abs_coeff=0.0)
 end
+
+@testset "tolayers with reorder regroups gates past the gates they commute with" begin
+    alltoall(n) = [(i, j) for i in 1:n for j in i+1:n]
+    # Trotter circuits written layer by layer give the same layers either way
+    circuit = heisenbergtrottercircuit(5, 2; topology=alltoall(5))
+    for reorder in (false, true)
+        layered = tolayers(circuit; reorder)
+        @test length(layered) == 6 && all(layer -> length(layer.gates) == 10, layered)
+    end
+    noisy = vcat(tfitrottercircuit(5, 1; topology=staircasetopology(5; periodic=true)), [DepolarizingNoise(i, 0.01) for i in 1:5])
+    @test repr.(tolayers(noisy; reorder=true)) == ["GateLayer(5 PauliRotation)", "GateLayer(5 PauliRotation)", "GateLayer(5 FrozenGate)"]
+    @test isempty(tolayers(Gate[]; reorder=true))
+
+    # the RX, RZ, RX applied qubit by qubit regroup into three layers over all qubits, and the parameters follow their gates
+    hw = hardwareefficientcircuit(4, 1; topology=alltoall(4))
+    thetas = collect(1.0:18.0)
+    @test length(tolayers(hw)) == 10
+    layered, layered_thetas = tolayers(hw, thetas; reorder=true)
+    @test length(layered) == 4
+    @test [[only(gate.qinds) for gate in layer.gates] for layer in layered[1:3]] == fill([1, 2, 3, 4], 3)
+    @test [gate.symbols for gate in layered[2].gates] == fill([:Z], 4)
+    @test layered_thetas[1:3] == [[1, 4, 7, 10], [2, 5, 8, 11], [3, 6, 9, 12]]
+    @test length(layered[4].gates) == 6 && layered_thetas[4] == collect(13.0:18.0)
+    # the reordered circuit is the same operator
+    psum = randompaulisum(MersenneTwister(4), 4, 8, 3)
+    for (T, heisenberg) in VECTOR_TEST_SUMS
+        reordered = PauliSum(propagate(layered, T(psum), layered_thetas; heisenberg, min_abs_coeff=0.0))
+        reference = PauliSum(propagate(hw, T(psum), thetas; heisenberg, min_abs_coeff=0.0))
+        @test maximum(abs(getcoeff(reordered, p) - getcoeff(reference, p)) for p in union(Set(paulis(reordered)), Set(paulis(reference)))) < 1e-12
+    end
+
+    # a gate is not moved past a layer given in the circuit, nor past a gate it does not commute with
+    given = Gate[PauliRotationLayer(:X, 1:2), PauliRotation(:X, 3)]
+    @test repr.(tolayers(given; reorder=true)) == ["GateLayer(2 PauliRotation)", "PauliRotation([:X], [3])"]
+    blocked = [PauliRotation(:X, 1), DepolarizingNoise(2, 0.1), PauliRotation(:X, 2), PauliRotation(:Z, 3)]
+    @test repr.(tolayers(blocked; reorder=true)) == ["GateLayer(2 PauliRotation)", "FrozenGate(DepolarizingNoise(2), parameter = 0.1)", "PauliRotation([:X], [2])"]
+
+    # kinds never mix, parameters follow their gates past a given layer, and frozen gates take none
+    @test repr.(tolayers(Gate[PauliRotation(:X, 1), CliffordGate(:H, 2), PauliRotation(:Z, 3), DepolarizingNoise(4, 0.1)]; reorder=true)) ==
+          ["GateLayer(2 PauliRotation)", "GateLayer(1 CliffordGate, 1 FrozenGate)"]
+    around, around_thetas = tolayers(Gate[PauliRotation(:X, 1), PauliRotationLayer(:X, 2:3), PauliRotation(:X, 4)], Any[0.1, [0.2, 0.3], 0.4]; reorder=true)
+    @test repr.(around) == ["PauliRotation([:X], [1])", "GateLayer(2 PauliRotation)", "PauliRotation([:X], [4])"] && around_thetas == [0.1, [0.2, 0.3], 0.4]
+    frozen_layer = freeze([PauliRotationLayer(:X, 2:3)], [[0.2, 0.3]])[1]
+    @test repr.(tolayers(Gate[PauliRotation(:X, 1), frozen_layer, PauliRotation(:X, 4)]; reorder=true)) == ["PauliRotation([:X], [1])", repr(frozen_layer), "PauliRotation([:X], [4])"]
+    @test tolayers([PauliRotation(:X, 1), DepolarizingNoise(2, 0.05), PauliRotation(:Z, 2), PauliRotation(:Y, 3), DepolarizingNoise(3, 0.07)], [1.0, 2.0, 3.0]; reorder=true)[2] == [[1.0, 3.0], 2.0]
+end
