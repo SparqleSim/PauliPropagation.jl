@@ -1,8 +1,8 @@
 ### groups.jl
 ##
 # Symmetry groups of the qubit sites as objects. A group knows how to merge (its canonical form,
-# used by `symmetrymerge!`); its stabilizers inside a partially applied layer are computed in
-# subgroups.jl. Site permutations and their action on Pauli strings are in `symmetry_utils.jl`:
+# used by `symmetrymerge!` and by `SymmetryMerge`, the gate that merges inside a propagation); its
+# stabilizers inside a partially applied layer are computed in subgroups.jl. Site permutations and their action on Pauli strings are in `symmetry_utils.jl`:
 # `perm[i]` is the image of site `i`, and the Pauli on site `i` moves to site `perm[i]`.
 ##
 ###
@@ -64,6 +64,61 @@ symmetrymerge!(G::AbstractSiteSymmetry, psum::AbstractPauliSum; thread::Bool=tru
 symmetrymerge!(G::AbstractSiteSymmetry, prop_cache::AbstractPauliPropagationCache; thread::Bool=true) = _mergeunder!(G, prop_cache; thread)
 symmetrymerge(G::AbstractSiteSymmetry, thing::Union{AbstractPauliSum,AbstractPauliPropagationCache}; thread::Bool=true) =
     symmetrymerge!(G, deepcopy(thing); thread)
+
+
+## Merging as a gate
+
+"""
+    SymmetryMerge(group::AbstractSiteSymmetry, gate)
+
+A gate that applies `gate`, a rotation or any other gate, and then merges the Pauli sum under
+`group`: one step of the plan that [`symmetrycircuit`](@ref) builds and [`symmetrypropagate`](@ref)
+propagates. `gate` takes no parameter (it is frozen with its angle, or static), so neither does
+the merge gate, and the merge gate acts on every qubit, so `tolayers` moves nothing past it.
+Coefficient truncation is applied after the merge rather than to the single strings the gate
+produced. The size of the sum before the merge is counted as well, so `@countpaulis` holds two
+entries per merge gate and `@peakpaulis` reports the largest sum ever held.
+"""
+struct SymmetryMerge{G<:AbstractSiteSymmetry,T<:Gate} <: StaticGate
+    group::G
+    gate::T
+
+    function SymmetryMerge(group::G, gate::T) where {G<:AbstractSiteSymmetry,T<:Gate}
+        isparametrized(gate) && throw(ArgumentError(
+            "The gate of a `SymmetryMerge` takes no parameter; freeze it with its angle first."))
+        return new{G,T}(group, gate)
+    end
+end
+
+# on every qubit, so that `tolayers` moves no gate past a merge
+PropagationBase.qinds(gate::SymmetryMerge) = 1:nqubits(gate.group)
+
+# a merge reads the whole sum, so a layer holding a merge gate may not apply it class by class
+PropagationBase._appliesbyclass(::SymmetryMerge) = false
+
+# the gate inside follows the picture like a bare gate (`toheisenberg` leaves a static gate as it
+# is, `toschrodinger` transposes it); the merge is the same in both pictures
+_toheisenberg(gate::SymmetryMerge) = SymmetryMerge(gate.group, toheisenberg(gate.gate))
+_toschrodinger(gate::SymmetryMerge) = SymmetryMerge(gate.group, toschrodinger(gate.gate))
+
+Base.show(io::IO, gate::SymmetryMerge) = print(io, "SymmetryMerge(", gate.group, ", ", gate.gate, ")")
+
+# Apply the gate with the coefficient criteria held back (weight and frequency truncation still
+# happen at the gate), count the strings, then merge: `mapterms!` rewrites every string to its
+# canonical form, `mergeandtruncate!` adds up the strings that became equal and drops what the
+# criteria reject. The truncation keywords and defaults are those of `buildtruncfunc`.
+function PropagationBase.applymergetruncate!(gate::SymmetryMerge, prop_cache::AbstractPauliPropagationCache;
+    min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
+    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
+
+    _checknqubits(gate.group, prop_cache)
+    applymergetruncate!(gate.gate, prop_cache; min_abs_coeff=0.0, max_weight, max_freq, max_sins, thread, kwargs...)
+    PropagationBase._recordsize!(prop_cache)
+    mapterms!(canonicalform(gate.group, paulitype(prop_cache)), prop_cache; thread)
+    truncfunc = buildtruncfunc(prop_cache; min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread)
+    mergeandtruncate!(truncfunc, prop_cache; thread)
+    return
+end
 
 
 ## The trivial group

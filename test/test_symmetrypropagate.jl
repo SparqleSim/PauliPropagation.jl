@@ -7,6 +7,17 @@ _sp_elements(G) = G isa PermutationSymmetry ? PP._closure(nqubits(G), PP.generat
 
 _sp_alltoall(nq) = [(i, j) for i in 1:nq for j in i+1:nq]
 
+# the gate of an entry of a plan, the groups of its merges, and the plan of one layer in the order
+# the gates are applied with the stabilizer after each gate (the trivial group where nothing is merged)
+_sp_gate(entry) = entry isa SymmetryMerge ? entry.gate : entry
+_sp_groups(plan) = [entry.group for entry in plan if entry isa SymmetryMerge]
+function _sp_plan(G, gates, thetas=nothing; order=:auto)
+    plan = symmetrycircuit(G, gates, thetas; heisenberg=false, order)
+    return plan, [entry isa SymmetryMerge ? entry.group : PP.TrivialSymmetry(nqubits(G)) for entry in plan]
+end
+_sp_firstqubit(plan) = [PP._rotationof(_sp_gate(entry)).qinds[1] for entry in plan]
+_sp_signature(plan) = [(repr(_sp_gate(entry)), entry isa SymmetryMerge ? repr(entry.group) : "") for entry in plan]
+
 # brute-force stabilizer order of a set of Pauli rotations in a listable group
 function _sp_bruteforcestabilizer(G, gates, thetas)
     nq = nqubits(G)
@@ -186,61 +197,65 @@ end
 end
 
 
-@testset "Subgroup schedules" begin
+@testset "Plans of a layer" begin
     nq = 8
     T = TranslationSymmetry(nq)
     bonds = [PauliRotation([:Z, :Z], [i, mod1(i + 1, nq)]) for i in 1:nq]
     th = fill(0.1, nq)
+    plan, groups = _sp_plan(T, bonds, th)
+    @test _sp_firstqubit(plan) == [1, 5, 3, 7, 2, 6, 4, 8]
+    @test PP.grouporder.(groups) == [1, 2, 1, 4, 1, 2, 1, 8]
+    @test groups[end] == T
+    @test countparameters(plan) == 0 && all(entry -> PP._angleof(_sp_gate(entry)) == 0.1, plan)
+    # in the Heisenberg picture the layer is reversed before it is planned, so the walk starts at the last
+    # bond; the plan is in written order, ready for `propagate`, and reads backwards
+    applied = reverse(symmetrycircuit(T, bonds, th))
+    @test _sp_firstqubit(applied)[1] == nq
+    @test PP.grouporder.([entry isa SymmetryMerge ? entry.group : PP.TrivialSymmetry(nq) for entry in applied]) == [1, 2, 1, 4, 1, 2, 1, 8]
+    # written order: nothing merged before the end
+    given, givengroups = _sp_plan(T, bonds, th; order=:given)
+    @test _sp_firstqubit(given) == 1:nq
+    @test all(PP.istrivial, givengroups[1:end-1]) && givengroups[end] == T
+    explicit, explicitgroups = _sp_plan(T, bonds, th; order=[1, 5, 3, 7, 2, 6, 4, 8])
+    @test PP.grouporder.(explicitgroups) == PP.grouporder.(groups)
+    @test_throws ArgumentError symmetrycircuit(T, bonds, th; order=[1, 2, 3])
+    @test_throws ArgumentError symmetrycircuit(T, bonds, th; order=:unknown)
 
-    sched = subgroupschedule(T, bonds, th)
-    @test sched.order == [1, 5, 3, 7, 2, 6, 4, 8]
-    @test PP.grouporder.(sched.groups) == [1, 2, 1, 4, 1, 2, 1, 8]
-    @test sched.groups[end] == T
-    @test length(sched) == nq
-    @test occursin("SiteSymmetry(8, order 4)", string(sched))
-
-    given = subgroupschedule(T, bonds, th; order=:given)
-    @test given.order == 1:nq
-    @test all(PP.istrivial, given.groups[1:end-1])
-    explicit = subgroupschedule(T, bonds, th; order=[1, 5, 3, 7, 2, 6, 4, 8])
-    @test PP.grouporder.(explicit.groups) == PP.grouporder.(sched.groups)
-    @test_throws ArgumentError subgroupschedule(T, bonds, th; order=[1, 2, 3])
-    @test_throws ArgumentError subgroupschedule(T, bonds, th; order=:unknown)
-
+    # the symmetric group: lexicographic order whatever the listing, products of symmetric groups
     nq = 6
     S = PermutationSymmetry(nq)
     pairs = _sp_alltoall(nq)
     gates = [PauliRotation([:Y, :Y], [p...]) for p in reverse(pairs)]
-    sched = subgroupschedule(S, gates, fill(0.2, length(gates)))
-    @test sched.order == reverse(1:length(gates))                        # :auto sorts lexicographically
-    @test sched.groups[end] == S
-    @test sched.groups[1] == PermutationSymmetry(nq, [[1, 2], [3, 4, 5, 6]])
-    @test_throws ArgumentError subgroupschedule(S, gates, fill(0.2, length(gates)); order=:orbits)
+    plan, groups = _sp_plan(S, gates, fill(0.2, length(gates)))
+    @test [PP._rotationof(_sp_gate(entry)).qinds for entry in plan] == [[p...] for p in pairs]     # :auto sorts lexicographically
+    @test groups[end] == S
+    @test groups[1] == PermutationSymmetry(nq, [[1, 2], [3, 4, 5, 6]])
+    @test_throws ArgumentError symmetrycircuit(S, gates, fill(0.2, length(gates)); order=:orbits)
 
-    # printing a schedule
+    # a plan prints its merges
     zz = [PauliRotation([:Z, :Z], [i, j]) for i in 1:4 for j in i+1:4]
-    sched_given = subgroupschedule(PermutationSymmetry(4), zz, fill(0.1, 6); order=:given)
-    @test occursin("TrivialSymmetry(4)", string(sched_given)) || !any(PP.istrivial, sched_given.groups)
-    @test string(sched_given) isa String
+    plan_given = symmetrycircuit(PermutationSymmetry(4), zz, fill(0.1, 6); order=:given)
+    @test occursin("SymmetryMerge(PermutationSymmetry(4)", string(plan_given))
+    @test count(entry -> entry isa SymmetryMerge, plan_given) == 6     # the given order is the staircase order, so every step merges
 
-    # the subgroup-chain order of a cycle, and a long chain scheduled quickly
+    # the subgroup-chain order of a cycle, and a long chain planned quickly
     @test PP._subgroupchainorder(8) == [0, 4, 2, 6, 1, 5, 3, 7]
     @test PP._subgroupchainorder(6) == [0, 2, 4, 1, 3, 5]
     @test PP._subgroupchainorder(1) == [0]
     @test sort(PP._subgroupchainorder(12)) == 0:11
     nq = 64
     bonds = [PauliRotation([:Z, :Z], [i, mod1(i + 1, nq)]) for i in 1:nq]
-    sched = subgroupschedule(TranslationSymmetry(nq), bonds, fill(0.1, nq))
-    @test isperm(sched.order)
-    @test count(!PP.istrivial, sched.groups[1:end-1]) >= 20
-    @test PP.grouporder(sched.groups[32]) == 32
-    @test sched.groups[end] == TranslationSymmetry(nq)
+    plan, groups = _sp_plan(TranslationSymmetry(nq), bonds, fill(0.1, nq))
+    @test isperm(_sp_firstqubit(plan))
+    @test count(!PP.istrivial, groups[1:end-1]) >= 20
+    @test PP.grouporder(groups[32]) == 32
+    @test groups[end] == TranslationSymmetry(nq)
     # two orbits of gates: the second starts once the first is complete
     fields = [PauliRotation(:X, i) for i in 1:8]
     bonds8 = [PauliRotation([:Z, :Z], [i, mod1(i + 1, 8)]) for i in 1:8]
-    sched = subgroupschedule(TranslationSymmetry(8), vcat(fields, bonds8), fill(0.1, 16); order=:orbits)
-    @test sched.order[1:8] == [1, 5, 3, 7, 2, 6, 4, 8]
-    @test PP.grouporder(sched.groups[8]) == 8
+    plan, groups = _sp_plan(TranslationSymmetry(8), vcat(fields, bonds8), fill(0.1, 16); order=:orbits)
+    @test _sp_firstqubit(plan)[1:8] == [1, 5, 3, 7, 2, 6, 4, 8]
+    @test PP.grouporder(groups[8]) == 8
 end
 
 
@@ -257,24 +272,43 @@ end
     S = PermutationSymmetry(nq)
     reference = permutationmerge(propagate(circuit, obs, thetas; min_abs_coeff=0.0))
 
-    record = []
-    merged = symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0, record)
+    merged = symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0)
     @test _sp_maxdiff(merged, reference) < 1e-12
     @test length(merged) == length(reference)
-    @test !isempty(record) && all(r.before >= r.after for r in record)
-    @test record[end].group == S
-    @test keys(record[1]) == (:layer, :step, :group, :before, :after)
+    plan = symmetrycircuit(S, circuit, thetas)
+    @test count(entry -> entry isa SymmetryMerge && entry.group == S, plan) == 6     # one merge under S per layer
+    @test _sp_groups(symmetrycircuit(S, circuit, thetas; heisenberg=false))[end] == S
+    @test _sp_maxdiff(propagate(plan, obs; min_abs_coeff=0.0), reference) < 1e-12   # the plan is a circuit
+    # two sizes per merge, before and after it, walked along the plan in the order applied; the peak
+    # is a size before a merge, above every size after one
+    counts = @countpaulis symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0)
+    @test length(counts) == length(plan) + count(entry -> entry isa SymmetryMerge, plan)
+    k = 0
+    merges, poststep = Tuple{Int,Int}[], Int[]
+    for entry in reverse(plan)
+        if entry isa SymmetryMerge
+            push!(merges, (counts[k+1], counts[k+2]))
+            push!(poststep, counts[k+2])
+            k += 2
+        else
+            push!(poststep, counts[k+1])
+            k += 1
+        end
+    end
+    @test k == length(counts)
+    @test all(before >= after for (before, after) in merges) && maximum(first, merges) > maximum(poststep)
+    @test (@peakpaulis symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0)) == maximum(counts) == maximum(first, merges)
 
     # an arbitrary gate order: the swap-based stabilizer is then only a subgroup of the true one, still exact
     @test _sp_maxdiff(symmetrypropagate(S, circuit, obs, thetas; order=randperm(MersenneTwister(3), 15), min_abs_coeff=0.0), reference) < 1e-12
     # with check=false the gates are applied as given
-    given, unchecked = [], []
-    symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0, order=:given, record=given)
-    symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0, check=false, record=unchecked)
-    @test given == unchecked
+    @test _sp_signature(symmetrycircuit(S, circuit, thetas; order=:given)) == _sp_signature(symmetrycircuit(S, circuit, thetas; check=false))
 
     # same through the other entry points and backends
     @test _sp_maxdiff(PauliSum(symmetrypropagate(S, circuit, VectorPauliSum(obs), thetas; min_abs_coeff=0.0)), reference) < 1e-12
+    cache = PropagationCache(VectorPauliSum(obs))
+    @test _sp_maxdiff(PauliSum(symmetrypropagate(S, circuit, cache, thetas; min_abs_coeff=0.0)), reference) < 1e-12   # out of place
+    @test length(cache) == length(obs)
     cache = PropagationCache(VectorPauliSum(obs))
     @test symmetrypropagate!(S, circuit, cache, thetas; min_abs_coeff=0.0) === cache
     @test _sp_maxdiff(_sp_tosum(cache, nq), reference) < 1e-12
@@ -284,10 +318,10 @@ end
     @test _sp_maxdiff(symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0, thread=false), reference) < 1e-12
     @test _sp_maxdiff(symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0, order=:given), reference) < 1e-12
     # merging under the full group only after each layer
-    record_full = []
-    @test _sp_maxdiff(symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0, subgroups=false, record=record_full), reference) < 1e-12
-    @test all(r.group == S for r in record_full) && length(record_full) == 6
-    @test maximum(r.before for r in record_full) >= maximum(r.before for r in record)
+    @test _sp_maxdiff(symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0, subgroups=false), reference) < 1e-12
+    plan_full = symmetrycircuit(S, circuit, thetas; subgroups=false)
+    @test all(==(S), _sp_groups(plan_full)) && length(_sp_groups(plan_full)) == 6
+    @test (@peakpaulis symmetrypropagate(S, circuit, obs, thetas; min_abs_coeff=0.0, subgroups=false)) >= maximum(counts)
     @test _sp_maxdiff(PauliSum(symmetrypropagate(S, circuit, MultiPauliSum(obs, 2), thetas; min_abs_coeff=0.0)), reference) < 1e-12
     @test obs == _sp_observable(nq)   # the out-of-place version does not mutate
 
@@ -306,10 +340,9 @@ end
     flat = Gate[zfields..., zzlayer.gates..., zfields...]
     flat_thetas = vcat(fill(0.2, 4), fill(0.3, 6), fill(0.4, 4))
     obs4 = _sp_observable(4)
-    record_given = []
-    @test _sp_maxdiff(symmetrypropagate(PermutationSymmetry(4), given, obs4, given_thetas; min_abs_coeff=0.0, record=record_given),
+    @test _sp_maxdiff(symmetrypropagate(PermutationSymmetry(4), given, obs4, given_thetas; min_abs_coeff=0.0),
         permutationmerge(propagate(flat, obs4, flat_thetas; min_abs_coeff=0.0))) < 1e-12
-    @test length(unique(r.layer for r in record_given)) == 3
+    @test count(==(PermutationSymmetry(4)), _sp_groups(symmetrycircuit(PermutationSymmetry(4), given, given_thetas))) == 3
     frozen = freeze(circuit, thetas)
     @test _sp_maxdiff(symmetrypropagate(S, frozen, obs; min_abs_coeff=0.0), reference) < 1e-12
 
@@ -330,10 +363,9 @@ end
     add!(obs, :Z, 1)
     add!(obs, [:X, :X], [2, 3], 0.4)
     reference = translationmerge(propagate(circ, obs, th; min_abs_coeff=0.0))
-    record = []
-    merged = symmetrypropagate(T, circ, obs, th; min_abs_coeff=0.0, record)
+    merged = symmetrypropagate(T, circ, obs, th; min_abs_coeff=0.0)
     @test _sp_maxdiff(merged, reference) < 1e-12
-    @test Set(PP.grouporder(r.group) for r in record) == Set([2, 4, 8])
+    @test Set(PP.grouporder.(_sp_groups(symmetrycircuit(T, circ, th)))) == Set([2, 4, 8])
     @test _sp_maxdiff(symmetrypropagate(T, circ, obs, th; min_abs_coeff=0.0, order=[1, 5, 3, 7, 2, 6, 4, 8]), reference) < 1e-12
 
     # a 2d grid under translations, and reflections of an open chain
@@ -363,14 +395,21 @@ end
     nq = 6
     circuit = heisenbergtrottercircuit(nq, 2; topology=_sp_alltoall(nq))
     thetas = fill(0.1, countparameters(circuit))
-    TT = PP.getinttype(nq)
-    layer = PP.RotationLayer(TT, circuit[1:15], thetas[1:15])
-    @test length(layer) == 15 && PP.iscommuting(layer)
-    @test layer == PP.RotationLayer(TT, freeze(circuit[1:15], thetas[1:15]))
-    @test !PP.iscommuting(PP.RotationLayer(TT, circuit[1:16], thetas[1:16]))
-    @test_throws ArgumentError PP.RotationLayer(TT, [CliffordGate(:H, 1)])
-    @test_throws ArgumentError PP.RotationLayer(TT, circuit[1:15], thetas[1:3])
-    @test [length(layer.gates) for layer in tolayers(circuit; reorder=true)] == fill(15, 6)
+    layered, layered_thetas = tolayers(circuit, thetas; reorder=true)
+    @test [length(layer.gates) for layer in layered] == fill(15, 6)
+    # the stabilizer takes a layer with its parameters, a frozen layer, a vector of gates or a single gate
+    S = PermutationSymmetry(nq)
+    @test PP.stabilizer(S, layered[1], layered_thetas[1]) == S
+    @test PP.stabilizer(S, freeze(layered, layered_thetas)[1]) == S
+    @test PP.stabilizer(S, circuit[1:15], thetas[1:15]) == S
+    @test PP.stabilizer(S, circuit[1], 0.1) == PermutationSymmetry(nq, [[1, 2], [3, 4, 5, 6]])
+    @test_throws ArgumentError PP.stabilizer(S, [CliffordGate(:H, 1)])
+    @test_throws ArgumentError PP.stabilizer(S, circuit[1:15], thetas[1:3])
+    @test_throws ArgumentError PP.stabilizer(S, freeze(layered, layered_thetas)[1], layered_thetas[1])   # a frozen layer carries its angles
+    # a merge gate takes a frozen gate and acts on every qubit
+    merge = SymmetryMerge(S, freeze(circuit[1], 0.1))
+    @test PP.qinds(merge) == 1:nq && countparameters([merge]) == 0
+    @test_throws ArgumentError SymmetryMerge(S, circuit[1])
 end
 
 
@@ -385,6 +424,12 @@ end
     @test_throws ArgumentError symmetrypropagate(S, [GateLayer(circuit; guaranteed_commutes=true)], obs, [fill(0.1, countparameters(circuit))])
     # an explicit order of the wrong length
     @test_throws ArgumentError symmetrypropagate(S, circuit, obs, fill(0.1, countparameters(circuit)); order=[1, 2, 3])
+    # a plan is a circuit of its own, not an input for another plan, also inside a layer
+    plan = symmetrycircuit(S, circuit, fill(0.1, countparameters(circuit)))
+    @test_throws ArgumentError symmetrypropagate(S, plan, obs)
+    @test_throws ArgumentError symmetrycircuit(S, [GateLayer(plan[1:3]; guaranteed_commutes=true)]; check=false)
+    # a trivial group plans no merges
+    @test !any(entry -> entry isa SymmetryMerge, symmetrycircuit(PermutationSymmetry(nq, Vector{Int}[]), circuit, fill(0.1, countparameters(circuit))))
     # the wrong number of qubits
     @test_throws ArgumentError symmetrypropagate(PermutationSymmetry(5), circuit, obs, fill(0.1, countparameters(circuit)))
     # noise that is not symmetric
@@ -462,17 +507,32 @@ end
     add!(tobs, [:X, :Y], [1, 2])
     @test _sp_maxdiff(symmetrypropagate(PermutationSymmetry(2), [TGate(1), TGate(2)], tobs), permutationmerge(propagate([TGate(1), TGate(2)], tobs))) < 1e-12
 
-    # one count per gate, the last one after the merge of the layer
+    # one count per gate plus one before every merge, the last one after the merge of the layer
     noise = [DepolarizingNoise(i, 0.1) for i in 1:nq]
     counts = @countpaulis merged = symmetrypropagate(TranslationSymmetry(nq), noise, obs)
-    @test length(counts) == nq
+    @test length(counts) == nq + 1
     @test counts[end] == length(merged)
-    counts = @countpaulis symmetrypropagate(PermutationSymmetry(nq), heisenbergtrottercircuit(nq, 1; topology=_sp_alltoall(nq)), obs, fill(0.1, 45); min_abs_coeff=0.0)
-    @test length(counts) == 45
+    allgates = heisenbergtrottercircuit(nq, 1; topology=_sp_alltoall(nq))
+    counts = @countpaulis symmetrypropagate(PermutationSymmetry(nq), allgates, obs, fill(0.1, 45); min_abs_coeff=0.0)
+    @test length(counts) == 45 + count(entry -> entry isa SymmetryMerge, symmetrycircuit(PermutationSymmetry(nq), allgates, fill(0.1, 45)))
+    # the plan goes through the Performance module, which gathers the runs between merges into layers
+    plan = symmetrycircuit(TranslationSymmetry(nq), circ, th)
+    @test _sp_maxdiff(PauliSum(PP.Performance.propagate(plan, VectorPauliSum(obs); min_abs_coeff=0.0)), translationmerge(propagate(circ, obs, th; min_abs_coeff=0.0))) < 1e-12
+    # with subgroups=false the runs between merges are whole layers, which a Dict sum gathers into GateLayers
+    gates8 = heisenbergtrottercircuit(8, 1; topology=_sp_alltoall(8))
+    obs8 = _sp_observable(8)
+    whole = symmetrycircuit(PermutationSymmetry(8), gates8, fill(0.1, 84); subgroups=false)
+    gathered = PP.Performance._tolayers(whole, nothing, obs8)[1]
+    @test count(entry -> entry isa GateLayer, gathered) == 3 && count(entry -> entry isa SymmetryMerge, gathered) == 3
+    @test _sp_maxdiff(PP.Performance.propagate(whole, obs8; min_abs_coeff=0.0), permutationmerge(propagate(gates8, obs8, fill(0.1, 84); min_abs_coeff=0.0))) < 1e-12
+    # frequency truncation wraps the coefficients as propagate does and truncates; propagate! requires them wrapped
+    @test length(symmetrypropagate(PermutationSymmetry(nq), allgates, obs, fill(0.1, 45); max_freq=10)) < length(symmetrypropagate(PermutationSymmetry(nq), allgates, obs, fill(0.1, 45)))
+    @test_throws ArgumentError symmetrypropagate!(PermutationSymmetry(nq), allgates, PauliString(nq, :Z, 1), fill(0.1, 45); max_freq=10)
 
     # a rotation in a mixed layer is recognised however it lists its qubits
     swapped = [PauliRotation([:X, :Z], [1, 2]), PauliRotation([:Z, :X], [4, 3]), CliffordGate(:H, 5), CliffordGate(:H, 6)]
     @test symmetrypropagate(SiteSymmetry(6, [[3, 4, 1, 2, 6, 5]]), [GateLayer(swapped)], PauliSum(6), [[0.7, 0.7]]) isa PauliSum
     # docstrings are bound to the exported names
     @test !occursin("No documentation", string(@doc symmetrypropagate))
+    @test !occursin("No documentation", string(@doc symmetrycircuit))
 end

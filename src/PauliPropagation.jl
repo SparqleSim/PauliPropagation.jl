@@ -242,7 +242,8 @@ export
     TranslationSymmetry,
     ReflectionSymmetry,
     SiteSymmetry,
-    subgroupschedule,
+    SymmetryMerge,
+    symmetrycircuit,
     symmetrypropagate,
     symmetrypropagate!
 
