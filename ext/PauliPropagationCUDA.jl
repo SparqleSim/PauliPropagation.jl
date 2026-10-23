@@ -9,7 +9,7 @@ using CUDA
 
 # TODO: export utilities
 const CUDAVectorPauliSum = VectorPauliSum{<:CuArray,<:CuArray}
-const CUDAVectorPauliPropagationCache = PP.VectorPauliPropagationCache{CUDAVectorPauliSum,<:CuArray,<:CuArray}
+const CUDAVectorPauliPropagationCache = PP.VectorPauliPropagationCache{<:CUDAVectorPauliSum,<:CuArray,<:CuArray}
 
 # sortedtailmerge!'s scalar merge loop and CPU task-spawning have no GPU equivalent; routing
 # CuArray-backed caches away from it keeps them on the portable AcceleratedKernels-based merge.
