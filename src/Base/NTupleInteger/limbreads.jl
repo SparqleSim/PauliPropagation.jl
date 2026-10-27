@@ -48,6 +48,11 @@ end
 # every other storage comes with the whole term
 @inline (r::OnLimbs)(term, coefficient) = @inline r.rule(limbwindow(term, r.inds), coefficient)
 
+@inline branchpair(r::OnLimbs, term, coefficient, partner, partner_coefficient) =
+    @inline branchpair(r.rule, limbwindow(term, r.inds), coefficient, limbwindow(partner, r.inds), partner_coefficient)
+
+_creationfloor(r::OnLimbs, cutoff) = _creationfloor(r.rule, cutoff)
+
 """
     limbspan(mask)
 

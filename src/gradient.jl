@@ -10,13 +10,13 @@
 
 Compute `overlapfunc(propagate(circuit, psum, params; kwargs...))` together with its gradient with
 respect to `params`, in one paired forward and backward sweep costing O(length(circuit)) gate applications.
-The only parametrized gates can be `PauliRotation`s. 
+The only parametrized gates can be `PauliRotation`s and `GateLayer`s whose parametrized gates are `PauliRotation`s.
+The gradient has the same shape as `params`, with a vector of derivatives for every `GateLayer`.
 All other gates must not be parametrized or frozen via `freeze(gate, param)` before inputting to `rewindgradient`.
 Noise channels are not supported, frozen or not, because the backward sweep cannot undo them.
 `overlapfunc` must be linear in the coefficients of the Pauli sum it is handed, e.g. any of
 `overlapwithzero`, `overlapwithplus`, `overlapwithcomputational`, `overlapwithmaxmixed`, or
 `overlapwithpaulisum`.
-Both sweeps run with the gate implementations of the type of `psum`, so a `MultiPauliSum` runs them zone by zone.
 `kwargs` are passed on to `applymergetruncate!` in the forward sweep and the operator side of the
 backward sweep.
 Returns `(expec, grad)`.
@@ -38,21 +38,23 @@ function rewindgradient!(circuit, psum::AbstractPauliSum, params, overlapfunc; k
 end
 
 function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
-    # check that the only parameterized gates are PauliRotations
-    @assert all(gate -> isa(gate, StaticGate) || gate isa PauliRotation, circuit) "All parameterized gates must be PauliRotations."
+    # check that the only parameterized gates are PauliRotations and layers of them
+    @assert all(_isdifferentiable, circuit) "All parameterized gates must be PauliRotations or GateLayers of them."
     @assert all(_isrewindable, circuit) "Noise channels are not supported because they cannot be undone."
 
     # forward sweep: ordinary Heisenberg propagation, exactly as in `propagate`.
     propagate!(circuit, forward_cache, params; thread, kwargs...)
     expec = overlapfunc(activesum(forward_cache))
 
-    # the dual sum starts from the final operator, with overlapfunc applied to each of its Pauli strings individually
-    dual_cache = _dualcache(forward_cache, overlapfunc; thread)
+    # the dual sum starts from the final operator, with overlapfunc applied to each of its Pauli strings individually,
+    # and is carried beside the coefficients of the operator through the backward sweep
+    cache = wrapdual(forward_cache, overlapfunc; thread)
 
     # backward sweep: undo gates in the circuit's own original order
-    undo_circuit, undo_params = _preparecircuit(circuit, params, false)
-    state = _BackwardSweepState(forward_cache, dual_cache, zeros(length(params)), 0)
-    PropagationBase._propagate!(_undostep!, undo_circuit, state, undo_params; thread, kwargs...)
+    heisenberg = false
+    undo_circuit, undo_params = _preparecircuit(circuit, params, heisenberg)
+    state = _BackwardSweepState(cache, _zerogradient(undo_params), 0)
+    PropagationBase._propagate!(_undostep!, undo_circuit, state, undo_params; thread, _unwrapkwargs(; kwargs...)...)
 
     return expec, state.grad
 end
@@ -63,193 +65,289 @@ end
 _isrewindable(gate) = true
 _isrewindable(gate::ParametrizedNoiseChannel) = false
 _isrewindable(gate::FrozenGate) = _isrewindable(gate.gate)
+_isrewindable(layer::GateLayer) = all(_isrewindable, layer.gates)
+
+# the gates whose parameters the backward sweep differentiates by
+_isdifferentiable(gate::StaticGate) = true
+_isdifferentiable(gate::ParametrizedGate) = false
+_isdifferentiable(gate::PauliRotation) = true
+_isdifferentiable(layer::GateLayer) = all(_isdifferentiable, layer.gates)
+
+
+# a zero for the gradient by every parameter: a number, or a vector for a layer with one angle per rotation
+_zerogradient(params) = [zero(float(param)) for param in params]
+
+# a helper for customtruncfunc acting on the dual
+function _unwrapkwargs(; customtruncfunc=nothing, kwargs...)
+    if isnothing(customtruncfunc)
+        return (; kwargs...)
+    end
+    opcustomtruncfunc(pstr, coeff) = customtruncfunc(pstr, coeff.coeff)
+    return (; customtruncfunc=opcustomtruncfunc, kwargs...)
+end
 
 
 # State propagated through the backward sweep
 # carries everything it needs to compute the gradient on the fly
-mutable struct _BackwardSweepState{OC,DC}
-    op_cache::OC
-    dual_cache::DC
-    grad::Vector{Float64}
-    k::Int
+mutable struct _BackwardSweepState{CT,GT}
+    cache::CT
+    grad::GT
+    param_idx::Int
 end
 
 # the backward sweep is carried by this state instead of a cache, so the operator sum is what is
 # counted and what keeps its zone workers up
-PropagationBase._termcount(state::_BackwardSweepState) = length(state.op_cache)
+PropagationBase._termcount(state::_BackwardSweepState) = length(state.cache)
 PropagationBase._withworkers(f::F, state::_BackwardSweepState, thread::Bool) where {F} =
-    PropagationBase._withworkers(f, state.op_cache, thread)
+    PropagationBase._withworkers(f, state.cache, thread)
 
 # Records the gradient component for PauliRotation
 function _undostep!(gate::PauliRotation, state::_BackwardSweepState, theta; thread::Bool=true, kwargs...)
-    gate_mask = symboltoint(paulitype(state.op_cache), gate.symbols, gate.qinds)
+    gate_mask = symboltoint(paulitype(state.cache), gate.symbols, gate.qinds)
 
-    state.k += 1
-    state.grad[state.k] = _generatorcommutatordot(gate_mask, state.op_cache, state.dual_cache; thread)
+    state.param_idx += 1
+    state.grad[state.param_idx] = _generatorcommutatordot(gate_mask, state.cache; thread)
 
-    # the operator sum truncates normally; the dual sum never truncates on its own -- instead, right
-    # after, its support is capped to whatever the (just-truncated) operator sum still has
-    applymergetruncate!(gate, state.op_cache, theta; thread, kwargs...)
-    applytoall!(gate, state.dual_cache, theta; thread)
-    xormerge!(state.dual_cache, gate_mask; thread)
-    _intersectfilter!(state.dual_cache, state.op_cache; thread)
+    # the operator sum truncates normally, and the dual sum loses every Pauli string that it loses
+    applymergetruncate!(gate, state.cache, theta; thread, kwargs...)
 
     return state
 end
 
 # just undoes the application of a StaticGate. No gradient recorded.
 function _undostep!(gate::StaticGate, state::_BackwardSweepState; thread::Bool=true, kwargs...)
-    applymergetruncate!(gate, state.op_cache; thread, kwargs...)
-    merge!(state.op_cache; thread)
-    applytoall!(gate, state.dual_cache; thread)
-    merge!(state.dual_cache; thread)
-    _intersectfilter!(state.dual_cache, state.op_cache; thread)
+    applymergetruncate!(gate, state.cache; thread, kwargs...)
     return state
 end
 
+# a layer without parametrized gates is undone like a static gate
+function _undostep!(layer::GateLayer, state::_BackwardSweepState; thread::Bool=true, kwargs...)
+    applymergetruncate!(layer, state.cache; thread, kwargs...)
+    return state
+end
 
-# The dual of `prop_cache`: the same Pauli strings, each with the overlap it has on its own.
-# Its coefficients are whatever `overlapfunc` returns for a single Pauli string -- real for every
-# overlap the library ships. Nothing else in the backward sweep needs them complex: the dual is
-# carried by the same real rotations as the operator, and the commutator's own factor is purely
-# imaginary and folded into the gradient as a sign (see `_dotcontribution`).
-function _dualcache(prop_cache::AbstractPropagationCache, overlapfunc; thread::Bool=true)
+# Records the gradient of a GateLayer: the derivatives by the parameters of its rotations.
+# A layer that `applymergetruncate!` applies as rotations class by class is undone in one pass, which adds up the
+# gradients of its rotations, and any other layer has its gates undone one by one.
+function _undostep!(layer::GateLayer, state::_BackwardSweepState, params; min_rel_coeff=nothing, kwargs...)
+    undo! = if _layerroute(layer, state.cache, min_rel_coeff) === _applyrotationlayer!
+        _undolayer!
+    else
+        _undogatesonebyone!
+    end
+    # past a barrier to inference, so that a layer compiles only the way it is undone
+    rotation_grads = Base.inferencebarrier(undo!)(layer, state.cache, params; min_rel_coeff, kwargs...)
+
+    state.param_idx += 1
+    state.grad[state.param_idx] = _layergradient(params, rotation_grads)
+    return state
+end
+
+# Undoes the gates of the layer one by one, and returns the gradients of its parametrized gates.
+function _undogatesonebyone!(layer::GateLayer, cache, params; kwargs...)
+    gate_state = _BackwardSweepState(cache, zeros(countparameters(layer)), 0)
+    function undogate!(gate, args...)
+        _undostep!(gate, gate_state, args...; kwargs...)
+        return
+    end
+    PropagationBase._foreachgate(undogate!, layer, params)
+    return gate_state.grad
+end
+
+# the gradient of a layer from those of its parametrized rotations: a number for a number as its parameter
+_layergradient(param::Number, rotation_grads) = only(rotation_grads)
+_layergradient(params, rotation_grads) = rotation_grads
+
+
+# The operator of `prop_cache` with its dual: every Pauli string keeps its coefficient and gets the overlap it has on its
+# own as its coefficient in the dual sum. The dual coefficients are whatever `overlapfunc` returns for a single Pauli
+# string -- real for every overlap the library ships. Nothing else in the backward sweep needs them complex: the dual is
+# carried by the same real rotations as the operator, and the gradient pairs the two with the real signs of the rotations.
+function wrapdual(prop_cache::AbstractPropagationCache, overlapfunc; thread::Bool=true)
     nq = nqubits(prop_cache)
-    singletonoverlap(term, _) = overlapfunc(_singletonvectorpaulisum(nq, term))
+    singletonoverlap(term) = overlapfunc(PauliString(nq, term, 1.0))
 
-    dual_type = Base.promote_op(singletonoverlap, paulitype(prop_cache), coefftype(prop_cache))
-    isconcretetype(dual_type) || (dual_type = ComplexF64)
-    dual_cache = PropagationCache(convertcoefftype(float(dual_type), activesum(prop_cache)))
-    return mapcoeffsbypair!(singletonoverlap, dual_cache; thread)
+    dual_type = Base.promote_op(singletonoverlap, paulitype(prop_cache))
+    if !isconcretetype(dual_type)
+        dual_type = ComplexF64
+    end
+    coeff_type = _DualCoeff{coefftype(prop_cache),float(dual_type)}
+    cache = PropagationCache(convertcoefftype(coeff_type, activesum(prop_cache)))
+    withoverlap(term, coeff) = coeff_type(coeff.coeff, singletonoverlap(term))
+    mapcoeffsbypair!(withoverlap, cache; thread)
+    return cache
 end
 
-# A length-1 VectorPauliSum for a single Pauli string, for feeding into `overlapfunc`.
-function _singletonvectorpaulisum(nq::Int, term, coeff=1.0)
-    return VectorPauliSum(nq, [term], [coeff])
+# The coefficient of a Pauli string in the operator sum and in the dual sum of the backward sweep. The gates act on both
+# alike, and the truncations read only the coefficient of the operator, so the dual sum keeps exactly the Pauli strings
+# that the operator sum keeps.
+struct _DualCoeff{CT,DT}
+    coeff::CT
+    dual::DT
 end
+
+Base.:*(coeff::_DualCoeff, factor::Number) = _DualCoeff(coeff.coeff * factor, coeff.dual * factor)
+Base.:*(factor::Number, coeff::_DualCoeff) = coeff * factor
+Base.:+(coeff1::_DualCoeff, coeff2::_DualCoeff) = _DualCoeff(coeff1.coeff + coeff2.coeff, coeff1.dual + coeff2.dual)
+Base.zero(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = _DualCoeff(zero(CO), zero(CD))
+
+# a coefficient of the operator alone, without a dual
+Base.convert(::Type{_DualCoeff{CO,CD}}, coeff::Number) where {CO,CD} = _DualCoeff{CO,CD}(coeff, zero(CD))
+
+# the truncations read the coefficient of the operator
+PropagationBase.truncatemincoeff(coeff::_DualCoeff, min_abs_coeff::Real) = truncatemincoeff(coeff.coeff, min_abs_coeff)
+PropagationBase.tonumber(coeff::_DualCoeff) = coeff.coeff
+PropagationBase.numcoefftype(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO
+
+# the classes of a layer of Pauli rotations are rotated with these coefficients as with numbers
+PropagationBase._appliesinclasses(::Type{_DualCoeff{CO,CD}}) where {CO,CD} = CO <: Number && CD <: Number
 
 
 # Gradient contribution for one gate: real((i/2) * dual_sum(commutator(generator, op_sum))).
-# Every operator term that anticommutes with the generator commutes to exactly one Pauli string,
-# so this is a single pass over the operator's terms, each pairing its commutator with the
-# coefficient the dual sum carries there. The factor of i is taken per term rather than at the end,
-# which keeps the whole pass in real arithmetic whenever the two sums are real.
-function _generatorcommutatordot(gate_mask, op_cache, dual_cache; thread::Bool=true)
-    return _generatorcommutatordot(StorageType(op_cache), gate_mask, op_cache, dual_cache; thread)
+# For a term that anticommutes with the generator, (i/2) times the commutator is its product with
+# the generator, with the sign that the rotation gives that product (`paulirotationproduct`). So this
+# is a single pass over the operator's terms, each adding its coefficient times the dual coefficient
+# of its parent term, with that sign.
+function _generatorcommutatordot(gate_mask, cache; thread::Bool=true)
+    return _generatorcommutatordot(StorageType(cache), gate_mask, cache; thread)
 end
 
-# A dictionary finds the partner in one lookup, and a multi sum looks it up in the one zone that can
-# hold it, so for both a plain pass with a lookup per term is what it costs.
-function _generatorcommutatordot(::StorageType, gate_mask, op_cache, dual_cache; thread::Bool=true)
-    dual_sum = activesum(dual_cache)
+# The general case: we go through the Pauli strings of the operator and skip those that commute with the generator.
+# Every other one has a parent term, its product with the generator, and contributes its own coefficient times the
+# dual coefficient of that parent, with the sign of the product. We find the parent by looking it up in the merged sum.
+function _generatorcommutatordot(::StorageType, gate_mask, cache; thread::Bool=true)
+    # a lookup needs the sum merged
+    merge!(cache; thread)
+    op_sum = activesum(cache)
 
     function commutatoroverlap(term, coeff)
-        commutes(term, gate_mask) && return 0.0
-        new_term, comm_coeff = commutator(gate_mask, term)
-        return _dotcontribution(comm_coeff, coeff, getmergedcoeff(dual_sum, new_term))
+        if commutes(term, gate_mask)
+            return 0.0
+        end
+        parent_term, sign = paulirotationproduct(gate_mask, term)
+        return real(sign * coeff.coeff * getmergedcoeff(op_sum, parent_term).dual)
     end
 
-    return mapreduce(commutatoroverlap, +, op_cache; init=0.0, thread)
+    return mapreduce(commutatoroverlap, +, cache; init=0.0, thread)
 end
 
-# One sorted array is the case where a lookup per term hurts: `getmergedcoeff` binary-searches the
-# whole dual sum, which is the most expensive single part of the backward sweep. The partner of a
-# term is its XOR with the generator's mask, and XOR by a fixed mask keeps the order of two terms
-# whenever they agree on the mask's own bits -- their first differing bit is then a bit the mask
-# leaves alone. Operator terms carrying the same pattern on the mask therefore walk the dual sum
-# forward, so one cursor per pattern replaces each search with a galloping step from where that
-# pattern last matched. A mask with b set bits has 2^b patterns (four for a two-qubit rotation);
-# patterns are picked up as they appear and a term that finds the cursor table full falls back to
-# the plain search, so nothing depends on the number of patterns staying small.
-function _generatorcommutatordot(::PropagationBase.ArrayStorage, gate_mask, op_cache, dual_cache; thread::Bool=true)
-    merge!(op_cache; thread)
-    merge!(dual_cache; thread)
+# On one sorted array: the real part of Σ_P s_P c_P d_P' over the Pauli strings P of the operator that anticommute
+# with the generator, with P' the parent term of P (its product with the generator, of sign s_P), c the coefficients
+# of the operator and d those of the dual. Terms that share their bits under the gate mask form a group, and XOR with
+# the mask keeps their order, so each group finds its parents by walking the array forward from the last one found.
+function _generatorcommutatordot(::PropagationBase.ArrayStorage, gate_mask, cache; thread::Bool=true)
+    merge!(cache; thread)
 
-    op_terms, op_coeffs = activeterms(op_cache), activecoeffs(op_cache)
-    dual_terms, dual_coeffs = activeterms(dual_cache), activecoeffs(dual_cache)
-    @assert length(op_terms) == length(op_coeffs) "the operator sum's terms and coefficients disagree in length"
-    @assert length(dual_terms) == length(dual_coeffs) "the dual sum's terms and coefficients disagree in length"
-    (isempty(op_terms) || isempty(dual_terms)) && return 0.0
+    terms, coeffs = activeterms(cache), activecoeffs(cache)
+    @assert length(terms) == length(coeffs) "the operator sum's terms and coefficients disagree in length"
+    if isempty(terms)
+        return 0.0
+    end
 
-    task_partitioner, n_tasks = PropagationBase._preparetasks(length(op_terms), thread)
-    partials = Vector{Float64}(undef, n_tasks)
+    task_partitioner, n_tasks = PropagationBase._preparetasks(length(terms), thread)
+    task_sums = Vector{Float64}(undef, n_tasks)
 
     function dot_chunk!(task_id)
         chunk = task_partitioner[task_id]
-        partials[task_id] = _commutatordotrange(gate_mask, op_terms, op_coeffs, dual_terms, dual_coeffs,
-            chunk.start, chunk.stop)
+        task_sums[task_id] = _commutatordotrange(gate_mask, terms, coeffs, terms, coeffs, chunk.start, chunk.stop)
     end
     PropagationBase._eachtask(dot_chunk!, n_tasks)
 
-    return sum(partials)
+    return sum(task_sums)
 end
 
-# how many patterns one task tracks at once; a two-qubit rotation needs four
-const _MAX_DOT_CURSORS = 16
+# A multi sum of arrays pairs each zone with the zone that holds the parents of its terms: the zone of a Pauli
+# string is linear in it, so the generator's mask moves every term of a zone to the same zone.
+function _generatorcommutatordot(::PropagationBase.MultiSumStorage{<:PropagationBase.ArrayStorage}, gate_mask, cache;
+    thread::Bool=true)
 
-function _commutatordotrange(gate_mask::TT, op_terms, op_coeffs, dual_terms, dual_coeffs, lo::Int, hi::Int) where {TT}
+    merge!(cache; thread)
+
+    zone_caches = zonecaches(cache)
+    parent_zone_offset = zoneof(zonemap(cache), gate_mask) - 1
+    task_sums = Vector{Float64}(undef, length(zone_caches))
+
+    function dot_zone!(zone_id)
+        zone_cache = zone_caches[zone_id]
+        parent_cache = zone_caches[((zone_id - 1) ⊻ parent_zone_offset) + 1]
+        terms = activeterms(zone_cache)
+        task_sums[zone_id] = _commutatordotrange(gate_mask, terms, activecoeffs(zone_cache),
+            activeterms(parent_cache), activecoeffs(parent_cache), 1, length(terms))
+    end
+    PropagationBase._eachzone(dot_zone!, cache, thread)
+
+    return sum(task_sums)
+end
+
+# how many groups one task keeps a search start for; a two-qubit rotation has at most eight
+const _MAX_DOT_GROUPS = 16
+
+function _commutatordotrange(gate_mask::TT, terms, coeffs, parent_terms, parent_coeffs, lo::Int, hi::Int) where {TT}
     total = 0.0
-    lo > hi && return total
+    if lo > hi
+        return total
+    end
 
     # everything the loop below reads unchecked, checked once here: the operator's chunk on both of
-    # its arrays, and the dual sum's coefficients over the range its terms span
-    n_dual = length(dual_terms)
-    checkbounds(op_terms, lo:hi)
-    checkbounds(op_coeffs, lo:hi)
-    checkbounds(dual_coeffs, 1:n_dual)
+    # its arrays, and the coefficients of all the terms that the parents are searched among
+    n_parents = length(parent_terms)
+    checkbounds(terms, lo:hi)
+    checkbounds(coeffs, lo:hi)
+    checkbounds(parent_coeffs, 1:n_parents)
 
-    patterns = Vector{TT}(undef, _MAX_DOT_CURSORS)  # the bits a group of terms carries on the mask
-    cursors = fill(1, _MAX_DOT_CURSORS)             # where that group last matched in the dual sum
-    n_cursors = 0
+    group_gate_bits = Vector{TT}(undef, _MAX_DOT_GROUPS)  # the bits the terms of a group carry under the mask
+    group_search_starts = fill(1, _MAX_DOT_GROUPS)        # where that group last found a parent
+    n_groups = 0
 
     @inbounds for ii in lo:hi
-        term = op_terms[ii]
-        commutes(term, gate_mask) && continue
-        new_term, comm_coeff = commutator(gate_mask, term)
+        term = terms[ii]
+        if commutes(term, gate_mask)
+            continue
+        end
+        parent_term, sign = paulirotationproduct(gate_mask, term)
 
-        pattern = term & gate_mask
-        slot = 0
-        for s in 1:n_cursors
-            if patterns[s] == pattern
-                slot = s
+        gate_bits = term & gate_mask
+        group_idx = 0
+        for g in 1:n_groups
+            if group_gate_bits[g] == gate_bits
+                group_idx = g
                 break
             end
         end
-        if slot == 0 && n_cursors < _MAX_DOT_CURSORS
-            n_cursors += 1
-            slot = n_cursors
-            patterns[slot] = pattern
+        if group_idx == 0 && n_groups < _MAX_DOT_GROUPS
+            n_groups += 1
+            group_idx = n_groups
+            group_gate_bits[group_idx] = gate_bits
         end
 
-        if slot == 0
-            jj = searchsortedfirst(dual_terms, new_term)
+        if group_idx == 0
+            jj = searchsortedfirst(parent_terms, parent_term)
         else
-            jj = _gallopingsearch(dual_terms, new_term, cursors[slot], n_dual)
-            cursors[slot] = jj
+            jj = _gallopingsearch(parent_terms, parent_term, group_search_starts[group_idx], n_parents)
+            group_search_starts[group_idx] = jj
         end
 
-        (jj <= n_dual && dual_terms[jj] == new_term) || continue
-        total += _dotcontribution(comm_coeff, op_coeffs[ii], dual_coeffs[jj])
+        if jj <= n_parents && parent_terms[jj] == parent_term
+            total += real(sign * coeffs[ii].coeff * parent_coeffs[jj].dual)
+        end
     end
 
     return total
 end
 
-# One term's share of real((i/2) * dual(commutator(generator, op))). Two anticommuting Paulis
-# multiply to an odd power of i, so `comm` is purely imaginary and, for real coefficients, the whole
-# thing is a sign away from a product of reals -- no complex number is ever formed.
-@inline _dotcontribution(comm, op_coeff::Real, dual_coeff::Real) = -0.5 * imag(comm) * op_coeff * dual_coeff
-@inline _dotcontribution(comm, op_coeff, dual_coeff) = real(0.5im * comm * op_coeff * dual_coeff)
-
 # The first index at or after `from` whose term is not smaller than `key`, found by doubling a window
-# out from `from` and bisecting the last one. Called with a cursor that only ever moves forward, this
+# out from `from` and bisecting the last one. Called with a search start that only ever moves forward, this
 # costs a handful of nearby reads instead of a binary search across the whole array.
 @inline function _gallopingsearch(terms, key, from::Int, n::Int)
     # `n` is the length of `terms` and every index below stays in 1:n, so the reads are in bounds
-    # whatever cursor the caller hands in
-    from > n && return n + 1
+    # whatever search start the caller hands in
+    if from > n
+        return n + 1
+    end
     from = max(from, 1)
-    @inbounds terms[from] >= key && return from
+    @inbounds if terms[from] >= key
+        return from
+    end
 
     step = 1
     lo = from + 1
@@ -259,94 +357,99 @@ end
         step <<= 1
         hi = min(from + step, n)
     end
-    lo > hi && return n + 1
+    if lo > hi
+        return n + 1
+    end
 
     return searchsortedfirst(terms, key, lo, hi, Base.Order.Forward)
 end
 
 
-# Caps dual_cache's support down to op_cache's (already truncated) support. This is written once per
-# storage, like the term sum interface in `PropagationBase`, and a multi sum hands it to its zones.
-#
-# TODO: This could become a primitive in `PropagationBase` that walks two term sums together and does
-# something with every term that appears in both. Keeping only those terms, as done here, is one use;
-# multiplying the two coefficients of each shared term and adding the products up, which is what
-# `scalarproduct` does with one lookup per term, is another. The reason it deserves to be a primitive
-# of its own, rather than a filter with a lookup in the other sum, is the array case: when both sums
-# are sorted, walking them side by side visits each term once, where looking every term up separately
-# costs a binary search each and is many times slower.
-function _intersectfilter!(dual_cache, op_cache; thread::Bool=true)
-    _intersectfilter!(StorageType(dual_cache), dual_cache, op_cache; thread)
-    return dual_cache
-end
+### Undoing a layer of Pauli rotations class by class
 
-function _intersectfilter!(::PropagationBase.DictStorage, dual_cache, op_cache; thread::Bool=true)
-    op_terms = storage(mainsum(op_cache))
-    filterterms!(term -> haskey(op_terms, term), dual_cache; thread)
-    return
-end
+# Undoes the rotations of a layer as `_applyrotationlayer!` applies them, on the operator that carries the dual beside
+# its coefficients, and returns the gradient of every parametrized rotation: what the pairs of Pauli strings that a
+# rotation mixes contribute, recorded by the rules the rotations are applied through and added up over the classes.
+function _undolayer!(layer::GateLayer, cache, params; min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf,
+    max_sins::Real=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
 
-# Both sides are merged first, so this is a merge-join of the two term
-# arrays, sliced across tasks the same way `_mergesortedhead!` slices its own two-pointer merge
-function _intersectfilter!(::PropagationBase.ArrayStorage, dual_cache, op_cache; thread::Bool=true)
-    merge!(dual_cache; thread)
-    merge!(op_cache; thread)
-
-    # read after the merges, which may have swapped the sums of a cache
-    dual_terms_sorted = activeterms(dual_cache)
-    op_terms_sorted = activeterms(op_cache)
-    flags = activeflags(dual_cache)
-
-    task_partitioner, n_tasks = PropagationBase._preparetasks(length(dual_terms_sorted), thread)
-
-    AK.itask_partition(n_tasks, n_tasks, 1) do task_id, _
-        dual_range = task_partitioner[task_id]
-        _flagintersection!(flags, dual_terms_sorted, op_terms_sorted, dual_range.start, dual_range.stop)
+    truncfunc = buildtruncfunc(cache; min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread)
+    rotations, angles = _rotationsandangles(layer, params)
+    rotation_grads = zeros(length(rotations))
+    plan = _preparelayer(rotations, angles, cache)
+    TT = paulitype(cache)
+    CT = coefftype(cache)
+    workspace = PropagationBase._takeworkspace(TT, CT, GradientScratch{TT,CT,eltype(plan.rules)})
+    try
+        _undopass!(cache, plan, truncfunc, workspace, rotation_grads; thread)
+    finally
+        PropagationBase._putbackworkspace!(workspace)
     end
-
-    filterviaflags!(dual_cache; thread)
-
-    return
+    is_parametrized = [isparametrized(gate) for gate in layer.gates]
+    return rotation_grads[is_parametrized]
 end
 
-function _intersectfilter!(::MultiSumStorage, dual_cache, op_cache; thread::Bool=true)
-    PropagationBase._eachzone(dual_cache, thread) do zone
-        _intersectfilter!(zonecaches(dual_cache)[zone], zonecaches(op_cache)[zone]; thread=false)
+# The rule of a rotation in a gradient pass: the rotation's rule, which also adds what every two Pauli strings it mixes
+# contribute to the gradient of the rotation. Each of the two contributes its coefficient in the operator times the dual
+# coefficient of the other, with the sign that the rotation gives the other, as every Pauli string does in
+# `_generatorcommutatordot`; a partner that is absent contributes nothing, since its coefficients are zero.
+struct _GradientRule{R}
+    rule::R
+    gradient::Vector{Float64}
+    rotation::Int
+end
+
+@inline (gradient_rule::_GradientRule)(pstr, coeff) = @inline gradient_rule.rule(pstr, coeff)
+
+PropagationBase._creationfloor(gradient_rule::_GradientRule, cutoff) = PropagationBase._creationfloor(gradient_rule.rule, cutoff)
+
+@inline function PropagationBase.branchpair(gradient_rule::_GradientRule, pstr, coeff::_DualCoeff, partner, partner_coeff::_DualCoeff)
+    new_coeff, new_partner_coeff, acts = PropagationBase.branchpair(gradient_rule.rule, pstr, coeff, partner, partner_coeff)
+    if acts
+        sign_to_partner = _partnersign(gradient_rule.rule, pstr)
+        gradient_rule.gradient[gradient_rule.rotation] +=
+            real(sign_to_partner * coeff.coeff * partner_coeff.dual) - real(sign_to_partner * partner_coeff.coeff * coeff.dual)
     end
-    # a zone cache of either sum may have been merged above, which swaps its sums
-    PropagationBase._syncsums!(dual_cache)
-    PropagationBase._syncsums!(op_cache)
-    return
+    return new_coeff, new_partner_coeff, acts
 end
 
-# flags the dual terms in [lo, hi] that also occur in op_terms_sorted
-function _flagintersection!(flags, dual_terms_sorted, op_terms_sorted, lo::Int, hi::Int)
-    lo > hi && return
-    checkbounds(flags, lo:hi)
-    checkbounds(dual_terms_sorted, lo:hi)
+# The scratch of a task of a gradient pass: the cache that the classes are loaded into, as in a layer pass, what the task
+# adds to the gradient of every rotation of the layer, and the rules that record it there. They record through
+# `branchpair`, which the branch of the hashed sum of the cache calls for every two Pauli strings it mixes.
+struct GradientScratch{TT,CT,R}
+    cache::PropagationBase.HashedPropagationCache{TT,CT}
+    gradient::Vector{Float64}
+    rules::Vector{_GradientRule{R}}
+end
 
-    n_op = length(op_terms_sorted)
-    i = lo
-    j = searchsortedfirst(op_terms_sorted, dual_terms_sorted[lo])
+GradientScratch{TT,CT,R}() where {TT,CT,R} =
+    GradientScratch{TT,CT,R}(PropagationCache(PropagationBase.HashedTermSum{TT,CT}(0)), Float64[], _GradientRule{R}[])
 
-    @inbounds while i <= hi && j <= n_op
-        dual_term = dual_terms_sorted[i]
-        op_term = op_terms_sorted[j]
-        if dual_term == op_term
-            flags[i] = true
-            i += 1
-            j += 1
-        elseif dual_term < op_term
-            flags[i] = false
-            i += 1
-        else
-            j += 1
+PropagationBase._rulesof(scratch::GradientScratch, plan::PropagationBase.LayerPlan) = scratch.rules
+
+# One pass as `_applypass!` makes it, in which every task applies the rotations through rules of its own, which add up
+# the gradients in its scratch, and those of all tasks are added to `rotation_grads` at the end.
+function _undopass!(cache, plan, truncfunc::F, workspace, rotation_grads; thread::Bool=true) where {F}
+    if length(cache) == 0
+        return rotation_grads
+    end
+    sources = PropagationBase._passsources(StorageType(cache), cache, workspace, thread)
+    n_tasks = length(sources)
+    tasks = PropagationBase._ensurecount!(workspace.tasks, n_tasks)
+    n_rotations = length(rotation_grads)
+    for task_id in 1:n_tasks
+        scratch = tasks[task_id].scratch
+        fill!(resize!(scratch.gradient, n_rotations), 0.0)
+        resize!(scratch.rules, n_rotations)
+        for rotation in 1:n_rotations
+            scratch.rules[rotation] = _GradientRule(plan.rules[rotation], scratch.gradient, rotation)
         end
     end
-    @inbounds while i <= hi
-        flags[i] = false
-        i += 1
-    end
 
-    return
+    PropagationBase._applypass!(cache, plan, truncfunc, workspace, sources, thread)
+
+    for task_id in 1:n_tasks
+        rotation_grads .+= tasks[task_id].scratch.gradient
+    end
+    return rotation_grads
 end

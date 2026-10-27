@@ -278,4 +278,131 @@ end
         end
     end
 
+    @testset "Truncations read the coefficient of the operator" begin
+        nq = 4
+        circuit = Gate[]
+        for _ in 1:3
+            append!(circuit, [PauliRotation(:X, q) for q in 1:nq])
+            append!(circuit, [PauliRotation([:Z, :Z], [q, q + 1]) for q in 1:nq-1])
+            push!(circuit, PauliRotation(:Y, 2))
+            push!(circuit, CliffordGate(:H, [3]))
+        end
+        params = [0.2 + 0.1 * k for k in 1:countparameters(circuit)]
+
+        # a custom truncation that drops what min_abs_coeff drops gives the same gradient, in both sweeps
+        below_threshold(pstr, coeff::Float64) = abs(coeff) < 1e-3
+        for psum in (VectorPauliSum(PauliString(nq, :Z, 2)), PauliSum(PauliString(nq, :Z, 2)))
+            expec, grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=0.0, customtruncfunc=below_threshold)
+            ref_expec, ref_grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=1e-3)
+            untruncated_grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=0.0)[2]
+            @test expec == ref_expec
+            @test grad == ref_grad
+            @test grad != untruncated_grad
+
+            # a relative threshold is taken from the coefficients of the operator
+            rel_grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=0.0, min_rel_coeff=1e-14)[2]
+            @test rel_grad ≈ untruncated_grad
+        end
+    end
+
+    @testset "Circuits with rotation layers" begin
+        nq = 6
+        circuit = Gate[
+            PauliRotationLayer(:X, 1:nq),
+            # rotations on three qubits
+            PauliRotationLayer([PauliRotation([:Z, :Z, :Z], [1, 2, 3]), PauliRotation([:Y, :X, :Y], [4, 5, 6]), PauliRotation([:X, :X], [1, 2])]),
+            CliffordGate(:H, [3]),
+            PauliRotationLayer([:Z, :Z], staircasetopology(nq)),
+            PauliRotation(:X, 4),
+            PauliRotationLayer([:X, :Y], [(1, 2), (4, 5)]),
+            freeze(PauliRotationLayer(:Z, 1:nq), fill(0.35, nq)),
+            PauliRotationLayer(:Y, nq:-1:1),
+            # swapped pairs, which act on their qubits with two different Paulis
+            PauliRotationLayer([:X, :Z], [(1, 2), (2, 1), (4, 5), (5, 4)]),
+            # a generator of its own for every rotation, and a frozen rotation
+            GateLayer([PauliRotation(:X, 1), PauliRotation([:Z, :Y], [2, 3]), PauliRotation(:Y, 4, 0.2), PauliRotation([:X, :X], [5, 6])]),
+        ]
+        # one angle per rotation, and none for the frozen layer and the frozen rotation
+        params = Any[fill(0.3, nq), [0.2, -0.3, 0.25], [0.1 * i for i in 1:nq-1], -0.4, [0.5, -0.2], fill(0.25, nq), [0.3, -0.2, 0.15, 0.4],
+            [0.35, -0.15, 0.45]]
+
+        # A dense state gives every Pauli string an overlap, and Z on every qubit puts every rotation in the light cone, so
+        # that no gradient entry is zero.
+        rng = MersenneTwister(5)
+        rho = PauliSum(nq, Dict{UInt16,Float64}(UInt16(i) => randn(rng) for i in 0:4^nq-1))
+        dense_overlap(pobj) = overlapwithpaulisum(rho, pobj)
+        obs = PauliSum(nq)
+        for q in 1:nq
+            add!(obs, :Z, q, 1.0)
+        end
+
+        function overlapat(params)
+            return dense_overlap(propagate(circuit, obs, params; min_abs_coeff=0.0))
+        end
+
+        # central differences by every angle, those of a layer with one angle per rotation as a vector
+        eps = 1e-6
+        fd_grad = Any[]
+        for k in eachindex(params)
+            angles = params[k] isa Number ? [params[k]] : params[k]
+            derivatives = zeros(length(angles))
+            for index in eachindex(angles)
+                plus_params = deepcopy(params)
+                minus_params = deepcopy(params)
+                if params[k] isa Number
+                    plus_params[k] += eps
+                    minus_params[k] -= eps
+                else
+                    plus_params[k][index] += eps
+                    minus_params[k][index] -= eps
+                end
+                derivatives[index] = (overlapat(plus_params) - overlapat(minus_params)) / (2eps)
+            end
+            push!(fd_grad, params[k] isa Number ? only(derivatives) : derivatives)
+        end
+        @test all(entry -> all(!iszero, entry), fd_grad)
+
+        # on a vector sum, as the other kinds of sum are checked against the rotations one by one below
+        expec, grad = rewindgradient(circuit, VectorPauliSum(obs), params, dense_overlap; min_abs_coeff=0.0)
+        @test expec ≈ overlapat(params)
+        @test length(grad) == length(params)
+        @test all(isapprox(entry, fd_entry; rtol=1e-6) for (entry, fd_entry) in zip(grad, fd_grad))
+    end
+
+    @testset "Rotation layers truncate as their rotations one by one" begin
+        # a layer undoes its rotations as they are undone one by one, so the gradients agree up to the order of the sums
+        nq = 8
+        # the bonds of a ring in two layers, so that no two rotations of a layer act on one qubit
+        odd_bonds = [(i, i + 1) for i in 1:2:nq-1]
+        even_bonds = [(i, i % nq + 1) for i in 2:2:nq]
+        layers = Gate[]
+        rotations = Gate[]
+        for _ in 1:2
+            for (symbols, qinds) in ((:X, 1:nq), (:Z, 1:nq), ([:Z, :Z], odd_bonds), ([:Z, :Z], even_bonds))
+                push!(layers, PauliRotationLayer(symbols, qinds))
+                append!(rotations, [PauliRotation(symbols, collect(rotation_qinds)) for rotation_qinds in qinds])
+            end
+        end
+        layer_params = [fill(0.2 + 0.05 * k, length(layer.gates)) for (k, layer) in enumerate(layers)]
+        rotation_params = reduce(vcat, layer_params)
+
+        # a custom truncation reads the coefficient of the operator, and min_rel_coeff undoes the rotations of a layer one by one
+        below_threshold(pstr, coeff::Float64) = abs(coeff) < 1e-4
+        truncations = ((; min_abs_coeff=1e-4), (; min_abs_coeff=1e-6, max_weight=4.0),
+            (; min_abs_coeff=0.0, customtruncfunc=below_threshold), (; min_abs_coeff=0.0, min_rel_coeff=1e-4))
+
+        # every kind of sum with the absolute truncations, and a vector sum with the others, as every truncation function
+        # compiles the layers afresh
+        obs = PauliString(nq, [:Z, :Z], [4, 5])
+        sums = (VectorPauliSum(obs), PauliSum(obs), MultiPauliSum(VectorPauliSum(obs), 4), MultiPauliSum(PauliSum(obs), 4))
+        cases = [(psum, truncation) for psum in sums for truncation in truncations[1:2]]
+        push!(cases, (sums[1], truncations[3]), (sums[1], truncations[4]))
+        for (psum, truncation) in cases
+            expec, grad = rewindgradient(layers, psum, layer_params, overlapwithzero; truncation...)
+            ref_expec, ref_grad = rewindgradient(rotations, psum, rotation_params, overlapwithzero; truncation...)
+            @test expec ≈ ref_expec rtol = 1e-12
+            @test reduce(vcat, grad) ≈ ref_grad rtol = 1e-12
+        end
+    end
+
 end

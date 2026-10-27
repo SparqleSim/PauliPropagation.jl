@@ -122,7 +122,9 @@ export
     Gate,
     StaticGate,
     ParametrizedGate,
-    countparameters
+    countparameters,
+    isparametrized,
+    qinds
 
 include("./countterms.jl")
 
@@ -156,6 +158,12 @@ export
     xormerge!,
     xormergeandtruncate!,
     xorbranchmergeandtruncate!
+
+# a term sum held in a hash table, for small sums such as the classes of a layer pass
+include("./hashedtermsum.jl")
+
+include("./Layers/Layers.jl")
+export GateLayer
 
 include("./MonteCarlo/MonteCarlo.jl")
 export

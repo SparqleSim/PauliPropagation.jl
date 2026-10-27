@@ -274,6 +274,15 @@ function _ensurecapacity!(prop_cache::AbstractPropagationCache, n::Int)
     return prop_cache
 end
 
+# The same for a vector whose length is its room, such as the scratch of a pass. It grows to `n`, or to twice its length
+# if that is more, so that a vector sized to a whole sum holds no more than the sum.
+function _ensurecapacity!(array::AbstractVector, n::Int)
+    if length(array) < n
+        resize!(array, max(n, 2 * length(array)))
+    end
+    return array
+end
+
 ## Back-conversions 
 
 # effectively a out-of-place version of extractsum!()
