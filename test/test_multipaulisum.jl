@@ -65,6 +65,7 @@ pstr = PauliString(nq, [:Z, :Z], [2, 3])
         @test agreeswithpaulisum(frozen, pstr, nothing, n_zones; min_abs_coeff=1e-8)
         @test agreeswithpaulisum(mixed, pstr, params, n_zones; min_abs_coeff=1e-8)
         @test agreeswithpaulisum(mixed, pstr, params, n_zones; min_abs_coeff=1e-10, min_rel_coeff=1e-4)
+        @test agreeswithpaulisum(mixed, pstr, params, n_zones; min_abs_coeff=0.0, max_terms=50)
         @test agreeswithpaulisum(mixed, pstr, params, n_zones; min_abs_coeff=1e-8, thread=false)
     end
 end
@@ -144,6 +145,14 @@ end
         @test PauliSum(msum) == expected
     end
 
+    # max_terms counts terms across all zones, not per zone
+    @test topkabscoeff(MultiPauliSum(psum, 4), 50) == topkabscoeff(psum, 50)
+    expected = truncate!(deepcopy(psum); max_terms=50, max_terms_rtol=0.0, min_abs_coeff=0.0)
+    for n_zones in (2, 4, 8), seed in (psum, VectorPauliSum(psum))
+        msum = truncate!(MultiPauliSum(seed, n_zones); max_terms=50, max_terms_rtol=0.0, min_abs_coeff=0.0)
+        @test PauliSum(msum) == expected
+    end
+
     @test PauliSum(truncate!(MultiPauliSum(psum, 4); max_weight=3)) == truncate!(deepcopy(psum); max_weight=3)
     @test PauliSum(filter((pauli, coeff) -> coeff > 0, MultiPauliSum(psum, 4))) == filter((pauli, coeff) -> coeff > 0, psum)
 end
@@ -214,6 +223,7 @@ end
     @test length(topaulistrings(msum)) == 3
     @test norm(msum) ≈ norm(vpsum)
     @test maxabscoeff(msum) == 0.75
+    @test topkabscoeff(msum, 2) == 0.5
 
     @test getcoeff(msum, [:X, :Y], [1, 2]) == 0.5
     @test getcoeff(msum, PauliString(nq, :Z, 3)) == 0.25

@@ -201,7 +201,7 @@ end
 Apply a Clifford gate and truncate in the same walk.
 The gate never creates duplicate terms, so no merge is needed.
 It changes only the signs of the coefficients, so `min_abs_coeff`, `min_rel_coeff`, `max_freq` and `max_sins` would drop nothing that the truncation after the previous gate kept.
-The terms are therefore truncated only when `max_weight` or `customtruncfunc` is given, and `min_rel_coeff` is never applied.
+The terms are therefore truncated only when `max_weight` or `customtruncfunc` is given, and `min_rel_coeff` and `max_terms` are never applied.
 """
 function PropagationBase.applymergetruncate!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache;
     thread::Bool=true, min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf,
@@ -411,19 +411,20 @@ _branchmask(gate::AmplitudeDampingNoise, prop_cache) = symboltoint(paulitype(pro
 # multi sum does nothing further when the gate touched no term.
 function _applyxormergetruncate!(gate, prop_cache::AbstractPauliPropagationCache, args...;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
-    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
+    min_rel_coeff=nothing, max_terms=nothing, max_terms_rtol::Real=0.05, customtruncfunc=nothing,
+    thread::Bool=true, kwargs...)
 
     mask = _branchmask(gate, prop_cache)
     rule = _branchrule(gate, prop_cache, args...)
 
-    # A relative threshold is based on the largest merged coefficient and thus cannot be
+    # A relative threshold or a term budget is based on the merged coefficients and thus cannot be
     # evaluated while the merged output is written.
-    if !isnothing(min_rel_coeff)
+    if !isnothing(min_rel_coeff) || !isnothing(max_terms)
         xorbranch!(rule, prop_cache, mask; thread)
         xormerge!(prop_cache, mask; thread)
         truncate!(prop_cache;
-            min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc,
-            thread, kwargs...)
+            min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, max_terms, max_terms_rtol,
+            customtruncfunc, thread, kwargs...)
         return
     end
 
