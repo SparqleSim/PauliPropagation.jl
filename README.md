@@ -154,10 +154,10 @@ All of the above can be addressed by writing the additional missing code due to 
 `PauliPropagation.jl` has always been automatically differentiable via standard Julia libraries such as `ForwardDiff.jl` and `ReverseDiff.jl`. Starting version `0.8`, we provide a custom `rewindgradient(...)`  that only requires two propagation through the circuit and at most double the memory to compute an entire gradient vector. It is compatible with all truncations that are supported by `propagate()`. See the `8-automatic-differentiation.ipynb` notebook in the example folder ([link](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/8-automatic-differentiation.ipynb)). This design is adapted from the publication ``Backpropagating Pauli Propagation'' by Lin et al. (arXiv:2607.15184).
 
 ### Layers of Commuting Rotations
-Starting with version `0.9`, Pauli rotations that commute with each other can be grouped into a layer. Pauli sums propagate through a layer in one pass rather than rotation by rotation, which can be considerably faster for large layers. An existing circuit with `PauliRotation` gates converts to a circuit containing `GateLayer`s via `tolayers`:
+Starting with version `0.9`, Pauli rotations that commute with each other can be grouped into a layer. Pauli sums propagate through a layer in one pass rather than rotation by rotation, which can be considerably faster for large layers. An existing circuit with `PauliRotation` gates converts to a circuit containing `GateLayer`s via `torotationlayers`:
 
 ```julia
-layered_circuit, layered_parameters = tolayers(circuit, parameters)
+layered_circuit, layered_parameters = torotationlayers(circuit, parameters)
 pauli_sum = propagate(layered_circuit, init_pauli_sum, layered_parameters; max_weight, min_abs_coeff)
 ```
 

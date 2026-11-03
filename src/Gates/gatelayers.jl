@@ -13,17 +13,16 @@
 ### Layers of a circuit
 
 """
-    tolayers(circuit)
-    tolayers(circuit, params)
+    torotationlayers(circuit)
+    torotationlayers(circuit, params)
 
-Groups consecutive gates of `circuit` that commute with each other into `GateLayer`s.
-Gates are not reordered, so only gates that follow each other in `circuit` can end up in the same layer.
-Gates on different qubits commute, and whether two gates that share a qubit commute is decided by `commutes`.
-Pauli rotations and other gates go into separate layers, because a layer of Pauli rotations and a layer of other gates are each propagated in their own way.
+Groups consecutive Pauli rotations of `circuit` that commute with each other into `GateLayer`s.
+Gates are not reordered, so only rotations that follow each other in `circuit` can end up in the same layer.
+All other gates, and layers already in `circuit`, stay as they are.
 Also transforms the parameters of the circuit accordingly.
 Returns the new equivalent layered circuit and its corresponding parameter vector.
 """
-function tolayers(circuit, params)
+function torotationlayers(circuit, params)
     PropagationBase._checknumberofparams(circuit, params)
 
     layered_circuit = Gate[]
@@ -39,15 +38,15 @@ function tolayers(circuit, params)
             param_index += 1
         end
 
-        if gate isa GateLayer
-            # a layer is not nested into another layer
+        if !_isrotation(gate)
+            # only Pauli rotations are gathered, and a layer is not nested into another layer
             _pushlayer!(layered_circuit, layered_params, layer, layer_params, gates_on_qubit)
             push!(layered_circuit, gate)
             if isparametrized(gate)
                 push!(layered_params, params[param_index])
             end
         else
-            if !_joinslayer(gate, layer, gates_on_qubit)
+            if !_joinslayer(gate, gates_on_qubit)
                 _pushlayer!(layered_circuit, layered_params, layer, layer_params, gates_on_qubit)
             end
             push!(layer, gate)
@@ -64,9 +63,9 @@ function tolayers(circuit, params)
     return layered_circuit, layered_params
 end
 
-function tolayers(circuit)
+function torotationlayers(circuit)
     # the layers do not depend on the parameters
-    layered_circuit, _ = tolayers(circuit, zeros(countparameters(circuit)))
+    layered_circuit, _ = torotationlayers(circuit, zeros(countparameters(circuit)))
     return layered_circuit
 end
 
@@ -88,17 +87,9 @@ function _pushlayer!(layered_circuit, layered_params, layer, layer_params, gates
     return
 end
 
-# Whether a gate joins the gathered gates: it is of the same kind, a Pauli rotation or not, and commutes with the gathered
-# gates on its qubits. The kinds stay apart because a layer of both kinds would apply its gates one after the other.
-function _joinslayer(gate, layer, gates_on_qubit)
-    if isempty(layer)
-        return true
-    end
-    # the gathered gates are either all Pauli rotations or none, so the first gate tells which
-    if _isrotation(gate) != _isrotation(first(layer))
-        return false
-    end
-    # gates on other qubits always commute with it, so only the gates on its own qubits are compared
+# Whether a Pauli rotation joins the gathered rotations: it commutes with the gathered rotations on its qubits.
+function _joinslayer(gate, gates_on_qubit)
+    # rotations on other qubits always commute with it, so only the rotations on its own qubits are compared
     for qind in qinds(gate)
         if !all(layer_gate -> commutes(gate, layer_gate), get(gates_on_qubit, qind, Gate[]))
             return false

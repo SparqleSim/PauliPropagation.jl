@@ -527,7 +527,11 @@ end
 
 # the circuit and its layers propagate alike, in either picture
 function layeredmatchescircuit(circuit, thetas, psum; kwargs...)
-    layered_circuit, layered_thetas = tolayers(circuit, thetas)
+    layered_circuit, layered_thetas = torotationlayers(circuit, thetas)
+    return layeredmatchescircuit(layered_circuit, layered_thetas, circuit, thetas, psum; kwargs...)
+end
+
+function layeredmatchescircuit(layered_circuit, layered_thetas, circuit, thetas, psum; kwargs...)
     matches = true
     for (T, heisenberg) in VECTOR_TEST_SUMS
         layered = propagate(layered_circuit, T(psum), layered_thetas; heisenberg, kwargs...)
@@ -537,7 +541,7 @@ function layeredmatchescircuit(circuit, thetas, psum; kwargs...)
     return matches
 end
 
-@testset "tolayers gathers the commuting rotations of a circuit into layers" begin
+@testset "torotationlayers gathers the commuting rotations of a circuit into layers" begin
     nq = 6
     circuit = Gate[
         PauliRotation([:Z, :Z], [1, 2]), PauliRotation([:Z, :Z], [2, 3]), PauliRotation(:Z, 4, 0.3), PauliRotation([:Z, :Z, :Z], [4, 5, 6]),
@@ -559,13 +563,13 @@ end
     push!(thetas, randn(rng, nq))
     push!(thetas, randn(rng))
 
-    layered_circuit, layered_thetas = tolayers(circuit, thetas)
+    layered_circuit, layered_thetas = torotationlayers(circuit, thetas)
     @test repr.(layered_circuit) == ["GateLayer(3 PauliRotation, 1 FrozenGate)", "GateLayer(3 PauliRotation)", "CliffordGate(:CNOT, [3, 4])",
         "GateLayer(2 FrozenGate)", "CliffordGate(:H, [1])", "GateLayer(4 PauliRotation)",
         "PauliRotation([:Z, :Z], [6, 5])", "GateLayer(6 PauliRotation)", "PauliRotation([:Y], [1])"]
     @test layered_thetas == [thetas[1:3], thetas[4:6], thetas[7:10], thetas[11], thetas[12], thetas[13]]
-    @test repr.(tolayers(circuit)) == repr.(layered_circuit)
-    @test isempty(tolayers(Gate[]))
+    @test repr.(torotationlayers(circuit)) == repr.(layered_circuit)
+    @test isempty(torotationlayers(Gate[]))
 
     psum = randompaulisum(rng, nq, 8, 3)
     @test layeredmatchescircuit(circuit, thetas, psum; min_abs_coeff=0.0)
@@ -578,7 +582,7 @@ end
     @test reduce(vcat, layered_gradient) ≈ reduce(vcat, gradient)
 
     # a Trotter circuit becomes a layer of ZZ rotations and a layer of X rotations per step
-    @test repr.(tolayers(tfitrottercircuit(nq, 2))) == ["GateLayer(5 PauliRotation)", "GateLayer(6 PauliRotation)", "GateLayer(5 PauliRotation)", "GateLayer(6 PauliRotation)"]
+    @test repr.(torotationlayers(tfitrottercircuit(nq, 2))) == ["GateLayer(5 PauliRotation)", "GateLayer(6 PauliRotation)", "GateLayer(5 PauliRotation)", "GateLayer(6 PauliRotation)"]
 end
 
 @testset "PauliRotationLayer truncates and merges what it is given" begin

@@ -363,30 +363,33 @@ end
     @test agreeswithgates(layers, params, gates, flat_params; max_weight=6.0, min_abs_coeff=0.08)
 end
 
-@testset "tolayers gathers commuting gates of the same kind, and a layer without parametrized gates takes none" begin
+@testset "torotationlayers leaves other gates as they are, and a layer without parametrized gates takes none" begin
     nq = 6
     circuit = Gate[
-        # gates on different qubits, of which the Clifford gate and the noise share a layer and the rotations stay alone
+        # gates on different qubits, of which the Clifford gate and the noise can share a layer
         PauliRotation(:X, 1), CliffordGate(:H, 2), DepolarizingNoise(3, 0.1), PauliRotation(:Z, 4),
         # ZZ entanglers that share qubits and commute
         CliffordGate(:ZZpihalf, [1, 2]), CliffordGate(:ZZpihalf, [2, 3]), CliffordGate(:ZZpihalf, [3, 4]),
         # noise on three qubits, then a rotation on one of them
         DepolarizingNoise(1), DepolarizingNoise(2), DepolarizingNoise(3), PauliRotation(:X, 3),
-        # a layer stays as it is, and CNOTs sharing their control commute
+        # a layer, and CNOTs sharing their control, which commute
         PauliRotationLayer(:Y, 1:2), CliffordGate(:CNOT, [5, 6]), CliffordGate(:CNOT, [5, 4]),
     ]
     thetas = Any[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, [0.7, 0.8]]
-    layered_circuit, layered_thetas = tolayers(circuit, thetas)
-    @test repr.(layered_circuit) == ["PauliRotation([:X], [1])", "GateLayer(1 CliffordGate, 1 FrozenGate)", "PauliRotation([:Z], [4])",
-        "GateLayer(3 CliffordGate)", "GateLayer(3 DepolarizingNoise)", "PauliRotation([:X], [3])", "GateLayer(2 PauliRotation)", "GateLayer(2 CliffordGate)"]
-    @test layered_thetas == [0.1, 0.2, [0.3, 0.4, 0.5], 0.6, [0.7, 0.8]]
+    # no two rotations follow each other, so only the layer of the circuit is a layer
+    @test repr.(first(torotationlayers(circuit, thetas))) == repr.(circuit)
+    @test last(torotationlayers(circuit, thetas)) == thetas
+
+    layered_circuit = Gate[circuit[1], GateLayer(circuit[2:3]), circuit[4], GateLayer(circuit[5:7]; guaranteed_commutes=true),
+        GateLayer(circuit[8:10]), circuit[11], circuit[12], GateLayer(circuit[13:14]; guaranteed_commutes=true)]
+    layered_thetas = Any[0.1, 0.2, [0.3, 0.4, 0.5], 0.6, [0.7, 0.8]]
     @test PB.isparametrized.(layered_circuit) == [true, false, true, false, true, true, true, false]
     @test countparameters(layered_circuit) == 5 && countparameters(circuit) == 7
 
     rng = MersenneTwister(nq)
     psum = randompaulisum(rng, nq, 8, 3)
-    @test layeredmatchescircuit(circuit, thetas, psum; min_abs_coeff=0.0)
-    @test layeredmatchescircuit(circuit, thetas, psum; max_weight=3.0, min_abs_coeff=1e-3)
+    @test layeredmatchescircuit(layered_circuit, layered_thetas, circuit, thetas, psum; min_abs_coeff=0.0)
+    @test layeredmatchescircuit(layered_circuit, layered_thetas, circuit, thetas, psum; max_weight=3.0, min_abs_coeff=1e-3)
 
     # a layer without parametrized gates takes no parameter wherever a circuit is walked
     entanglers = layered_circuit[4]
@@ -401,7 +404,7 @@ end
 
     # a T gate is gathered with the rotations it commutes with
     t_circuit = Gate[TGate(1), PauliRotation([:Z, :Z], [1, 2]), PauliRotation(:X, 1)]
-    t_layered, t_thetas = tolayers(t_circuit, [0.2, 0.3])
+    t_layered, t_thetas = torotationlayers(t_circuit, [0.2, 0.3])
     @test length(t_layered) == 2 && t_layered[1] isa GateLayer && length(t_layered[1].gates) == 2
     @test layeredmatchescircuit(t_circuit, [0.2, 0.3], psum; min_abs_coeff=0.0)
 end
