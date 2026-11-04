@@ -96,6 +96,8 @@ end
     vecrho = VectorPauliSum(rho)
     @test overlapwithpaulisum(rho, psum) == overlapwithmaxmixed(psum) == 0.2
     @test overlapwithpaulisum(rho, vecpsum) == overlapwithmaxmixed(vecpsum) == 0.2
+    @test overlapwithmaxmixed(PauliString(nq, :I, 1, 0.2)) == 0.2
+    @test overlapwithmaxmixed(PauliString(nq, :X, 2, 0.3)) == 0.0
     @test overlapwithpaulisum(vecrho, psum) == overlapwithpaulisum(vecrho, vecpsum) == 0.2
 
 

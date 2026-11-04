@@ -24,6 +24,9 @@ function PropagationBase.PropagationCache(psum::PauliString)
     return PauliPropagationCache(PauliSum(psum))
 end
 
+# a hashed sum of Pauli strings propagates through the default cache, given explicitly as `PauliPropagationCache(hsum)`
+nqubits(hsum::PropagationBase.HashedTermSum) = PropagationBase.nsites(hsum)
+
 PropagationBase.mainsum(prop_cache::AbstractPauliPropagationCache) = prop_cache.psum
 PropagationBase.auxsum(prop_cache::AbstractPauliPropagationCache) = prop_cache.aux_psum
 
@@ -53,6 +56,16 @@ end
 function PropagationBase.activesum(prop_cache::PauliPropagationCache)
     return mainsum(prop_cache)
 end
+
+# The scratch of a task of a layer applied class by class: a cache over a hashed sum of Pauli strings, into which the
+# task loads the classes, so that every gate is applied with its own methods. The sum is on as many qubits as its term
+# type holds, since the qubits of the gates are checked against the propagated sum when the plan is made.
+struct PauliClassScratch{TT,CT}
+    cache::PauliPropagationCache{PropagationBase.HashedTermSum{TT,CT}}
+end
+
+PauliClassScratch{TT,CT}() where {TT,CT} =
+    PauliClassScratch{TT,CT}(PauliPropagationCache(PropagationBase.HashedTermSum{TT,CT}(4 * sizeof(TT))))
 
 ###
 ##

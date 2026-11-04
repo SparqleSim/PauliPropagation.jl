@@ -16,7 +16,8 @@ function Base.mapreduce(mapper, reducer, thing::Union{AbstractTermSum,AbstractPr
     return _mapreduce(StorageType(thing), mapper, reducer, thing; init, neutral, thread)
 end
 
-function _mapreduce(::DictStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O}
+# a dictionary, and any storage without a reduction of its own, reduces its pairs one after the other
+function _mapreduce(::StorageType, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O}
     accumulated = init
     for (term, coefficient) in thing
         accumulated = reducer(accumulated, @inline mapper(term, coefficient))
@@ -81,9 +82,10 @@ function mapreducecoeffs(mapper, reducer, thing::Union{AbstractTermSum,AbstractP
     return _mapreducecoeffs(StorageType(thing), mapper, reducer, thing; init, neutral, thread)
 end
 
-# a dictionary reduces its coefficients over its pairs, whose iteration reads the slots eight at a time where it can
-_mapreducecoeffs(::DictStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O} =
-    _mapreduce(DictStorage(), (_, coefficient) -> mapper(coefficient), reducer, thing; init, neutral, thread)
+# a dictionary reduces its coefficients over its pairs, whose iteration reads the slots eight at a time where it can,
+# and so does any storage without a reduction of its own
+_mapreducecoeffs(storage::StorageType, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O} =
+    _mapreduce(storage, (_, coefficient) -> mapper(coefficient), reducer, thing; init, neutral, thread)
 
 function _mapreducecoeffs(::ArrayStorage, mapper::F, reducer::O, thing; init, neutral, thread::Bool) where {F,O}
     active_coefficients = coefficients(thing)

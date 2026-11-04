@@ -19,7 +19,7 @@ function getparameterindices(circuit, ::Type{GT}) where {GT<:ParametrizedGate}
         if isa(gate, GT)
             push!(indices, param_idx)
         end
-        if isa(gate, ParametrizedGate)
+        if isparametrized(gate)
             param_idx += 1
         end
     end
@@ -40,7 +40,7 @@ function getparameterindices(circuit, ::Type{PauliRotation}, gate_symbols::Vecto
         if isa(gate, PauliRotation) && gate.symbols == gate_symbols
             push!(indices, param_idx)
         end
-        if isa(gate, ParametrizedGate)
+        if isparametrized(gate)
             param_idx += 1
         end
     end
@@ -61,7 +61,7 @@ function getparameterindices(circuit, ::Type{PauliRotation}, gate_symbols::Vecto
         if isa(gate, PauliRotation) && gate.symbols == gate_symbols && gate.qinds == qinds
             push!(indices, param_idx)
         end
-        if isa(gate, ParametrizedGate)
+        if isparametrized(gate)
             param_idx += 1
         end
     end

@@ -112,6 +112,6 @@ end
 ## Truncation functions
 
 # don't truncate on coefficients
-function truncatemincoeff(path::NodePathProperties, min_abs_coeff::Real)
+function PropagationBase.truncatemincoeff(path::NodePathProperties, min_abs_coeff::Real)
     return false
 end

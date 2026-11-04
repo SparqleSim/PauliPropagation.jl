@@ -61,6 +61,35 @@ The kernels keep `terms` alive for the whole walk, so a rule may read it through
 """
 @inline ruleat(rule::F, terms, coefficients, ii::Int) where {F} = @inline rule((@inbounds terms[ii]), (@inbounds coefficients[ii]))
 
+"""
+    branchpair(rule, term, coefficient, partner, partner_coefficient)
+
+Returns what `rule` makes of a term and its partner `term ⊻ mask` together, for a storage that finds the partner of every term: the new coefficients of the term and the partner, and whether the rule creates the partner where it is absent.
+An absent partner has a zero coefficient.
+By default the rule is asked about both terms and what each creates is merged into the other.
+A rule that can tell what it does to both from one of them overloads this.
+"""
+@inline function branchpair(rule::F, term, coefficient, partner, partner_coefficient) where {F}
+    kept, created, creates = _keptandcreated(@inline(rule(term, coefficient)), coefficient)
+    partner_kept, partner_created, _ = _keptandcreated(@inline(rule(partner, partner_coefficient)), partner_coefficient)
+    return mergefunc(kept, partner_created), mergefunc(partner_kept, created), creates
+end
+
+# what an outcome of a rule keeps of a term and creates for its partner, and whether it creates it
+@inline _keptandcreated(::Unchanged, coeff::CT) where {CT} = coeff, zero(CT), false
+@inline _keptandcreated(kept::Kept, coeff::CT) where {CT} = kept.coefficient, zero(CT), false
+@inline _keptandcreated(branched::Branch, coeff::CT) where {CT} = branched.kept, branched.created, true
+@noinline _keptandcreated(branched, coeff) = _throwunknownoutcome(branched)
+
+"""
+    _creationfloor(rule, cutoff)
+
+Returns the magnitude below which the coefficient of a term creates nothing that a truncation of coefficients below `cutoff` keeps, as `truncatemincoeff` measures both.
+The rule at most keeps and scales a term whose coefficient is below it.
+The default of zero promises nothing.
+"""
+_creationfloor(rule, cutoff) = 0.0
+
 function _xorbranch!(::StorageType, rule::F, prop_cache::AbstractPropagationCache, mask; thread::Bool=true) where {F}
     function branch(term, coefficient)
         branched = rule(term, coefficient)

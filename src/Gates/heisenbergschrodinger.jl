@@ -32,7 +32,7 @@ function toheisenberg(circuit, params)
     heisenberg_params = eltype(params)[]
 
     for gate in circuit
-        if gate isa ParametrizedGate
+        if isparametrized(gate)
             param = popfirst!(params_iterator)
 
             gate_heisenberg, param_heisenberg = _toheisenberg(gate, param)
@@ -72,6 +72,14 @@ function _toheisenberg(gate::FrozenGate)
     return freeze(gate_heisenberg, param_heisenberg)
 end
 
+# The gates of a `GateLayer` are applied in reverse like the gates of the circuit, each in the Heisenberg picture.
+function _toheisenberg(layer::GateLayer, params)
+    return _transformlayer(toheisenberg, layer, params)
+end
+
+# a layer without parametrized gates is transformed without parameters
+_toheisenberg(layer::GateLayer) = first(_transformlayer(toheisenberg, layer, Float64[]))
+
 # ImaginaryPauliRotation are currently actively disallowed in Heisenberg picture
 # This has to do because we don't know how to handle the normalization
 function _toheisenberg(gate::ImaginaryPauliRotation, τ)
@@ -93,11 +101,12 @@ function toschrodinger(circuit, params)
     PropagationBase._checknumberofparams(circuit, params)
 
     params_iterator = Iterators.Stateful(params)
-    schrodinger_circuit = eltype(circuit)[]
+    # a gate may change its type, as a T gate becomes a frozen rotation
+    schrodinger_circuit = Gate[]
     schrodinger_params = eltype(params)[]
 
     for gate in circuit
-        if gate isa ParametrizedGate
+        if isparametrized(gate)
             param = popfirst!(params_iterator)
 
             gate_schrodinger, param_schrodinger = _toschrodinger(gate, param)
@@ -110,7 +119,8 @@ function toschrodinger(circuit, params)
             push!(schrodinger_circuit, gate_schrodinger)
         end
     end
-    return schrodinger_circuit, schrodinger_params
+    # the gates in the narrowest vector that holds them, as the circuit had them
+    return [gate for gate in schrodinger_circuit], schrodinger_params
 end
 
 function toschrodinger(circuit)
@@ -133,6 +143,33 @@ _toschrodinger(gate, args...) = PropagationBase._thrownotimplemented(gate, :tosc
 # This inverts the sign of `θ`, which can be seen by the conjugation of exp(-i*θ*P/2).
 function _toschrodinger(gate::PauliRotation, θ)
     return gate, -θ
+end
+
+# Method to transpose a `TGate` for Schrödinger picture propagation.
+# A T gate is the rotation about Z by π/4, so it becomes that rotation by -π/4, frozen as it takes no parameter.
+_toschrodinger(gate::TGate) = freeze(PauliRotation(:Z, gate.qind), -π / 4)
+
+
+# Method to transpose a `GateLayer` for Schrödinger picture propagation, by transposing each of its gates.
+function _toschrodinger(layer::GateLayer, params)
+    return _transformlayer(toschrodinger, layer, params)
+end
+
+_toschrodinger(layer::GateLayer) = first(_transformlayer(toschrodinger, layer, Float64[]))
+
+# The layer of the gates of `layer` that `transform`, `toheisenberg` or `toschrodinger`, returns for them as a circuit,
+# with their parameters.
+function _transformlayer(transform::F, layer::GateLayer, params) where {F}
+    PropagationBase._checklayerparameters(layer, params)
+    gates, gate_params = transform(layer.gates, params)
+    return GateLayer(gates; guaranteed_commutes=layer.guaranteed_commutes), gate_params
+end
+
+# A number as the parameter of a layer with one parametrized gate stays a number.
+function _transformlayer(transform::F, layer::GateLayer, param::Number) where {F}
+    PropagationBase._checklayerparameters(layer, param)
+    new_layer, gate_params = _transformlayer(transform, layer, [param])
+    return new_layer, only(gate_params)
 end
 
 

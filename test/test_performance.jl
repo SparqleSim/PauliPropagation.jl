@@ -124,8 +124,8 @@ end
 
         for max_weight in (3, 4)
             stock = propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_weight)
-            fused = Performance.propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_weight, fused=true)
-            unthreaded = Performance.propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_weight, fused=true, thread=false)
+            fused = Performance.propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_weight, fused=true, layers=false)
+            unthreaded = Performance.propagate(circuit, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_weight, fused=true, layers=false, thread=false)
 
             stock_dict = Dict(zip(paulis(stock), coefficients(stock)))
             fused_dict = Dict(zip(paulis(fused), coefficients(fused)))
@@ -371,4 +371,63 @@ end
     @test length(nothread) < length(grown) ÷ 2  # sanity check that terms really are dropped
     @test asdict(nothread) == stock
     @test asdict(threaded) == stock
+end
+
+@testset "Performance.propagate gathers layers where they are expected to pay on the type of sum" begin
+    nq = 36
+    function layersizes(circuit, thing)
+        layered, _ = Performance._tolayers(circuit, zeros(countparameters(circuit)), thing)
+        return [length(gate.gates) for gate in layered if gate isa GateLayer]
+    end
+    vector = VectorPauliSum(nq)
+    dict = PauliSum(nq)
+    multi = MultiPauliSum(VectorPauliSum(nq), 2)
+
+    # a few rotations stay single gates on arrays, but form a layer on a dictionary, and a layer of the circuit stays
+    rotations = Gate[PauliRotation(:X, qind) for qind in 1:20]
+    @test isempty(layersizes(rotations, vector)) && isempty(layersizes(rotations, multi))
+    @test layersizes(rotations, dict) == [20]
+    @test layersizes([rotations; [PauliRotation(:X, qind) for qind in 21:nq]], vector) == [36]
+    @test layersizes(Gate[GateLayer(rotations[1:2])], vector) == [2]
+
+    # two-qubit Clifford gates act on too many Pauli strings of 36 qubits to form a layer on arrays
+    cz = Gate[CliffordGate(:CZ, [qind, qind + 1]) for qind in 1:2:nq-1]
+    @test isempty(layersizes(cz, vector)) && layersizes(cz, dict) == [18]
+
+    # Pauli noise alone is applied one by one on a multi sum over several zones
+    noise = Gate[DepolarizingNoise(qind) for qind in 1:nq]
+    @test layersizes(noise, vector) == [36]
+    @test isempty(layersizes(noise, multi))
+
+    # amplitude damping forms a layer on a dictionary only, and imaginary-time rotations on no sum
+    damping = Gate[AmplitudeDampingNoise(qind) for qind in 1:nq]
+    @test isempty(layersizes(damping, vector)) && layersizes(damping, dict) == [36]
+    @test isempty(layersizes(Gate[ImaginaryPauliRotation(:X, qind) for qind in 1:nq], dict))
+end
+
+@testset "Performance.propagate with layers agrees with its gates one by one" begin
+    # Z and ZZ rotations on eight qubits, which commute and form a layer on every sum, then X rotations and CZ gates
+    nq = 8
+    pairs = [[qind1, qind2] for qind1 in 1:nq for qind2 in qind1+1:nq]
+    circuit = Gate[
+        [PauliRotation(:Z, qind) for qind in 1:nq]; [PauliRotation([:Z, :Z], pair) for pair in pairs];
+        [PauliRotation(:X, qind) for qind in 1:nq]; [CliffordGate(:CZ, pair) for pair in pairs]
+    ]
+    Random.seed!(11)
+    thetas = randn(countparameters(circuit))
+
+    # a dense sum
+    psum = PauliSum(nq)
+    for _ in 1:3000
+        add!(psum, PauliString(nq, rand([:I, :X, :Y, :Z], nq), 1:nq, randn()))
+    end
+    asdict(thing) = Dict(pstr => coeff for (pstr, coeff) in thing)
+    for thing in (psum, VectorPauliSum(psum), MultiPauliSum(VectorPauliSum(psum), 2))
+        layered, _ = Performance._tolayers(circuit, thetas, thing)
+        @test any(gate -> gate isa GateLayer, layered)
+        with_layers = asdict(Performance.propagate(circuit, thing, thetas; min_abs_coeff=0.0))
+        without_layers = asdict(Performance.propagate(circuit, thing, thetas; min_abs_coeff=0.0, layers=false))
+        @test keys(with_layers) == keys(without_layers)
+        @test all(isapprox(coeff, without_layers[pstr]; atol=1e-12) for (pstr, coeff) in with_layers)
+    end
 end

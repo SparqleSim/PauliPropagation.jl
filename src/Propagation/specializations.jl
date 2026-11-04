@@ -73,6 +73,50 @@ function paulirotationproduct(gate_mask::TT, pstr::TT) where TT
     return new_pstr, sign
 end
 
+### Layers of gates
+
+"""
+    applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params; thread=true, kwargs...)
+
+Overload of `applymergetruncate!` for a `GateLayer` on Pauli strings, which applies the layer in one pass over the sum where it can.
+A layer of gates that never create duplicate Pauli strings, by `requiresmerging`, such as Clifford gates and Pauli noise, visits every Pauli string once and applies the gates acting on it there, from lookups built from the transfer maps of the gates on their qubits.
+A layer of Pauli rotations, T gates and frozen rotations among them, or of other gates on different qubits, is applied class by class.
+A class is a set of Pauli strings that the gates of the layer map into each other, so that Pauli strings of different classes never merge.
+For example, for the layer of `PauliRotation(:X, 1)` and `PauliRotation([:Z, :Z], [2, 3])`, the Pauli strings ZXI, YXI, ZYZ and YYZ form a class on which both rotations act, and IIZ, XIZ, IZI and XZI form a class on which neither acts.
+The Pauli strings of a class are gathered into a small sum of their own, to which the gates acting on them are applied with `applymergetruncate!`, one at a time.
+The classes of gates other than rotations are found from the transfer maps of the gates on their qubits, and a gate without a transfer map of its own gets one by being applied to every Pauli string on its qubits, with the keywords of the propagation.
+Such a gate is applied to one class at a time, so what it does to a Pauli string must not depend on the rest of the sum; a gate for which it does opts out with `PropagationBase._appliesbyclass`.
+Truncation is applied after every gate acting on a Pauli string and at the end of the layer, as when the gates are applied one after the other to Pauli strings within the truncations.
+Unlike the gates one after the other, a layer applied class by class also merges and truncates the Pauli strings that none of its gates act on.
+A `VectorPauliSum` is left without duplicate Pauli strings, but unsorted.
+Other layers, such as layers of imaginary-time rotations, which normalize the whole sum, sums with coefficients that a layer is not applied to in one pass, and truncation by `min_rel_coeff` apply the gates one after the other.
+"""
+function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params;
+    min_rel_coeff=nothing, kwargs...)
+
+    apply! = _layerroute(layer, prop_cache, min_rel_coeff)
+    # past a barrier to inference, so that a layer compiles only the route it takes
+    Base.inferencebarrier(apply!)(layer, prop_cache, params; min_rel_coeff, kwargs...)
+    return
+end
+
+# The function that applies the layer: with one visit of every Pauli string, as rotations class by class, as other gates
+# class by class, or gate by gate. A truncation by `min_rel_coeff` follows the largest coefficient after every gate, so
+# it takes the gates one by one.
+function _layerroute(layer::GateLayer, prop_cache::AbstractPropagationCache, min_rel_coeff)
+    if !isnothing(min_rel_coeff)
+        return PropagationBase._applygatesonebyone!
+    elseif _hasmappath(layer, prop_cache)
+        return _applymap!
+    elseif _hasrotationpath(layer, prop_cache)
+        return _applyrotationlayer!
+    elseif _hasclasspath(layer, prop_cache)
+        return _applyclasses!
+    else
+        return PropagationBase._applygatesonebyone!
+    end
+end
+
 ### Imaginary Pauli rotations
 
 """
@@ -350,6 +394,9 @@ Apply a `FrozenGate` through the `applytoall!` implementation of its wrapped gat
 function PropagationBase.applytoall!(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache; kwargs...)
     return applytoall!(gate.gate, prop_cache, gate.parameter; kwargs...)
 end
+
+# a frozen gate requires merging if its wrapped gate does
+PropagationBase.requiresmerging(gate::FrozenGate, prop_cache::AbstractPauliPropagationCache) = requiresmerging(gate.gate, prop_cache)
 
 ### Gates that branch by a fixed Pauli string
 

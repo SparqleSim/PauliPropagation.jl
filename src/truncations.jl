@@ -51,31 +51,20 @@ function truncateweight(pstr, max_weight::Real)
 end
 
 
-## Truncations on the coefficient:
-
-# Truncations on unsuitable coefficient types defaults to false.
-function truncatemincoeff(coeff, min_abs_coeff::Real)
-    return false
-end
-
-
-# For general number types, simply use `abs`.
-function truncatemincoeff(coeff::Number, min_abs_coeff::Real)
-    return abs(coeff) < min_abs_coeff
-end
-
+## Truncations on the coefficient: `truncatemincoeff` of PropagationBase, which defaults to false on unsuitable
+## coefficient types and to `abs` on numbers
 
 # Complex specialization: `abs2` avoids the overflow-safe `hypot` inside `abs`.
 # Is ~5-12x cheaper and SIMD-able. 
 # For real coefficients `abs` is a single instruction, so only `Complex` benefits.
-function truncatemincoeff(coeff::Complex, min_abs_coeff::Real)
+function PropagationBase.truncatemincoeff(coeff::Complex, min_abs_coeff::Real)
     return abs2(coeff) < min_abs_coeff^2
 end
 
 
 # Delegating to the `truncatemincoeff` method for the wrapped coefficient's type.
 # If the `PathProperties` type does not have a `coeff` field, it defaults to `false`.
-function truncatemincoeff(path_property::PProp, min_abs_coeff::Real) where {PProp<:PathProperties}
+function PropagationBase.truncatemincoeff(path_property::PProp, min_abs_coeff::Real) where {PProp<:PathProperties}
     if hasfield(PProp, :coeff)
         return truncatemincoeff(path_property.coeff, min_abs_coeff)
     else

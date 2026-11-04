@@ -146,7 +146,7 @@ function _pseudothetas(circ, thetas)
     pseudo_thetas = similar(thetas, Float64)
     theta_idx = 1
     for gate in circ
-        if isa(gate, ParametrizedGate)
+        if isparametrized(gate)
             split_prob = _calculatesplitprobabilities(gate, thetas[theta_idx])
             pseudo_thetas[theta_idx] = asin(sqrt(split_prob))
             theta_idx += 1

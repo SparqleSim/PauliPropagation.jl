@@ -40,3 +40,11 @@ _truncate!(::Nothing, thing; thread::Bool=true) = thing
 # Truncations on unsuitable coefficient types default to false.
 truncatemincoeff(coeff, min_abs_coeff::Real) = false
 truncatemincoeff(coeff::Number, min_abs_coeff::Real) = abs(coeff) < min_abs_coeff
+
+"""
+    _coefficientcutoff(truncfunc)
+
+Returns the magnitude below which `truncfunc` truncates every coefficient, as `truncatemincoeff` measures it.
+The default of zero, for a function the library did not build, promises nothing.
+"""
+_coefficientcutoff(truncfunc) = 0.0

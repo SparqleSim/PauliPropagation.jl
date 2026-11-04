@@ -134,6 +134,7 @@ A few tips to get the most performance out of PauliPropagation.jl, in particular
 - Maximize multithreading capabilities by wrapping your Pauli sum (ideally `VectorPauliSum`) into the `MultiPauliSum`.
 - When propagating gate by gate or layer by layer, consider using the in-place `propagate!(...)` function that mutates the incoming `PauliSum`/`VectorPauliSum`.
 - For maximal performance that may yield slightly different results to default behavior, you can import our `PauliPropagation.Performance` module and run `Performance.propagate!(...)`.
+- Long sequences of commuting Pauli rotations can be packed into one layer via `PauliRotationLayer` and propagate more quickly. See more in the Features section below.
 
 Take a look at the `examples/advanced_performance.ipynb` notebook for more details ([link](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/advanced_performance.ipynb)).
  
@@ -147,14 +148,27 @@ Take a look at the `examples/advanced_performance.ipynb` notebook for more detai
 
 All of the above can be addressed by writing the additional missing code due to the nice extensibility of Julia.
 
-## Automatic Gradients
+## Features 
+
+### Automatic Gradients
 `PauliPropagation.jl` has always been automatically differentiable via standard Julia libraries such as `ForwardDiff.jl` and `ReverseDiff.jl`. Starting version `0.8`, we provide a custom `rewindgradient(...)`  that only requires two propagation through the circuit and at most double the memory to compute an entire gradient vector. It is compatible with all truncations that are supported by `propagate()`. See the `8-automatic-differentiation.ipynb` notebook in the example folder ([link](https://github.com/SparqleSim/PauliPropagation.jl/blob/main/examples/8-automatic-differentiation.ipynb)). This design is adapted from the publication ``Backpropagating Pauli Propagation'' by Lin et al. (arXiv:2607.15184).
 
-## Randomized Evolution
+### Layers of Commuting Rotations
+Starting with version `0.9`, Pauli rotations that commute with each other can be grouped into a layer. Pauli sums propagate through a layer in one pass rather than rotation by rotation, which can be considerably faster for large layers. An existing circuit with `PauliRotation` gates converts to a circuit containing `GateLayer`s via `tolayers`:
+
+```julia
+layered_circuit, layered_parameters = tolayers(circuit, parameters)
+pauli_sum = propagate(layered_circuit, init_pauli_sum, layered_parameters; max_weight, min_abs_coeff)
+```
+
+Layers can also be built directly with `PauliRotationLayer`. **Important:** the parameter of a layer is a vector of all the parameters of the individual `PauliRotation` gates. Thus a valid parameter vector for a circuit `[PauliRotation(:X, 1), PauliRotationLayer([PauliRotation(:Z, 1), PauliRotation(:Z, 2)]), PauliRotation(:X, 2)]` would be `[0.2, [-1.2, 0.9], 2.4]`.
+
+
+### Randomized Evolution
 Starting with version `0.8`, we provide an `mcpropagate(...; max_size)` function. It propagates as usual, truncates if you pass truncation parameters, and when the number of terms exceeds `max_size`, it resamples down to a `resampling_size` (default `max_size / 2`) via an unbiased procedure. This in principle allows one to arbitrarily trade memory for averaging time, but note that all coefficients become increasingly large and inaccurate the more often it must resample. See the `mcpropagate.ipynb` notebook in the examples folder.
 
 
-## Counting Pauli Strings
+### Counting Pauli Strings
 To inspect how many Pauli strings a propagation creates, prefix any expression that propagates with `@countpaulis` or `@peakpaulis`:
 
 ```julia
@@ -164,7 +178,7 @@ peak = @peakpaulis rewindgradient(circuit, observable, parameters, overlapwithze
 
 `@countpaulis` returns the number of Pauli strings after every applied gate (after merging and truncating), and `@peakpaulis` returns only the maximum. Both work with any function that propagates internally, including `propagate(...)`, `propagate!(...)`, `mcpropagate(...)`, and `rewindgradient(...)`. Importantly, tracking a function that multi-threads over parallel propagations can yield unexpected results.
 
-## Yao.jl integration
+### Yao.jl integration
 
 Load `Yao` or `YaoBlocks` together with `PauliPropagation` to convert observables to Yao blocks:
 
