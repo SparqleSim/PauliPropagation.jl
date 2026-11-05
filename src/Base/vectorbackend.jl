@@ -144,9 +144,15 @@ function filterviaflags!(prop_cache::AbstractPropagationCache; thread::Bool=true
     filterviaflags!(active_flags, active_indices, output_terms, output_coefficients, input_terms, input_coefficients; thread)
 
     swapsums!(prop_cache)
-    setactivesize!(prop_cache, lastactiveindex(prop_cache))
+    n_kept = lastactiveindex(prop_cache)
+    setactivesize!(prop_cache, n_kept)
 
-    new_sorted_prefix = old_sorted_prefix == 0 ? 0 : active_indices[old_sorted_prefix]
+    # a sorted prefix that covers every active term, as after every merge by sorting,
+    # keeps the count just read, which is the same prefix-sum element; a shorter one is copied out instead of
+    # indexed, so no device element is read by scalar indexing here
+    new_sorted_prefix = old_sorted_prefix == 0 ? 0 :
+                        old_sorted_prefix == length(active_indices) ? n_kept :
+                        _readelement(indices(prop_cache), old_sorted_prefix)
     setsortedprefix!(mainsum(prop_cache), new_sorted_prefix)
     return prop_cache
 end
