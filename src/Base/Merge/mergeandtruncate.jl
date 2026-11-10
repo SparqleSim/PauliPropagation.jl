@@ -102,12 +102,12 @@ end
 # head by rank when the head is non-empty, the array holds at least this many terms and the tail is
 # at most this fraction of them; below that a sort of everything is as cheap as the tail sort and
 # the two batched searches.
-const _GPU_TAILMERGE_MAX_TAILRATIO = 0.5
-const _GPU_TAILMERGE_MIN_TOTAL = 1 << 14
+const _RANKTAILMERGE_MAX_TAILRATIO = 0.5
+const _RANKTAILMERGE_MIN_TOTAL = 1 << 14
 
-_gputailmergepays(n_sorted::Int, n_total::Int) =
-    n_sorted > 0 && n_total > n_sorted && n_total >= _GPU_TAILMERGE_MIN_TOTAL &&
-    (n_total - n_sorted) <= _GPU_TAILMERGE_MAX_TAILRATIO * n_total
+_ranktailmergepays(n_sorted::Int, n_total::Int) =
+    n_sorted > 0 && n_total > n_sorted && n_total >= _RANKTAILMERGE_MIN_TOTAL &&
+    (n_total - n_sorted) <= _RANKTAILMERGE_MAX_TAILRATIO * n_total
 
 # The array counterpart of the CPU tail merge, written in array kernels so the arrays may live
 # anywhere. The sorted head stays in place; the tail is sorted by a permutation and gathered into
@@ -117,7 +117,7 @@ _gputailmergepays(n_sorted::Int, n_total::Int) =
 # so a head term goes before an equal tail term and the two scatters into the auxiliary arrays never
 # collide. Only the sort is replaced; the runs of equal terms are reduced and truncated after, as
 # before, and since the result is sorted its prefix is set without the readback of `sortterms!`.
-function _gputailsortmerge!(prop_cache::AbstractPropagationCache, n_sorted::Int, n_total::Int; thread::Bool=true)
+function _ranktailmerge!(prop_cache::AbstractPropagationCache, n_sorted::Int, n_total::Int; thread::Bool=true)
     t = n_total - n_sorted
     _ensurecapacity!(prop_cache, n_total + t)        # room to park the sorted tail above the output range
     main = mainsum(prop_cache)
@@ -177,8 +177,8 @@ function _mergeandtruncatebysorting!(truncfunc::F, prop_cache::AbstractPropagati
         return _sortedtailmergeandtruncate!(truncfunc, prop_cache; thread)
     end
 
-    if !on_cpu && _gputailmergepays(n_sorted, n_total)
-        _gputailsortmerge!(prop_cache, n_sorted, n_total; thread)
+    if !on_cpu && _ranktailmergepays(n_sorted, n_total)
+        _ranktailmerge!(prop_cache, n_sorted, n_total; thread)
         _deduplicateflagged!(prop_cache; thread)
         setsortedprefix!(mainsum(prop_cache), activesize(prop_cache))
         return _truncate!(truncfunc, prop_cache; thread)

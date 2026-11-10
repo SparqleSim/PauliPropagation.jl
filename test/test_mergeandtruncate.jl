@@ -167,7 +167,7 @@ end
 # the array route of `_mergeandtruncatebysorting!`, taken on a `Vector` cache although it is on the CPU
 function mat_arraytailmergeandtruncate!(truncfunc, prop_cache; thread)
     n_sorted, n_total = MAT_PB._sortedandactive(prop_cache)
-    MAT_PB._gputailsortmerge!(prop_cache, n_sorted, n_total; thread)
+    MAT_PB._ranktailmerge!(prop_cache, n_sorted, n_total; thread)
     MAT_PB._deduplicateflagged!(prop_cache; thread)
     MAT_PB.setsortedprefix!(MAT_PB.mainsum(prop_cache), MAT_PB.activesize(prop_cache))
     return MAT_PB._truncate!(truncfunc, prop_cache; thread)
@@ -245,7 +245,7 @@ end
         prop_cache = mat_headtailcache(20, head_terms, head_coeffs, tail_terms, tail_coeffs)
         input_terms, input_coeffs = copy(MAT_PB.terms(prop_cache)), copy(coefficients(prop_cache))
 
-        MAT_PB._gputailsortmerge!(prop_cache, n, n_total; thread)
+        MAT_PB._ranktailmerge!(prop_cache, n, n_total; thread)
 
         # the merge alone leaves the active range sorted, with the same terms and coefficients
         @test MAT_PB.activesize(prop_cache) == n_total
@@ -263,16 +263,16 @@ end
 
     # a head term goes before an equal tail term
     prop_cache = mat_headtailcache(20, UInt32[1, 2, 3], [1.0, 2.0, 3.0], UInt32[3, 1, 2], [30.0, 10.0, 20.0])
-    MAT_PB._gputailsortmerge!(prop_cache, 3, 6; thread=false)
+    MAT_PB._ranktailmerge!(prop_cache, 3, 6; thread=false)
     @test MAT_PB.terms(prop_cache) == UInt32[1, 1, 2, 2, 3, 3]
     @test coefficients(prop_cache) == [1.0, 10.0, 2.0, 20.0, 3.0, 30.0]
 
     # the gate at its boundaries: an empty head, no tail, the smallest array, the longest tail
-    min_total = MAT_PB._GPU_TAILMERGE_MIN_TOTAL
-    @test !MAT_PB._gputailmergepays(0, min_total)
-    @test !MAT_PB._gputailmergepays(min_total, min_total)
-    @test !MAT_PB._gputailmergepays(min_total ÷ 2, min_total - 1)
-    @test MAT_PB._gputailmergepays(min_total ÷ 2, min_total)
-    @test !MAT_PB._gputailmergepays(min_total ÷ 2 - 1, min_total)
-    @test MAT_PB._gputailmergepays(min_total, 2min_total)
+    min_total = MAT_PB._RANKTAILMERGE_MIN_TOTAL
+    @test !MAT_PB._ranktailmergepays(0, min_total)
+    @test !MAT_PB._ranktailmergepays(min_total, min_total)
+    @test !MAT_PB._ranktailmergepays(min_total ÷ 2, min_total - 1)
+    @test MAT_PB._ranktailmergepays(min_total ÷ 2, min_total)
+    @test !MAT_PB._ranktailmergepays(min_total ÷ 2 - 1, min_total)
+    @test MAT_PB._ranktailmergepays(min_total, 2min_total)
 end
