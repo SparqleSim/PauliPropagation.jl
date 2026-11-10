@@ -818,4 +818,7 @@ end
         @test collect(PB.terms(cache)) == terms[kept]
         @test collect(PB.coefficients(cache)) == coefficients_all[kept]
     end
+
+    # the read behind the new prefix takes the index within the array it is given, a view included
+    @test PB._readelement(view(collect(11:20), 4:8), 2) == 15
 end

@@ -17,9 +17,9 @@ _iscpuarray(::AbstractArray) = true
 
 # one element of an array, for host code that needs a value the device wrote. An
 # array elsewhere than the CPU is copied from instead of indexed, so the read needs no scalar-indexing grant
-# from any backend; a CPU array is indexed as before.
+# from any backend; a CPU array is indexed as before. A view is where its parent is.
 function _readelement(array::AbstractArray, index::Int)
-    _iscpuarray(array) && return array[index]
+    _iscpuarray(parent(array)) && return array[index]
     element = Vector{eltype(array)}(undef, 1)
     copyto!(element, 1, array, index, 1)
     return element[1]

@@ -44,7 +44,7 @@ function Base.show(io::IO, prop_cache::CUDAVectorPauliPropagationCache)
     println(io, "CUDA VectorPauliPropagationCache with active size $(length(prop_cache)) (capacity: $(capacity(prop_cache)))")
 end
 
-# TODO: This function is apparently
+# a scalar read under a grant; the generic method copies the element out instead and needs none
 function PauliPropagation.lastactiveindex(prop_cache::CUDAVectorPauliPropagationCache)
     active_size = PP.activesize(prop_cache)
     if active_size == 0
