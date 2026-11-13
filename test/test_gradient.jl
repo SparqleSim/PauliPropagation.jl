@@ -405,4 +405,27 @@ end
         end
     end
 
+    @testset "Layer of rotations acting on different numbers of limbs" begin
+        # above 128 qubits a rotation on at most two 64-bit limbs gets a rule for those limbs and one on more limbs a
+        # rule for the whole Pauli string, so the rules of this layer have two types
+        nq = 144
+        psum = PauliSum(nq)
+        for qind in 1:nq-1
+            add!(psum, [:Z, :Z], [qind, qind + 1], 1.0)
+            add!(psum, [:X, :X], [qind, qind + 1], 0.7)
+        end
+        rotations = Gate[PauliRotation([:X, :Y, :X], [1, 40, 80]), PauliRotation([:Y, :X], [2, 3]), PauliRotation([:Y, :X], [100, 101])]
+        params = [0.3, -0.2, 0.5]
+        layers, layer_params = torotationlayers(rotations, params)
+        @test length(layers) == 1
+
+        for obs in (VectorPauliSum(psum), MultiPauliSum(VectorPauliSum(psum), 4))
+            expec, grad = rewindgradient(layers, obs, layer_params, overlapwithzero; min_abs_coeff=0.0)
+            ref_expec, ref_grad = rewindgradient(rotations, obs, params, overlapwithzero; min_abs_coeff=0.0)
+            @test expec ≈ ref_expec rtol = 1e-12
+            @test reduce(vcat, grad) ≈ ref_grad rtol = 1e-12
+            @test any(!iszero, ref_grad)
+        end
+    end
+
 end
