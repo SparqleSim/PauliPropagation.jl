@@ -800,3 +800,25 @@ end
     mult!(multi_cache, 2.0; thread=false)
     @test PauliSum(multi_cache) == PauliSum(16, Dict{UInt32,Float64}(1 => 2.0, 2 => 4.0))
 end
+
+@testset "filterviaflags! keeps the sorted prefix of the kept terms" begin
+    # sorted, duplicate-free terms with a chosen sorted prefix p; the pass keeps |coefficient| > threshold
+    rng = Xoshiro(7)
+    terms = sort(unique(rand(rng, UInt32(0):UInt32(2^18 - 1), 1000)))
+    n = length(terms)
+    coefficients_all = randn(rng, n)
+    for (p, threshold) in ((0, 0.5), (n, 0.5), (n ÷ 3, 0.5), (n ÷ 3, 1e9), (n, 1e9), (n ÷ 3, -1.0))
+        kept = abs.(coefficients_all) .> threshold
+        cache = PropagationCache(VectorPauliSum(9, copy(terms), copy(coefficients_all)))
+        PB.setsortedprefix!(mainsum(cache), p)
+        PB.flag!((term, coefficient) -> abs(coefficient) > threshold, cache)
+        PB.filterviaflags!(cache)
+        @test PB.activesize(cache) == count(kept)
+        @test PB.sortedprefix(mainsum(cache)) == count(kept[1:p])
+        @test collect(PB.terms(cache)) == terms[kept]
+        @test collect(PB.coefficients(cache)) == coefficients_all[kept]
+    end
+
+    # the read behind the new prefix takes the index within the array it is given, a view included
+    @test PB._readelement(view(collect(11:20), 4:8), 2) == 15
+end
