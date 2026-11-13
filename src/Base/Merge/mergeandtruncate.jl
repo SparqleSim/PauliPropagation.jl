@@ -98,14 +98,90 @@ function _mergeandtruncate!(::ArrayStorage, truncfunc::F, prop_cache::AbstractPr
     return _mergeandtruncatebysorting!(truncfunc, prop_cache, n_sorted, n_total; thread)
 end
 
+# Elsewhere than the CPU, `_mergeandtruncatebysorting!` sorts the tail alone and merges it into the
+# head by rank when the head is non-empty, the array holds at least this many terms and the tail is
+# at most this fraction of them; below that a sort of everything is as cheap as the tail sort and
+# the two batched searches.
+const _RANKTAILMERGE_MAX_TAILRATIO = 0.5
+const _RANKTAILMERGE_MIN_TOTAL = 1 << 14
+
+_ranktailmergepays(n_sorted::Int, n_total::Int) =
+    n_sorted > 0 && n_total > n_sorted && n_total >= _RANKTAILMERGE_MIN_TOTAL &&
+    (n_total - n_sorted) <= _RANKTAILMERGE_MAX_TAILRATIO * n_total
+
+# The array counterpart of the CPU tail merge, written in array kernels so the arrays may live
+# anywhere. The sorted head stays in place; the tail is sorted by a permutation and gathered into
+# the auxiliary arrays above the active range, whose capacity is raised by the tail length first.
+# Head and tail are then merged by rank: a batched binary search gives every head term the number
+# of tail terms below it and another gives every tail term the number of head terms at or below it,
+# so a head term goes before an equal tail term and the two scatters into the auxiliary arrays never
+# collide. Only the sort is replaced; the runs of equal terms are reduced and truncated after, as
+# before, and since the result is sorted its prefix is set without the readback of `sortterms!`.
+function _ranktailmerge!(prop_cache::AbstractPropagationCache, n_sorted::Int, n_total::Int; thread::Bool=true)
+    t = n_total - n_sorted
+    _ensurecapacity!(prop_cache, n_total + t)        # room to park the sorted tail above the output range
+    main = mainsum(prop_cache)
+    terms_full = terms(main)
+    coeffs_full = coefficients(main)
+    aux_t = terms(auxsum(prop_cache))
+    aux_c = coefficients(auxsum(prop_cache))
+    idx = indices(prop_cache)
+
+    head_t = view(terms_full, 1:n_sorted)
+    tail_t = view(terms_full, n_sorted+1:n_total)
+    tail_c = view(coeffs_full, n_sorted+1:n_total)
+
+    perm = view(idx, 1:t)
+    AK.sortperm!(perm, tail_t; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    park_t = view(aux_t, n_total+1:n_total+t)
+    park_c = view(aux_c, n_total+1:n_total+t)
+    AK.foreachindex(perm; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do j
+        @inbounds begin
+            p = perm[j]
+            park_t[j] = tail_t[p]
+            park_c[j] = tail_c[p]
+        end
+    end
+
+    # stable merge ranks: a head term goes before an equal tail term
+    head_rank = view(idx, 1:n_sorted)                 # perm is consumed; idx is free to reuse
+    AK.searchsortedfirst!(head_rank, park_t, head_t; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+    tail_rank = view(idx, n_sorted+1:n_total)
+    AK.searchsortedlast!(tail_rank, head_t, park_t; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK)
+
+    AK.foreachindex(head_rank; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do i
+        @inbounds begin
+            pos = i + head_rank[i] - 1
+            aux_t[pos] = terms_full[i]
+            aux_c[pos] = coeffs_full[i]
+        end
+    end
+    AK.foreachindex(tail_rank; max_tasks=maxtasks(thread), min_elems=_MIN_ELEMS_PER_TASK) do j
+        @inbounds begin
+            pos = j + tail_rank[j]
+            aux_t[pos] = park_t[j]
+            aux_c[pos] = park_c[j]
+        end
+    end
+    swapsums!(prop_cache)
+    return prop_cache
+end
+
 # The tail merge and the one-walk reduction of the sorted array are scalar code, so an array
-# elsewhere than the CPU sorts everything, reduces the runs of equal terms in flagging passes, and
-# truncates after.
+# elsewhere than the CPU sorts the tail and merges it by rank when that pays and sorts everything
+# otherwise, reduces the runs of equal terms in flagging passes, and truncates after.
 function _mergeandtruncatebysorting!(truncfunc::F, prop_cache::AbstractPropagationCache, n_sorted::Int, n_total::Int; thread::Bool=true) where {F}
     on_cpu = _iscpuarray(prop_cache)
 
     if on_cpu && _tailmergepays(n_sorted, n_total)
         return _sortedtailmergeandtruncate!(truncfunc, prop_cache; thread)
+    end
+
+    if !on_cpu && _ranktailmergepays(n_sorted, n_total)
+        _ranktailmerge!(prop_cache, n_sorted, n_total; thread)
+        _deduplicateflagged!(prop_cache; thread)
+        setsortedprefix!(mainsum(prop_cache), activesize(prop_cache))
+        return _truncate!(truncfunc, prop_cache; thread)
     end
 
     sortterms!(prop_cache; thread)
