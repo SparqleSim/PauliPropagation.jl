@@ -405,6 +405,30 @@ end
         end
     end
 
+    @testset "Rotation layers with a term budget" begin
+        nq = 8
+        layers = Gate[PauliRotationLayer(symbols, qinds) for _ in 1:4 for (symbols, qinds) in ((:X, 1:nq), ([:Z, :Z], staircasetopology(nq)))]
+        params = [fill(0.2 + 0.05 * k, length(layer.gates)) for (k, layer) in enumerate(layers)]
+        obs = PauliString(nq, [:Z, :Z], [4, 5])
+        max_terms = 40
+        @test length(propagate(layers, obs, params; min_abs_coeff=0.0)) > 2 * max_terms
+
+        for psum in (VectorPauliSum(obs), PauliSum(obs), MultiPauliSum(VectorPauliSum(obs), 4))
+            exact_expec, exact_grad = rewindgradient(layers, psum, params, overlapwithzero; min_abs_coeff=0.0)
+
+            # a budget that the sum stays within changes nothing
+            expec, grad = rewindgradient(layers, psum, params, overlapwithzero; min_abs_coeff=0.0, max_terms=4^nq)
+            @test expec == exact_expec && grad == exact_grad
+
+            # and one that truncates is applied as `propagate` applies it, in both sweeps
+            expec, grad = rewindgradient(layers, psum, params, overlapwithzero; min_abs_coeff=0.0, max_terms)
+            @test expec ≈ overlapwithzero(propagate(layers, psum, params; min_abs_coeff=0.0, max_terms))
+            @test expec != exact_expec
+            @test length(grad) == length(params) && all(entry -> all(isfinite, entry), grad)
+            @test any(entry -> any(!iszero, entry), grad)
+        end
+    end
+
     @testset "Layer of rotations acting on different numbers of limbs" begin
         # above 128 qubits a rotation on at most two 64-bit limbs gets a rule for those limbs and one on more limbs a
         # rule for the whole Pauli string, so the rules of this layer have two types

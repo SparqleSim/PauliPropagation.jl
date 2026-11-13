@@ -90,14 +90,34 @@ Truncation is applied after every gate acting on a Pauli string and at the end o
 Unlike the gates one after the other, a layer applied class by class also merges and truncates the Pauli strings that none of its gates act on.
 A `VectorPauliSum` is left without duplicate Pauli strings, but unsorted.
 Other layers, such as layers of imaginary-time rotations, which normalize the whole sum, sums with coefficients that a layer is not applied to in one pass, and truncation by `min_rel_coeff` apply the gates one after the other.
+A term budget `max_terms` is applied once, after a layer that is applied class by class, and after every gate of a layer whose gates are applied one after the other.
+A layer applied with one visit of every Pauli string creates none, and applies no term budget, like its gates one after the other.
 """
 function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params;
-    min_rel_coeff=nothing, kwargs...)
+    min_rel_coeff=nothing, max_terms=nothing, max_terms_rtol::Real=0.05, kwargs...)
 
     apply! = _layerroute(layer, prop_cache, min_rel_coeff)
     # past a barrier to inference, so that a layer compiles only the route it takes
-    Base.inferencebarrier(apply!)(layer, prop_cache, params; min_rel_coeff, kwargs...)
+    if apply! === PropagationBase._applygatesonebyone!
+        # the gates apply the term budget themselves
+        Base.inferencebarrier(apply!)(layer, prop_cache, params; min_rel_coeff, max_terms, max_terms_rtol, kwargs...)
+    else
+        Base.inferencebarrier(apply!)(layer, prop_cache, params; min_rel_coeff, kwargs...)
+        if apply! !== _applymap!
+            _truncatetoterms!(prop_cache, max_terms, max_terms_rtol; kwargs...)
+        end
+    end
     return
+end
+
+# A term budget counts the Pauli strings of the whole sum, so it follows the pass over a layer, which hands its
+# keywords on to the classes.
+_truncatetoterms!(prop_cache, ::Nothing, max_terms_rtol; kwargs...) = prop_cache
+function _truncatetoterms!(prop_cache, max_terms, max_terms_rtol; kwargs...)
+    if length(prop_cache) > max_terms
+        truncate!(prop_cache; max_terms, max_terms_rtol, kwargs...)
+    end
+    return prop_cache
 end
 
 # The function that applies the layer: with one visit of every Pauli string, as rotations class by class, as other gates

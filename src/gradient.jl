@@ -129,14 +129,18 @@ end
 # Records the gradient of a GateLayer: the derivatives by the parameters of its rotations.
 # A layer that `applymergetruncate!` applies as rotations class by class is undone in one pass, which adds up the
 # gradients of its rotations, and any other layer has its gates undone one by one.
-function _undostep!(layer::GateLayer, state::_BackwardSweepState, params; min_rel_coeff=nothing, kwargs...)
-    undo! = if _layerroute(layer, state.cache, min_rel_coeff) === _applyrotationlayer!
-        _undolayer!
+function _undostep!(layer::GateLayer, state::_BackwardSweepState, params;
+    min_rel_coeff=nothing, max_terms=nothing, max_terms_rtol::Real=0.05, kwargs...)
+
+    # past a barrier to inference, so that a layer compiles only the way it is undone, with the term budget where
+    # `applymergetruncate!` applies it: after the layer in one pass, or after every gate
+    rotation_grads = if _layerroute(layer, state.cache, min_rel_coeff) === _applyrotationlayer!
+        grads = Base.inferencebarrier(_undolayer!)(layer, state.cache, params; min_rel_coeff, kwargs...)
+        _truncatetoterms!(state.cache, max_terms, max_terms_rtol; kwargs...)
+        grads
     else
-        _undogatesonebyone!
+        Base.inferencebarrier(_undogatesonebyone!)(layer, state.cache, params; min_rel_coeff, max_terms, max_terms_rtol, kwargs...)
     end
-    # past a barrier to inference, so that a layer compiles only the way it is undone
-    rotation_grads = Base.inferencebarrier(undo!)(layer, state.cache, params; min_rel_coeff, kwargs...)
 
     state.param_idx += 1
     state.grad[state.param_idx] = _layergradient(params, rotation_grads)
