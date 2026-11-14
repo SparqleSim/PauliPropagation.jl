@@ -289,11 +289,13 @@ end
         end
         params = [0.2 + 0.1 * k for k in 1:countparameters(circuit)]
 
-        # a custom truncation that drops what min_abs_coeff drops gives the same gradient, in both sweeps
+        # a custom truncation that drops what min_abs_coeff drops gives the same gradient, in both sweeps, when the
+        # backward sweep keeps no Pauli string for its dual
         below_threshold(pstr, coeff::Float64) = abs(coeff) < 1e-3
         for psum in (VectorPauliSum(PauliString(nq, :Z, 2)), PauliSum(PauliString(nq, :Z, 2)))
-            expec, grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=0.0, customtruncfunc=below_threshold)
-            ref_expec, ref_grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=1e-3)
+            expec, grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=0.0, customtruncfunc=below_threshold,
+                keep_rel_dual=Inf)
+            ref_expec, ref_grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=1e-3, keep_rel_dual=Inf)
             untruncated_grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=0.0)[2]
             @test expec == ref_expec
             @test grad == ref_grad
@@ -303,6 +305,76 @@ end
             rel_grad = rewindgradient(circuit, psum, params, overlapwithzero; min_abs_coeff=0.0, min_rel_coeff=1e-14)[2]
             @test rel_grad ≈ untruncated_grad
         end
+    end
+
+    @testset "keep_rel_dual keeps Pauli strings with a large dual" begin
+        # A backward sweep after the same forward sweep, truncated by `backward_truncation` on the coefficients of the
+        # operator alone. With keep_rel_dual = Inf, rewindgradient truncates as it does, and with keep_rel_dual = 0, it
+        # drops nothing that the coefficients would, as one that truncates nothing.
+        function plainbackwardgradient(circuit, psum, params, backward_truncation; truncation...)
+            cache = PropagationCache(deepcopy(psum))
+            propagate!(circuit, cache, params; truncation...)
+            dual_cache = PP.wrapdual(cache, overlapwithzero)
+            undo_circuit, undo_params = PP._preparecircuit(circuit, params, false)
+            state = PP._BackwardSweepState(dual_cache, PP._zerogradient(undo_params), 0)
+            PB._propagate!(PP._undostep!, undo_circuit, state, undo_params; backward_truncation...)
+            return state.grad
+        end
+
+        # Inf keeps nothing for its dual, 0 keeps everything, and the default keeps some of what the coefficients drop
+        function checkkeepreldual(circuit, psum, params; truncation...)
+            expec, kept = rewindgradient(circuit, psum, params, overlapwithzero; truncation...)
+            none_expec, none_kept = rewindgradient(circuit, psum, params, overlapwithzero; truncation..., keep_rel_dual=Inf)
+            all_expec, all_kept = rewindgradient(circuit, psum, params, overlapwithzero; truncation..., keep_rel_dual=0.0)
+            plain = plainbackwardgradient(circuit, psum, params, truncation; truncation...)
+            reference = plainbackwardgradient(circuit, psum, params, (; min_abs_coeff=0.0); truncation...)
+            kept, none_kept, all_kept, plain, reference =
+                (reduce(vcat, grad) for grad in (kept, none_kept, all_kept, plain, reference))
+
+            # the forward sweep does not see keep_rel_dual
+            @test expec == none_expec == all_expec
+            @test none_kept ≈ plain rtol = 1e-12
+            @test all_kept ≈ reference rtol = 1e-12
+            @test !isapprox(plain, reference; rtol=1e-6)
+            @test !isapprox(kept, plain; rtol=1e-6)
+
+            # the threshold is relative to the duals, so an overlap four times as large keeps the same Pauli strings
+            scaled = rewindgradient(circuit, psum, params, pobj -> 4 * overlapwithzero(pobj); truncation...)[2]
+            @test reduce(vcat, scaled) ≈ 4 .* kept rtol = 1e-12
+        end
+
+        nq = 4
+        circuit = Gate[]
+        for _ in 1:3
+            append!(circuit, [PauliRotation(:X, q) for q in 1:nq])
+            append!(circuit, [PauliRotation([:Z, :Z], [q, q + 1]) for q in 1:nq-1])
+            push!(circuit, PauliRotation(:Y, 2))
+            push!(circuit, CliffordGate(:H, [3]))
+        end
+        params = [0.2 + 0.1 * k for k in 1:countparameters(circuit)]
+        for psum in (VectorPauliSum(PauliString(nq, :Z, 2)), PauliSum(PauliString(nq, :Z, 2)))
+            checkkeepreldual(circuit, psum, params; min_abs_coeff=1e-3)
+            # a relative threshold is resolved before every gate, and the dual keeps Pauli strings below it too
+            checkkeepreldual(circuit, psum, params; min_abs_coeff=0.0, min_rel_coeff=1e-3)
+        end
+
+        # layers of rotations undone class by class, and a Clifford gate between them; every Pauli string on the first four
+        # qubits fills classes enough that a layer pass reaches its creation floor
+        nq = 8
+        odd_bonds = [(i, i + 1) for i in 1:2:nq-1]
+        even_bonds = [(i, i % nq + 1) for i in 2:2:nq]
+        layers = Gate[]
+        for _ in 1:2
+            append!(layers, [PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], odd_bonds), CliffordGate(:H, [3]),
+                PauliRotationLayer([:Z, :Z], even_bonds)])
+        end
+        layer_params = [fill(0.25 + 0.05 * k, length(layer.gates)) for (k, layer) in enumerate(layers) if layer isa GateLayer]
+        dense_obs = PauliSum(nq)
+        for code in 0:255
+            symbols = [(:I, :X, :Y, :Z)[((code >> (2 * (q - 1))) & 3) + 1] for q in 1:4]
+            add!(dense_obs, symbols, 1:4, 0.6^count(!=(:I), symbols) * (1 + 0.1 * (code % 7)))
+        end
+        checkkeepreldual(layers, VectorPauliSum(dense_obs), layer_params; min_abs_coeff=1e-2)
     end
 
     @testset "Circuits with rotation layers" begin

@@ -6,7 +6,7 @@
 
 
 """
-    rewindgradient(circuit, psum::AbstractPauliSum, params, overlapfunc; thread=true, kwargs...)
+    rewindgradient(circuit, psum::AbstractPauliSum, params, overlapfunc; thread=true, keep_rel_dual=0.03, kwargs...)
 
 Compute `overlapfunc(propagate(circuit, psum, params; kwargs...))` together with its gradient with
 respect to `params`, in one paired forward and backward sweep costing O(length(circuit)) gate applications.
@@ -19,6 +19,10 @@ Noise channels are not supported, frozen or not, because the backward sweep cann
 `overlapwithpaulisum`.
 `kwargs` are passed on to `applymergetruncate!` in the forward sweep and the operator side of the
 backward sweep.
+The backward sweep keeps a Pauli string that `min_abs_coeff` or `min_rel_coeff` would drop as long as the derivative
+of the expectation by its coefficient is, in absolute value, at least `keep_rel_dual` times the largest such derivative
+over the Pauli strings of the propagated operator.
+With `keep_rel_dual=Inf`, the backward sweep truncates by the coefficients of the operator alone.
 Returns `(expec, grad)`.
 
 This design is adapted from the publication ``Backpropagating Pauli Propagation'' by Lin et al. (arXiv:2607.15184).
@@ -37,13 +41,14 @@ function rewindgradient!(circuit, psum::AbstractPauliSum, params, overlapfunc; k
     return rewindgradient!(circuit, PropagationCache(psum), params, overlapfunc; kwargs...)
 end
 
-function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
+function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc; thread::Bool=true,
+    keep_rel_dual::Real=0.03, customtruncfunc=nothing, kwargs...)
     # check that the only parameterized gates are PauliRotations and layers of them
     @assert all(_isdifferentiable, circuit) "All parameterized gates must be PauliRotations or GateLayers of them."
     @assert all(_isrewindable, circuit) "Noise channels are not supported because they cannot be undone."
 
     # forward sweep: ordinary Heisenberg propagation, exactly as in `propagate`.
-    propagate!(circuit, forward_cache, params; thread, kwargs...)
+    propagate!(circuit, forward_cache, params; thread, customtruncfunc, kwargs...)
     expec = overlapfunc(activesum(forward_cache))
 
     # the dual sum starts from the final operator, with overlapfunc applied to each of its Pauli strings individually,
@@ -54,7 +59,14 @@ function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, 
     heisenberg = false
     undo_circuit, undo_params = _preparecircuit(circuit, params, heisenberg)
     state = _BackwardSweepState(cache, _zerogradient(undo_params), 0)
-    PropagationBase._propagate!(_undostep!, undo_circuit, state, undo_params; thread, _unwrapkwargs(; kwargs...)...)
+
+    # without a nonzero dual coefficient the gradient is zero
+    max_abs_dual = mapreducecoeffs(coeff -> abs(coeff.dual), max, cache; thread)
+    if iszero(max_abs_dual)
+        return expec, state.grad
+    end
+    keep = _KeepAbsDual(keep_rel_dual * max_abs_dual, customtruncfunc)
+    PropagationBase._propagate!(_undostep!, undo_circuit, state, undo_params; thread, customtruncfunc=keep, kwargs...)
 
     return expec, state.grad
 end
@@ -77,14 +89,24 @@ _isdifferentiable(layer::GateLayer) = all(_isdifferentiable, layer.gates)
 # a zero for the gradient by every parameter: a number, or a vector for a layer with one angle per rotation
 _zerogradient(params) = [zero(float(param)) for param in params]
 
-# a helper for customtruncfunc acting on the dual
-function _unwrapkwargs(; customtruncfunc=nothing, kwargs...)
-    if isnothing(customtruncfunc)
-        return (; kwargs...)
-    end
-    opcustomtruncfunc(pstr, coeff) = customtruncfunc(pstr, coeff.coeff)
-    return (; customtruncfunc=opcustomtruncfunc, kwargs...)
+# The custom truncation of the backward sweep, which holds the user's customtruncfunc for the coefficient of the
+# operator. The truncation of coefficients that holds it keeps a Pauli string below its threshold, from `min_abs_coeff`
+# or `min_rel_coeff`, whose dual coefficient is at least `keep_abs_dual` in absolute value. `max_freq` and `max_sins`
+# truncate no number, and the coefficients of the operator are numbers.
+struct _KeepAbsDual{D<:Real,F}
+    keep_abs_dual::D
+    customtruncfunc::F
 end
+
+@inline function (truncation::CoefficientTruncation{<:Real,<:Real,<:Real,<:_KeepAbsDual})(pstr, coeff)
+    keep = truncation.customtruncfunc
+    return (truncatemincoeff(coeff, truncation.min_abs_coeff) && truncatemincoeff(coeff.dual, keep.keep_abs_dual)) ||
+           (!isnothing(keep.customtruncfunc) && keep.customtruncfunc(pstr, coeff.coeff))
+end
+
+# The creation floor of a layer pass reads the coefficient of the operator alone, so it would skip Pauli strings whose
+# dual keeps what they create.
+PropagationBase._coefficientcutoff(::CoefficientTruncation{<:Real,<:Real,<:Real,<:_KeepAbsDual}) = 0.0
 
 
 # State propagated through the backward sweep
@@ -179,8 +201,8 @@ function wrapdual(prop_cache::AbstractPropagationCache, overlapfunc; thread::Boo
 end
 
 # The coefficient of a Pauli string in the operator sum and in the dual sum of the backward sweep. The gates act on both
-# alike, and the truncations read only the coefficient of the operator, so the dual sum keeps exactly the Pauli strings
-# that the operator sum keeps.
+# alike, and a truncation keeps or drops a Pauli string with both coefficients, so the dual sum keeps exactly the Pauli
+# strings that the operator sum keeps.
 struct _DualCoeff{CT,DT}
     coeff::CT
     dual::DT
