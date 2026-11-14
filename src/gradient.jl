@@ -464,7 +464,9 @@ function _undopass!(cache, plan, truncfunc::F, workspace, rotation_grads; thread
         fill!(resize!(scratch.gradient, n_rotations), 0.0)
         resize!(scratch.rules, n_rotations)
         for rotation in 1:n_rotations
-            scratch.rules[rotation] = _GradientRule(plan.rules[rotation], scratch.gradient, rotation)
+            # the element type of the rules, not the type of this one: a layer whose rotations act on different numbers
+            # of limbs has rules of several types, and a vector of abstract element type takes no narrower rule
+            scratch.rules[rotation] = eltype(scratch.rules)(plan.rules[rotation], scratch.gradient, rotation)
         end
     end
 
