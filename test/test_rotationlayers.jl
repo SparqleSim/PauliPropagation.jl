@@ -629,5 +629,31 @@ end
     @test propagate(layers, psum, thetas; max_freq=3.0, min_abs_coeff=1e-6) == propagate(rotations, psum, angles; max_freq=3.0, min_abs_coeff=1e-6)
     for T in (PauliSum, VectorPauliSum)
         @test propagate(layers, T(psum), thetas; min_rel_coeff=1e-3) == propagate(rotations, T(psum), angles; min_rel_coeff=1e-3)
+        # rotations taken one by one apply a term budget after every rotation
+        @test propagate(layers, T(psum), thetas; min_rel_coeff=1e-6, max_terms=30) == propagate(rotations, T(psum), angles; min_rel_coeff=1e-6, max_terms=30)
+    end
+end
+
+@testset "PauliRotationLayer applies a term budget once, after the layer" begin
+    nq = 8
+    rng = MersenneTwister(4)
+    psum = lightandheavypaulisum(rng, nq)
+    layers = repeat([PauliRotationLayer(:X, 1:nq), PauliRotationLayer([:Z, :Z], staircasetopology(nq))], 2)
+    thetas = randomangles(rng, layers)
+    max_terms = 60
+    @test length(propagate(layers[1], psum, thetas[1]; min_abs_coeff=0.0)) > 2 * max_terms
+
+    for (T, heisenberg) in LAYER_TEST_SUMS
+        layered = propagate(layers, T(psum), thetas; heisenberg, min_abs_coeff=0.0, max_terms)
+        # every layer without a budget, and the sum truncated to the budget after it, from the last layer in the
+        # Heisenberg picture
+        reference = T(psum)
+        steps = collect(zip(layers, thetas))
+        for (layer, theta) in (heisenberg ? reverse(steps) : steps)
+            reference = propagate(layer, reference, theta; heisenberg, min_abs_coeff=0.0)
+            reference = truncate!(reference; min_abs_coeff=0.0, max_terms)
+        end
+        @test PauliSum(layered) == PauliSum(reference)
+        @test 1 < length(layered) <= 1.05 * max_terms + 1
     end
 end

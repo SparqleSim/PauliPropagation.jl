@@ -272,6 +272,9 @@ end
     @test layersmatchgates(layers, params, gates, flat_params, VECTOR_TEST_SUMS; max_weight=6.0, min_abs_coeff=0.08)
     # layers of Clifford gates without a weight limit truncate nothing
     @test layersmatchgates([cliffords, entanglers], [], vcat(cliffords.gates, entanglers.gates), Float64[], VECTOR_TEST_SUMS; min_abs_coeff=1e-2)
+    # and no term budget is applied to gates that create no Pauli strings, in a layer or one after the other
+    @test layersmatchgates(layers, params, gates, flat_params, VECTOR_TEST_SUMS; min_abs_coeff=0.0, max_terms=100)
+    @test length(propagate(layers, psum, params; min_abs_coeff=0.0, max_terms=100)) == length(psum)
 end
 
 @testset "the plan of a layer applied in one visit is checked before its entries are read" begin
@@ -361,6 +364,18 @@ end
     @test agreeswithgates(layers, params, gates, flat_params; min_abs_coeff=0.0)
     # with the inputs within the truncations, which the gates one after the other would otherwise truncate at the first gate
     @test agreeswithgates(layers, params, gates, flat_params; max_weight=6.0, min_abs_coeff=0.08)
+
+    # a term budget is applied once, after a layer applied class by class
+    max_terms = 100
+    for (circuit, circuit_params) in (([custom], []), ([transfer_maps], []), ([mixed], params)), (T, heisenberg) in GATELAYER_TEST_SUMS
+        if !heisenberg
+            continue
+        end
+        layered = propagate(circuit, T(psum), circuit_params; min_abs_coeff=0.0, max_terms, max_terms_rtol=0.0)
+        reference = truncate!(propagate(circuit, T(psum), circuit_params; min_abs_coeff=0.0); min_abs_coeff=0.0, max_terms, max_terms_rtol=0.0)
+        @test PauliSum(layered) == PauliSum(reference)
+        @test 1 < length(layered) <= max_terms
+    end
 end
 
 @testset "torotationlayers leaves other gates as they are, and a layer without parametrized gates takes none" begin

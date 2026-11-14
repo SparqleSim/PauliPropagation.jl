@@ -189,8 +189,8 @@ end
 ### TRUNCATE
 
 """
-truncate!(psum::AbstractPauliSum; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread=true, kwargs...)
-truncate!(prop_cache::AbstractPauliPropagationCache; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing, thread=true, kwargs...)
+truncate!(psum::AbstractPauliSum; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, max_terms=nothing, max_terms_rtol=0.05, customtruncfunc=nothing, thread=true, kwargs...)
+truncate!(prop_cache::AbstractPauliPropagationCache; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, min_rel_coeff=nothing, max_terms=nothing, max_terms_rtol=0.05, customtruncfunc=nothing, thread=true, kwargs...)
 
 Truncation function for `AbstractPauliPropagationCache`s that combines multiple truncation criteria.
 The default truncation criteria are:
@@ -198,34 +198,41 @@ The default truncation criteria are:
 - `max_weight`: Truncates Pauli strings with weight (number of non-identity Paulis) above this value.
 - `max_freq`: Truncates Pauli strings with frequency (number of cosine factors in coefficient) above this value.
 - `max_sins`: Truncates Pauli strings with number of sine factors in coefficient above this value.
+- `min_rel_coeff`: Truncates Pauli strings with absolute coefficient below this fraction of the largest one.
+- `max_terms`: Keeps about this many Pauli strings, those with the largest absolute coefficients, within `max_terms_rtol * max_terms` of it (`max_terms_rtol=0` is exact up to ties). See `topkabscoeff`.
 A custom truncation function can be passed as `customtruncfunc` with the signature customtruncfunc(pstr, coeff)::Bool.
 
 This function combines all truncation criteria into a single truncation function `truncfunc()` calls PropagationBase.truncate!(truncfunc, prop_cache).
 """
 function PropagationBase.truncate!(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
-    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
+    min_rel_coeff=nothing, max_terms=nothing, max_terms_rtol::Real=0.05, customtruncfunc=nothing,
+    thread::Bool=true, kwargs...)
 
     truncfunc = buildtruncfunc(pobj;
-        min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc, thread)
+        min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, max_terms, max_terms_rtol, customtruncfunc, thread)
     return truncate!(truncfunc, pobj; thread, kwargs...)
 end
 
 """
     buildtruncfunc(pobj; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf,
-                   max_sins=Inf, min_rel_coeff=nothing, customtruncfunc=nothing,
-                   thread=true)
+                   max_sins=Inf, min_rel_coeff=nothing, max_terms=nothing,
+                   max_terms_rtol=0.05, customtruncfunc=nothing, thread=true)
 
 Build a predicate that combines the supported truncation criteria. When
-`min_rel_coeff` is specified, its absolute threshold is calculated from the
-largest coefficient currently in `pobj` and captured by the returned function.
+`min_rel_coeff` or `max_terms` is specified, its absolute threshold is calculated from
+the coefficients currently in `pobj` and captured by the returned function.
 """
 function buildtruncfunc(pobj::Union{AbstractPauliSum,AbstractPauliPropagationCache};
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
-    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true)
+    min_rel_coeff=nothing, max_terms=nothing, max_terms_rtol::Real=0.05, customtruncfunc=nothing,
+    thread::Bool=true)
 
     effective_min_abs_coeff = isnothing(min_rel_coeff) ? min_abs_coeff :
         max(min_rel_coeff * maxabscoeff(pobj; thread), min_abs_coeff)
+    if !isnothing(max_terms)
+        effective_min_abs_coeff = max(effective_min_abs_coeff, topkabscoeff(pobj, max_terms; rtol=max_terms_rtol, thread))
+    end
 
     coefftruncfunc = CoefficientTruncation(effective_min_abs_coeff, max_freq, max_sins, customtruncfunc)
     # Decided once here rather than for every term: a predicate that never reads the Pauli string lets
