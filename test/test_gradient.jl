@@ -429,6 +429,63 @@ end
         end
     end
 
+    @testset "Term budget of the backward sweep" begin
+        # A tilted-field circuit truncated by weight. Undone on the truncated operator, the backward sweep refills the
+        # Pauli strings within the weight, which are far more than the forward sweep ended with.
+        nq = 8
+        layers = Gate[]
+        rotations = Gate[]
+        for _ in 1:4
+            for (symbols, qinds) in ((:X, 1:nq), (:Z, 1:nq), ([:Z, :Z], staircasetopology(nq)))
+                push!(layers, PauliRotationLayer(symbols, qinds))
+                append!(rotations, [PauliRotation(symbols, collect(rotation_qinds)) for rotation_qinds in qinds])
+            end
+        end
+        layer_params = [fill(0.2 + 0.05 * k, length(layer.gates)) for (k, layer) in enumerate(layers)]
+        rotation_params = reduce(vcat, layer_params)
+        obs = PauliString(nq, [:Z, :Z], [4, 5])
+        truncation = (; min_abs_coeff=0.0, max_weight=3)
+        factor = 1.2
+
+        # the counts of the forward sweep, then of the backward sweep, after every gate
+        sweepcounts(counts, n_gates) = counts[1:n_gates], counts[n_gates+1:end]
+
+        sums = (VectorPauliSum(obs), PauliSum(obs), MultiPauliSum(VectorPauliSum(obs), 4))
+        for (circuit, params) in ((layers, layer_params), (rotations, rotation_params)), psum in sums
+            n_gates = length(circuit)
+            gradient(; kwargs...) = rewindgradient(circuit, psum, params, overlapwithzero; truncation..., kwargs...)
+
+            free_counts = @countpaulis free_result = gradient()
+            counts = @countpaulis (expec, grad) = gradient(; backward_terms_factor=factor)
+            forward_counts, backward_counts = sweepcounts(counts, n_gates)
+            free_forward_counts, free_backward_counts = sweepcounts(free_counts, n_gates)
+            budget = ceil(Int, factor * forward_counts[end])
+
+            # the forward sweep is as without the budget
+            @test forward_counts == free_forward_counts && expec == free_result[1]
+
+            # the backward sweep outgrows the budget without it, and stays within it up to `max_terms_rtol` with it
+            @test maximum(free_backward_counts) > 2 * budget
+            @test maximum(backward_counts) <= 1.05 * budget
+            @test all(entry -> all(isfinite, entry), grad) && any(entry -> any(!iszero, entry), grad)
+
+            # a budget that the backward sweep stays within changes nothing
+            roomy_expec, roomy_grad = gradient(; backward_terms_factor=100)
+            @test roomy_expec == free_result[1]
+            @test reduce(vcat, roomy_grad) ≈ reduce(vcat, free_result[2]) rtol = 1e-12
+
+            # with `max_terms`, the backward sweep keeps to the smaller of the two budgets
+            max_terms = 200
+            @test gradient(; max_terms, backward_terms_factor=100) == gradient(; max_terms)
+            counts = @countpaulis gradient(; max_terms=4^nq, backward_terms_factor=factor)
+            @test maximum(sweepcounts(counts, n_gates)[2]) <= 1.05 * budget
+        end
+
+        # an operator that the forward sweep truncates to nothing leaves a budget of one Pauli string, not of none
+        expec, grad = rewindgradient(rotations, VectorPauliSum(obs), rotation_params, overlapwithzero; min_abs_coeff=10.0, backward_terms_factor=factor)
+        @test expec == 0 && all(iszero, grad)
+    end
+
     @testset "Layer of rotations acting on different numbers of limbs" begin
         # above 128 qubits a rotation on at most two 64-bit limbs gets a rule for those limbs and one on more limbs a
         # rule for the whole Pauli string, so the rules of this layer have two types

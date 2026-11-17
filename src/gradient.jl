@@ -6,7 +6,7 @@
 
 
 """
-    rewindgradient(circuit, psum::AbstractPauliSum, params, overlapfunc; thread=true, kwargs...)
+    rewindgradient(circuit, psum::AbstractPauliSum, params, overlapfunc; thread=true, backward_terms_factor=nothing, kwargs...)
 
 Compute `overlapfunc(propagate(circuit, psum, params; kwargs...))` together with its gradient with
 respect to `params`, in one paired forward and backward sweep costing O(length(circuit)) gate applications.
@@ -19,6 +19,12 @@ Noise channels are not supported, frozen or not, because the backward sweep cann
 `overlapwithpaulisum`.
 `kwargs` are passed on to `applymergetruncate!` in the forward sweep and the operator side of the
 backward sweep.
+The backward sweep undoes the gates on the truncated operator, which can leave it with more Pauli strings than the
+forward sweep ever held. `backward_terms_factor` gives the backward sweep a term budget of that multiple of the number
+of Pauli strings the forward sweep ended with, e.g. `backward_terms_factor=1.2` for 20% more, applied like `max_terms`.
+If `max_terms` is passed as well, the backward sweep keeps to the smaller of the two budgets.
+The budget is off by default, and is not meant for circuits whose operator shrinks again before the end of the forward
+sweep, since it is measured from where that sweep ends.
 Returns `(expec, grad)`.
 
 This design is adapted from the publication ``Backpropagating Pauli Propagation'' by Lin et al. (arXiv:2607.15184).
@@ -37,7 +43,8 @@ function rewindgradient!(circuit, psum::AbstractPauliSum, params, overlapfunc; k
     return rewindgradient!(circuit, PropagationCache(psum), params, overlapfunc; kwargs...)
 end
 
-function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc; thread::Bool=true, kwargs...)
+function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, params, overlapfunc;
+    thread::Bool=true, backward_terms_factor=nothing, kwargs...)
     # check that the only parameterized gates are PauliRotations and layers of them
     @assert all(_isdifferentiable, circuit) "All parameterized gates must be PauliRotations or GateLayers of them."
     @assert all(_isrewindable, circuit) "Noise channels are not supported because they cannot be undone."
@@ -54,9 +61,19 @@ function rewindgradient!(circuit, forward_cache::AbstractPauliPropagationCache, 
     heisenberg = false
     undo_circuit, undo_params = _preparecircuit(circuit, params, heisenberg)
     state = _BackwardSweepState(cache, _zerogradient(undo_params), 0)
-    PropagationBase._propagate!(_undostep!, undo_circuit, state, undo_params; thread, _unwrapkwargs(; kwargs...)...)
+    backward_kwargs = _backwardkwargs(length(forward_cache), backward_terms_factor; kwargs...)
+    PropagationBase._propagate!(_undostep!, undo_circuit, state, undo_params; thread, _unwrapkwargs(; backward_kwargs...)...)
 
     return expec, state.grad
+end
+
+# The keywords of the backward sweep. With a `backward_terms_factor`, its term budget is that multiple of the number of
+# Pauli strings the forward sweep ended with, or the `max_terms` of the forward sweep if that is smaller.
+_backwardkwargs(n_terms, ::Nothing; kwargs...) = kwargs
+function _backwardkwargs(n_terms, backward_terms_factor; max_terms=nothing, kwargs...)
+    # a budget of at least one Pauli string, which `topkabscoeff` asks for
+    budget = max(1, ceil(Int, backward_terms_factor * n_terms))
+    return (; kwargs..., max_terms=isnothing(max_terms) ? budget : min(max_terms, budget))
 end
 
 
