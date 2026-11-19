@@ -90,14 +90,41 @@ Truncation is applied after every gate acting on a Pauli string and at the end o
 Unlike the gates one after the other, a layer applied class by class also merges and truncates the Pauli strings that none of its gates act on.
 A `VectorPauliSum` is left without duplicate Pauli strings, but unsorted.
 Other layers, such as layers of imaginary-time rotations, which normalize the whole sum, sums with coefficients that a layer is not applied to in one pass, and truncation by `min_rel_coeff` apply the gates one after the other.
+A term budget `max_terms` enters a layer applied class by class as a coefficient threshold: the threshold that keeps about `max_terms` Pauli strings of the sum before the layer, see `topkabscoeff`, is used in place of `min_abs_coeff` where it is larger.
+The sum is not truncated to the budget after such a layer, but once at the end of `propagate!`.
+A layer whose gates are applied one after the other applies the budget after every gate.
+A layer applied with one visit of every Pauli string creates none, and applies no term budget, like its gates one after the other.
 """
 function PropagationBase.applymergetruncate!(layer::GateLayer, prop_cache::AbstractPauliPropagationCache, params;
-    min_rel_coeff=nothing, kwargs...)
+    min_abs_coeff::Real=1e-10, min_rel_coeff=nothing, max_terms=nothing, max_terms_rtol::Real=0.05, kwargs...)
 
     apply! = _layerroute(layer, prop_cache, min_rel_coeff)
     # past a barrier to inference, so that a layer compiles only the route it takes
-    Base.inferencebarrier(apply!)(layer, prop_cache, params; min_rel_coeff, kwargs...)
+    if apply! === PropagationBase._applygatesonebyone!
+        # the gates apply the term budget themselves
+        Base.inferencebarrier(apply!)(layer, prop_cache, params; min_abs_coeff, min_rel_coeff, max_terms, max_terms_rtol, kwargs...)
+    elseif apply! === _applymap!
+        Base.inferencebarrier(apply!)(layer, prop_cache, params; min_abs_coeff, min_rel_coeff, kwargs...)
+    else
+        budget_min_abs_coeff = _budgetmincoeff(prop_cache, min_abs_coeff, max_terms, max_terms_rtol; kwargs...)
+        Base.inferencebarrier(apply!)(layer, prop_cache, params; min_abs_coeff=budget_min_abs_coeff, min_rel_coeff, kwargs...)
+    end
     return
+end
+
+# A term budget counts the Pauli strings of the whole sum, and a layer hands its keywords on to the classes, so the
+# budget enters a layer as the coefficient threshold that keeps about `max_terms` Pauli strings of the sum before it.
+_budgetmincoeff(prop_cache, min_abs_coeff, ::Nothing, max_terms_rtol; kwargs...) = min_abs_coeff
+_budgetmincoeff(prop_cache, min_abs_coeff, max_terms, max_terms_rtol; thread::Bool=true, kwargs...) =
+    max(min_abs_coeff, topkabscoeff(prop_cache, max_terms; rtol=max_terms_rtol, thread))
+
+# Truncates the sum to the term budget if it is over it, as `propagate!` does once after the circuit.
+_truncatetoterms!(prop_cache, ::Nothing, max_terms_rtol; kwargs...) = prop_cache
+function _truncatetoterms!(prop_cache, max_terms, max_terms_rtol; kwargs...)
+    if length(prop_cache) > max_terms
+        truncate!(prop_cache; max_terms, max_terms_rtol, kwargs...)
+    end
+    return prop_cache
 end
 
 # The function that applies the layer: with one visit of every Pauli string, as rotations class by class, as other gates
@@ -201,7 +228,7 @@ end
 Apply a Clifford gate and truncate in the same walk.
 The gate never creates duplicate terms, so no merge is needed.
 It changes only the signs of the coefficients, so `min_abs_coeff`, `min_rel_coeff`, `max_freq` and `max_sins` would drop nothing that the truncation after the previous gate kept.
-The terms are therefore truncated only when `max_weight` or `customtruncfunc` is given, and `min_rel_coeff` is never applied.
+The terms are therefore truncated only when `max_weight` or `customtruncfunc` is given, and `min_rel_coeff` and `max_terms` are never applied.
 """
 function PropagationBase.applymergetruncate!(gate::CliffordGate, prop_cache::AbstractPauliPropagationCache;
     thread::Bool=true, min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf,
@@ -411,19 +438,20 @@ _branchmask(gate::AmplitudeDampingNoise, prop_cache) = symboltoint(paulitype(pro
 # multi sum does nothing further when the gate touched no term.
 function _applyxormergetruncate!(gate, prop_cache::AbstractPauliPropagationCache, args...;
     min_abs_coeff::Real=1e-10, max_weight::Real=Inf, max_freq::Real=Inf, max_sins::Real=Inf,
-    min_rel_coeff=nothing, customtruncfunc=nothing, thread::Bool=true, kwargs...)
+    min_rel_coeff=nothing, max_terms=nothing, max_terms_rtol::Real=0.05, customtruncfunc=nothing,
+    thread::Bool=true, kwargs...)
 
     mask = _branchmask(gate, prop_cache)
     rule = _branchrule(gate, prop_cache, args...)
 
-    # A relative threshold is based on the largest merged coefficient and thus cannot be
+    # A relative threshold or a term budget is based on the merged coefficients and thus cannot be
     # evaluated while the merged output is written.
-    if !isnothing(min_rel_coeff)
+    if !isnothing(min_rel_coeff) || !isnothing(max_terms)
         xorbranch!(rule, prop_cache, mask; thread)
         xormerge!(prop_cache, mask; thread)
         truncate!(prop_cache;
-            min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, customtruncfunc,
-            thread, kwargs...)
+            min_abs_coeff, max_weight, max_freq, max_sins, min_rel_coeff, max_terms, max_terms_rtol,
+            customtruncfunc, thread, kwargs...)
         return
     end
 

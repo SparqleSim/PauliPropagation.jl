@@ -99,6 +99,7 @@ export
     filtercoeffs!,
     mapreducecoeffs,
     maxabscoeff,
+    topkabscoeff,
     flatmap,
     flatmap!,
     mapandtruncate!,

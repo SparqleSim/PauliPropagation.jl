@@ -124,3 +124,57 @@ end
     @test !truncfunc(symboltoint(UInt8, :X, 1), 1.0)
     @test truncfunc(symboltoint(UInt8, :Y, 1), 0.1)
 end
+
+@testset "Top-K truncation Tests" begin
+    """Test max_terms, whose threshold is found by radix select on the coefficient magnitudes, never by sorting."""
+    nq = 20
+
+    # well-separated magnitudes land in buckets of their own, so every tolerance is exact
+    psum = PauliSum(nq)
+    for qind in 1:nq
+        add!(psum, :Z, qind, 2.0^(1 - qind))
+    end
+    @test topkabscoeff(psum, 5) == 2.0^-4
+    @test topkabscoeff(VectorPauliSum(psum), 5) == 2.0^-4
+    @test topkabscoeff(psum, nq) == 0.0
+    @test_throws ArgumentError topkabscoeff(psum, 0)
+    @test_throws ArgumentError topkabscoeff(psum, 5; rtol=-0.1)
+    for pauli_sum in (psum, VectorPauliSum(psum))
+        truncated = truncate(pauli_sum; min_abs_coeff=0.0, max_terms=5)
+        @test length(truncated) == 5
+        @test sort(collect(PB.coefficients(truncated)); rev=true) == 2.0 .^ (0:-1:-4)
+        @test length(truncate(pauli_sum; min_abs_coeff=0.0, max_terms=nq)) == nq
+    end
+
+    # a smooth spectrum: the kept count lands within rtol of K, and the kept terms are the largest ones
+    rng = MersenneTwister(1)
+    n = 20_000
+    K = 2000
+    magnitudes = exp.(randn(rng, n))
+    vpsum = VectorPauliSum(nq, UInt64.(1:n), magnitudes .* rand(rng, (-1, 1), n))
+    @test topkabscoeff(vpsum, K; thread=true) == topkabscoeff(vpsum, K; thread=false)
+    for rtol in (0.05, 0.01, 0.001, 0.0)
+        truncated = truncate(vpsum; min_abs_coeff=0.0, max_terms=K, max_terms_rtol=rtol)
+        n_kept = length(truncated)
+        @test abs(n_kept - K) <= rtol * K
+        @test minimum(abs, PB.coefficients(truncated)) >= partialsort(magnitudes, n_kept; rev=true)
+    end
+
+    # tied magnitudes are kept or dropped together, whichever count is closer to K
+    tied = VectorPauliSum(nq, UInt64.(1:200), [fill(1.0, 100); fill(-0.5, 100)])
+    @test length(truncate(tied; min_abs_coeff=0.0, max_terms=150, max_terms_rtol=0.0)) == 200
+    @test length(truncate(tied; min_abs_coeff=0.0, max_terms=120, max_terms_rtol=0.0)) == 100
+
+    # during propagation, Dict- and Array-based propagation must agree
+    circ, pstr, thetas = brickcircuit(42)
+    n_untruncated = length(propagate(circ, pstr, thetas; min_abs_coeff=0.0))
+    for max_terms in (50, 200)
+        dnum = propagate(circ, pstr, thetas; min_abs_coeff=0.0, max_terms)
+        dvec = propagate(circ, VectorPauliSum(pstr), thetas; min_abs_coeff=0.0, max_terms)
+
+        @test length(dnum) == length(dvec)
+        @test isapprox(overlapwithzero(dnum), overlapwithzero(dvec))
+        @test length(dnum) <= 1.05 * max_terms + 1
+        @test length(dnum) < n_untruncated
+    end
+end

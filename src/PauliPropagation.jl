@@ -155,6 +155,7 @@ export
     truncate!,
     buildtruncfunc,
     maxabscoeff,
+    topkabscoeff,
     mapreducecoeffs,
     merge,
     merge!,
