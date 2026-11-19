@@ -74,12 +74,16 @@ end
     propagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; min_abs_coeff=1e-10, max_weight=Inf, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, heisenberg=true, thread=true, kwargs...)
 
 In-place propagation of an `AbstractPauliPropagationCache` through the circuit `circ` in the Heisenberg picture.
+With a term budget `max_terms`, the sum is truncated to it once more after the circuit if it is over it, since a `GateLayer` applied class by class applies the budget as a coefficient threshold and may leave more Pauli strings.
 """
 function PropagationBase.propagate!(circuit, prop_cache::AbstractPauliPropagationCache, thetas=nothing; max_weight=Inf, min_abs_coeff=1e-10, max_freq=Inf, max_sins=Inf, customtruncfunc=nothing, heisenberg=true, thread::Bool=true, kwargs...)
 
     circuit, thetas = _preparecircuit(circuit, thetas, heisenberg)
 
-    return PropagationBase._propagate!(circuit, prop_cache, thetas; max_weight, min_abs_coeff, max_freq, max_sins, customtruncfunc, thread, kwargs...)
+    PropagationBase._propagate!(circuit, prop_cache, thetas; max_weight, min_abs_coeff, max_freq, max_sins, customtruncfunc, thread, kwargs...)
+    # the budget stays among the keywords of the gates, which not every gate takes
+    return _truncatetoterms!(prop_cache, get(kwargs, :max_terms, nothing), get(kwargs, :max_terms_rtol, 0.05);
+        max_weight, min_abs_coeff, max_freq, max_sins, customtruncfunc, thread)
 end
 
 

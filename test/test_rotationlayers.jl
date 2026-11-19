@@ -634,7 +634,7 @@ end
     end
 end
 
-@testset "PauliRotationLayer applies a term budget once, after the layer" begin
+@testset "PauliRotationLayer applies a term budget as a coefficient threshold from the sum before the layer" begin
     nq = 8
     rng = MersenneTwister(4)
     psum = lightandheavypaulisum(rng, nq)
@@ -645,14 +645,17 @@ end
 
     for (T, heisenberg) in LAYER_TEST_SUMS
         layered = propagate(layers, T(psum), thetas; heisenberg, min_abs_coeff=0.0, max_terms)
-        # every layer without a budget, and the sum truncated to the budget after it, from the last layer in the
-        # Heisenberg picture
+        # every layer without a budget, truncating by the threshold that keeps the budget of the sum before it, from
+        # the last layer in the Heisenberg picture, and the sum truncated to the budget once after the circuit
         reference = T(psum)
+        thresholds = Float64[]
         steps = collect(zip(layers, thetas))
         for (layer, theta) in (heisenberg ? reverse(steps) : steps)
-            reference = propagate(layer, reference, theta; heisenberg, min_abs_coeff=0.0)
-            reference = truncate!(reference; min_abs_coeff=0.0, max_terms)
+            push!(thresholds, topkabscoeff(reference, max_terms))
+            reference = propagate(layer, reference, theta; heisenberg, min_abs_coeff=thresholds[end])
         end
+        @test count(>(0), thresholds) >= 2
+        reference = truncate!(reference; min_abs_coeff=0.0, max_terms)
         @test PauliSum(layered) == PauliSum(reference)
         @test 1 < length(layered) <= 1.05 * max_terms + 1
     end
